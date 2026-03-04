@@ -69,18 +69,36 @@ class ZipArchiveReader implements ArchiveReader {
 class RarArchiveReader implements ArchiveReader {
   private entries: { name: string; isDirectory: boolean; data?: Uint8Array }[] = [];
 
-  constructor(filepath: string) {
-    // node-unrar-js works synchronously with file buffer
+  private constructor() {}
+
+  static async create(filepath: string): Promise<RarArchiveReader> {
+    const instance = new RarArchiveReader();
     const fileBuffer = fs.readFileSync(filepath);
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { createExtractorFromData } = require("node-unrar-js");
-      const extractor = createExtractorFromData({ data: fileBuffer });
+
+      // node-unrar-js v2.x: createExtractorFromData is async and needs wasmBinary
+      // Use process.cwd() to avoid Next.js RSC bundler rewriting require.resolve paths with (rsc)
+      const wasmPath = path.join(
+        process.cwd(),
+        "node_modules",
+        "node-unrar-js",
+        "dist",
+        "js",
+        "unrar.wasm"
+      );
+      const wasmBinary = fs.readFileSync(wasmPath);
+
+      const extractor = await createExtractorFromData({
+        data: fileBuffer,
+        wasmBinary,
+      });
       const list = extractor.getFileList();
       const fileHeaders = [...list.fileHeaders];
 
       for (const header of fileHeaders) {
-        this.entries.push({
+        instance.entries.push({
           name: header.name,
           isDirectory: header.flags.directory,
         });
@@ -90,7 +108,7 @@ class RarArchiveReader implements ArchiveReader {
       const extracted = extractor.extract();
       const files = [...extracted.files];
       for (const file of files) {
-        const existing = this.entries.find((e) => e.name === file.fileHeader.name);
+        const existing = instance.entries.find((e) => e.name === file.fileHeader.name);
         if (existing && file.extraction) {
           existing.data = file.extraction;
         }
@@ -98,6 +116,7 @@ class RarArchiveReader implements ArchiveReader {
     } catch (err) {
       console.error("Failed to read RAR file:", err);
     }
+    return instance;
   }
 
   listEntries(): ArchiveEntry[] {
@@ -283,7 +302,7 @@ export function getArchiveType(filepath: string): "zip" | "rar" | "7z" | "pdf" |
   }
 }
 
-export function createArchiveReader(filepath: string): ArchiveReader | null {
+export async function createArchiveReader(filepath: string): Promise<ArchiveReader | null> {
   const type = getArchiveType(filepath);
   if (!type) return null;
 
@@ -291,7 +310,7 @@ export function createArchiveReader(filepath: string): ArchiveReader | null {
     case "zip":
       return new ZipArchiveReader(filepath);
     case "rar":
-      return new RarArchiveReader(filepath);
+      return await RarArchiveReader.create(filepath);
     case "7z":
       return new SevenZipArchiveReader(filepath);
     case "pdf":
@@ -434,7 +453,7 @@ export async function generateArchiveThumbnail(
     const result = await renderPdfPage(filepath, 0);
     if (result) pageBuffer = result.buffer;
   } else {
-    const reader = createArchiveReader(filepath);
+    const reader = await createArchiveReader(filepath);
     if (!reader) return null;
 
     try {

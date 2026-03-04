@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const comic = findComicById(id);
+  const comic = await findComicById(id);
 
   if (!comic) {
     return NextResponse.json({ error: "Comic not found" }, { status: 404 });

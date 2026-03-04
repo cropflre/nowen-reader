@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const comic = findComicById(comicId);
+    const comic = await findComicById(comicId);
     if (!comic) {
       return NextResponse.json(
         { error: "Comic not found" },

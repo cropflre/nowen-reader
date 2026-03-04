@@ -46,7 +46,7 @@ function filenameToTitle(filename: string): string {
 /**
  * Scan the comics directory and return info about all archives
  */
-export function scanComicsDirectory(): ComicArchiveInfo[] {
+export async function scanComicsDirectory(): Promise<ComicArchiveInfo[]> {
   if (!fs.existsSync(COMICS_DIR)) {
     fs.mkdirSync(COMICS_DIR, { recursive: true });
     return [];
@@ -66,13 +66,12 @@ export function scanComicsDirectory(): ComicArchiveInfo[] {
       let pageCount = 0;
 
       if (ext === ".pdf") {
-        // For PDF, do a rough count synchronously
         const data = fs.readFileSync(filepath);
         const content = data.toString("binary");
         const matches = content.match(/\/Type\s*\/Page[^s]/g);
         pageCount = matches ? matches.length : 0;
       } else {
-        const reader = createArchiveReader(filepath);
+        const reader = await createArchiveReader(filepath);
         if (!reader) continue;
 
         try {
@@ -104,8 +103,8 @@ export function scanComicsDirectory(): ComicArchiveInfo[] {
 /**
  * Get the list of page image filenames for a comic (sorted)
  */
-export function getComicPages(comicId: string): string[] {
-  const info = findComicById(comicId);
+export async function getComicPages(comicId: string): Promise<string[]> {
+  const info = await findComicById(comicId);
   if (!info) return [];
 
   const type = getArchiveType(info.filepath);
@@ -119,7 +118,7 @@ export function getComicPages(comicId: string): string[] {
     return Array.from({ length: count }, (_, i) => `page-${String(i + 1).padStart(4, "0")}.png`);
   }
 
-  const reader = createArchiveReader(info.filepath);
+  const reader = await createArchiveReader(info.filepath);
   if (!reader) return [];
 
   try {
@@ -132,19 +131,19 @@ export function getComicPages(comicId: string): string[] {
 /**
  * Extract a single page image as a Buffer
  */
-export function getPageImage(
+export async function getPageImage(
   comicId: string,
   pageIndex: number
-): { buffer: Buffer; mimeType: string } | null {
-  const info = findComicById(comicId);
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const info = await findComicById(comicId);
   if (!info) return null;
 
   const type = getArchiveType(info.filepath);
 
-  // PDF pages need async rendering - return null for sync call
+  // PDF pages need async rendering
   if (type === "pdf") return null;
 
-  const reader = createArchiveReader(info.filepath);
+  const reader = await createArchiveReader(info.filepath);
   if (!reader) return null;
 
   try {
@@ -183,7 +182,7 @@ export async function getPageImageAsync(
   comicId: string,
   pageIndex: number
 ): Promise<{ buffer: Buffer; mimeType: string } | null> {
-  const info = findComicById(comicId);
+  const info = await findComicById(comicId);
   if (!info) return null;
 
   const type = getArchiveType(info.filepath);
@@ -192,7 +191,7 @@ export async function getPageImageAsync(
     return renderPdfPage(info.filepath, pageIndex);
   }
 
-  // For non-PDF, use sync version
+  // For non-PDF, use async version
   return getPageImage(comicId, pageIndex);
 }
 
@@ -200,7 +199,7 @@ export async function getPageImageAsync(
  * Get accurate PDF page count (async)
  */
 export async function getAccuratePdfPageCount(comicId: string): Promise<number> {
-  const info = findComicById(comicId);
+  const info = await findComicById(comicId);
   if (!info) return 0;
   return getPdfPageCount(info.filepath);
 }
@@ -211,7 +210,7 @@ export async function getAccuratePdfPageCount(comicId: string): Promise<number> 
 export async function getComicThumbnail(
   comicId: string
 ): Promise<Buffer | null> {
-  const info = findComicById(comicId);
+  const info = await findComicById(comicId);
   if (!info) return null;
 
   return generateArchiveThumbnail(info.filepath, comicId);
@@ -220,7 +219,7 @@ export async function getComicThumbnail(
 /**
  * Find a comic by its ID
  */
-export function findComicById(comicId: string): ComicArchiveInfo | null {
-  const comics = scanComicsDirectory();
+export async function findComicById(comicId: string): Promise<ComicArchiveInfo | null> {
+  const comics = await scanComicsDirectory();
   return comics.find((c) => c.id === comicId) || null;
 }

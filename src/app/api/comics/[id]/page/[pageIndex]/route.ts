@@ -17,7 +17,7 @@ export async function GET(
     );
   }
 
-  const comic = findComicById(id);
+  const comic = await findComicById(id);
   if (!comic) {
     return NextResponse.json(
       { error: "Comic not found" },
@@ -33,7 +33,7 @@ export async function GET(
   if (archiveType === "pdf") {
     result = await getPageImageAsync(id, pageIndex);
   } else {
-    result = getPageImage(id, pageIndex);
+    result = await getPageImage(id, pageIndex);
   }
 
   if (!result) {

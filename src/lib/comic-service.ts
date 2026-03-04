@@ -8,7 +8,7 @@ import { scanComicsDirectory, ComicArchiveInfo } from "./comic-parser";
  * - Updates page count / file size if changed
  */
 export async function syncComicsToDatabase() {
-  const filesOnDisk = scanComicsDirectory();
+  const filesOnDisk = await scanComicsDirectory();
   const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
 
   // Get all comics in DB

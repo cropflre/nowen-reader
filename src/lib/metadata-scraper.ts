@@ -313,7 +313,7 @@ export async function extractComicInfoFromArchive(
 ): Promise<ComicMetadata | null> {
   try {
     const { createArchiveReader } = await import("./archive-parser");
-    const reader = createArchiveReader(filepath);
+    const reader = await createArchiveReader(filepath);
     if (!reader) return null;
 
     try {
