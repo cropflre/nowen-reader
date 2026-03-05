@@ -4,6 +4,7 @@ import {
   batchSetFavorite,
   batchAddTags,
   batchSetGroup,
+  batchSetCategory,
 } from "@/lib/comic-service";
 
 export async function POST(request: NextRequest) {
@@ -40,6 +41,13 @@ export async function POST(request: NextRequest) {
 
       case "setGroup":
         await batchSetGroup(comicIds, params.groupName || "");
+        return NextResponse.json({ success: true });
+
+      case "setCategory":
+        if (!Array.isArray(params.categorySlugs) || params.categorySlugs.length === 0) {
+          return NextResponse.json({ error: "categorySlugs array required" }, { status: 400 });
+        }
+        await batchSetCategory(comicIds, params.categorySlugs);
         return NextResponse.json({ success: true });
 
       default:

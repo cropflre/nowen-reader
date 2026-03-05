@@ -8,9 +8,11 @@ import {
   Trash2,
   Tag,
   FolderOpen,
+  Layers,
   CheckSquare,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useCategories, ApiCategory } from "@/hooks/useComics";
 
 interface BatchToolbarProps {
   selectedCount: number;
@@ -20,6 +22,7 @@ interface BatchToolbarProps {
   onUnfavorite: () => void;
   onAddTags: (tags: string[]) => void;
   onSetGroup: (groupName: string) => void;
+  onSetCategory?: (categorySlugs: string[]) => void;
 }
 
 export default function BatchToolbar({
@@ -30,13 +33,16 @@ export default function BatchToolbar({
   onUnfavorite,
   onAddTags,
   onSetGroup,
+  onSetCategory,
 }: BatchToolbarProps) {
   const [showTagInput, setShowTagInput] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [showGroupInput, setShowGroupInput] = useState(false);
   const [groupInput, setGroupInput] = useState("");
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const t = useTranslation();
+  const { categories } = useCategories();
 
   return (
     <>
@@ -97,6 +103,22 @@ export default function BatchToolbar({
               <FolderOpen className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t.batch.group}</span>
             </button>
+
+            {/* Set Category */}
+            {onSetCategory && (
+              <button
+                onClick={() => setShowCategoryPicker(!showCategoryPicker)}
+                className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
+                  showCategoryPicker
+                    ? "bg-accent/20 text-accent"
+                    : "bg-card text-muted hover:bg-card-hover"
+                }`}
+                title={t.batch.category || "Category"}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t.batch.category || "分类"}</span>
+              </button>
+            )}
 
             {/* Delete */}
             <button
@@ -180,6 +202,27 @@ export default function BatchToolbar({
             >
               {t.common.confirm}
             </button>
+          </div>
+        )}
+
+        {/* Category Picker Inline */}
+        {showCategoryPicker && onSetCategory && (
+          <div className="mx-auto mt-3 max-w-[1800px]">
+            <div className="flex flex-wrap gap-2">
+              {categories.map((cat: ApiCategory) => (
+                <button
+                  key={cat.slug}
+                  onClick={() => {
+                    onSetCategory([cat.slug]);
+                    setShowCategoryPicker(false);
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/20 hover:border-accent/50 hover:text-accent"
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

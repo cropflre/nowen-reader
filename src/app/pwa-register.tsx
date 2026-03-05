@@ -6,6 +6,7 @@ import {
   registerReadingStatsPlugin,
   registerAutoTagPlugin,
   registerReadingGoalPlugin,
+  registerAITaggerPlugin,
   pluginManager,
 } from "@/lib/plugin-system";
 
@@ -19,6 +20,7 @@ export function PWARegister() {
     registerReadingStatsPlugin();
     registerAutoTagPlugin();
     registerReadingGoalPlugin();
+    registerAITaggerPlugin();
   }, []);
 
   return null;

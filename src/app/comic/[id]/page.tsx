@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -12,6 +12,10 @@ import {
   removeComicTag,
   deleteComicById,
   updateComicGroup,
+  useCategories,
+  addComicCategories,
+  removeComicCategory,
+  ApiCategory,
 } from "@/hooks/useComics";
 import {
   ArrowLeft,
@@ -25,11 +29,15 @@ import {
   HardDrive,
   Calendar,
   FolderOpen,
+  Layers,
   Trash2,
   Play,
   User,
   Globe,
   Database,
+  ImagePlus,
+  RefreshCw,
+  Download,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { MetadataSearch } from "@/components/MetadataSearch";
@@ -57,10 +65,25 @@ export default function ComicDetailPage() {
   }
 
   const { comic, loading, refetch } = useComicDetail(comicId);
+  const { categories: allCategories, refetch: refetchCategories, initCategories } = useCategories();
   const [newTag, setNewTag] = useState("");
   const [editingGroup, setEditingGroup] = useState(false);
   const [groupInput, setGroupInput] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showCoverMenu, setShowCoverMenu] = useState(false);
+  const [coverUrlInput, setCoverUrlInput] = useState("");
+  const [showCoverUrlInput, setShowCoverUrlInput] = useState(false);
+  const [coverLoading, setCoverLoading] = useState(false);
+  const [coverKey, setCoverKey] = useState(0); // force re-render cover image
+  const coverFileRef = useRef<HTMLInputElement>(null);
+
+  // Auto-init categories on first load
+  useEffect(() => {
+    if (allCategories.length === 0) {
+      initCategories(locale);
+    }
+  }, [allCategories.length, initCategories, locale]);
 
   const handleToggleFavorite = useCallback(async () => {
     await toggleComicFavorite(comicId);
@@ -96,6 +119,120 @@ export default function ComicDetailPage() {
     setEditingGroup(false);
     refetch();
   }, [comicId, groupInput, refetch]);
+
+  const handleAddCategory = useCallback(async (slug: string) => {
+    await addComicCategories(comicId, [slug]);
+    setShowCategoryPicker(false);
+    refetch();
+    refetchCategories();
+  }, [comicId, refetch, refetchCategories]);
+
+  const handleRemoveCategory = useCallback(async (slug: string) => {
+    await removeComicCategory(comicId, slug);
+    refetch();
+    refetchCategories();
+  }, [comicId, refetch, refetchCategories]);
+
+  // Cover management handlers
+  const handleCoverUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCoverLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/comics/${comicId}/cover`, { method: "POST", body: formData });
+      if (res.ok) {
+        setCoverKey((k) => k + 1);
+        setShowCoverMenu(false);
+      }
+    } catch (err) {
+      console.error("Cover upload failed:", err);
+    } finally {
+      setCoverLoading(false);
+      if (coverFileRef.current) coverFileRef.current.value = "";
+    }
+  }, [comicId]);
+
+  const handleCoverFromUrl = useCallback(async () => {
+    if (!coverUrlInput.trim()) return;
+    setCoverLoading(true);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: coverUrlInput.trim() }),
+      });
+      if (res.ok) {
+        setCoverKey((k) => k + 1);
+        setShowCoverUrlInput(false);
+        setCoverUrlInput("");
+        setShowCoverMenu(false);
+      }
+    } catch (err) {
+      console.error("Cover fetch failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  }, [comicId, coverUrlInput]);
+
+  const handleCoverReset = useCallback(async () => {
+    setCoverLoading(true);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      if (res.ok) {
+        setCoverKey((k) => k + 1);
+        setShowCoverMenu(false);
+      }
+    } catch (err) {
+      console.error("Cover reset failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  }, [comicId]);
+
+  const handleCoverFromPlatform = useCallback(async () => {
+    if (!comic) return;
+    setCoverLoading(true);
+    setShowCoverMenu(false);
+    try {
+      // Use metadata search to find cover from platforms
+      const res = await fetch("/api/metadata/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: comic.title,
+          sources: ["anilist", "bangumi", "mangadex", "kitsu"],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || [];
+        // Find the first result with a cover URL
+        for (const r of results) {
+          if (r.coverUrl) {
+            const coverRes = await fetch(`/api/comics/${comicId}/cover`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: r.coverUrl }),
+            });
+            if (coverRes.ok) {
+              setCoverKey((k) => k + 1);
+              break;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Platform cover fetch failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  }, [comic, comicId]);
 
   const handleDelete = useCallback(async () => {
     const success = await deleteComicById(comicId);
@@ -146,16 +283,113 @@ export default function ComicDetailPage() {
         <div className="grid gap-8 md:grid-cols-[280px_1fr]">
           {/* Cover */}
           <div className="space-y-4">
-            <div className="relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card shadow-2xl">
+            <div className="group relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card shadow-2xl">
               <Image
-                src={`/api/comics/${comic.id}/thumbnail`}
+                src={`/api/comics/${comic.id}/thumbnail?v=${coverKey}`}
                 alt={comic.title}
                 fill
                 unoptimized
                 className="object-cover"
                 sizes="280px"
               />
+              {/* Cover overlay buttons */}
+              <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  onClick={() => setShowCoverMenu(!showCoverMenu)}
+                  disabled={coverLoading}
+                  className="mb-3 flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+                >
+                  {coverLoading ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-3.5 w-3.5" />
+                  )}
+                  {t.comicDetail.changeCover || "更换封面"}
+                </button>
+              </div>
+
+              {/* Cover menu dropdown */}
+              {showCoverMenu && (
+                <div className="absolute bottom-0 left-0 right-0 z-10 rounded-b-xl bg-zinc-900/95 p-3 backdrop-blur-sm">
+                  <div className="space-y-1.5">
+                    {/* Upload local image */}
+                    <button
+                      onClick={() => coverFileRef.current?.click()}
+                      disabled={coverLoading}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                    >
+                      <ImagePlus className="h-3.5 w-3.5" />
+                      {t.comicDetail.uploadCover || "上传本地图片"}
+                    </button>
+
+                    {/* Fetch from URL */}
+                    <button
+                      onClick={() => setShowCoverUrlInput(!showCoverUrlInput)}
+                      disabled={coverLoading}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                      {t.comicDetail.coverFromUrl || "输入图片URL"}
+                    </button>
+
+                    {showCoverUrlInput && (
+                      <div className="flex gap-1.5 px-1">
+                        <input
+                          type="text"
+                          value={coverUrlInput}
+                          onChange={(e) => setCoverUrlInput(e.target.value)}
+                          placeholder="https://..."
+                          className="flex-1 rounded-md bg-zinc-800 px-2 py-1.5 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-accent"
+                          onKeyDown={(e) => e.key === "Enter" && handleCoverFromUrl()}
+                        />
+                        <button
+                          onClick={handleCoverFromUrl}
+                          disabled={coverLoading || !coverUrlInput.trim()}
+                          className="rounded-md bg-accent px-2 py-1.5 text-xs text-white disabled:opacity-50"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Fetch from platform */}
+                    <button
+                      onClick={handleCoverFromPlatform}
+                      disabled={coverLoading}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {t.comicDetail.coverFromPlatform || "从漫画平台获取"}
+                    </button>
+
+                    {/* Reset to default */}
+                    <button
+                      onClick={handleCoverReset}
+                      disabled={coverLoading}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      {t.comicDetail.resetCover || "恢复默认封面"}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { setShowCoverMenu(false); setShowCoverUrlInput(false); }}
+                    className="mt-2 w-full rounded-lg py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+                  >
+                    {t.common.cancel}
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={coverFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleCoverUpload}
+            />
 
             {/* Read Button */}
             <Link
@@ -325,6 +559,64 @@ export default function ComicDetailPage() {
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
+            </div>
+
+            {/* Categories */}
+            <div>
+              <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+                {t.categoryFilter?.label || "分类"}
+              </h3>
+              <div className="mb-3 flex flex-wrap gap-2">
+                {comic.categories?.map((cat) => (
+                  <span
+                    key={cat.slug}
+                    className="flex items-center gap-1.5 rounded-lg bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent"
+                  >
+                    <span>{cat.icon}</span>
+                    {cat.name}
+                    <button
+                      onClick={() => handleRemoveCategory(cat.slug)}
+                      className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                {(!comic.categories || comic.categories.length === 0) && (
+                  <span className="text-xs text-muted">{t.categoryFilter?.uncategorized || "未分类"}</span>
+                )}
+              </div>
+              {showCategoryPicker ? (
+                <div className="flex flex-wrap gap-2 rounded-xl bg-card p-3">
+                  {allCategories
+                    .filter((cat: ApiCategory) => !comic.categories?.some((c) => c.slug === cat.slug))
+                    .map((cat: ApiCategory) => (
+                      <button
+                        key={cat.slug}
+                        onClick={() => handleAddCategory(cat.slug)}
+                        className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/20 hover:border-accent/50 hover:text-accent"
+                      >
+                        <span>{cat.icon}</span>
+                        <span>{cat.name}</span>
+                      </button>
+                    ))}
+                  <button
+                    onClick={() => setShowCategoryPicker(false)}
+                    className="rounded-lg bg-card px-3 py-1.5 text-xs text-muted hover:text-foreground"
+                  >
+                    {t.common.cancel}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowCategoryPicker(true)}
+                  className="flex items-center gap-2 rounded-lg bg-card px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-card-hover"
+                >
+                  <Layers className="h-4 w-4 text-muted" />
+                  <Plus className="h-3 w-3 text-muted" />
+                  <span className="text-xs text-muted">{t.comicDetail?.clickToEdit || "(点击添加)"}</span>
+                </button>
+              )}
             </div>
 
             {/* Group */}

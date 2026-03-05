@@ -1,8 +1,16 @@
+export interface ComicCategory {
+  id: number;
+  name: string;
+  slug: string;
+  icon: string;
+}
+
 export interface Comic {
   id: string;
   title: string;
   coverUrl: string;
   tags: string[];
+  categories?: ComicCategory[];
   author?: string;
   pageCount?: number;
   lastRead?: string;

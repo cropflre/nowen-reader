@@ -1,0 +1,38 @@
+# ============================================================
+# NowenReader - NAS 专用部署配置
+#
+# 适用于群晖(Synology)、威联通(QNAP)、铁威马(TerraMaster)等
+#
+# 使用方法:
+#   docker compose -f docker-compose.nas.yml up -d
+#
+# 请修改下面的路径为你 NAS 上的实际路径
+# ============================================================
+
+services:
+  nowen-reader:
+    build: .
+    container_name: nowen-reader
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # 数据库和配置（持久化，不要删除）
+      - /volume1/docker/nowen-reader/data:/data
+      - /volume1/docker/nowen-reader/cache:/app/.cache
+
+      # === 漫画目录 - 修改为你的实际路径 ===
+      # 群晖 Synology 示例:
+      - /volume1/comics:/app/comics
+
+      # 如果有多个漫画目录，全部挂载进来:
+      # - /volume1/manga:/mnt/manga
+      # - /volume2/comics:/mnt/comics2
+      # 然后在 Web 界面的"设置 → 额外漫画目录"中添加 /mnt/manga 和 /mnt/comics2
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/data/nowen-reader.db
+      - COMICS_DIR=/app/comics
+      - PORT=3000
+      # 时区（改为你的时区）
+      - TZ=Asia/Shanghai

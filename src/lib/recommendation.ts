@@ -1,4 +1,19 @@
 import { prisma } from "./db";
+import { THUMBNAILS_DIR } from "./config";
+import path from "path";
+import fs from "fs";
+
+/** 获取带缓存破坏参数的封面 URL */
+function getCoverUrl(comicId: string): string {
+  const base = `/api/comics/${comicId}/thumbnail`;
+  try {
+    const cachePath = path.join(THUMBNAILS_DIR, `${comicId}.webp`);
+    const stat = fs.statSync(cachePath);
+    return `${base}?v=${stat.mtimeMs.toString(36)}`;
+  } catch {
+    return base;
+  }
+}
 
 /**
  * Smart Recommendation Engine
@@ -57,7 +72,7 @@ export async function getRecommendations(options?: {
       title: comic.title,
       score,
       reasons,
-      coverUrl: `/api/comics/${comic.id}/thumbnail`,
+      coverUrl: getCoverUrl(comic.id),
       author: comic.author,
       genre: comic.genre,
       tags: comic.tags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),
@@ -83,6 +98,8 @@ interface UserProfile {
   activeSeries: Set<string>;
   // Total reading time for normalization
   totalReadTime: number;
+  // AI: Aggregated text vector from top-engaged comics
+  topComicVector?: Map<string, number>;
 }
 
 function buildUserProfile(
@@ -142,6 +159,41 @@ function buildUserProfile(
     totalReadTime += comic.totalReadTime || 0;
   }
 
+  // Build aggregated semantic vector from top-engaged comics
+  let topComicVector: Map<string, number> | undefined;
+  try {
+    const { buildTextVector } = require("./ai-service");
+    const engagedComics = comics
+      .map((c: { totalReadTime: number; isFavorite: boolean; rating: number | null; tags?: { tag?: { name: string } }[]; genre?: string; author?: string; description?: string; title?: string }) => ({
+        comic: c,
+        engagement: calculateEngagement(c),
+      }))
+      .filter((x: { engagement: number }) => x.engagement > 2)
+      .sort((a: { engagement: number }, b: { engagement: number }) => b.engagement - a.engagement)
+      .slice(0, 10);
+
+    if (engagedComics.length > 0) {
+      topComicVector = new Map<string, number>();
+      for (const { comic: c, engagement } of engagedComics) {
+        const tags = c.tags
+          ? c.tags.map((ct: { tag?: { name: string } }) => ct.tag?.name || "")
+          : [];
+        const v = buildTextVector(
+          c.title || "",
+          tags,
+          c.genre || "",
+          c.author || "",
+          c.description || ""
+        );
+        for (const [key, val] of v) {
+          topComicVector.set(key, (topComicVector.get(key) || 0) + val * engagement);
+        }
+      }
+    }
+  } catch {
+    // AI service not available
+  }
+
   return {
     tagWeights,
     genreWeights,
@@ -149,6 +201,7 @@ function buildUserProfile(
     avgRating: ratedCount > 0 ? totalRating / ratedCount : 3,
     activeSeries,
     totalReadTime,
+    topComicVector,
   };
 }
 
@@ -261,6 +314,31 @@ function calculateScore(comic: any, profile: UserProfile): { score: number; reas
     else if (daysSince < 3) score -= 5;
   }
 
+  // 8. Semantic similarity bonus (max 15 points) — AI-powered
+  // Uses text vector cosine similarity with profile's preferred content
+  if (profile.topComicVector) {
+    try {
+      const { buildTextVector, cosineSimilarity } = require("./ai-service");
+      const comicTags = comic.tags
+        ? comic.tags.map((ct: { tag?: { name: string }; name?: string }) => ct.tag?.name || ct.name || ct)
+        : [];
+      const comicVector = buildTextVector(
+        comic.title || "",
+        comicTags,
+        comic.genre || "",
+        comic.author || "",
+        comic.description || ""
+      );
+      const similarity = cosineSimilarity(profile.topComicVector, comicVector);
+      if (similarity > 0.1) {
+        score += similarity * 15;
+        if (similarity > 0.3) reasons.push("semantic_match");
+      }
+    } catch {
+      // AI service not available, skip
+    }
+  }
+
   return { score: Math.max(0, score), reasons };
 }
 
@@ -331,6 +409,16 @@ export async function getSimilarComics(comicId: string, limit = 5): Promise<Scor
     if (comic.groupName && comic.groupName === target.groupName) {
       score += 10;
       reasons.push("same_group");
+    }
+
+    // Same category
+    if (comic.categories?.length && target.categories?.length) {
+      const targetCats = new Set(target.categories.map((c: { slug: string }) => c.slug));
+      const commonCats = comic.categories.filter((c: { slug: string }) => targetCats.has(c.slug));
+      if (commonCats.length > 0) {
+        score += 8 * commonCats.length;
+        reasons.push("same_category");
+      }
     }
 
     if (score > 0) {

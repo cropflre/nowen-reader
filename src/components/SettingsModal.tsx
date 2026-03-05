@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Cloud, Puzzle, Smartphone, Info } from "lucide-react";
+import { X, Cloud, Puzzle, Smartphone, Info, Brain, Globe } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { CloudSyncPanel } from "@/components/CloudSync";
 import { PluginManagerPanel } from "@/components/PluginManager";
+import { AISettingsPanel } from "@/components/AISettingsPanel";
+import { SiteSettingsPanel } from "@/components/SiteSettingsPanel";
 import { clearServiceWorkerCache } from "@/lib/pwa";
 
 interface SettingsModalProps {
@@ -13,17 +15,19 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTab = "sync" | "plugins" | "pwa" | "about";
+type SettingsTab = "site" | "sync" | "plugins" | "ai" | "pwa" | "about";
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("sync");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("site");
 
   if (!open) return null;
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: "site", label: t.siteSettings?.tab || "站点", icon: <Globe className="h-4 w-4" /> },
     { id: "sync", label: t.settings?.sync || "Sync", icon: <Cloud className="h-4 w-4" /> },
     { id: "plugins", label: t.settings?.plugins || "Plugins", icon: <Puzzle className="h-4 w-4" /> },
+    { id: "ai", label: t.ai?.title || "AI", icon: <Brain className="h-4 w-4" /> },
     { id: "pwa", label: t.settings?.pwa || "App", icon: <Smartphone className="h-4 w-4" /> },
     { id: "about", label: t.settings?.about || "About", icon: <Info className="h-4 w-4" /> },
   ];
@@ -69,8 +73,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
+            {activeTab === "site" && <SiteSettingsPanel />}
             {activeTab === "sync" && <CloudSyncPanel />}
             {activeTab === "plugins" && <PluginManagerPanel />}
+            {activeTab === "ai" && <AISettingsPanel />}
             {activeTab === "pwa" && <PWASettings />}
             {activeTab === "about" && <AboutPanel />}
           </div>

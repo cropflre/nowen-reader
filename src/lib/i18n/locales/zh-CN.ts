@@ -58,10 +58,16 @@ const zhCN = {
     label: "标签筛选",
   },
 
-  // Group Filter
+  // Group Filter (legacy)
   groupFilter: {
     label: "分组",
     ungrouped: "未分组",
+  },
+
+  // Category Filter
+  categoryFilter: {
+    label: "分类",
+    uncategorized: "未分类",
   },
 
   // Batch Toolbar
@@ -72,6 +78,7 @@ const zhCN = {
     unfavorite: "取消收藏",
     tags: "标签",
     group: "分组",
+    category: "分类",
     tagInputPlaceholder: "输入标签 (逗号分隔多个)，回车确认...",
     groupInputPlaceholder: "输入分组名称，留空则取消分组...",
     confirmDelete: "确认删除",
@@ -106,6 +113,11 @@ const zhCN = {
     groupInputPlaceholder: "输入分组名称...",
     confirmDelete: "确认删除",
     confirmDeleteMsg: "确定要删除「{title}」吗？此操作将同时删除磁盘上的文件，不可撤销。",
+    changeCover: "更换封面",
+    uploadCover: "上传本地图片",
+    coverFromUrl: "输入图片URL",
+    coverFromPlatform: "从漫画平台获取",
+    resetCover: "恢复默认封面",
   },
 
   // Stats Page
@@ -203,6 +215,17 @@ const zhCN = {
     language: "语言",
     metadataSource: "数据来源",
     scrapeMetadata: "刮削元数据",
+    selectSources: "选择数据源",
+    sources: {
+      anilist: "AniList (动漫列表)",
+      bangumi: "Bangumi (番组计划)",
+      mangadex: "MangaDex (漫画索引)",
+      mangaupdates: "MangaUpdates (漫画更新)",
+      kitsu: "Kitsu (狐狸)",
+      mal: "MAL (动漫列表)",
+      comicvine: "ComicVine (漫画藤)",
+      comicinfo: "ComicInfo (本地)",
+    },
   },
 
   // PWA
@@ -264,6 +287,8 @@ const zhCN = {
     similarGenre: "相似类型",
     sameSeries: "同一系列",
     sameGroup: "同一分组",
+    sameCategory: "同一分类",
+    semanticMatch: "AI 语义匹配",
   },
 
   // Plugins
@@ -280,8 +305,102 @@ const zhCN = {
     title: "设置",
     sync: "同步",
     plugins: "插件",
+    ai: "AI",
     pwa: "应用",
     about: "关于",
+  },
+
+  // Site Settings
+  siteSettings: {
+    tab: "站点",
+    title: "站点设置",
+    siteName: "站点名称",
+    siteNameDesc: "显示在浏览器标题栏中的名称",
+    comicsDir: "漫画库目录",
+    comicsDirDesc: "存放漫画压缩包的路径，修改后需重启服务生效",
+    extraDirs: "额外漫画目录（Docker / NAS）",
+    extraDirsDesc: "挂载多个目录用于 Docker 或 NAS，所有目录都会被扫描",
+    extraDirPlaceholder: "/mnt/nas/comics 或 /data/manga",
+    thumbnailSize: "缩略图尺寸",
+    width: "宽度",
+    height: "高度",
+    thumbnailDesc: "封面缩略图尺寸（像素），修改后需清除缩略图缓存",
+    thumbManage: "缩略图管理",
+    thumbTotal: "总数",
+    thumbExisting: "已缓存",
+    thumbMissing: "缺失",
+    thumbGenerateMissing: "生成缺失的缩略图",
+    thumbRegenerateAll: "重新生成所有缩略图",
+    thumbGenerated: "已生成 {count} 个缩略图",
+    thumbRegenerated: "已重新生成 {count} 个缩略图",
+    cacheManage: "缓存管理",
+    clearThumbnails: "清除缩略图缓存",
+    clearSearch: "重置搜索缓存",
+    cacheDesc: "清除缓存数据以释放磁盘空间或修复显示问题",
+    batchMetadata: "批量获取元数据",
+    batchMetadataDesc: "自动从在线源（AniList、Bangumi 等）获取所有漫画的元数据",
+    batchMissing: "仅获取缺失的元数据",
+    batchAll: "重新获取所有元数据",
+    batchComplete: "批量元数据获取完成",
+    batchSuccess: "成功",
+    batchFailed: "失败",
+    batchSkipped: "跳过",
+    pageSize: "每页数量",
+    pageSizeDesc: "首页每页显示的漫画数量",
+    language: "语言",
+    langAuto: "自动检测",
+    theme: "主题",
+    themeDark: "深色",
+    themeLight: "浅色",
+    themeSystem: "跟随系统",
+    saved: "已保存",
+    restartHint: "部分设置需要重启后生效",
+  },
+
+  // AI
+  ai: {
+    title: "AI 功能",
+    localAI: "本地 AI",
+    cloudAI: "云端 AI",
+    perceptualHash: "感知哈希去重",
+    perceptualHashDesc: "检测封面视觉相似的重复漫画",
+    semanticSearch: "语义搜索",
+    semanticSearchDesc: "支持自然语言搜索漫画",
+    autoTag: "智能自动标签",
+    autoTagDesc: "基于 AI 的标签推荐",
+    confidence: "置信度",
+    provider: "服务商",
+    compatible: "兼容 API",
+    model: "模型",
+    coverAnalysis: "封面图像分析",
+    metadataCompletion: "智能元数据补全",
+    testConnection: "测试连接",
+    testing: "测试中...",
+    connectionSuccess: "连接成功",
+    connectionFailed: "连接失败",
+    saving: "保存中...",
+    saveSettings: "保存设置",
+    analyzing: "AI 分析中...",
+    analyzeComplete: "分析完成",
+    analyzeFailed: "分析失败",
+    aiAnalyze: "AI 分析",
+    aiComplete: "AI 补全",
+    similarCover: "封面视觉相似",
+    semanticSearchPlaceholder: "用自然语言描述你想找的漫画...",
+    searchResults: "语义搜索结果",
+    noAIResults: "未找到匹配结果",
+    relevance: "相关度",
+    internationalProviders: "国际服务商",
+    chinaProviders: "国内服务商",
+    customProvider: "自定义",
+    visionSupported: "支持视觉分析（封面识别）",
+    textOnly: "仅支持文本（无封面分析）",
+    presetModels: "预设模型",
+    fetchModels: "拉取模型",
+    manualInput: "手动填写",
+    manualModelPlaceholder: "输入模型名称，如 gpt-4o",
+    modelsFetched: "已拉取 {count} 个模型",
+    noModelsFound: "未找到可用模型",
   },
 
   // Duplicates
@@ -350,6 +469,10 @@ export interface Translations {
     emptyLibraryHint: string;
     noMatchingHint: string;
     uploadFailed: string;
+    firstPage: string;
+    prevPage: string;
+    nextPage: string;
+    lastPage: string;
   };
   statsBar: {
     total: string;
@@ -364,6 +487,10 @@ export interface Translations {
     label: string;
     ungrouped: string;
   };
+  categoryFilter: {
+    label: string;
+    uncategorized: string;
+  };
   batch: {
     selected: string;
     items: string;
@@ -371,6 +498,7 @@ export interface Translations {
     unfavorite: string;
     tags: string;
     group: string;
+    category: string;
     tagInputPlaceholder: string;
     groupInputPlaceholder: string;
     confirmDelete: string;
@@ -401,6 +529,11 @@ export interface Translations {
     groupInputPlaceholder: string;
     confirmDelete: string;
     confirmDeleteMsg: string;
+    changeCover: string;
+    uploadCover: string;
+    coverFromUrl: string;
+    coverFromPlatform: string;
+    resetCover: string;
   };
   stats: {
     title: string;
@@ -486,6 +619,17 @@ export interface Translations {
     language: string;
     metadataSource: string;
     scrapeMetadata: string;
+    selectSources: string;
+    sources: {
+      anilist: string;
+      bangumi: string;
+      mangadex: string;
+      mangaupdates: string;
+      kitsu: string;
+      mal: string;
+      comicvine: string;
+      comicinfo: string;
+    };
   };
   pwa: {
     installTitle: string;
@@ -541,6 +685,8 @@ export interface Translations {
     similarGenre: string;
     sameSeries: string;
     sameGroup: string;
+    sameCategory: string;
+    semanticMatch: string;
   };
   plugins: {
     title: string;
@@ -553,8 +699,98 @@ export interface Translations {
     title: string;
     sync: string;
     plugins: string;
+    ai: string;
     pwa: string;
     about: string;
+  };
+  siteSettings: {
+    tab: string;
+    title: string;
+    siteName: string;
+    siteNameDesc: string;
+    comicsDir: string;
+    comicsDirDesc: string;
+    extraDirs: string;
+    extraDirsDesc: string;
+    extraDirPlaceholder: string;
+    thumbnailSize: string;
+    width: string;
+    height: string;
+    thumbnailDesc: string;
+    thumbManage: string;
+    thumbTotal: string;
+    thumbExisting: string;
+    thumbMissing: string;
+    thumbGenerateMissing: string;
+    thumbRegenerateAll: string;
+    thumbGenerated: string;
+    thumbRegenerated: string;
+    cacheManage: string;
+    clearThumbnails: string;
+    clearSearch: string;
+    cacheDesc: string;
+    batchMetadata: string;
+    batchMetadataDesc: string;
+    batchMissing: string;
+    batchAll: string;
+    batchComplete: string;
+    batchSuccess: string;
+    batchFailed: string;
+    batchSkipped: string;
+    pageSize: string;
+    pageSizeDesc: string;
+    language: string;
+    langAuto: string;
+    theme: string;
+    themeDark: string;
+    themeLight: string;
+    themeSystem: string;
+    saved: string;
+    restartHint: string;
+  };
+  ai: {
+    title: string;
+    localAI: string;
+    cloudAI: string;
+    perceptualHash: string;
+    perceptualHashDesc: string;
+    semanticSearch: string;
+    semanticSearchDesc: string;
+    autoTag: string;
+    autoTagDesc: string;
+    confidence: string;
+    provider: string;
+    compatible: string;
+    model: string;
+    coverAnalysis: string;
+    metadataCompletion: string;
+    testConnection: string;
+    testing: string;
+    connectionSuccess: string;
+    connectionFailed: string;
+    saving: string;
+    saveSettings: string;
+    analyzing: string;
+    analyzeComplete: string;
+    analyzeFailed: string;
+    aiAnalyze: string;
+    aiComplete: string;
+    similarCover: string;
+    semanticSearchPlaceholder: string;
+    searchResults: string;
+    noAIResults: string;
+    relevance: string;
+    internationalProviders: string;
+    chinaProviders: string;
+    customProvider: string;
+    visionSupported: string;
+    textOnly: string;
+    presetModels: string;
+    fetchModels: string;
+    manualInput: string;
+    manualModelPlaceholder: string;
+    modelsFetched: string;
+    noModelsFound: string;
   };
   duplicates: {
     title: string;

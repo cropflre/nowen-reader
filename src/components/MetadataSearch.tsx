@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useTranslation } from "@/lib/i18n";
-import { Search, Download, Check, Loader2, BookOpen, FileSearch } from "lucide-react";
+import { useTranslation, useLocale } from "@/lib/i18n";
+import { Search, Download, Check, Loader2, BookOpen, FileSearch, Filter } from "lucide-react";
 
 interface MetadataResult {
   title?: string;
@@ -16,6 +16,29 @@ interface MetadataResult {
   source: string;
 }
 
+const ALL_SOURCES = [
+  { id: "anilist", name: "AniList", icon: "🅰" },
+  { id: "bangumi", name: "Bangumi", icon: "🅱" },
+  { id: "mangadex", name: "MangaDex", icon: "📖" },
+  { id: "mangaupdates", name: "MangaUpdates", icon: "📋" },
+  { id: "kitsu", name: "Kitsu", icon: "🦊" },
+  { id: "mal", name: "MAL", icon: "Ⓜ" },
+  { id: "comicvine", name: "ComicVine", icon: "💬" },
+] as const;
+
+const DEFAULT_SOURCES = ALL_SOURCES.map((s) => s.id);
+
+const SOURCE_COLORS: Record<string, string> = {
+  anilist: "bg-blue-500/15 text-blue-400",
+  bangumi: "bg-pink-500/15 text-pink-400",
+  mangadex: "bg-orange-500/15 text-orange-400",
+  mangaupdates: "bg-purple-500/15 text-purple-400",
+  kitsu: "bg-amber-500/15 text-amber-400",
+  mal: "bg-sky-500/15 text-sky-400",
+  comicvine: "bg-green-500/15 text-green-400",
+  comicinfo: "bg-gray-500/15 text-gray-400",
+};
+
 interface Props {
   comicId: string;
   comicTitle: string;
@@ -24,6 +47,11 @@ interface Props {
 
 export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
   const t = useTranslation();
+  const { locale } = useLocale();
+
+  const getSourceName = (id: string) => {
+    return (t.metadata?.sources as Record<string, string>)?.[id] || id;
+  };
   const [query, setQuery] = useState(comicTitle);
   const [results, setResults] = useState<MetadataResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -31,15 +59,30 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
   const [applying, setApplying] = useState<number | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [enabledSources, setEnabledSources] = useState<string[]>(DEFAULT_SOURCES);
+  const [showSourceFilter, setShowSourceFilter] = useState(false);
+
+  const toggleSource = (id: string) => {
+    setEnabledSources((prev) =>
+      prev.includes(id)
+        ? prev.filter((s) => s !== id)
+        : [...prev, id]
+    );
+  };
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || enabledSources.length === 0) return;
     setSearching(true);
     setError("");
     setResults([]);
     setApplied(null);
     try {
-      const res = await fetch(`/api/metadata/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({
+        q: query,
+        sources: enabledSources.join(","),
+        lang: locale,
+      });
+      const res = await fetch(`/api/metadata/search?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setResults(data.results || []);
@@ -60,7 +103,7 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
       const res = await fetch("/api/metadata/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comicId }),
+        body: JSON.stringify({ comicId, lang: locale }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -83,7 +126,7 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
       const res = await fetch("/api/metadata/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comicId, metadata: results[index] }),
+        body: JSON.stringify({ comicId, metadata: results[index], lang: locale, overwrite: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -112,11 +155,22 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
         </div>
         <button
           onClick={handleSearch}
-          disabled={searching || !query.trim()}
+          disabled={searching || !query.trim() || enabledSources.length === 0}
           className="px-3 py-2 bg-[var(--accent-primary)] text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
         >
           {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           {t.metadata?.search || "Search"}
+        </button>
+        <button
+          onClick={() => setShowSourceFilter(!showSourceFilter)}
+          className={`px-2 py-2 rounded-lg text-sm flex items-center transition-colors ${
+            showSourceFilter
+              ? "bg-[var(--accent-primary)] text-white"
+              : "bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
+          }`}
+          title={t.metadata?.selectSources || "Select sources"}
+        >
+          <Filter className="w-4 h-4" />
         </button>
         <button
           onClick={handleScanArchive}
@@ -127,6 +181,26 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
           {scanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
         </button>
       </div>
+
+      {/* Source filter panel */}
+      {showSourceFilter && (
+        <div className="flex flex-wrap gap-1.5 p-2 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg">
+          {ALL_SOURCES.map((src) => (
+            <button
+              key={src.id}
+              onClick={() => toggleSource(src.id)}
+              className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${
+                enabledSources.includes(src.id)
+                  ? SOURCE_COLORS[src.id] || "bg-accent/20 text-accent"
+                  : "bg-[var(--bg-hover)] text-[var(--text-muted)] opacity-50"
+              }`}
+            >
+              <span>{src.icon}</span>
+              <span>{getSourceName(src.id)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && <div className="text-sm text-red-400">{error}</div>}
 
@@ -145,14 +219,22 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
               className="p-3 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg"
             >
               <div className="flex items-start justify-between gap-2">
+                {result.coverUrl && (
+                  <img
+                    src={result.coverUrl}
+                    alt={result.title || "cover"}
+                    className="w-12 h-16 object-cover rounded flex-shrink-0 bg-[var(--bg-hover)]"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <BookOpen className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0" />
                     <span className="font-medium text-sm text-[var(--text-primary)] truncate">
                       {result.title || "Unknown"}
                     </span>
-                    <span className="text-xs px-1.5 py-0.5 bg-[var(--bg-hover)] rounded text-[var(--text-muted)]">
-                      {result.source}
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[result.source] || "bg-[var(--bg-hover)] text-[var(--text-muted)]"}`}>
+                      {getSourceName(result.source)}
                     </span>
                   </div>
                   {result.author && (

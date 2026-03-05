@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { X, Copy, Trash2, AlertTriangle, FileCheck, FileText, Shield } from "lucide-react";
+import { X, Copy, Trash2, AlertTriangle, FileCheck, FileText, Shield, ScanEye } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
 interface DuplicateComic {
@@ -52,13 +52,44 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
     setGroups(null);
     setKeepSelection({});
     try {
+      // Fetch traditional duplicates
       const res = await fetch("/api/comics/duplicates");
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
-      setGroups(data.groups);
+      let allGroups: DuplicateGroup[] = data.groups || [];
+
+      // Also fetch AI perceptual hash duplicates
+      try {
+        const aiRes = await fetch("/api/ai/duplicates");
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          if (aiData.groups?.length > 0) {
+            // Merge AI groups, avoid duplicating already found groups
+            const existingIds = new Set<string>();
+            allGroups.forEach((g: DuplicateGroup) => {
+              g.comics.forEach((c: DuplicateComic) => existingIds.add(c.id));
+            });
+            for (const aiGroup of aiData.groups) {
+              const newComics = aiGroup.comics.filter(
+                (c: DuplicateComic) => !existingIds.has(c.id)
+              );
+              if (newComics.length > 1) {
+                allGroups.push({ reason: "similarCover", comics: aiGroup.comics });
+              } else if (aiGroup.comics.length > 1) {
+                // Some overlap but still worth showing
+                allGroups.push({ reason: "similarCover", comics: aiGroup.comics });
+              }
+            }
+          }
+        }
+      } catch {
+        // AI detection is optional, ignore errors
+      }
+
+      setGroups(allGroups);
       // Default: keep first comic in each group
       const defaults: Record<number, string> = {};
-      data.groups.forEach((g: DuplicateGroup, i: number) => {
+      allGroups.forEach((g: DuplicateGroup, i: number) => {
         if (g.comics.length > 0) defaults[i] = g.comics[0].id;
       });
       setKeepSelection(defaults);
@@ -142,6 +173,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
       case "sameFile": return <FileCheck className="h-4 w-4 text-red-400" />;
       case "sameSize": return <Copy className="h-4 w-4 text-amber-400" />;
       case "sameName": return <FileText className="h-4 w-4 text-blue-400" />;
+      case "similarCover": return <ScanEye className="h-4 w-4 text-purple-400" />;
       default: return <AlertTriangle className="h-4 w-4 text-muted" />;
     }
   };
@@ -151,6 +183,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
       case "sameFile": return t.duplicates.sameFile;
       case "sameSize": return t.duplicates.sameSize;
       case "sameName": return t.duplicates.sameName;
+      case "similarCover": return t.ai?.similarCover || "Similar cover";
       default: return reason;
     }
   };
@@ -160,6 +193,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
       case "sameFile": return "bg-red-500/15 text-red-400 border-red-500/30";
       case "sameSize": return "bg-amber-500/15 text-amber-400 border-amber-500/30";
       case "sameName": return "bg-blue-500/15 text-blue-400 border-blue-500/30";
+      case "similarCover": return "bg-purple-500/15 text-purple-400 border-purple-500/30";
       default: return "bg-card text-muted";
     }
   };

@@ -23,6 +23,7 @@ export interface ApiComic {
   groupName: string;
   totalReadTime: number;
   tags: ApiComicTag[];
+  categories: { id: number; name: string; slug: string; icon: string }[];
   // Metadata fields
   author: string;
   publisher: string;
@@ -417,4 +418,91 @@ export function useGroups() {
   }, [fetchGroups]);
 
   return { groups, refetch: fetchGroups };
+}
+
+// ============================================================
+// Category Management
+// ============================================================
+
+export interface ApiCategory {
+  id: number;
+  name: string;
+  slug: string;
+  icon: string;
+  count: number;
+}
+
+export function useCategories() {
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/categories");
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data.categories);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Initialize categories on first load
+  const initCategories = useCallback(async (lang: string = "zh") => {
+    try {
+      const res = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lang }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data.categories);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  return { categories, refetch: fetchCategories, initCategories };
+}
+
+export async function addComicCategories(comicId: string, categorySlugs: string[]) {
+  try {
+    await fetch(`/api/comics/${comicId}/categories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categorySlugs }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+export async function setComicCategories(comicId: string, categorySlugs: string[]) {
+  try {
+    await fetch(`/api/comics/${comicId}/categories`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categorySlugs }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+export async function removeComicCategory(comicId: string, categorySlug: string) {
+  try {
+    await fetch(`/api/comics/${comicId}/categories`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categorySlug }),
+    });
+  } catch {
+    // ignore
+  }
 }

@@ -1,0 +1,47 @@
+# ============================================================
+# NowenReader - 一键部署
+# 
+# 使用方法（只需一条命令）:
+#   docker compose up -d
+#
+# 然后打开浏览器访问: http://localhost:3000
+# ============================================================
+
+services:
+  nowen-reader:
+    build: .
+    container_name: nowen-reader
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # 数据库持久化（不要删除，否则丢失所有数据）
+      - nowen-data:/data
+      # 漫画文件目录 - 把你的漫画放这里
+      # 方式1: 使用 Docker 卷（默认）
+      - nowen-comics:/app/comics
+      # 方式2: 挂载本地目录（取消下面的注释，注释掉上面那行）
+      # - ./comics:/app/comics
+      # - /path/to/your/comics:/app/comics
+      
+      # NAS 额外目录（可选，取消注释并修改路径）
+      # - /mnt/nas/manga:/mnt/nas/manga
+      # - /volume1/comics:/volume1/comics
+      
+      # 缩略图缓存持久化（可选，加速启动）
+      - nowen-cache:/app/.cache
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/data/nowen-reader.db
+      # 漫画目录（容器内路径，一般不需要改）
+      - COMICS_DIR=/app/comics
+      # 端口（容器内部，一般不需要改）
+      - PORT=3000
+
+volumes:
+  nowen-data:
+    name: nowen-reader-data
+  nowen-comics:
+    name: nowen-reader-comics
+  nowen-cache:
+    name: nowen-reader-cache

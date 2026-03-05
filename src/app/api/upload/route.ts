@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { COMICS_DIR, SUPPORTED_EXTENSIONS } from "@/lib/config";
+import { getComicsDir, SUPPORTED_EXTENSIONS } from "@/lib/config";
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     }
 
     // Ensure comics dir exists
+    const COMICS_DIR = getComicsDir();
     if (!fs.existsSync(COMICS_DIR)) {
       fs.mkdirSync(COMICS_DIR, { recursive: true });
     }

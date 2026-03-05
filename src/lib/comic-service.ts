@@ -1,5 +1,20 @@
 import { prisma } from "./db";
 import { scanComicsDirectory, ComicArchiveInfo } from "./comic-parser";
+import { THUMBNAILS_DIR } from "./config";
+import path from "path";
+import fs from "fs";
+
+/** 获取带缓存破坏参数的封面 URL */
+function getCoverUrl(comicId: string): string {
+  const base = `/api/comics/${comicId}/thumbnail`;
+  try {
+    const cachePath = path.join(THUMBNAILS_DIR, `${comicId}.webp`);
+    const stat = fs.statSync(cachePath);
+    return `${base}?v=${stat.mtimeMs.toString(36)}`;
+  } catch {
+    return base;
+  }
+}
 
 /**
  * Sync the comics directory with the database.
@@ -110,6 +125,11 @@ export async function getAllComics(options?: {
           tag: true,
         },
       },
+      categories: {
+        include: {
+          category: true,
+        },
+      },
     },
   };
 
@@ -120,7 +140,8 @@ export async function getAllComics(options?: {
 
   const comics = await prisma.comic.findMany(findOptions);
 
-  const items = comics.map((c) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items = comics.map((c: any) => ({
     id: c.id,
     filename: c.filename,
     title: c.title,
@@ -135,8 +156,11 @@ export async function getAllComics(options?: {
     sortOrder: c.sortOrder,
     groupName: c.groupName,
     totalReadTime: c.totalReadTime,
-    coverUrl: `/api/comics/${c.id}/thumbnail`,
-    tags: c.tags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),
+    coverUrl: getCoverUrl(c.id),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tags: c.tags.map((ct: any) => ({ name: ct.tag.name, color: ct.tag.color })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    categories: c.categories.map((cc: any) => ({ id: cc.category.id, name: cc.category.name, slug: cc.category.slug, icon: cc.category.icon })),
     author: c.author,
     publisher: c.publisher,
     year: c.year,
@@ -167,6 +191,9 @@ export async function getComicById(id: string) {
       tags: {
         include: { tag: true },
       },
+      categories: {
+        include: { category: true },
+      },
     },
   });
 
@@ -187,6 +214,7 @@ export async function getComicById(id: string) {
     groupName: comic.groupName,
     totalReadTime: comic.totalReadTime,
     tags: comic.tags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),
+    categories: comic.categories.map((cc) => ({ id: cc.category.id, name: cc.category.name, slug: cc.category.slug, icon: cc.category.icon })),
     author: comic.author,
     publisher: comic.publisher,
     year: comic.year,
@@ -267,10 +295,19 @@ export async function removeTagFromComic(comicId: string, tagName: string) {
     where: { comicId, tagId: tag.id },
   });
 
-  // Clean up orphan tags
+  // Clean up orphan tags (use try-catch to handle concurrent deletion race condition)
   const usageCount = await prisma.comicTag.count({ where: { tagId: tag.id } });
   if (usageCount === 0) {
-    await prisma.tag.delete({ where: { id: tag.id } });
+    try {
+      await prisma.tag.delete({ where: { id: tag.id } });
+    } catch (err: unknown) {
+      // P2025: record not found — another concurrent request already deleted it
+      if (err && typeof err === "object" && "code" in err && err.code === "P2025") {
+        // Silently ignore — tag was already cleaned up
+      } else {
+        throw err;
+      }
+    }
   }
 }
 
@@ -504,11 +541,137 @@ export async function updateSortOrders(orders: { id: string; sortOrder: number }
 }
 
 // ============================================================
-// Group Management
+// Category Management (Webtoons-style genre classification)
 // ============================================================
 
 /**
- * Update comic group
+ * Predefined categories (Webtoons-style)
+ */
+export const PREDEFINED_CATEGORIES = [
+  { slug: "romance", icon: "💕", names: { zh: "恋爱", en: "Romance" } },
+  { slug: "action", icon: "⚔️", names: { zh: "动作", en: "Action" } },
+  { slug: "fantasy", icon: "🔮", names: { zh: "奇幻", en: "Fantasy" } },
+  { slug: "comedy", icon: "😂", names: { zh: "搞笑", en: "Comedy" } },
+  { slug: "drama", icon: "🎭", names: { zh: "剧情", en: "Drama" } },
+  { slug: "horror", icon: "👻", names: { zh: "恐怖", en: "Horror" } },
+  { slug: "thriller", icon: "😱", names: { zh: "惊悚", en: "Thriller" } },
+  { slug: "mystery", icon: "🔍", names: { zh: "悬疑", en: "Mystery" } },
+  { slug: "slice-of-life", icon: "☀️", names: { zh: "日常", en: "Slice of Life" } },
+  { slug: "school", icon: "🏫", names: { zh: "校园", en: "School" } },
+  { slug: "sci-fi", icon: "🚀", names: { zh: "科幻", en: "Sci-Fi" } },
+  { slug: "sports", icon: "⚽", names: { zh: "运动", en: "Sports" } },
+  { slug: "historical", icon: "📜", names: { zh: "历史", en: "Historical" } },
+  { slug: "isekai", icon: "🌀", names: { zh: "异世界", en: "Isekai" } },
+  { slug: "mecha", icon: "🤖", names: { zh: "机甲", en: "Mecha" } },
+  { slug: "supernatural", icon: "✨", names: { zh: "超自然", en: "Supernatural" } },
+  { slug: "martial-arts", icon: "🥋", names: { zh: "武侠", en: "Martial Arts" } },
+  { slug: "shounen", icon: "👦", names: { zh: "少年", en: "Shounen" } },
+  { slug: "shoujo", icon: "👧", names: { zh: "少女", en: "Shoujo" } },
+  { slug: "seinen", icon: "🧑", names: { zh: "青年", en: "Seinen" } },
+  { slug: "josei", icon: "👩", names: { zh: "女性", en: "Josei" } },
+  { slug: "adventure", icon: "🗺️", names: { zh: "冒险", en: "Adventure" } },
+  { slug: "psychological", icon: "🧠", names: { zh: "心理", en: "Psychological" } },
+  { slug: "gourmet", icon: "🍜", names: { zh: "美食", en: "Gourmet" } },
+];
+
+/**
+ * Initialize predefined categories (call on first run / startup)
+ */
+export async function initCategories(lang: string = "zh") {
+  const isZh = lang.startsWith("zh");
+  for (let i = 0; i < PREDEFINED_CATEGORIES.length; i++) {
+    const cat = PREDEFINED_CATEGORIES[i];
+    const name = isZh ? cat.names.zh : cat.names.en;
+    await prisma.category.upsert({
+      where: { slug: cat.slug },
+      create: { name, slug: cat.slug, icon: cat.icon, sortOrder: i },
+      update: { icon: cat.icon, sortOrder: i },
+    });
+  }
+}
+
+/**
+ * Get all categories with comic counts
+ */
+export async function getAllCategories() {
+  const categories = await prisma.category.findMany({
+    orderBy: { sortOrder: "asc" },
+    include: {
+      _count: { select: { comics: true } },
+    },
+  });
+
+  return categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    icon: c.icon,
+    count: c._count.comics,
+  }));
+}
+
+/**
+ * Add categories to a comic (by slug)
+ */
+export async function addCategoriesToComic(comicId: string, categorySlugs: string[]) {
+  for (const slug of categorySlugs) {
+    let category = await prisma.category.findUnique({ where: { slug } });
+    if (!category) {
+      // Auto-create category if not predefined
+      const predefined = PREDEFINED_CATEGORIES.find((c) => c.slug === slug);
+      category = await prisma.category.create({
+        data: {
+          name: predefined?.names.zh || slug,
+          slug,
+          icon: predefined?.icon || "📚",
+          sortOrder: 999,
+        },
+      });
+    }
+
+    await prisma.comicCategory.upsert({
+      where: { comicId_categoryId: { comicId, categoryId: category.id } },
+      create: { comicId, categoryId: category.id },
+      update: {},
+    });
+  }
+}
+
+/**
+ * Remove a category from a comic
+ */
+export async function removeCategoryFromComic(comicId: string, categorySlug: string) {
+  const category = await prisma.category.findUnique({ where: { slug: categorySlug } });
+  if (!category) return;
+
+  await prisma.comicCategory.deleteMany({
+    where: { comicId, categoryId: category.id },
+  });
+}
+
+/**
+ * Set comic categories (replace all)
+ */
+export async function setComicCategories(comicId: string, categorySlugs: string[]) {
+  // Remove all existing
+  await prisma.comicCategory.deleteMany({ where: { comicId } });
+  // Add new
+  if (categorySlugs.length > 0) {
+    await addCategoriesToComic(comicId, categorySlugs);
+  }
+}
+
+/**
+ * Batch set category for multiple comics
+ */
+export async function batchSetCategory(comicIds: string[], categorySlugs: string[]) {
+  for (const comicId of comicIds) {
+    await addCategoriesToComic(comicId, categorySlugs);
+  }
+}
+
+/**
+ * Update comic group (legacy — kept for backward compatibility)
  */
 export async function updateComicGroup(comicId: string, groupName: string) {
   return prisma.comic.update({
@@ -518,7 +681,7 @@ export async function updateComicGroup(comicId: string, groupName: string) {
 }
 
 /**
- * Get all groups
+ * Get all groups (legacy)
  */
 export async function getAllGroups() {
   const comics = await prisma.comic.findMany({
@@ -566,7 +729,8 @@ export async function detectDuplicates(): Promise<DuplicateGroup[]> {
   const fs = await import("fs");
   const path = await import("path");
   const crypto = await import("crypto");
-  const { COMICS_DIR } = await import("./config");
+  const { getComicsDir } = await import("./config");
+  const COMICS_DIR = getComicsDir();
 
   const comics = await prisma.comic.findMany({
     select: {
@@ -612,7 +776,7 @@ export async function detectDuplicates(): Promise<DuplicateGroup[]> {
           fileSize: c.fileSize,
           pageCount: c.pageCount,
           addedAt: c.addedAt.toISOString(),
-          coverUrl: `/api/comics/${c.id}/thumbnail`,
+          coverUrl: getCoverUrl(c.id),
         })),
       });
     }
@@ -702,8 +866,8 @@ export async function deleteComic(comicId: string) {
   // Try to delete file from disk
   const fs = await import("fs");
   const path = await import("path");
-  const { COMICS_DIR } = await import("./config");
-  const filePath = path.join(COMICS_DIR, comic.filename);
+  const { getComicsDir } = await import("./config");
+  const filePath = path.join(getComicsDir(), comic.filename);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import AdmZip from "adm-zip";
 import sharp from "sharp";
-import { IMAGE_EXTENSIONS, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, THUMBNAILS_DIR } from "./config";
+import { IMAGE_EXTENSIONS, getThumbnailWidth, getThumbnailHeight, THUMBNAILS_DIR } from "./config";
 
 // Natural sort helper
 function naturalSort(a: string, b: string): number {
@@ -120,8 +120,8 @@ class RarArchiveReader implements ArchiveReader {
           }
         }
       }
-    } catch (err) {
-      console.error("Failed to read RAR file:", filepath, err);
+    } catch (err: unknown) {
+      console.warn("Skipping invalid RAR file:", filepath);
       return null;
     }
     return instance;
@@ -470,7 +470,7 @@ export async function generateArchiveThumbnail(
 
   try {
     const thumbnail = await sharp(pageBuffer)
-      .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
+      .resize(getThumbnailWidth(), getThumbnailHeight(), {
         fit: "cover",
         position: "top",
       })

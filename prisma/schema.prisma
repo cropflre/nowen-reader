@@ -79,9 +79,13 @@ model Comic {
   seriesIndex Int?
   genre       String   @default("") // comma-separated
   metadataSource String @default("") // "comicvine" | "anilist" | "manual"
+  coverImageUrl  String @default("") // external cover URL from metadata sources
 
   // Tags relation
   tags        ComicTag[]
+
+  // Categories relation (genre classification)
+  categories  ComicCategory[]
 
   // Reading sessions
   readingSessions ReadingSession[]
@@ -113,6 +117,34 @@ model ComicTag {
   tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([comicId, tagId])
+}
+
+// ============================================================
+// Categories (like Webtoons genre classification)
+// ============================================================
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique   // Display name (localized)
+  slug      String   @unique   // URL-safe identifier (e.g. "action", "romance")
+  icon      String   @default("📚")  // Emoji icon
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  comics    ComicCategory[]
+
+  @@index([slug])
+  @@index([sortOrder])
+}
+
+model ComicCategory {
+  comicId    String
+  categoryId Int
+
+  comic      Comic    @relation(fields: [comicId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([comicId, categoryId])
 }
 
 model ReadingSession {

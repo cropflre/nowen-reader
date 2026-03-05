@@ -53,6 +53,7 @@ export function RecommendationStrip() {
     similar_genre: t.recommend?.similarGenre || "Similar genre",
     same_series: t.recommend?.sameSeries || "Same series",
     same_group: t.recommend?.sameGroup || "Same group",
+    semantic_match: t.recommend?.semanticMatch || "AI semantic match",
   };
 
   return (

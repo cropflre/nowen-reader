@@ -468,6 +468,107 @@ export function registerAutoTagPlugin(): void {
 }
 
 /**
+ * AI Smart Tagger Plugin - Uses AI to analyze covers and suggest tags
+ */
+export function registerAITaggerPlugin(): void {
+  pluginManager.registerPlugin(
+    {
+      id: "builtin-ai-tagger",
+      name: "AI Smart Tagger",
+      version: "1.0.0",
+      description: "AI-powered automatic tagging based on cover analysis and metadata",
+      author: "NowenReader",
+      permissions: ["comics:read", "comics:write", "network"],
+      hooks: ["onComicAdded", "onMetadataScrape"],
+    },
+    (api) => {
+      const hooks = new Map<HookName, HookHandler>();
+
+      hooks.set("onComicAdded", async (ctx) => {
+        try {
+          // Fetch AI config from server API to avoid importing server-side modules
+          let aiConfig: { enableAutoTag?: boolean; enableCloudAI?: boolean; cloudApiKey?: string } = {};
+          try {
+            const configRes = await fetch("/api/ai/settings");
+            if (configRes.ok) aiConfig = await configRes.json();
+          } catch {
+            return ctx; // AI service not available
+          }
+          if (!aiConfig.enableAutoTag) return ctx;
+
+          const { filename, genre, title } = ctx;
+          const suggestedTags: string[] = ctx.suggestedTags || [];
+
+          // If cloud AI is enabled, try to analyze cover for tags via server API
+          if (aiConfig.enableCloudAI && aiConfig.cloudApiKey && ctx.comicId) {
+            try {
+              const res = await fetch("/api/ai/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ comicId: ctx.comicId, type: "cover", title }),
+              });
+              if (res.ok) {
+                const analysis = await res.json();
+                if (analysis?.tags) {
+                  suggestedTags.push(...analysis.tags.filter((t: string) => !suggestedTags.includes(t)));
+                  api.log(`AI cover analysis tags: ${analysis.tags.join(", ")}`);
+                }
+              }
+            } catch (err) {
+              api.log(`AI cover analysis failed: ${err}`, "warn");
+            }
+          }
+
+          // Use genre from metadata as fallback
+          if (genre && suggestedTags.length === 0) {
+            const genres = genre.split(",").map((g: string) => g.trim().toLowerCase());
+            suggestedTags.push(...genres);
+          }
+
+          // Simple pattern-based tagging from filename as additional fallback
+          const patterns: [RegExp, string][] = [
+            [/manga|漫画/i, "manga"],
+            [/comic/i, "comic"],
+            [/webtoon/i, "webtoon"],
+            [/doujin|同人/i, "doujinshi"],
+            [/artbook|画集/i, "artbook"],
+          ];
+
+          for (const [pattern, tag] of patterns) {
+            if (pattern.test(filename || "") && !suggestedTags.includes(tag)) {
+              suggestedTags.push(tag);
+            }
+          }
+
+          if (suggestedTags.length > 0) {
+            api.log(`AI Smart Tagger: ${suggestedTags.join(", ")}`);
+          }
+
+          return { ...ctx, suggestedTags };
+        } catch {
+          return ctx;
+        }
+      });
+
+      return {
+        manifest: {
+          id: "builtin-ai-tagger",
+          name: "AI Smart Tagger",
+          version: "1.0.0",
+          description: "AI-powered automatic tagging based on cover analysis and metadata",
+          author: "NowenReader",
+        },
+        enabled: true,
+        hooks,
+        settings: {
+          enableCoverAnalysis: true,
+        },
+      };
+    }
+  );
+}
+
+/**
  * Reading Goal Plugin - Track daily/weekly reading goals
  */
 export function registerReadingGoalPlugin(): void {

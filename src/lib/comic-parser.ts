@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 import {
-  COMICS_DIR,
+  getComicsDir,
+  getAllComicsDirs,
   SUPPORTED_EXTENSIONS,
 } from "./config";
 import {
@@ -44,52 +45,58 @@ function filenameToTitle(filename: string): string {
 }
 
 /**
- * Scan the comics directory and return info about all archives
+ * Scan all comics directories and return info about all archives
  */
 export async function scanComicsDirectory(): Promise<ComicArchiveInfo[]> {
-  if (!fs.existsSync(COMICS_DIR)) {
-    fs.mkdirSync(COMICS_DIR, { recursive: true });
-    return [];
-  }
-
-  const files = fs.readdirSync(COMICS_DIR);
+  const allDirs = getAllComicsDirs();
   const comics: ComicArchiveInfo[] = [];
 
-  for (const file of files) {
-    const ext = path.extname(file).toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.includes(ext)) continue;
-
-    const filepath = path.join(COMICS_DIR, file);
-    const stat = fs.statSync(filepath);
-
-    try {
-      let pageCount = 0;
-
-      if (ext === ".pdf") {
-        pageCount = await getPdfPageCount(filepath);
-      } else {
-        const reader = await createArchiveReader(filepath);
-        if (!reader) continue;
-
-        try {
-          const images = getImageEntriesFromArchive(reader);
-          pageCount = images.length;
-        } finally {
-          reader.close();
-        }
+  for (const comicsDir of allDirs) {
+    if (!fs.existsSync(comicsDir)) {
+      if (comicsDir === getComicsDir()) {
+        fs.mkdirSync(comicsDir, { recursive: true });
       }
+      continue;
+    }
 
-      comics.push({
-        id: filenameToId(file),
-        filename: file,
-        filepath,
-        title: filenameToTitle(file),
-        pageCount,
-        fileSize: stat.size,
-        lastModified: stat.mtime.toISOString(),
-      });
-    } catch (err) {
-      console.error(`Failed to parse ${file}:`, err);
+    const files = fs.readdirSync(comicsDir);
+
+    for (const file of files) {
+      const ext = path.extname(file).toLowerCase();
+      if (!SUPPORTED_EXTENSIONS.includes(ext)) continue;
+
+      const filepath = path.join(comicsDir, file);
+      const stat = fs.statSync(filepath);
+
+      try {
+        let pageCount = 0;
+
+        if (ext === ".pdf") {
+          pageCount = await getPdfPageCount(filepath);
+        } else {
+          const reader = await createArchiveReader(filepath);
+          if (!reader) continue;
+
+          try {
+            const images = getImageEntriesFromArchive(reader);
+            pageCount = images.length;
+          } finally {
+            reader.close();
+          }
+        }
+
+        comics.push({
+          id: filenameToId(file),
+          filename: file,
+          filepath,
+          title: filenameToTitle(file),
+          pageCount,
+          fileSize: stat.size,
+          lastModified: stat.mtime.toISOString(),
+        });
+      } catch (err) {
+        console.error(`Failed to parse ${file}:`, err);
+      }
     }
   }
 
