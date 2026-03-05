@@ -11,6 +11,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # 完整安装（不跳过 postinstall），确保 lightningcss / sharp 等原生模块正确构建
 RUN npm ci
+# 手动安装 lightningcss 的 alpine (linux-musl) 原生绑定
+RUN npm install lightningcss-linux-x64-musl
 
 # --- Stage 2: Build the app ---
 FROM node:20-alpine AS builder
