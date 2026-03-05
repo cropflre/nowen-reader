@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface SinglePageViewProps {
   pages: string[];
@@ -24,6 +25,9 @@ export default function SinglePageView({
   readerTheme = "night",
 }: SinglePageViewProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Preload next 3 pages
+  useImagePreloader(pages, currentPage, 3);
 
   // Reset loaded state when page changes
   useEffect(() => {

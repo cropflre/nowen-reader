@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface WebtoonViewProps {
   pages: string[];
@@ -13,6 +13,11 @@ interface WebtoonViewProps {
   useRealData?: boolean;
   readerTheme?: ReaderTheme;
 }
+
+/** Estimated page height for skeleton placeholders */
+const ESTIMATED_PAGE_HEIGHT = 1200;
+/** Number of pages to render outside viewport (buffer) */
+const RENDER_BUFFER = 5;
 
 export default function WebtoonView({
   pages,
@@ -28,6 +33,52 @@ export default function WebtoonView({
   const scrollTimeoutRef = useRef<NodeJS.Timeout>(undefined);
   const t = useTranslation();
 
+  // Track which pages are "in range" to render
+  const [renderRange, setRenderRange] = useState({ start: 0, end: Math.min(RENDER_BUFFER * 2, pages.length - 1) });
+
+  // Track loaded image heights for accurate positioning
+  const [pageHeights, setPageHeights] = useState<Map<number, number>>(new Map());
+
+  // Preload images ahead of current page
+  useImagePreloader(pages, currentPage, 5);
+
+  // Update render range based on scroll position
+  const updateRenderRange = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const scrollTop = container.scrollTop;
+    const viewportHeight = container.clientHeight;
+    const viewCenter = scrollTop + viewportHeight / 3;
+
+    // Determine which page is at center
+    let accumulatedHeight = 0;
+    let centerPage = 0;
+
+    for (let i = 0; i < pages.length; i++) {
+      const h = pageHeights.get(i) ?? ESTIMATED_PAGE_HEIGHT;
+      if (accumulatedHeight + h > viewCenter) {
+        centerPage = i;
+        break;
+      }
+      accumulatedHeight += h;
+      if (i === pages.length - 1) centerPage = i;
+    }
+
+    const newStart = Math.max(0, centerPage - RENDER_BUFFER);
+    const newEnd = Math.min(pages.length - 1, centerPage + RENDER_BUFFER);
+
+    setRenderRange((prev) => {
+      if (prev.start !== newStart || prev.end !== newEnd) {
+        return { start: newStart, end: newEnd };
+      }
+      return prev;
+    });
+
+    return centerPage;
+  }, [pages.length, pageHeights]);
+
+  // Scroll to current page when externally changed
   useEffect(() => {
     if (isScrollingRef.current) return;
     const el = pageRefs.current[currentPage];
@@ -43,26 +94,24 @@ export default function WebtoonView({
       isScrollingRef.current = false;
     }, 150);
 
-    const container = containerRef.current;
-    if (!container) return;
+    const centerPage = updateRenderRange();
 
-    const scrollTop = container.scrollTop;
-    const viewportHeight = container.clientHeight;
-    const viewCenter = scrollTop + viewportHeight / 3;
-
-    for (let i = 0; i < pageRefs.current.length; i++) {
-      const el = pageRefs.current[i];
-      if (!el) continue;
-      const top = el.offsetTop;
-      const bottom = top + el.offsetHeight;
-      if (viewCenter >= top && viewCenter < bottom) {
-        if (i !== currentPage) {
-          onPageChange(i);
-        }
-        break;
-      }
+    if (centerPage !== undefined && centerPage !== currentPage) {
+      onPageChange(centerPage);
     }
-  }, [currentPage, onPageChange]);
+  }, [currentPage, onPageChange, updateRenderRange]);
+
+  // Record actual image height after load
+  const handleImageLoad = useCallback((index: number, e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalHeight > 0) {
+      setPageHeights((prev) => {
+        const next = new Map(prev);
+        next.set(index, img.clientHeight);
+        return next;
+      });
+    }
+  }, []);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -75,6 +124,11 @@ export default function WebtoonView({
     }
   };
 
+  // Initialize render range
+  useEffect(() => {
+    updateRenderRange();
+  }, [updateRenderRange]);
+
   return (
     <div
       ref={containerRef}
@@ -85,36 +139,53 @@ export default function WebtoonView({
       onClick={handleClick}
     >
       <div className="mx-auto max-w-3xl">
-        {pages.map((pageUrl, index) => (
-          <div
-            key={index}
-            ref={(el) => {
-              pageRefs.current[index] = el;
-            }}
-            className="relative w-full"
-          >
-            {useRealData ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={pageUrl}
-                alt={`Page ${index + 1}`}
-                className="w-full h-auto"
-                loading={Math.abs(index - currentPage) < 5 ? "eager" : "lazy"}
-              />
-            ) : (
-              <div className="relative aspect-[2/3] w-full">
-                <Image
-                  src={pageUrl}
-                  alt={`Page ${index + 1}`}
-                  fill
-                  className="object-contain"
-                  sizes="(max-width: 768px) 100vw, 768px"
-                  loading={Math.abs(index - currentPage) < 5 ? "eager" : "lazy"}
+        {pages.map((pageUrl, index) => {
+          const isInRange = index >= renderRange.start && index <= renderRange.end;
+          const estimatedHeight = pageHeights.get(index) ?? ESTIMATED_PAGE_HEIGHT;
+
+          return (
+            <div
+              key={index}
+              ref={(el) => {
+                pageRefs.current[index] = el;
+              }}
+              className="relative w-full"
+              style={!isInRange ? { height: estimatedHeight } : undefined}
+            >
+              {isInRange ? (
+                useRealData ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={pageUrl}
+                    alt={`Page ${index + 1}`}
+                    className="w-full h-auto"
+                    loading={Math.abs(index - currentPage) < 3 ? "eager" : "lazy"}
+                    onLoad={(e) => handleImageLoad(index, e)}
+                  />
+                ) : (
+                  <div className="relative aspect-2/3 w-full">
+                    {/* Next/Image for mock data */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={pageUrl}
+                      alt={`Page ${index + 1}`}
+                      className="w-full h-auto object-contain"
+                      loading={Math.abs(index - currentPage) < 3 ? "eager" : "lazy"}
+                    />
+                  </div>
+                )
+              ) : (
+                /* Skeleton placeholder */
+                <div
+                  className={`w-full animate-pulse ${
+                    readerTheme === "day" ? "bg-gray-200" : "bg-white/5"
+                  }`}
+                  style={{ height: estimatedHeight }}
                 />
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          );
+        })}
 
         <div className="flex items-center justify-center py-16">
           <div className="text-center">

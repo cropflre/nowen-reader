@@ -1,5 +1,5 @@
 import { prisma } from "./db";
-import { scanComicsDirectory, ComicArchiveInfo } from "./comic-parser";
+import { scanComicsDirectory, ComicArchiveInfo, invalidateComicCaches } from "./comic-parser";
 import { THUMBNAILS_DIR } from "./config";
 import path from "path";
 import fs from "fs";
@@ -23,6 +23,9 @@ function getCoverUrl(comicId: string): string {
  * - Updates page count / file size if changed
  */
 export async function syncComicsToDatabase() {
+  // Invalidate caches before scanning to get fresh data
+  invalidateComicCaches();
+
   const filesOnDisk = await scanComicsDirectory();
   const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
 

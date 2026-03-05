@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState, useEffect } from "react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface DoublePageViewProps {
   pages: string[];
@@ -25,6 +26,9 @@ export default function DoublePageView({
 }: DoublePageViewProps) {
   const [loadedLeft, setLoadedLeft] = useState(false);
   const [loadedRight, setLoadedRight] = useState(false);
+
+  // Preload next 4 pages (2 spreads ahead)
+  useImagePreloader(pages, currentPage, 4);
 
   const spreadIndex = useMemo(() => {
     return currentPage % 2 === 0 ? currentPage : currentPage - 1;

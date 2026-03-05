@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getPageImage, getPageImageAsync } from "@/lib/comic-parser";
 import { findComicById } from "@/lib/comic-parser";
 import { getArchiveType } from "@/lib/archive-parser";
+import crypto from "crypto";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string; pageIndex: string }> }
 ) {
   const { id, pageIndex: pageIndexStr } = await params;
@@ -27,7 +28,6 @@ export async function GET(
 
   const archiveType = getArchiveType(comic.filepath);
 
-  // Use async for PDF, sync for others
   let result: { buffer: Buffer; mimeType: string } | null = null;
 
   if (archiveType === "pdf") {
@@ -43,12 +43,25 @@ export async function GET(
     );
   }
 
+  // Generate ETag from content hash (fast MD5)
+  const etag = `"${crypto.createHash("md5").update(result.buffer).digest("hex")}"`;
+
+  // Check If-None-Match for 304
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch === etag) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: { ETag: etag },
+    });
+  }
+
   return new NextResponse(new Uint8Array(result.buffer), {
     status: 200,
     headers: {
       "Content-Type": result.mimeType,
-      "Cache-Control": "public, max-age=86400, immutable",
+      "Cache-Control": "public, max-age=31536000, immutable",
       "Content-Length": result.buffer.length.toString(),
+      "ETag": etag,
     },
   });
 }
