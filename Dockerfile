@@ -5,13 +5,12 @@
 
 # --- Stage 1: Install dependencies ---
 FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
-# sharp 需要 platform-specific 的 native 依赖
-RUN npm install sharp --platform=linuxmusl --arch=x64
+# 完整安装（不跳过 postinstall），确保 lightningcss / sharp 等原生模块正确构建
+RUN npm ci
 
 # --- Stage 2: Build the app ---
 FROM node:20-alpine AS builder
