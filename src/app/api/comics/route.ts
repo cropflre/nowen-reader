@@ -15,15 +15,26 @@ export async function GET(request: NextRequest) {
     const sortBy = (searchParams.get("sortBy") as "title" | "addedAt" | "lastReadAt" | "rating") || "title";
     const sortOrder = (searchParams.get("sortOrder") as "asc" | "desc") || "asc";
 
-    const comics = await getAllComics({
+    const page = parseInt(searchParams.get("page") || "0", 10) || undefined;
+    const pageSize = parseInt(searchParams.get("pageSize") || "0", 10) || undefined;
+
+    const result = await getAllComics({
       search,
       tags,
       favoritesOnly,
       sortBy,
       sortOrder,
+      page,
+      pageSize,
     });
 
-    return NextResponse.json({ comics, total: comics.length });
+    return NextResponse.json({
+      comics: result.comics,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     console.error("Failed to fetch comics:", err);
     return NextResponse.json(

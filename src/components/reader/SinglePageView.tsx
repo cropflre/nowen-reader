@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState, useEffect } from "react";
+import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 
 interface SinglePageViewProps {
   pages: string[];
@@ -10,6 +11,7 @@ interface SinglePageViewProps {
   onTapCenter: () => void;
   direction: "ltr" | "rtl";
   useRealData?: boolean;
+  readerTheme?: ReaderTheme;
 }
 
 export default function SinglePageView({
@@ -19,6 +21,7 @@ export default function SinglePageView({
   onTapCenter,
   direction,
   useRealData,
+  readerTheme = "night",
 }: SinglePageViewProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
 
@@ -52,13 +55,17 @@ export default function SinglePageView({
 
   return (
     <div
-      className="relative flex h-screen w-full cursor-pointer items-center justify-center bg-black select-none"
+      className={`relative flex h-screen w-full cursor-pointer items-center justify-center select-none transition-colors duration-300 ${
+        readerTheme === "day" ? "bg-gray-100" : "bg-black"
+      }`}
       onClick={handleClick}
     >
       <div className="relative h-full w-full flex items-center justify-center">
         {!imageLoaded && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-accent" />
+            <div className={`h-8 w-8 animate-spin rounded-full border-2 border-t-accent ${
+              readerTheme === "day" ? "border-gray-300" : "border-white/20"
+            }`} />
           </div>
         )}
         {useRealData ? (

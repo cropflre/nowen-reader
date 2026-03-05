@@ -6,44 +6,32 @@ import {
   Search,
   Upload,
   BookMarked,
-  LayoutGrid,
-  List,
   Loader2,
-  CheckSquare,
   BarChart3,
-  CheckCheck,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme-context";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { UserMenu } from "@/components/UserMenu";
 
 interface NavbarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  viewMode: "grid" | "list";
-  onViewModeChange: (mode: "grid" | "list") => void;
   onUpload?: () => void;
   uploading?: boolean;
-  batchMode?: boolean;
-  onToggleBatchMode?: () => void;
-  onSelectAll?: () => void;
-  allSelected?: boolean;
 }
 
 export default function Navbar({
   searchQuery,
   onSearchChange,
-  viewMode,
-  onViewModeChange,
   onUpload,
   uploading,
-  batchMode,
-  onToggleBatchMode,
-  onSelectAll,
-  allSelected,
 }: NavbarProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const t = useTranslation();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
@@ -80,35 +68,6 @@ export default function Navbar({
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
-          {/* Batch Mode Toggle */}
-          {batchMode && (
-            <button
-              onClick={onSelectAll}
-              className={`flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all ${
-                allSelected
-                  ? "bg-accent/20 text-accent"
-                  : "border border-border/60 text-muted hover:text-foreground"
-              }`}
-              title={t.navbar.selectAll}
-            >
-              <CheckCheck className="h-4 w-4" />
-              <span className="hidden sm:inline">{t.navbar.selectAll}</span>
-            </button>
-          )}
-
-          <button
-            onClick={onToggleBatchMode}
-            className={`flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all ${
-              batchMode
-                ? "bg-accent text-white"
-                : "border border-border/60 text-muted hover:text-foreground"
-            }`}
-            title={t.navbar.batch}
-          >
-            <CheckSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">{batchMode ? t.navbar.exitBatch : t.navbar.batch}</span>
-          </button>
-
           {/* Stats */}
           <Link
             href="/stats"
@@ -117,30 +76,6 @@ export default function Navbar({
           >
             <BarChart3 className="h-4 w-4" />
           </Link>
-
-          {/* View Toggle */}
-          <div className="flex items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
-            <button
-              onClick={() => onViewModeChange("grid")}
-              className={`flex h-8 w-8 items-center justify-center rounded-md transition-all duration-200 ${
-                viewMode === "grid"
-                  ? "bg-accent text-white shadow-sm"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => onViewModeChange("list")}
-              className={`flex h-8 w-8 items-center justify-center rounded-md transition-all duration-200 ${
-                viewMode === "list"
-                  ? "bg-accent text-white shadow-sm"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
 
           {/* Upload */}
           <button
@@ -154,6 +89,19 @@ export default function Navbar({
               <Upload className="h-4 w-4" />
             )}
             <span className="hidden sm:inline">{uploading ? t.navbar.uploading : t.navbar.upload}</span>
+          </button>
+
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
+            title={theme === "dark" ? (t.readerToolbar?.dayMode || "Day") : (t.readerToolbar?.nightMode || "Night")}
+          >
+            {theme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
           </button>
 
           {/* Language Switcher */}

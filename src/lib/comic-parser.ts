@@ -66,10 +66,7 @@ export async function scanComicsDirectory(): Promise<ComicArchiveInfo[]> {
       let pageCount = 0;
 
       if (ext === ".pdf") {
-        const data = fs.readFileSync(filepath);
-        const content = data.toString("binary");
-        const matches = content.match(/\/Type\s*\/Page[^s]/g);
-        pageCount = matches ? matches.length : 0;
+        pageCount = await getPdfPageCount(filepath);
       } else {
         const reader = await createArchiveReader(filepath);
         if (!reader) continue;
@@ -110,11 +107,8 @@ export async function getComicPages(comicId: string): Promise<string[]> {
   const type = getArchiveType(info.filepath);
 
   if (type === "pdf") {
-    // Return virtual page entries
-    const data = fs.readFileSync(info.filepath);
-    const content = data.toString("binary");
-    const matches = content.match(/\/Type\s*\/Page[^s]/g);
-    const count = matches ? matches.length : 0;
+    // Return virtual page entries with accurate page count
+    const count = await getPdfPageCount(info.filepath);
     return Array.from({ length: count }, (_, i) => `page-${String(i + 1).padStart(4, "0")}.png`);
   }
 

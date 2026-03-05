@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Cloud, Puzzle, Smartphone, Info } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { CloudSyncPanel } from "@/components/CloudSync";
@@ -27,15 +28,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     { id: "about", label: t.settings?.about || "About", icon: <Info className="h-4 w-4" /> },
   ];
 
-  return (
-    <>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed left-1/2 top-1/2 z-50 w-[600px] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 max-h-[85vh] overflow-hidden rounded-2xl bg-background border border-border/50 shadow-2xl">
+      <div className="relative w-[600px] max-w-[90vw] max-h-[85vh] overflow-hidden rounded-2xl bg-card border border-border shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/30 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
           <h2 className="text-lg font-semibold text-foreground">
             {t.settings?.title || "Settings"}
           </h2>
@@ -49,7 +50,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
         <div className="flex h-[calc(85vh-72px)] max-h-[500px]">
           {/* Sidebar */}
-          <div className="w-40 flex-shrink-0 border-r border-border/30 p-2">
+          <div className="w-40 flex-shrink-0 border-r border-border/50 p-2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -57,7 +58,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                   activeTab === tab.id
                     ? "bg-accent/15 text-accent font-medium"
-                    : "text-muted hover:bg-card hover:text-foreground"
+                    : "text-muted hover:bg-card-hover hover:text-foreground"
                 }`}
               >
                 {tab.icon}
@@ -75,7 +76,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
         </div>
       </div>
-    </>
+    </div>,
+    document.body
   );
 }
 
@@ -95,7 +97,7 @@ function PWASettings() {
         </h3>
       </div>
 
-      <div className="space-y-3 rounded-xl bg-card p-4">
+      <div className="space-y-3 rounded-xl bg-background p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">{t.pwa?.installStatus || "Install Status"}</span>
           <span className={isStandalone ? "text-green-400" : "text-muted"}>
@@ -116,7 +118,7 @@ function PWASettings() {
           clearServiceWorkerCache();
           alert(t.pwa?.cacheCleared || "Cache cleared");
         }}
-        className="w-full rounded-lg border border-border/40 bg-card px-3 py-2.5 text-xs font-medium text-foreground transition-colors hover:bg-card-hover"
+        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-xs font-medium text-foreground transition-colors hover:bg-card-hover"
       >
         {t.pwa?.clearCache || "Clear Offline Cache"}
       </button>
@@ -132,7 +134,7 @@ function AboutPanel() {
         <h3 className="text-sm font-medium text-foreground">About</h3>
       </div>
 
-      <div className="space-y-3 rounded-xl bg-card p-4">
+      <div className="space-y-3 rounded-xl bg-background p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">App</span>
           <span className="text-foreground font-medium">NowenReader</span>

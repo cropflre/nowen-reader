@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import ComicCard from "@/components/ComicCard";
 import TagFilter from "@/components/TagFilter";
@@ -19,6 +19,10 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation } from "@/lib/i18n";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy } from "lucide-react";
+import DuplicateDetector from "@/components/DuplicateDetector";
+
+const PAGE_SIZE = 24;
 
 // Convert API comic to display comic
 function apiToComic(api: ApiComic): Comic {
@@ -58,13 +62,27 @@ export default function Home() {
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Duplicate detection
+  const [showDuplicates, setShowDuplicates] = useState(false);
+
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  // Fetch real comics from API
-  const { comics: apiComics, loading, refetch } = useComics();
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Fetch real comics from API with pagination
+  const { comics: apiComics, loading, total: apiTotal, totalPages, refetch } = useComics({
+    page: currentPage,
+    pageSize: PAGE_SIZE,
+  });
   const { groups, refetch: refetchGroups } = useGroups();
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedTags, favoritesOnly, selectedGroup, sortBy, sortOrder]);
 
   // Use real comics if available, else fallback to mock
   const useRealData = apiComics.length > 0;
@@ -292,17 +310,8 @@ export default function Home() {
       <Navbar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
         onUpload={handleUpload}
         uploading={uploading}
-        batchMode={batchMode}
-        onToggleBatchMode={() => {
-          if (batchMode) exitBatchMode();
-          else setBatchMode(true);
-        }}
-        onSelectAll={handleSelectAll}
-        allSelected={selectedIds.size === sortedComics.length && sortedComics.length > 0}
       />
 
       {/* Main Content */}
@@ -343,12 +352,57 @@ export default function Home() {
             {/* Stats + Sort Controls */}
             <div className="flex flex-wrap items-center justify-between gap-4">
               <StatsBar
-                totalComics={displayComics.length}
+                totalComics={useRealData ? apiTotal : displayComics.length}
                 filteredCount={sortedComics.length}
               />
 
               {/* Sort & Filter Controls */}
               <div className="flex items-center gap-3">
+                {/* Detect Duplicates */}
+                <button
+                  onClick={() => setShowDuplicates(true)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-muted transition-all hover:text-foreground"
+                  title={t.duplicates.detect}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>{t.duplicates.detect}</span>
+                </button>
+
+                {/* Batch Mode Toggle */}
+                <button
+                  onClick={() => {
+                    if (batchMode) exitBatchMode();
+                    else setBatchMode(true);
+                  }}
+                  className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+                    batchMode
+                      ? "bg-accent text-white"
+                      : "bg-card text-muted hover:text-foreground"
+                  }`}
+                  title={t.navbar.batch}
+                >
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  <span>{batchMode ? t.navbar.exitBatch : t.navbar.batch}</span>
+                </button>
+
+                {/* Select All (only in batch mode) */}
+                {batchMode && (
+                  <button
+                    onClick={handleSelectAll}
+                    className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+                      selectedIds.size === sortedComics.length && sortedComics.length > 0
+                        ? "bg-accent/20 text-accent"
+                        : "bg-card text-muted hover:text-foreground"
+                    }`}
+                    title={t.navbar.selectAll}
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    <span>{t.navbar.selectAll}</span>
+                  </button>
+                )}
+
+                <div className="h-5 w-px bg-border/40" />
+
                 {/* Favorites toggle */}
                 <button
                   onClick={() => setFavoritesOnly(!favoritesOnly)}
@@ -383,6 +437,32 @@ export default function Home() {
                 >
                   {sortOrder === "asc" ? "↑" : "↓"}
                 </button>
+
+                <div className="h-5 w-px bg-border/40" />
+
+                {/* View Toggle */}
+                <div className="flex items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
+                      viewMode === "grid"
+                        ? "bg-accent text-white shadow-sm"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
+                      viewMode === "list"
+                        ? "bg-accent text-white shadow-sm"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -452,6 +532,84 @@ export default function Home() {
                 </p>
               </div>
             )}
+
+            {/* Pagination */}
+            {useRealData && totalPages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  title={t.home.firstPage}
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  title={t.home.prevPage}
+                >
+                  ‹
+                </button>
+
+                {(() => {
+                  const pages: (number | string)[] = [];
+                  const maxVisible = 7;
+                  if (totalPages <= maxVisible) {
+                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                  } else {
+                    pages.push(1);
+                    if (currentPage > 3) pages.push("...");
+                    const start = Math.max(2, currentPage - 1);
+                    const end = Math.min(totalPages - 1, currentPage + 1);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                    if (currentPage < totalPages - 2) pages.push("...");
+                    pages.push(totalPages);
+                  }
+                  return pages.map((p, idx) =>
+                    typeof p === "string" ? (
+                      <span key={`ellipsis-${idx}`} className="px-1 text-muted">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setCurrentPage(p)}
+                        className={`flex h-9 min-w-[36px] items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors ${
+                          currentPage === p
+                            ? "bg-accent text-white"
+                            : "border border-border/60 text-muted hover:border-border hover:text-foreground"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  );
+                })()}
+
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  title={t.home.nextPage}
+                >
+                  ›
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  title={t.home.lastPage}
+                >
+                  »
+                </button>
+
+                <span className="ml-3 text-xs text-muted">
+                  {currentPage} / {totalPages}
+                </span>
+              </div>
+            )}
           </>
         )}
       </main>
@@ -468,6 +626,13 @@ export default function Home() {
           onSetGroup={handleBatchSetGroup}
         />
       )}
+
+      {/* Duplicate Detector */}
+      <DuplicateDetector
+        open={showDuplicates}
+        onClose={() => setShowDuplicates(false)}
+        onDeleted={refetch}
+      />
     </div>
   );
 }

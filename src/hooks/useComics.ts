@@ -38,6 +38,9 @@ export interface ApiComic {
 interface ComicsResponse {
   comics: ApiComic[];
   total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 interface PagesResponse {
@@ -56,10 +59,14 @@ export function useComics(options?: {
   favoritesOnly?: boolean;
   sortBy?: string;
   sortOrder?: string;
+  page?: number;
+  pageSize?: number;
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const fetchComics = useCallback(async () => {
     setLoading(true);
@@ -71,6 +78,8 @@ export function useComics(options?: {
       if (options?.favoritesOnly) params.set("favorites", "true");
       if (options?.sortBy) params.set("sortBy", options.sortBy);
       if (options?.sortOrder) params.set("sortOrder", options.sortOrder);
+      if (options?.page) params.set("page", String(options.page));
+      if (options?.pageSize) params.set("pageSize", String(options.pageSize));
 
       const qs = params.toString();
       const url = `/api/comics${qs ? `?${qs}` : ""}`;
@@ -79,18 +88,20 @@ export function useComics(options?: {
       if (!res.ok) throw new Error("Failed to fetch comics");
       const data: ComicsResponse = await res.json();
       setComics(data.comics);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, [options?.search, options?.tags, options?.favoritesOnly, options?.sortBy, options?.sortOrder]);
+  }, [options?.search, options?.tags, options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize]);
 
   useEffect(() => {
     fetchComics();
   }, [fetchComics]);
 
-  return { comics, loading, error, refetch: fetchComics };
+  return { comics, loading, error, total, totalPages, refetch: fetchComics };
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useMemo, useState, useEffect } from "react";
+import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 
 interface DoublePageViewProps {
   pages: string[];
@@ -10,6 +11,7 @@ interface DoublePageViewProps {
   onTapCenter: () => void;
   direction: "ltr" | "rtl";
   useRealData?: boolean;
+  readerTheme?: ReaderTheme;
 }
 
 export default function DoublePageView({
@@ -19,6 +21,7 @@ export default function DoublePageView({
   onTapCenter,
   direction,
   useRealData,
+  readerTheme = "night",
 }: DoublePageViewProps) {
   const [loadedLeft, setLoadedLeft] = useState(false);
   const [loadedRight, setLoadedRight] = useState(false);
@@ -72,7 +75,9 @@ export default function DoublePageView({
       <div className="relative h-full flex-1 max-w-[50vw] flex items-center justify-center">
         {!loaded && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-accent" />
+            <div className={`h-6 w-6 animate-spin rounded-full border-2 border-t-accent ${
+              readerTheme === "day" ? "border-gray-300" : "border-white/20"
+            }`} />
           </div>
         )}
         {useRealData ? (
@@ -105,12 +110,14 @@ export default function DoublePageView({
 
   return (
     <div
-      className="relative flex h-screen w-full cursor-pointer items-center justify-center bg-black select-none"
+      className={`relative flex h-screen w-full cursor-pointer items-center justify-center select-none transition-colors duration-300 ${
+        readerTheme === "day" ? "bg-gray-100" : "bg-black"
+      }`}
       onClick={handleClick}
     >
       <div className="flex h-full items-center justify-center gap-1 p-4">
         {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, "left")}
-        <div className="h-[80%] w-px bg-white/5" />
+        <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
         {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, "right")}
       </div>
     </div>

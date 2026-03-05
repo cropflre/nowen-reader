@@ -11,10 +11,13 @@ import {
   Maximize,
   Minimize,
   Info,
-  Settings2,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { ReadingMode, ReadingDirection } from "@/types/reader";
 import { useTranslation } from "@/lib/i18n";
+
+export type ReaderTheme = "day" | "night";
 
 interface ReaderToolbarProps {
   visible: boolean;
@@ -24,11 +27,13 @@ interface ReaderToolbarProps {
   mode: ReadingMode;
   direction: ReadingDirection;
   isFullscreen: boolean;
+  readerTheme: ReaderTheme;
   onBack: () => void;
   onPageChange: (page: number) => void;
   onModeChange: (mode: ReadingMode) => void;
   onDirectionChange: (dir: ReadingDirection) => void;
   onToggleFullscreen: () => void;
+  onToggleTheme: () => void;
   onShowInfo?: () => void;
 }
 
@@ -40,11 +45,13 @@ export default function ReaderToolbar({
   mode,
   direction,
   isFullscreen,
+  readerTheme,
   onBack,
   onPageChange,
   onModeChange,
   onDirectionChange,
   onToggleFullscreen,
+  onToggleTheme,
   onShowInfo,
 }: ReaderToolbarProps) {
   const t = useTranslation();
@@ -182,8 +189,20 @@ export default function ReaderToolbar({
                 <span>{direction === "rtl" ? t.readerToolbar.rtl : t.readerToolbar.ltr}</span>
               </button>
 
-              <button className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white">
-                <Settings2 className="h-4 w-4" />
+              <button
+                onClick={onToggleTheme}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  readerTheme === "day"
+                    ? "bg-amber-500/20 text-amber-400"
+                    : "text-white/60 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                {readerTheme === "day" ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+                <span>{readerTheme === "day" ? t.readerToolbar.dayMode : t.readerToolbar.nightMode}</span>
               </button>
             </div>
           </div>

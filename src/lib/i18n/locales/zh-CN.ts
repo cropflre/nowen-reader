@@ -39,6 +39,10 @@ const zhCN = {
     emptyLibraryHint: "点击上传按钮或将 .zip/.cbz 文件放入 comics/ 目录",
     noMatchingHint: "试试更换搜索关键词或清除标签筛选",
     uploadFailed: "上传失败，请重试",
+    firstPage: "第一页",
+    prevPage: "上一页",
+    nextPage: "下一页",
+    lastPage: "最后一页",
   },
 
   // Stats Bar
@@ -149,6 +153,8 @@ const zhCN = {
     webtoon: "长条",
     rtl: "右→左",
     ltr: "左→右",
+    dayMode: "日间",
+    nightMode: "夜间",
   },
 
   // Duration formatting
@@ -276,6 +282,33 @@ const zhCN = {
     plugins: "插件",
     pwa: "应用",
     about: "关于",
+  },
+
+  // Duplicates
+  duplicates: {
+    title: "重复检测",
+    detect: "检测重复",
+    detecting: "检测中...",
+    noDuplicates: "没有发现重复的漫画",
+    foundGroups: "发现 {count} 组重复",
+    sameFile: "文件内容完全相同",
+    sameSize: "文件大小和页数相同",
+    sameName: "标题相似",
+    fileSize: "大小",
+    pageCount: "页数",
+    addedAt: "添加时间",
+    keepThis: "保留",
+    deleteThis: "删除",
+    close: "关闭",
+    confirmDelete: "确认删除",
+    confirmDeleteMsg: "确定要删除「{title}」吗？此操作将同时删除磁盘上的文件，不可撤销。",
+    keepSelected: "保留选中项",
+    deleteAllDuplicates: "一键删除重复",
+    deletingAll: "批量删除中...",
+    confirmDeleteAll: "确认批量删除",
+    confirmDeleteAllMsg: "将删除 {count} 个重复文件（每组保留选中的一个），此操作不可撤销。",
+    deletedCount: "已删除 {count} 个文件",
+    selectToKeep: "点击选择要保留的项",
   },
 } satisfies Translations;
 
@@ -409,6 +442,8 @@ export interface Translations {
     webtoon: string;
     rtl: string;
     ltr: string;
+    dayMode: string;
+    nightMode: string;
   };
   duration: {
     seconds: string;
@@ -520,5 +555,30 @@ export interface Translations {
     plugins: string;
     pwa: string;
     about: string;
+  };
+  duplicates: {
+    title: string;
+    detect: string;
+    detecting: string;
+    noDuplicates: string;
+    foundGroups: string;
+    sameFile: string;
+    sameSize: string;
+    sameName: string;
+    fileSize: string;
+    pageCount: string;
+    addedAt: string;
+    keepThis: string;
+    deleteThis: string;
+    close: string;
+    confirmDelete: string;
+    confirmDeleteMsg: string;
+    keepSelected: string;
+    deleteAllDuplicates: string;
+    deletingAll: string;
+    confirmDeleteAll: string;
+    confirmDeleteAllMsg: string;
+    deletedCount: string;
+    selectToKeep: string;
   };
 }

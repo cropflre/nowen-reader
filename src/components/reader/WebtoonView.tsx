@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "@/lib/i18n";
+import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 
 interface WebtoonViewProps {
   pages: string[];
@@ -10,6 +11,7 @@ interface WebtoonViewProps {
   onPageChange: (page: number) => void;
   onTapCenter: () => void;
   useRealData?: boolean;
+  readerTheme?: ReaderTheme;
 }
 
 export default function WebtoonView({
@@ -18,6 +20,7 @@ export default function WebtoonView({
   onPageChange,
   onTapCenter,
   useRealData,
+  readerTheme = "night",
 }: WebtoonViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -75,7 +78,9 @@ export default function WebtoonView({
   return (
     <div
       ref={containerRef}
-      className="h-screen w-full overflow-y-auto bg-black select-none"
+      className={`h-screen w-full overflow-y-auto select-none transition-colors duration-300 ${
+        readerTheme === "day" ? "bg-gray-100" : "bg-black"
+      }`}
       onScroll={handleScroll}
       onClick={handleClick}
     >
@@ -113,7 +118,7 @@ export default function WebtoonView({
 
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
-            <p className="text-sm text-white/40">{t.reader.reachedLastPage}</p>
+            <p className={`text-sm ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>{t.reader.reachedLastPage}</p>
           </div>
         </div>
       </div>

@@ -66,8 +66,10 @@ export async function getAllComics(options?: {
   favoritesOnly?: boolean;
   sortBy?: "title" | "addedAt" | "lastReadAt" | "rating";
   sortOrder?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
 }) {
-  const { search, tags, favoritesOnly, sortBy = "title", sortOrder = "asc" } = options || {};
+  const { search, tags, favoritesOnly, sortBy = "title", sortOrder = "asc", page, pageSize } = options || {};
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
@@ -94,7 +96,12 @@ export async function getAllComics(options?: {
   const orderBy: any = {};
   orderBy[sortBy] = sortOrder;
 
-  const comics = await prisma.comic.findMany({
+  // Get total count for pagination
+  const total = await prisma.comic.count({ where });
+
+  // Build pagination options
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const findOptions: any = {
     where,
     orderBy,
     include: {
@@ -104,9 +111,16 @@ export async function getAllComics(options?: {
         },
       },
     },
-  });
+  };
 
-  return comics.map((c) => ({
+  if (page && pageSize) {
+    findOptions.skip = (page - 1) * pageSize;
+    findOptions.take = pageSize;
+  }
+
+  const comics = await prisma.comic.findMany(findOptions);
+
+  const items = comics.map((c) => ({
     id: c.id,
     filename: c.filename,
     title: c.title,
@@ -133,6 +147,14 @@ export async function getAllComics(options?: {
     genre: c.genre,
     metadataSource: c.metadataSource,
   }));
+
+  return {
+    comics: items,
+    total,
+    page: page || 1,
+    pageSize: pageSize || total,
+    totalPages: pageSize ? Math.ceil(total / pageSize) : 1,
+  };
 }
 
 /**
@@ -512,6 +534,156 @@ export async function getAllGroups() {
       where: { groupName: c.groupName },
     });
     groups.push({ name: c.groupName, count });
+  }
+
+  return groups;
+}
+
+// ============================================================
+// Duplicate Detection
+// ============================================================
+
+export interface DuplicateGroup {
+  reason: string; // "sameFile" | "sameName" | "sameSize"
+  comics: {
+    id: string;
+    filename: string;
+    title: string;
+    fileSize: number;
+    pageCount: number;
+    addedAt: string;
+    coverUrl: string;
+  }[];
+}
+
+/**
+ * Detect duplicate comics by multiple criteria:
+ * 1. Exact file content hash (SHA-256) — definite duplicates
+ * 2. Same file size + same page count — likely duplicates
+ * 3. Similar title (normalized) — possible duplicates
+ */
+export async function detectDuplicates(): Promise<DuplicateGroup[]> {
+  const fs = await import("fs");
+  const path = await import("path");
+  const crypto = await import("crypto");
+  const { COMICS_DIR } = await import("./config");
+
+  const comics = await prisma.comic.findMany({
+    select: {
+      id: true,
+      filename: true,
+      title: true,
+      fileSize: true,
+      pageCount: true,
+      addedAt: true,
+    },
+    orderBy: { title: "asc" },
+  });
+
+  const groups: DuplicateGroup[] = [];
+  const usedIds = new Set<string>();
+
+  // --- Pass 1: Exact content hash ---
+  const hashMap = new Map<string, typeof comics>();
+  for (const comic of comics) {
+    const filepath = path.join(COMICS_DIR, comic.filename);
+    try {
+      if (!fs.existsSync(filepath)) continue;
+      const buf = fs.readFileSync(filepath);
+      const hash = crypto.createHash("sha256").update(buf).digest("hex");
+      const arr = hashMap.get(hash) || [];
+      arr.push(comic);
+      hashMap.set(hash, arr);
+    } catch {
+      // skip unreadable files
+    }
+  }
+
+  for (const [, arr] of hashMap) {
+    if (arr.length > 1) {
+      const ids = arr.map((c) => c.id);
+      ids.forEach((id) => usedIds.add(id));
+      groups.push({
+        reason: "sameFile",
+        comics: arr.map((c) => ({
+          id: c.id,
+          filename: c.filename,
+          title: c.title,
+          fileSize: c.fileSize,
+          pageCount: c.pageCount,
+          addedAt: c.addedAt.toISOString(),
+          coverUrl: `/api/comics/${c.id}/thumbnail`,
+        })),
+      });
+    }
+  }
+
+  // --- Pass 2: Same file size + same page count ---
+  const sizePageMap = new Map<string, typeof comics>();
+  for (const comic of comics) {
+    if (usedIds.has(comic.id)) continue;
+    const key = `${comic.fileSize}_${comic.pageCount}`;
+    const arr = sizePageMap.get(key) || [];
+    arr.push(comic);
+    sizePageMap.set(key, arr);
+  }
+
+  for (const [, arr] of sizePageMap) {
+    if (arr.length > 1) {
+      const ids = arr.map((c) => c.id);
+      ids.forEach((id) => usedIds.add(id));
+      groups.push({
+        reason: "sameSize",
+        comics: arr.map((c) => ({
+          id: c.id,
+          filename: c.filename,
+          title: c.title,
+          fileSize: c.fileSize,
+          pageCount: c.pageCount,
+          addedAt: c.addedAt.toISOString(),
+          coverUrl: `/api/comics/${c.id}/thumbnail`,
+        })),
+      });
+    }
+  }
+
+  // --- Pass 3: Similar title (normalized) ---
+  function normalizeTitle(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/[\s_\-\.]+/g, "")
+      .replace(/[\(\)\[\]\{\}【】（）「」『』]/g, "")
+      .replace(/vol\.?\d+/gi, "")
+      .replace(/v\d+/gi, "")
+      .replace(/\d+$/g, "")
+      .trim();
+  }
+
+  const titleMap = new Map<string, typeof comics>();
+  for (const comic of comics) {
+    if (usedIds.has(comic.id)) continue;
+    const normalized = normalizeTitle(comic.title);
+    if (!normalized) continue;
+    const arr = titleMap.get(normalized) || [];
+    arr.push(comic);
+    titleMap.set(normalized, arr);
+  }
+
+  for (const [, arr] of titleMap) {
+    if (arr.length > 1) {
+      groups.push({
+        reason: "sameName",
+        comics: arr.map((c) => ({
+          id: c.id,
+          filename: c.filename,
+          title: c.title,
+          fileSize: c.fileSize,
+          pageCount: c.pageCount,
+          addedAt: c.addedAt.toISOString(),
+          coverUrl: `/api/comics/${c.id}/thumbnail`,
+        })),
+      });
+    }
   }
 
   return groups;

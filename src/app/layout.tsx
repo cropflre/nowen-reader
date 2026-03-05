@@ -4,6 +4,7 @@ import "./globals.css";
 import { I18nProvider } from "@/lib/i18n";
 import { AuthProvider } from "@/lib/auth-context";
 import { AuthGuard } from "@/components/AuthGuard";
+import { ThemeProvider } from "@/lib/theme-context";
 import { PWARegister } from "./pwa-register";
 import { PWAInstallBanner } from "@/components/PWAInstall";
 
@@ -45,19 +46,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="dark">
+    <html lang="zh-CN" className="dark" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <I18nProvider>
-          <AuthProvider>
-            <AuthGuard>{children}</AuthGuard>
-            <PWAInstallBanner />
-          </AuthProvider>
-        </I18nProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            <AuthProvider>
+              <AuthGuard>{children}</AuthGuard>
+              <PWAInstallBanner />
+            </AuthProvider>
+          </I18nProvider>
+        </ThemeProvider>
         <PWARegister />
       </body>
     </html>

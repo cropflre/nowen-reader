@@ -41,6 +41,10 @@ const en: Translations = {
     emptyLibraryHint: "Click upload or place .zip/.cbz files in the comics/ directory",
     noMatchingHint: "Try different keywords or clear tag filters",
     uploadFailed: "Upload failed, please retry",
+    firstPage: "First Page",
+    prevPage: "Previous Page",
+    nextPage: "Next Page",
+    lastPage: "Last Page",
   },
 
   // Stats Bar
@@ -151,6 +155,8 @@ const en: Translations = {
     webtoon: "Scroll",
     rtl: "R→L",
     ltr: "L→R",
+    dayMode: "Day",
+    nightMode: "Night",
   },
 
   // Duration formatting
@@ -278,6 +284,33 @@ const en: Translations = {
     plugins: "Plugins",
     pwa: "App",
     about: "About",
+  },
+
+  // Duplicates
+  duplicates: {
+    title: "Duplicate Detection",
+    detect: "Find Duplicates",
+    detecting: "Detecting...",
+    noDuplicates: "No duplicates found",
+    foundGroups: "Found {count} duplicate groups",
+    sameFile: "Identical file content",
+    sameSize: "Same file size and page count",
+    sameName: "Similar title",
+    fileSize: "Size",
+    pageCount: "Pages",
+    addedAt: "Added",
+    keepThis: "Keep",
+    deleteThis: "Delete",
+    close: "Close",
+    confirmDelete: "Confirm Delete",
+    confirmDeleteMsg: "Are you sure you want to delete \"{title}\"? This will also delete the file on disk and cannot be undone.",
+    keepSelected: "Keep selected",
+    deleteAllDuplicates: "Delete All Duplicates",
+    deletingAll: "Deleting...",
+    confirmDeleteAll: "Confirm Batch Delete",
+    confirmDeleteAllMsg: "This will delete {count} duplicate files (keeping one selected per group). This cannot be undone.",
+    deletedCount: "Deleted {count} files",
+    selectToKeep: "Click to select the item to keep",
   },
 };
 

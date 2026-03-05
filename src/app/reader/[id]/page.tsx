@@ -17,6 +17,8 @@ import {
 } from "@/hooks/useComics";
 import { ReadingMode, ReadingDirection } from "@/types/reader";
 import ReaderToolbar from "@/components/reader/ReaderToolbar";
+import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import { useTheme } from "@/lib/theme-context";
 import SinglePageView from "@/components/reader/SinglePageView";
 import DoublePageView from "@/components/reader/DoublePageView";
 import WebtoonView from "@/components/reader/WebtoonView";
@@ -63,6 +65,13 @@ export default function ReaderPage() {
   const [newTag, setNewTag] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
   const [rating, setRating] = useState<number>(0);
+  const [readerTheme, setReaderTheme] = useState<ReaderTheme>("night");
+  const { theme: globalTheme, toggleTheme: globalToggleTheme } = useTheme();
+
+  // Sync readerTheme with global theme
+  useEffect(() => {
+    setReaderTheme(globalTheme === "light" ? "day" : "night");
+  }, [globalTheme]);
 
   // Debounced progress save ref
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -219,6 +228,11 @@ export default function ReaderPage() {
     [pages.length]
   );
 
+  // Theme toggle
+  const handleToggleTheme = useCallback(() => {
+    globalToggleTheme();
+  }, [globalToggleTheme]);
+
   // Favorite toggle
   const handleToggleFavorite = async () => {
     const result = await toggleComicFavorite(comicId);
@@ -274,7 +288,9 @@ export default function ReaderPage() {
   }
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-black">
+    <div className={`relative h-screen w-full overflow-hidden transition-colors duration-300 ${
+      readerTheme === "day" ? "bg-gray-100" : "bg-black"
+    }`}>
       {/* Reading View */}
       {mode === "single" && (
         <SinglePageView
@@ -284,6 +300,7 @@ export default function ReaderPage() {
           onTapCenter={handleTapCenter}
           direction={direction}
           useRealData={useRealData}
+          readerTheme={readerTheme}
         />
       )}
 
@@ -295,6 +312,7 @@ export default function ReaderPage() {
           onTapCenter={handleTapCenter}
           direction={direction}
           useRealData={useRealData}
+          readerTheme={readerTheme}
         />
       )}
 
@@ -305,6 +323,7 @@ export default function ReaderPage() {
           onPageChange={handlePageChange}
           onTapCenter={handleTapCenter}
           useRealData={useRealData}
+          readerTheme={readerTheme}
         />
       )}
 
@@ -317,18 +336,24 @@ export default function ReaderPage() {
         mode={mode}
         direction={direction}
         isFullscreen={isFullscreen}
+        readerTheme={readerTheme}
         onBack={() => router.push("/")}
         onPageChange={handlePageChange}
         onModeChange={setMode}
         onDirectionChange={setDirection}
         onToggleFullscreen={toggleFullscreen}
+        onToggleTheme={handleToggleTheme}
         onShowInfo={useRealData ? () => setShowInfoPanel(true) : undefined}
       />
 
       {/* Page number indicator */}
       {mode !== "webtoon" && !toolbarVisible && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 backdrop-blur-sm">
-          <span className="text-xs font-mono text-white/50">
+        <div className={`pointer-events-none fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 backdrop-blur-sm ${
+          readerTheme === "day" ? "bg-white/70 shadow" : "bg-black/50"
+        }`}>
+          <span className={`text-xs font-mono ${
+            readerTheme === "day" ? "text-gray-500" : "text-white/50"
+          }`}>
             {currentPage + 1} / {pages.length}
           </span>
         </div>

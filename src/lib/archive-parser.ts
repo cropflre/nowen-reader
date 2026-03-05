@@ -71,7 +71,7 @@ class RarArchiveReader implements ArchiveReader {
 
   private constructor() {}
 
-  static async create(filepath: string): Promise<RarArchiveReader> {
+  static async create(filepath: string): Promise<RarArchiveReader | null> {
     const instance = new RarArchiveReader();
     const fileBuffer = fs.readFileSync(filepath);
     try {
@@ -95,7 +95,12 @@ class RarArchiveReader implements ArchiveReader {
         wasmBinary,
       });
       const list = extractor.getFileList();
-      const fileHeaders = [...list.fileHeaders];
+      const fileHeaders = [...(list.fileHeaders || [])];
+
+      if (fileHeaders.length === 0) {
+        console.warn("RAR file has no entries:", filepath);
+        return null;
+      }
 
       for (const header of fileHeaders) {
         instance.entries.push({
@@ -106,15 +111,18 @@ class RarArchiveReader implements ArchiveReader {
 
       // Extract all files
       const extracted = extractor.extract();
-      const files = [...extracted.files];
-      for (const file of files) {
-        const existing = instance.entries.find((e) => e.name === file.fileHeader.name);
-        if (existing && file.extraction) {
-          existing.data = file.extraction;
+      if (extracted && extracted.files) {
+        const files = [...extracted.files];
+        for (const file of files) {
+          const existing = instance.entries.find((e) => e.name === file.fileHeader.name);
+          if (existing && file.extraction) {
+            existing.data = file.extraction;
+          }
         }
       }
     } catch (err) {
-      console.error("Failed to read RAR file:", err);
+      console.error("Failed to read RAR file:", filepath, err);
+      return null;
     }
     return instance;
   }
@@ -241,19 +249,14 @@ class PdfArchiveReader implements ArchiveReader {
   private filepath: string;
   private pageCount: number = 0;
 
-  constructor(filepath: string) {
+  private constructor(filepath: string, pageCount: number) {
     this.filepath = filepath;
-    // Get page count synchronously via pdf-lib
-    try {
-      // We'll do lazy page count via sync read of the PDF structure
-      const data = fs.readFileSync(filepath);
-      // Quick page count: count /Type /Page occurrences (rough estimate)
-      const content = data.toString("binary");
-      const matches = content.match(/\/Type\s*\/Page[^s]/g);
-      this.pageCount = matches ? matches.length : 0;
-    } catch (err) {
-      console.error("Failed to read PDF:", err);
-    }
+    this.pageCount = pageCount;
+  }
+
+  static async create(filepath: string): Promise<PdfArchiveReader> {
+    const count = await getPdfPageCount(filepath);
+    return new PdfArchiveReader(filepath, count);
   }
 
   listEntries(): ArchiveEntry[] {
@@ -314,7 +317,7 @@ export async function createArchiveReader(filepath: string): Promise<ArchiveRead
     case "7z":
       return new SevenZipArchiveReader(filepath);
     case "pdf":
-      return new PdfArchiveReader(filepath);
+      return await PdfArchiveReader.create(filepath);
     default:
       return null;
   }
@@ -338,58 +341,52 @@ export function getImageEntriesFromArchive(reader: ArchiveReader): string[] {
 }
 
 /**
- * Render a PDF page to PNG
- * Since Node.js doesn't have canvas natively, we generate a placeholder 
- * with page info. For full PDF rendering, users should convert PDFs to images first.
+ * Render a PDF page to PNG using pdfjs-dist with @napi-rs/canvas
  */
 export async function renderPdfPage(
   filepath: string,
   pageIndex: number
 ): Promise<{ buffer: Buffer; mimeType: string } | null> {
   try {
-    const { PDFDocument } = await import("pdf-lib");
-    const data = fs.readFileSync(filepath);
-    const pdfDoc = await PDFDocument.load(data);
-    const pageCount = pdfDoc.getPageCount();
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(fs.readFileSync(filepath));
 
-    if (pageIndex < 0 || pageIndex >= pageCount) return null;
+    const loadingTask = pdfjsLib.getDocument({
+      data,
+      cMapUrl: path.join(process.cwd(), "node_modules", "pdfjs-dist", "cmaps") + "/",
+      cMapPacked: true,
+      standardFontDataUrl: path.join(process.cwd(), "node_modules", "pdfjs-dist", "standard_fonts") + "/",
+      useSystemFonts: true,
+    });
+    const pdfDoc = await loadingTask.promise;
 
-    const page = pdfDoc.getPage(pageIndex);
-    const { width, height } = page.getSize();
+    if (pageIndex < 0 || pageIndex >= pdfDoc.numPages) {
+      pdfDoc.destroy();
+      return null;
+    }
 
-    // Generate a page placeholder using sharp with the correct dimensions
-    // Scale to reasonable size
-    const scale = Math.min(1600 / width, 2400 / height, 2.0);
-    const renderWidth = Math.round(width * scale);
-    const renderHeight = Math.round(height * scale);
+    const page = await pdfDoc.getPage(pageIndex + 1); // pdfjs uses 1-based index
+    const viewport = page.getViewport({ scale: 2.0 });
 
-    // Create a placeholder image with page number text rendered via SVG overlay
-    const svgText = `
-      <svg width="${renderWidth}" height="${renderHeight}">
-        <rect width="100%" height="100%" fill="#f8f8f8"/>
-        <text x="50%" y="45%" font-size="48" fill="#888" text-anchor="middle" font-family="sans-serif">PDF</text>
-        <text x="50%" y="55%" font-size="32" fill="#aaa" text-anchor="middle" font-family="sans-serif">Page ${pageIndex + 1} / ${pageCount}</text>
-        <rect x="2" y="2" width="${renderWidth - 4}" height="${renderHeight - 4}" fill="none" stroke="#ddd" stroke-width="2"/>
-      </svg>
-    `;
+    // Use @napi-rs/canvas for Node.js rendering
+    const { createCanvas } = await import("@napi-rs/canvas");
+    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+    const context = canvas.getContext("2d");
 
-    const placeholder = await sharp({
-      create: {
-        width: renderWidth,
-        height: renderHeight,
-        channels: 3,
-        background: { r: 248, g: 248, b: 248 },
-      },
-    })
-      .composite([{
-        input: Buffer.from(svgText),
-        top: 0,
-        left: 0,
-      }])
-      .png()
-      .toBuffer();
+    // Fill white background
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
 
-    return { buffer: placeholder, mimeType: "image/png" };
+    await page.render({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      canvasContext: context as any,
+      viewport,
+    }).promise;
+
+    const pngBuffer = canvas.toBuffer("image/png");
+    pdfDoc.destroy();
+
+    return { buffer: Buffer.from(pngBuffer), mimeType: "image/png" };
   } catch (err) {
     console.error(`Failed to render PDF page ${pageIndex}:`, err);
 
@@ -418,10 +415,13 @@ export async function renderPdfPage(
  */
 export async function getPdfPageCount(filepath: string): Promise<number> {
   try {
-    const { PDFDocument } = await import("pdf-lib");
-    const data = fs.readFileSync(filepath);
-    const pdfDoc = await PDFDocument.load(data);
-    return pdfDoc.getPageCount();
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(fs.readFileSync(filepath));
+    const loadingTask = pdfjsLib.getDocument({ data });
+    const pdfDoc = await loadingTask.promise;
+    const count = pdfDoc.numPages;
+    pdfDoc.destroy();
+    return count;
   } catch (err) {
     console.error("Failed to get PDF page count:", err);
     return 0;
