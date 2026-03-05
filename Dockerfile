@@ -31,8 +31,9 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# 安装运行时依赖：7zip（用于解压 .7z/.cb7）和 unrar
-RUN apk add --no-cache p7zip unrar tini
+# 安装运行时依赖：7zip（用于解压 .7z/.cb7）
+# unrar 不需要系统包，项目使用 node-unrar-js (WASM 实现)
+RUN apk add --no-cache p7zip tini
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
