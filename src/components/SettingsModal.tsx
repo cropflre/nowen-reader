@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, Cloud, Puzzle, Smartphone, Info, Brain, Globe, BookOpen } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
@@ -42,6 +42,34 @@ type SettingsTab = "site" | "sync" | "plugins" | "ai" | "ehentai" | "pwa" | "abo
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const t = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>("site");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    return () => el.removeEventListener("scroll", checkScroll);
+  }, [open, checkScroll]);
+
+  // auto-scroll active tab into view
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const activeBtn = el.querySelector<HTMLElement>("[data-active='true']");
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [activeTab]);
 
   if (!open) return null;
 
@@ -76,11 +104,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         {/* Mobile: horizontal scrollable tabs at top */}
-        <div className="sm:hidden border-b border-border/50 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-          <div className="flex p-1.5 gap-1 min-w-max">
+        <div className="sm:hidden border-b border-border/50 relative">
+          {/* Left fade hint */}
+          {canScrollLeft && (
+            <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 z-10 bg-linear-to-r from-card to-transparent" />
+          )}
+          {/* Right fade hint */}
+          {canScrollRight && (
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 z-10 bg-linear-to-l from-card to-transparent" />
+          )}
+          <div
+            ref={tabsRef}
+            className="flex p-1.5 gap-1 overflow-x-auto"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+          >
             {tabs.map((tab) => (
               <button
                 key={tab.id}
+                data-active={activeTab === tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors ${
                   activeTab === tab.id
@@ -95,7 +136,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
         </div>
 
-        <div className="flex h-[calc(100vh-110px)] sm:h-[calc(85vh-72px)] sm:max-h-[500px]">
+        <div className="flex h-[calc(100vh-120px)] sm:h-[calc(85vh-72px)] sm:max-h-[500px]">
           {/* Desktop Sidebar — hidden on mobile */}
           <div className="hidden sm:block w-40 flex-shrink-0 border-r border-border/50 p-2">
             {tabs.map((tab) => (

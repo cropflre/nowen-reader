@@ -1,14 +1,14 @@
 import { prisma } from "./db";
 import { THUMBNAILS_DIR } from "./config";
 import path from "path";
-import fs from "fs";
+import { promises as fsPromises } from "fs";
 
-/** 获取带缓存破坏参数的封面 URL */
-function getCoverUrl(comicId: string): string {
+/** 获取带缓存破坏参数的封面 URL（异步） */
+async function getCoverUrl(comicId: string): Promise<string> {
   const base = `/api/comics/${comicId}/thumbnail`;
   try {
     const cachePath = path.join(THUMBNAILS_DIR, `${comicId}.webp`);
-    const stat = fs.statSync(cachePath);
+    const stat = await fsPromises.stat(cachePath);
     return `${base}?v=${stat.mtimeMs.toString(36)}`;
   } catch {
     return base;
@@ -72,7 +72,7 @@ export async function getRecommendations(options?: {
       title: comic.title,
       score,
       reasons,
-      coverUrl: getCoverUrl(comic.id),
+      coverUrl: await getCoverUrl(comic.id),
       author: comic.author,
       genre: comic.genre,
       tags: comic.tags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),

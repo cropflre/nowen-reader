@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getComicThumbnail, findComicById } from "@/lib/comic-parser";
 import { THUMBNAILS_DIR } from "@/lib/config";
 import path from "path";
-import fs from "fs";
+import { promises as fsPromises } from "fs";
 
 export async function GET(
   request: Request,
@@ -27,7 +27,7 @@ export async function GET(
   const cachePath = path.join(THUMBNAILS_DIR, `${id}.webp`);
   let etag = `"${thumbnail.length}"`;
   try {
-    const stat = fs.statSync(cachePath);
+    const stat = await fsPromises.stat(cachePath);
     etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`;
   } catch {
     // 缓存文件不存在时用长度作为 ETag

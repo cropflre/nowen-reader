@@ -1,4 +1,5 @@
 import fs from "fs";
+import { promises as fsPromises } from "fs";
 import path from "path";
 import {
   getComicsDir,
@@ -100,21 +101,23 @@ export async function scanComicsDirectory(): Promise<ComicArchiveInfo[]> {
   const comics: ComicArchiveInfo[] = [];
 
   for (const comicsDir of allDirs) {
-    if (!fs.existsSync(comicsDir)) {
+    try {
+      await fsPromises.access(comicsDir);
+    } catch {
       if (comicsDir === getComicsDir()) {
-        fs.mkdirSync(comicsDir, { recursive: true });
+        await fsPromises.mkdir(comicsDir, { recursive: true });
       }
       continue;
     }
 
-    const files = fs.readdirSync(comicsDir);
+    const files = await fsPromises.readdir(comicsDir);
 
     for (const file of files) {
       const ext = path.extname(file).toLowerCase();
       if (!SUPPORTED_EXTENSIONS.includes(ext)) continue;
 
       const filepath = path.join(comicsDir, file);
-      const stat = fs.statSync(filepath);
+      const stat = await fsPromises.stat(filepath);
 
       try {
         let pageCount = 0;
@@ -167,21 +170,29 @@ export async function findComicById(comicId: string): Promise<ComicArchiveInfo |
   const cached = comicByIdCache.get(comicId);
   if (cached) {
     // Verify file still exists
-    if (fs.existsSync(cached.filepath)) return cached;
-    comicByIdCache.delete(comicId);
+    try {
+      await fsPromises.access(cached.filepath);
+      return cached;
+    } catch {
+      comicByIdCache.delete(comicId);
+    }
   }
 
   // Lightweight fallback: scan directories without opening archives
   const allDirs = getAllComicsDirs();
   for (const dir of allDirs) {
-    if (!fs.existsSync(dir)) continue;
-    const files = fs.readdirSync(dir);
+    try {
+      await fsPromises.access(dir);
+    } catch {
+      continue;
+    }
+    const files = await fsPromises.readdir(dir);
     for (const file of files) {
       const ext = path.extname(file).toLowerCase();
       if (!SUPPORTED_EXTENSIONS.includes(ext)) continue;
       if (filenameToId(file) === comicId) {
         const filepath = path.join(dir, file);
-        const stat = fs.statSync(filepath);
+        const stat = await fsPromises.stat(filepath);
         const info: ComicArchiveInfo = {
           id: comicId,
           filename: file,
@@ -258,17 +269,19 @@ export async function getPageImage(
 
   // Check disk cache first
   const cacheDir = path.join(PAGE_CACHE_DIR, comicId);
-  if (fs.existsSync(cacheDir)) {
-    const files = fs.readdirSync(cacheDir);
+  try {
+    const files = await fsPromises.readdir(cacheDir);
     const prefix = `${pageIndex}.`;
     const cached = files.find((f) => f.startsWith(prefix));
     if (cached) {
       const ext = path.extname(cached).toLowerCase();
       return {
-        buffer: fs.readFileSync(path.join(cacheDir, cached)),
+        buffer: await fsPromises.readFile(path.join(cacheDir, cached)),
         mimeType: MIME_MAP[ext] || "image/jpeg",
       };
     }
+  } catch {
+    // Cache dir doesn't exist yet, proceed to extract
   }
 
   // Extract from archive
@@ -287,15 +300,9 @@ export async function getPageImage(
     const mimeType = MIME_MAP[ext] || "image/jpeg";
 
     // Write to disk cache (fire-and-forget, don't block response)
-    try {
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-      }
-      const cachePath = getPageCachePath(comicId, pageIndex, ext);
-      fs.writeFileSync(cachePath, buffer);
-    } catch {
-      // Cache write failure is non-critical
-    }
+    fsPromises.mkdir(cacheDir, { recursive: true })
+      .then(() => fsPromises.writeFile(getPageCachePath(comicId, pageIndex, ext), buffer))
+      .catch(() => { /* Cache write failure is non-critical */ });
 
     return { buffer, mimeType };
   } finally {
@@ -319,18 +326,20 @@ export async function getPageImageAsync(
   if (type === "pdf") {
     // Check disk cache
     const cachePath = getPageCachePath(comicId, pageIndex, ".png");
-    if (fs.existsSync(cachePath)) {
-      return { buffer: fs.readFileSync(cachePath), mimeType: "image/png" };
+    try {
+      const cached = await fsPromises.readFile(cachePath);
+      return { buffer: cached, mimeType: "image/png" };
+    } catch {
+      // Not cached, render from PDF
     }
 
     const result = await renderPdfPage(info.filepath, pageIndex);
     if (result) {
-      // Cache to disk
-      try {
-        const cacheDir = path.join(PAGE_CACHE_DIR, comicId);
-        if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-        fs.writeFileSync(cachePath, result.buffer);
-      } catch { /* non-critical */ }
+      // Cache to disk (fire-and-forget)
+      const cacheDir = path.join(PAGE_CACHE_DIR, comicId);
+      fsPromises.mkdir(cacheDir, { recursive: true })
+        .then(() => fsPromises.writeFile(cachePath, result.buffer))
+        .catch(() => { /* non-critical */ });
     }
     return result;
   }
