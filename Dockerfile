@@ -15,7 +15,8 @@ RUN npm ci
 RUN npm install \
     lightningcss-linux-x64-musl \
     @tailwindcss/oxide-linux-x64-musl \
-    @img/sharp-linuxmusl-x64
+    @img/sharp-linuxmusl-x64 \
+    @libsql/linux-x64-musl
 
 # --- Stage 2: Build the app ---
 FROM node:20-alpine AS builder
