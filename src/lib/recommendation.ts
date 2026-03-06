@@ -348,7 +348,7 @@ function calculateScore(comic: any, profile: UserProfile): { score: number; reas
 export async function getSimilarComics(comicId: string, limit = 5): Promise<ScoredComic[]> {
   const target = await prisma.comic.findUnique({
     where: { id: comicId },
-    include: { tags: { include: { tag: true } } },
+    include: { tags: { include: { tag: true } }, categories: { include: { category: true } } },
   });
 
   if (!target) return [];
@@ -357,6 +357,7 @@ export async function getSimilarComics(comicId: string, limit = 5): Promise<Scor
     where: { id: { not: comicId } },
     include: {
       tags: { include: { tag: true } },
+      categories: { include: { category: true } },
     },
   });
 
@@ -413,8 +414,8 @@ export async function getSimilarComics(comicId: string, limit = 5): Promise<Scor
 
     // Same category
     if (comic.categories?.length && target.categories?.length) {
-      const targetCats = new Set(target.categories.map((c: { slug: string }) => c.slug));
-      const commonCats = comic.categories.filter((c: { slug: string }) => targetCats.has(c.slug));
+      const targetCats = new Set(target.categories.map((c) => c.category.slug));
+      const commonCats = comic.categories.filter((c) => targetCats.has(c.category.slug));
       if (commonCats.length > 0) {
         score += 8 * commonCats.length;
         reasons.push("same_category");
