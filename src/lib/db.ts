@@ -13,9 +13,9 @@ function getDbUrl(): string {
   return `file:${path.join(process.cwd(), "data.db")}`;
 }
 
-// 初始化底层 LibSQL 客户端（模块级单例）
-const libsqlClient = createClient({ url: getDbUrl() });
-const adapter = new PrismaLibSql(libsqlClient);
+// PrismaLibSql@7 构造函数接受 Config（而非 Client 实例），内部自行创建连接
+const dbConfig = { url: getDbUrl() };
+const adapter = new PrismaLibSql(dbConfig);
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -28,13 +28,15 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-// 直接通过原生 libsql 客户端注入性能 PRAGMA（libsql 本地模式默认已开启 WAL）
+// 通过独立的 libsql 原生客户端注入性能 PRAGMA（libsql 本地模式默认已开启 WAL）
 async function optimizeLibsql() {
   try {
-    await libsqlClient.execute("PRAGMA synchronous = NORMAL;");
-    await libsqlClient.execute("PRAGMA mmap_size = 268435456;");
-    await libsqlClient.execute("PRAGMA cache_size = -64000;");
-    await libsqlClient.execute("PRAGMA temp_store = MEMORY;");
+    const client = createClient(dbConfig);
+    await client.execute("PRAGMA synchronous = NORMAL;");
+    await client.execute("PRAGMA mmap_size = 268435456;");
+    await client.execute("PRAGMA cache_size = -64000;");
+    await client.execute("PRAGMA temp_store = MEMORY;");
+    client.close();
     console.log("[DB] LibSQL 内存加速引擎已启动 🚀");
   } catch (err) {
     console.error("[DB] LibSQL 性能参数注入失败:", err);
