@@ -1111,7 +1111,7 @@ export async function applyMetadata(
         const arrayBuf = await coverRes.arrayBuffer();
         const imgBuffer = Buffer.from(arrayBuf);
         const thumbnail = await sharp(imgBuffer)
-          .resize(getThumbnailWidth(), getThumbnailHeight(), {
+          .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
             fit: "cover",
             position: "top",
           })
