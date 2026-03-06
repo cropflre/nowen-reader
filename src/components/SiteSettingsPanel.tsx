@@ -422,7 +422,7 @@ export function SiteSettingsPanel() {
 
         {/* Stats */}
         {thumbStats && (
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
             <span className="text-muted">
               {siteT?.thumbTotal || "Total"}: <span className="text-foreground font-medium">{thumbStats.total}</span>
             </span>
@@ -549,12 +549,12 @@ export function SiteSettingsPanel() {
                 style={{ width: `${batchProgress.percent || 0}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-muted truncate max-w-[70%]">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-muted truncate min-w-0 flex-1">
                 {batchProgress.title || batchProgress.comicId}
               </span>
-              <span className="text-foreground font-medium shrink-0">
-                {(batchProgress.index ?? 0) + 1} / {batchProgress.total} ({batchProgress.percent}%)
+              <span className="text-foreground font-medium shrink-0 text-right">
+                {(batchProgress.index ?? 0) + 1}/{batchProgress.total} ({batchProgress.percent}%)
               </span>
             </div>
             <button
@@ -574,7 +574,7 @@ export function SiteSettingsPanel() {
               <CheckCircle className="h-4 w-4" />
               {siteT?.batchComplete || "Batch metadata fetch complete"}
             </div>
-            <div className="flex items-center gap-4 text-[11px]">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
               <span className="text-green-400">
                 {siteT?.batchSuccess || "Success"}: {batchDone.success}
               </span>
@@ -628,12 +628,12 @@ export function SiteSettingsPanel() {
                 style={{ width: `${translateProgress.percent || 0}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-muted truncate max-w-[70%]">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-muted truncate min-w-0 flex-1">
                 {translateProgress.title}
               </span>
-              <span className="text-foreground font-medium shrink-0">
-                {(translateProgress.index ?? 0) + 1} / {translateProgress.total} ({translateProgress.percent}%)
+              <span className="text-foreground font-medium shrink-0 text-right">
+                {(translateProgress.index ?? 0) + 1}/{translateProgress.total} ({translateProgress.percent}%)
               </span>
             </div>
             <button
@@ -653,7 +653,7 @@ export function SiteSettingsPanel() {
               <CheckCircle className="h-4 w-4" />
               {siteT?.batchTranslateComplete || "Batch translation complete"}
             </div>
-            <div className="flex items-center gap-4 text-[11px]">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
               <span className="text-green-400">
                 {siteT?.batchSuccess || "Success"}: {translateDone.success}
               </span>

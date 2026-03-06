@@ -274,7 +274,7 @@ export function AISettingsPanel() {
             />
 
             {config.enableAutoTag && (
-              <div className="ml-6 flex items-center gap-2">
+              <div className="ml-3 sm:ml-6 flex items-center gap-2">
                 <span className="text-xs text-muted">
                   {aiT.confidence || "Confidence"}:
                 </span>
@@ -377,21 +377,21 @@ export function AISettingsPanel() {
             </div>
 
             {/* API URL */}
-            <div className="flex items-center gap-2">
-              <span className="w-20 shrink-0 text-xs text-muted">API URL</span>
+            <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+              <span className="block text-xs text-muted sm:w-20 sm:shrink-0">API URL</span>
               <input
                 type="text"
                 value={config.cloudApiUrl}
                 onChange={(e) => setConfig({ ...config, cloudApiUrl: e.target.value })}
                 placeholder="https://api.example.com/v1"
-                className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted/50"
+                className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted/50"
               />
             </div>
 
             {/* API Key */}
-            <div className="flex items-center gap-2">
-              <span className="w-20 shrink-0 text-xs text-muted">API Key</span>
-              <div className="relative flex-1">
+            <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+              <span className="block text-xs text-muted sm:w-20 sm:shrink-0">API Key</span>
+              <div className="relative w-full sm:flex-1">
                 <input
                   type={showApiKey ? "text" : "password"}
                   value={config.cloudApiKey}

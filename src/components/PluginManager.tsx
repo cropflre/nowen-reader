@@ -74,7 +74,7 @@ export function PluginManagerPanel() {
             className="rounded-xl border border-border/40 bg-card overflow-hidden"
           >
             {/* Plugin Header */}
-            <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center justify-between px-3 sm:px-4 py-3">
               <div
                 className="flex-1 cursor-pointer"
                 onClick={() => setExpandedId(expandedId === plugin.id ? null : plugin.id)}
@@ -114,7 +114,7 @@ export function PluginManagerPanel() {
 
             {/* Expanded Details */}
             {expandedId === plugin.id && (
-              <div className="border-t border-border/30 px-4 py-3 space-y-2">
+              <div className="border-t border-border/30 px-3 sm:px-4 py-3 space-y-2">
                 <div className="flex items-center gap-1 text-xs text-muted">
                   <Info className="h-3 w-3" />
                   {t.plugins?.author || "Author"}: {plugin.author}

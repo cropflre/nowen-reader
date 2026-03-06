@@ -146,19 +146,19 @@ export function EHentaiSettingsPanel() {
 
       {/* Current config display */}
       {configured && (
-        <div className="rounded-xl bg-background p-4 space-y-2">
+        <div className="rounded-xl bg-background p-3 sm:p-4 space-y-2">
           <p className="text-xs text-muted mb-2">{eh.currentConfig || "当前配置"}</p>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">ipb_member_id</span>
-            <span className="font-mono text-foreground">{maskedInfo.memberId || "—"}</span>
+          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <span className="text-muted shrink-0">ipb_member_id</span>
+            <span className="font-mono text-foreground truncate min-w-0">{maskedInfo.memberId || "—"}</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">ipb_pass_hash</span>
-            <span className="font-mono text-foreground">{maskedInfo.passHash || "—"}</span>
+          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <span className="text-muted shrink-0">ipb_pass_hash</span>
+            <span className="font-mono text-foreground truncate min-w-0">{maskedInfo.passHash || "—"}</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">igneous</span>
-            <span className="font-mono text-foreground">{maskedInfo.igneous || "—"}</span>
+          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <span className="text-muted shrink-0">igneous</span>
+            <span className="font-mono text-foreground truncate min-w-0">{maskedInfo.igneous || "—"}</span>
           </div>
         </div>
       )}
@@ -247,11 +247,11 @@ export function EHentaiSettingsPanel() {
       )}
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={handleSave}
           disabled={saving || (!memberId && !passHash && !igneous)}
-          className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-white transition-all hover:bg-accent-hover disabled:opacity-40"
+          className="flex h-9 flex-1 min-w-25 items-center justify-center gap-2 rounded-lg bg-accent text-xs sm:text-sm font-medium text-white transition-all hover:bg-accent-hover disabled:opacity-40"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {eh.save || "保存"}
@@ -260,7 +260,7 @@ export function EHentaiSettingsPanel() {
         <button
           onClick={handleTest}
           disabled={testing}
-          className="flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-background px-4 text-sm text-muted transition-colors hover:text-foreground disabled:opacity-40"
+          className="flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-background px-3 sm:px-4 text-xs sm:text-sm text-muted transition-colors hover:text-foreground disabled:opacity-40"
         >
           {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
           {eh.test || "测试"}
@@ -270,7 +270,7 @@ export function EHentaiSettingsPanel() {
           <button
             onClick={handleClear}
             disabled={saving}
-            className="flex h-9 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 text-sm text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-40"
+            className="flex h-9 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 sm:px-4 text-xs sm:text-sm text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-40"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {eh.clear || "清除"}

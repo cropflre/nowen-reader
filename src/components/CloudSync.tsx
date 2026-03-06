@@ -239,7 +239,7 @@ export function CloudSyncPanel() {
 
       {/* Settings Panel */}
       {showSettings && (
-        <div className="space-y-3 rounded-xl bg-card p-4">
+        <div className="space-y-3 rounded-xl bg-card p-3 sm:p-4">
           <div>
             <label className="mb-1 block text-xs text-muted">
               {t.sync?.webdavUrl || "WebDAV URL"}
@@ -248,8 +248,8 @@ export function CloudSyncPanel() {
               type="url"
               value={config.webdavUrl}
               onChange={(e) => updateConfig({ webdavUrl: e.target.value })}
-              placeholder="https://dav.example.com/remote.php/dav/files/user"
-              className="w-full rounded-lg bg-background px-3 py-2 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
+              placeholder="https://dav.example.com/..."
+              className="h-9 w-full rounded-lg bg-background px-3 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
             />
           </div>
           <div>
@@ -260,7 +260,7 @@ export function CloudSyncPanel() {
               type="text"
               value={config.webdavUsername}
               onChange={(e) => updateConfig({ webdavUsername: e.target.value })}
-              className="w-full rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-accent/50"
+              className="h-9 w-full rounded-lg bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-accent/50"
             />
           </div>
           <div>
@@ -271,13 +271,13 @@ export function CloudSyncPanel() {
               type="password"
               value={config.webdavPassword}
               onChange={(e) => updateConfig({ webdavPassword: e.target.value })}
-              className="w-full rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-accent/50"
+              className="h-9 w-full rounded-lg bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-accent/50"
             />
           </div>
           <button
             onClick={handleTestConnection}
             disabled={!config.webdavUrl || testing}
-            className="w-full rounded-lg border border-accent/30 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
+            className="h-9 w-full rounded-lg border border-accent/30 px-3 text-xs font-medium text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
           >
             {testing ? (t.sync?.testing || "Testing...") : (t.sync?.testConnection || "Test Connection")}
           </button>
