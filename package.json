@@ -23,6 +23,7 @@
     "lucide-react": "^0.475.0",
     "next": "16.1.6",
     "node-7z": "^3.0.0",
+    "node-stream-zip": "^1.15.0",
     "node-unrar-js": "^2.0.2",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.5.207",

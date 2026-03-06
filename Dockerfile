@@ -74,6 +74,7 @@ COPY --from=builder /app/node_modules/@img ./node_modules/@img
 
 # 复制其他运行时依赖（standalone 可能未自动包含的）
 COPY --from=builder /app/node_modules/adm-zip ./node_modules/adm-zip
+COPY --from=builder /app/node_modules/node-stream-zip ./node_modules/node-stream-zip
 COPY --from=builder /app/node_modules/xml2js ./node_modules/xml2js
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/node_modules/pdf-lib ./node_modules/pdf-lib

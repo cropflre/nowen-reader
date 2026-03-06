@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import AdmZip from "adm-zip";
+import StreamZip from "node-stream-zip";
 import sharp from "sharp";
 import { IMAGE_EXTENSIONS, getThumbnailWidth, getThumbnailHeight, THUMBNAILS_DIR } from "./config";
 
@@ -34,31 +34,56 @@ export interface ArchiveReader {
 }
 
 // ============================================================
-// ZIP/CBZ Reader (using AdmZip)
+// ZIP/CBZ Reader (using node-stream-zip — supports ZIP64 / >2GB)
 // ============================================================
 
 class ZipArchiveReader implements ArchiveReader {
-  private zip: AdmZip;
+  private zip: StreamZip;
+  private entriesCache: ArchiveEntry[] = [];
 
-  constructor(filepath: string) {
-    this.zip = new AdmZip(filepath);
+  private constructor(zip: StreamZip, entries: ArchiveEntry[]) {
+    this.zip = zip;
+    this.entriesCache = entries;
+  }
+
+  /**
+   * Factory method: opens the zip asynchronously and returns null on failure
+   * (invalid format, >2GB with old lib, corrupted file, etc.)
+   */
+  static async create(filepath: string): Promise<ZipArchiveReader | null> {
+    try {
+      const zip = new StreamZip({ file: filepath, storeEntries: true });
+      // Wait for the zip to be ready
+      await new Promise<void>((resolve, reject) => {
+        zip.on("ready", resolve);
+        zip.on("error", reject);
+      });
+      const rawEntries = zip.entries();
+      const entries: ArchiveEntry[] = Object.values(rawEntries).map((e) => ({
+        name: e.name,
+        isDirectory: !e.isFile,
+      }));
+      return new ZipArchiveReader(zip, entries);
+    } catch (err) {
+      console.warn(`Skipping invalid/unsupported ZIP file: ${filepath}`, String(err));
+      return null;
+    }
   }
 
   listEntries(): ArchiveEntry[] {
-    return this.zip.getEntries().map((e) => ({
-      name: e.entryName,
-      isDirectory: e.isDirectory,
-    }));
+    return this.entriesCache;
   }
 
   extractEntry(entryName: string): Buffer | null {
-    const entry = this.zip.getEntries().find((e) => e.entryName === entryName);
-    if (!entry) return null;
-    return entry.getData();
+    try {
+      return this.zip.entryDataSync(entryName);
+    } catch {
+      return null;
+    }
   }
 
   close() {
-    // AdmZip doesn't need explicit close
+    try { this.zip.close(); } catch { /* ignore */ }
   }
 }
 
@@ -311,7 +336,7 @@ export async function createArchiveReader(filepath: string): Promise<ArchiveRead
 
   switch (type) {
     case "zip":
-      return new ZipArchiveReader(filepath);
+      return await ZipArchiveReader.create(filepath);
     case "rar":
       return await RarArchiveReader.create(filepath);
     case "7z":

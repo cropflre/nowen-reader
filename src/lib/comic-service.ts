@@ -1,53 +1,74 @@
 import { prisma } from "./db";
-import { scanComicsDirectory, ComicArchiveInfo, invalidateComicCaches, filenameToId, filenameToTitle } from "./comic-parser";
-import { getAllComicsDirs } from "./config";
+import { invalidateComicCaches, filenameToId, filenameToTitle } from "./comic-parser";
+import { getAllComicsDirs, SUPPORTED_EXTENSIONS } from "./config";
+import {
+  createArchiveReader,
+  getImageEntriesFromArchive,
+  getPdfPageCount,
+} from "./archive-parser";
 import path from "path";
-import fs from "fs";
+import { promises as fsp } from "fs";
 
 /**
  * 封面 URL: 纯路径，不带版本号参数。
  * 缩略图 API 已支持 ETag + 304，浏览器自动处理缓存。
- * 这样 getAllComics 不再需要 N 次 fs.statSync。
  */
 function getCoverUrl(comicId: string): string {
   return `/api/comics/${comicId}/thumbnail`;
 }
 
-/**
- * Sync state: prevents overlapping syncs and tracks status.
- */
+// ============================================================
+// Utility: chunk array for batched operations
+// ============================================================
+
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunked: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunked.push(array.slice(i, i + size));
+  }
+  return chunked;
+}
+
+/** Yield event loop control — prevents blocking the main thread */
+function yieldEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+// ============================================================
+// Sync state
+// ============================================================
+
 let syncInProgress = false;
 let lastSyncTime = 0;
-const SYNC_COOLDOWN = 30_000; // minimum 30s between full syncs
+const SYNC_COOLDOWN = 30_000; // minimum 30s between quick syncs
 
 /** Track directory mtimes to detect changes quickly */
 let lastDirMtimes = new Map<string, number>();
 
-function directoriesChanged(): boolean {
+/** Async directory change detection — no fs.*Sync */
+async function directoriesChanged(): Promise<boolean> {
   const allDirs = getAllComicsDirs();
   for (const dir of allDirs) {
     try {
-      if (!fs.existsSync(dir)) continue;
-      const stat = fs.statSync(dir);
+      const stat = await fsp.stat(dir);
       const mtime = stat.mtimeMs;
       const lastMtime = lastDirMtimes.get(dir);
       if (lastMtime === undefined || lastMtime !== mtime) {
         return true;
       }
     } catch {
-      // skip
+      // directory doesn't exist or inaccessible — skip
     }
   }
   return false;
 }
 
-function updateDirMtimes() {
+async function updateDirMtimes() {
   const allDirs = getAllComicsDirs();
   const newMap = new Map<string, number>();
   for (const dir of allDirs) {
     try {
-      if (!fs.existsSync(dir)) continue;
-      const stat = fs.statSync(dir);
+      const stat = await fsp.stat(dir);
       newMap.set(dir, stat.mtimeMs);
     } catch {
       // skip
@@ -56,121 +77,187 @@ function updateDirMtimes() {
   lastDirMtimes = newMap;
 }
 
-/**
- * Quick sync: only check filenames on disk (no archive opening).
- * Adds new entries (with pageCount=0) and removes stale entries.
- * Very fast even with thousands of files.
- */
+// ============================================================
+// Quick sync: async + batched, no archive opening
+// ============================================================
+
+/** Concurrency limit for fs.stat calls to prevent EMFILE */
+const STAT_BATCH_SIZE = 100;
+/** Batch size for Prisma createMany / deleteMany */
+const DB_BATCH_SIZE = 500;
+
 async function quickSync() {
   const allDirs = getAllComicsDirs();
-  const SUPPORTED = [".zip", ".cbz", ".cbr", ".rar", ".7z", ".cb7", ".pdf"];
 
   const filesOnDisk: { id: string; filename: string; title: string; fileSize: number }[] = [];
 
   for (const dir of allDirs) {
-    if (!fs.existsSync(dir)) continue;
-    const files = fs.readdirSync(dir);
-    for (const file of files) {
-      const ext = path.extname(file).toLowerCase();
-      if (!SUPPORTED.includes(ext)) continue;
-      try {
-        const stat = fs.statSync(path.join(dir, file));
-        filesOnDisk.push({
-          id: filenameToId(file),
-          filename: file,
-          title: filenameToTitle(file),
-          fileSize: stat.size,
-        });
-      } catch { /* skip unreadable files */ }
+    // Async readdir — no blocking
+    let files: string[];
+    try {
+      files = await fsp.readdir(dir);
+    } catch {
+      continue; // directory doesn't exist
+    }
+
+    const validFiles = files.filter((f) =>
+      SUPPORTED_EXTENSIONS.includes(path.extname(f).toLowerCase())
+    );
+
+    // Batched async stat — limit concurrency to prevent EMFILE
+    const fileChunks = chunkArray(validFiles, STAT_BATCH_SIZE);
+    for (const chunk of fileChunks) {
+      await Promise.all(
+        chunk.map(async (file) => {
+          try {
+            const stat = await fsp.stat(path.join(dir, file));
+            filesOnDisk.push({
+              id: filenameToId(file),
+              filename: file,
+              title: filenameToTitle(file),
+              fileSize: stat.size,
+            });
+          } catch { /* skip unreadable files */ }
+        })
+      );
+      // Yield event loop between batches
+      await yieldEventLoop();
     }
   }
 
   const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
-  const dbComics = await prisma.comic.findMany({ select: { id: true, filename: true } });
-  const dbMap = new Map(dbComics.map((c) => [c.id, c]));
+  // Only select id from DB — minimal memory
+  const dbComics = await prisma.comic.findMany({ select: { id: true } });
+  const dbSet = new Set(dbComics.map((c) => c.id));
 
-  // Add new comics (pageCount=0, will be filled by full sync later)
-  const toAdd = filesOnDisk.filter((f) => !dbMap.has(f.id));
+  // Add new comics in batches (pageCount=0, filled by fullSync later)
+  const toAdd = filesOnDisk.filter((f) => !dbSet.has(f.id));
   if (toAdd.length > 0) {
-    await prisma.comic.createMany({
-      data: toAdd.map((f) => ({
-        id: f.id,
-        filename: f.filename,
-        title: f.title,
-        pageCount: 0,
-        fileSize: f.fileSize,
-      })),
-    });
+    const addChunks = chunkArray(toAdd, DB_BATCH_SIZE);
+    for (const chunk of addChunks) {
+      await prisma.comic.createMany({
+        data: chunk.map((f) => ({
+          id: f.id,
+          filename: f.filename,
+          title: f.title,
+          pageCount: 0,
+          fileSize: f.fileSize,
+        })),
+        skipDuplicates: true,
+      });
+      await yieldEventLoop();
+    }
   }
 
-  // Remove stale entries
-  const toRemove = dbComics.filter((c) => !fileMap.has(c.id));
+  // Remove stale entries in batches
+  const fileIdSet = new Set(filesOnDisk.map((f) => f.id));
+  const toRemove = dbComics.filter((c) => !fileIdSet.has(c.id));
   if (toRemove.length > 0) {
-    await prisma.comic.deleteMany({
-      where: { id: { in: toRemove.map((c) => c.id) } },
-    });
+    const removeChunks = chunkArray(toRemove, DB_BATCH_SIZE);
+    for (const chunk of removeChunks) {
+      await prisma.comic.deleteMany({
+        where: { id: { in: chunk.map((c) => c.id) } },
+      });
+      await yieldEventLoop();
+    }
   }
 
+  if (toAdd.length > 0 || toRemove.length > 0) {
+    console.log(`[quick-sync] Added ${toAdd.length}, removed ${toRemove.length}`);
+  }
   return { added: toAdd.length, removed: toRemove.length };
 }
 
+// ============================================================
+// Full sync: incremental queue — processes N comics per tick
+// ============================================================
+
+/** Number of archives to process per fullSync tick */
+const FULL_SYNC_BATCH_SIZE = 50;
+/** Pause between each archive to yield CPU */
+const FULL_SYNC_YIELD_MS = 30;
+
 /**
- * Full sync: opens archives to get accurate page counts.
- * Runs in background, never blocks API responses.
+ * Full sync: incrementally processes comics with pageCount=0.
+ * Each invocation handles at most FULL_SYNC_BATCH_SIZE archives,
+ * yielding the event loop between each one.
+ * Called repeatedly by the background scheduler until all are done.
  */
 async function fullSync() {
-  invalidateComicCaches();
-  const filesOnDisk = await scanComicsDirectory();
-  const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
-
-  const dbComics = await prisma.comic.findMany({
-    select: { id: true, filename: true, pageCount: true, fileSize: true },
+  // Find comics that still need page count calculation
+  const comicsToProcess = await prisma.comic.findMany({
+    where: { pageCount: 0 },
+    select: { id: true, filename: true },
+    take: FULL_SYNC_BATCH_SIZE,
   });
-  const dbMap = new Map(dbComics.map((c) => [c.id, c]));
 
-  // Add any comics missed by quickSync
-  const toAdd: ComicArchiveInfo[] = [];
-  for (const file of filesOnDisk) {
-    if (!dbMap.has(file.id)) toAdd.push(file);
-  }
-  if (toAdd.length > 0) {
-    await prisma.comic.createMany({
-      data: toAdd.map((f) => ({
-        id: f.id,
-        filename: f.filename,
-        title: f.title,
-        pageCount: f.pageCount,
-        fileSize: f.fileSize,
-      })),
-    });
-  }
+  if (comicsToProcess.length === 0) return;
 
-  // Remove stale
-  const toRemove = dbComics.filter((c) => !fileMap.has(c.id));
-  if (toRemove.length > 0) {
-    await prisma.comic.deleteMany({
-      where: { id: { in: toRemove.map((c) => c.id) } },
-    });
-  }
+  const allDirs = getAllComicsDirs();
 
-  // Update only changed entries (avoid unnecessary writes)
-  for (const file of filesOnDisk) {
-    const existing = dbMap.get(file.id);
-    if (existing && (existing.pageCount !== file.pageCount || existing.fileSize !== file.fileSize)) {
-      await prisma.comic.update({
-        where: { id: file.id },
-        data: { pageCount: file.pageCount, fileSize: file.fileSize },
-      });
+  let processed = 0;
+  for (const dbComic of comicsToProcess) {
+    // Find the file on disk
+    let filepath: string | null = null;
+    for (const dir of allDirs) {
+      const candidate = path.join(dir, dbComic.filename);
+      try {
+        await fsp.access(candidate);
+        filepath = candidate;
+        break;
+      } catch { /* not in this dir */ }
     }
+
+    if (!filepath) continue;
+
+    try {
+      let pageCount = 0;
+      const ext = path.extname(dbComic.filename).toLowerCase();
+
+      if (ext === ".pdf") {
+        pageCount = await getPdfPageCount(filepath);
+      } else {
+        const reader = await createArchiveReader(filepath);
+        if (reader) {
+          try {
+            const images = getImageEntriesFromArchive(reader);
+            pageCount = images.length;
+          } finally {
+            reader.close();
+          }
+        }
+      }
+
+      if (pageCount > 0) {
+        await prisma.comic.update({
+          where: { id: dbComic.id },
+          data: { pageCount },
+        });
+        processed++;
+      }
+    } catch (err) {
+      console.error(`[full-sync] Failed to parse ${dbComic.filename}:`, err);
+      // Mark with pageCount=-1 to avoid retrying broken files forever
+      await prisma.comic.update({
+        where: { id: dbComic.id },
+        data: { pageCount: -1 },
+      }).catch(() => {});
+    }
+
+    // Yield CPU between each archive to keep API responsive
+    await new Promise((res) => setTimeout(res, FULL_SYNC_YIELD_MS));
+  }
+
+  if (processed > 0) {
+    invalidateComicCaches();
+    console.log(`[full-sync] Processed ${processed}/${comicsToProcess.length} archives`);
   }
 }
 
-/**
- * Sync the comics directory with the database.
- * - Quick sync (fast, no archive opening) runs inline first time
- * - Full sync (accurate page counts) runs in background
- * - Never blocks the API response
- */
+// ============================================================
+// Main sync orchestrator
+// ============================================================
+
 export async function syncComicsToDatabase() {
   const now = Date.now();
 
@@ -181,8 +268,8 @@ export async function syncComicsToDatabase() {
   if (syncInProgress) return;
 
   // Quick check: if directories haven't changed, skip sync entirely
-  if (lastSyncTime > 0 && !directoriesChanged()) {
-    lastSyncTime = now; // Reset cooldown
+  if (lastSyncTime > 0 && !(await directoriesChanged())) {
+    lastSyncTime = now;
     return;
   }
 
@@ -190,42 +277,47 @@ export async function syncComicsToDatabase() {
   lastSyncTime = now;
 
   try {
-    // Quick sync first (fast, just filenames)
     await quickSync();
-    updateDirMtimes();
+    await updateDirMtimes();
   } catch (err) {
     console.error("[sync] Quick sync failed:", err);
+  } finally {
+    syncInProgress = false;
   }
-
-  // Fire off full sync in background (don't await)
-  fullSync()
-    .catch((err) => console.error("[sync] Full sync failed:", err))
-    .finally(() => { syncInProgress = false; });
 }
 
-/**
- * Background sync scheduler.
- * Runs sync on startup + periodically (every 60s).
- * API routes should NOT call syncComicsToDatabase() directly.
- */
+// ============================================================
+// Background sync scheduler
+// ============================================================
+
 let bgSyncStarted = false;
-const BG_SYNC_INTERVAL = 60_000; // 60 seconds
+/** Quick sync interval — checks for new/removed files */
+const BG_QUICK_SYNC_INTERVAL = 60_000; // 60 seconds
+/** Full sync interval — processes archives for page counts */
+const BG_FULL_SYNC_INTERVAL = 10_000; // 10 seconds (processes up to 50 per tick)
 
 export function ensureBackgroundSync() {
   if (bgSyncStarted) return;
   bgSyncStarted = true;
 
-  // Initial sync on first import
+  // Initial quick sync on startup
   syncComicsToDatabase().catch((err) =>
     console.error("[bg-sync] Initial sync failed:", err)
   );
 
-  // Periodic sync
+  // Periodic quick sync (detect file changes)
   setInterval(() => {
     syncComicsToDatabase().catch((err) =>
-      console.error("[bg-sync] Periodic sync failed:", err)
+      console.error("[bg-sync] Quick sync failed:", err)
     );
-  }, BG_SYNC_INTERVAL);
+  }, BG_QUICK_SYNC_INTERVAL);
+
+  // Periodic full sync (incremental page count processing)
+  setInterval(() => {
+    fullSync().catch((err) =>
+      console.error("[bg-sync] Full sync failed:", err)
+    );
+  }, BG_FULL_SYNC_INTERVAL);
 }
 
 // Auto-start background sync when this module is first imported on the server
