@@ -36,6 +36,10 @@ export async function GET(request: NextRequest) {
       page: result.page,
       pageSize: result.pageSize,
       totalPages: result.totalPages,
+    }, {
+      headers: {
+        "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
+      },
     });
   } catch (err) {
     console.error("Failed to fetch comics:", err);

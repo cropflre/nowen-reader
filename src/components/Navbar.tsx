@@ -10,6 +10,7 @@ import {
   BarChart3,
   Sun,
   Moon,
+  Globe,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme-context";
@@ -75,6 +76,15 @@ export default function Navbar({
             title={t.navbar.stats}
           >
             <BarChart3 className="h-4 w-4" />
+          </Link>
+
+          {/* E-Hentai */}
+          <Link
+            href="/ehentai"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
+            title={t.ehentai?.title || "E-Hentai"}
+          >
+            <Globe className="h-4 w-4" />
           </Link>
 
           {/* Upload */}

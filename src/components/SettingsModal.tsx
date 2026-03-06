@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Cloud, Puzzle, Smartphone, Info, Brain, Globe } from "lucide-react";
+import { X, Cloud, Puzzle, Smartphone, Info, Brain, Globe, BookOpen } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { CloudSyncPanel } from "@/components/CloudSync";
 import { PluginManagerPanel } from "@/components/PluginManager";
 import { AISettingsPanel } from "@/components/AISettingsPanel";
 import { SiteSettingsPanel } from "@/components/SiteSettingsPanel";
+import { EHentaiSettingsPanel } from "@/components/EHentaiSettingsPanel";
 import { clearServiceWorkerCache } from "@/lib/pwa";
 
 interface SettingsModalProps {
@@ -15,7 +16,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTab = "site" | "sync" | "plugins" | "ai" | "pwa" | "about";
+type SettingsTab = "site" | "sync" | "plugins" | "ai" | "ehentai" | "pwa" | "about";
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const t = useTranslation();
@@ -28,6 +29,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     { id: "sync", label: t.settings?.sync || "Sync", icon: <Cloud className="h-4 w-4" /> },
     { id: "plugins", label: t.settings?.plugins || "Plugins", icon: <Puzzle className="h-4 w-4" /> },
     { id: "ai", label: t.ai?.title || "AI", icon: <Brain className="h-4 w-4" /> },
+    { id: "ehentai", label: "E-Hentai", icon: <BookOpen className="h-4 w-4" /> },
     { id: "pwa", label: t.settings?.pwa || "App", icon: <Smartphone className="h-4 w-4" /> },
     { id: "about", label: t.settings?.about || "About", icon: <Info className="h-4 w-4" /> },
   ];
@@ -77,6 +79,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             {activeTab === "sync" && <CloudSyncPanel />}
             {activeTab === "plugins" && <PluginManagerPanel />}
             {activeTab === "ai" && <AISettingsPanel />}
+            {activeTab === "ehentai" && <EHentaiSettingsPanel />}
             {activeTab === "pwa" && <PWASettings />}
             {activeTab === "about" && <AboutPanel />}
           </div>

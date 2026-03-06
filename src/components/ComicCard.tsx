@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { memo } from "react";
 import { Comic } from "@/types/comic";
 import { BookOpen, Heart, Star, Info, GripVertical } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
@@ -30,15 +31,15 @@ interface ComicCardProps {
   viewMode?: "grid" | "list";
   batchMode?: boolean;
   isSelected?: boolean;
-  onSelect?: () => void;
+  onSelect?: (id: string) => void;
   draggable?: boolean;
-  onDragStart?: () => void;
-  onDragOver?: () => void;
+  onDragStart?: (id: string) => void;
+  onDragOver?: (id: string) => void;
   onDragEnd?: () => void;
   isDragOver?: boolean;
 }
 
-export default function ComicCard({
+const ComicCard = memo(function ComicCard({
   comic,
   onClick,
   isReal,
@@ -58,7 +59,7 @@ export default function ComicCard({
     if (batchMode) {
       e.preventDefault();
       e.stopPropagation();
-      onSelect?.();
+      onSelect?.(comic.id);
     }
     onClick?.(comic);
   };
@@ -70,11 +71,11 @@ export default function ComicCard({
         draggable={draggable}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = "move";
-          onDragStart?.();
+          onDragStart?.(comic.id);
         }}
         onDragOver={(e) => {
           e.preventDefault();
-          onDragOver?.();
+          onDragOver?.(comic.id);
         }}
         onDrop={(e) => {
           e.preventDefault();
@@ -200,11 +201,11 @@ export default function ComicCard({
       draggable={draggable}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
-        onDragStart?.();
+        onDragStart?.(comic.id);
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        onDragOver?.();
+        onDragOver?.(comic.id);
       }}
       onDrop={(e) => {
         e.preventDefault();
@@ -339,4 +340,6 @@ export default function ComicCard({
       )}
     </div>
   );
-}
+});
+
+export default ComicCard;

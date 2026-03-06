@@ -51,6 +51,12 @@ export default function TagFilter({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
+  // Limit visible tags to avoid rendering hundreds/thousands of DOM nodes
+  const MAX_VISIBLE_TAGS = 50;
+  const visibleTags = showAll ? allTags : allTags.slice(0, MAX_VISIBLE_TAGS);
+  const hasMore = allTags.length > MAX_VISIBLE_TAGS;
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -103,90 +109,148 @@ export default function TagFilter({
   }, [translating, locale, onClearAll, onTagsTranslated]);
 
   return (
-    <div className="relative flex items-center gap-2">
-      {/* Label + Translate */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <div className="flex items-center gap-1.5 text-muted">
-          <Tag className="h-3.5 w-3.5" />
-          <span className="text-xs font-medium whitespace-nowrap">{t.tagFilter.label}</span>
+    <div className="relative">
+      <div className={`flex gap-2 ${showAll ? "items-start" : "items-center"}`}>
+        {/* Label + Translate */}
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+          <div className="flex items-center gap-1.5 text-muted">
+            <Tag className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium whitespace-nowrap">{t.tagFilter.label}</span>
+          </div>
+          <button
+            onClick={handleTranslate}
+            disabled={translating}
+            className="flex h-6 items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
+            title={t.tagFilter.translate}
+          >
+            <Languages className="h-3 w-3" />
+            <span>{translating ? t.tagFilter.translating : t.tagFilter.translate}</span>
+          </button>
         </div>
-        <button
-          onClick={handleTranslate}
-          disabled={translating}
-          className="flex h-6 items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
-          title={t.tagFilter.translate}
-        >
-          <Languages className="h-3 w-3" />
-          <span>{translating ? t.tagFilter.translating : t.tagFilter.translate}</span>
-        </button>
-      </div>
 
-      {/* Left arrow */}
-      {canScrollLeft && (
-        <button
-          onClick={() => scroll("left")}
-          className="absolute left-16 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/90 border border-border/60 text-muted hover:text-foreground shadow-sm backdrop-blur-sm transition-all"
-          aria-label="Scroll left"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </button>
-      )}
-
-      {/* Scrollable tabs */}
-      <div
-        ref={scrollRef}
-        className="flex items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        {/* All Tag */}
-        <button
-          onClick={onClearAll}
-          className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
-            selectedTags.length === 0
-              ? "bg-accent/20 border-accent/50 text-accent"
-              : "border-border/60 text-muted hover:text-foreground hover:border-border"
-          }`}
-        >
-          {t.common.all}
-        </button>
-
-        {allTags.map((tag) => {
-          const isActive = selectedTags.includes(tag);
-          return (
+        {showAll ? (
+          /* Expanded: wrap mode with max height */
+          <div className="flex flex-wrap items-center gap-2 max-h-48 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+            {/* All Tag */}
             <button
-              key={tag}
-              onClick={() => onTagToggle(tag)}
-              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
-                isActive
-                  ? tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
-                  : tagColorMap[tag] || "border-border/60 text-muted hover:text-foreground"
+              onClick={onClearAll}
+              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                selectedTags.length === 0
+                  ? "bg-accent/20 border-accent/50 text-accent"
+                  : "border-border/60 text-muted hover:text-foreground hover:border-border"
               }`}
             >
-              {tag}
+              {t.common.all}
             </button>
-          );
-        })}
+
+            {visibleTags.map((tag) => {
+              const isActive = selectedTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  onClick={() => onTagToggle(tag)}
+                  className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                    isActive
+                      ? tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
+                      : tagColorMap[tag] || "border-border/60 text-muted hover:text-foreground"
+                  }`}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+
+            {/* Collapse button */}
+            {hasMore && (
+              <button
+                onClick={() => setShowAll(false)}
+                className="shrink-0 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted transition-all hover:text-foreground hover:border-border"
+              >
+                {`← ${t.common?.collapse || "收起"}`}
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Collapsed: single-line scroll mode */
+          <div className="relative flex-1 min-w-0">
+            {/* Left arrow */}
+            {canScrollLeft && (
+              <button
+                onClick={() => scroll("left")}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/90 border border-border/60 text-muted hover:text-foreground shadow-sm backdrop-blur-sm transition-all"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            <div
+              ref={scrollRef}
+              className="flex items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {/* All Tag */}
+              <button
+                onClick={onClearAll}
+                className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  selectedTags.length === 0
+                    ? "bg-accent/20 border-accent/50 text-accent"
+                    : "border-border/60 text-muted hover:text-foreground hover:border-border"
+                }`}
+              >
+                {t.common.all}
+              </button>
+
+              {visibleTags.map((tag) => {
+                const isActive = selectedTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => onTagToggle(tag)}
+                    className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                      isActive
+                        ? tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
+                        : tagColorMap[tag] || "border-border/60 text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+
+              {/* Show more button */}
+              {hasMore && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="shrink-0 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted transition-all hover:text-foreground hover:border-border"
+                >
+                  {`+${allTags.length - MAX_VISIBLE_TAGS} ${t.common?.more || "更多"}`}
+                </button>
+              )}
+            </div>
+
+            {/* Right arrow */}
+            {canScrollRight && (
+              <button
+                onClick={() => scroll("right")}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/90 border border-border/60 text-muted hover:text-foreground shadow-sm backdrop-blur-sm transition-all"
+                aria-label="Scroll right"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {/* Left fade */}
+            {canScrollLeft && (
+              <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-background to-transparent z-[5]" />
+            )}
+            {/* Right fade */}
+            {canScrollRight && (
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-background to-transparent z-[5]" />
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Right arrow */}
-      {canScrollRight && (
-        <button
-          onClick={() => scroll("right")}
-          className="absolute right-0 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-background/90 border border-border/60 text-muted hover:text-foreground shadow-sm backdrop-blur-sm transition-all"
-          aria-label="Scroll right"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      )}
-
-      {/* Left fade */}
-      {canScrollLeft && (
-        <div className="pointer-events-none absolute left-14 top-0 bottom-0 w-6 bg-gradient-to-r from-background to-transparent z-5" />
-      )}
-      {/* Right fade */}
-      {canScrollRight && (
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-background to-transparent z-5" />
-      )}
     </div>
   );
 }

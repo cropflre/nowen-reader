@@ -93,6 +93,9 @@ model Comic {
   @@index([sortOrder])
   @@index([author])
   @@index([seriesName])
+  @@index([rating])
+  @@index([addedAt])
+  @@index([fileSize, pageCount])
 }
 
 model Tag {

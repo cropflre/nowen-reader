@@ -4,13 +4,27 @@ import { THUMBNAILS_DIR, getAllComicsDirs } from "./config";
 import path from "path";
 import fs from "fs";
 
+/** 封面版本号内存缓存，避免每次 getAllComics 都做 N 次 fs.statSync */
+const coverVersionCache = new Map<string, { version: string; ts: number }>();
+const COVER_VERSION_TTL = 60_000; // 1 minute
+
 /** 获取带缓存破坏参数的封面 URL */
 function getCoverUrl(comicId: string): string {
   const base = `/api/comics/${comicId}/thumbnail`;
+  const now = Date.now();
+
+  // Check memory cache first
+  const cached = coverVersionCache.get(comicId);
+  if (cached && now - cached.ts < COVER_VERSION_TTL) {
+    return `${base}?v=${cached.version}`;
+  }
+
   try {
     const cachePath = path.join(THUMBNAILS_DIR, `${comicId}.webp`);
     const stat = fs.statSync(cachePath);
-    return `${base}?v=${stat.mtimeMs.toString(36)}`;
+    const version = stat.mtimeMs.toString(36);
+    coverVersionCache.set(comicId, { version, ts: now });
+    return `${base}?v=${version}`;
   } catch {
     return base;
   }
@@ -22,6 +36,42 @@ function getCoverUrl(comicId: string): string {
 let syncInProgress = false;
 let lastSyncTime = 0;
 const SYNC_COOLDOWN = 30_000; // minimum 30s between full syncs
+
+/** Track directory mtimes to detect changes quickly */
+let lastDirMtimes = new Map<string, number>();
+
+function directoriesChanged(): boolean {
+  const allDirs = getAllComicsDirs();
+  for (const dir of allDirs) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const stat = fs.statSync(dir);
+      const mtime = stat.mtimeMs;
+      const lastMtime = lastDirMtimes.get(dir);
+      if (lastMtime === undefined || lastMtime !== mtime) {
+        return true;
+      }
+    } catch {
+      // skip
+    }
+  }
+  return false;
+}
+
+function updateDirMtimes() {
+  const allDirs = getAllComicsDirs();
+  const newMap = new Map<string, number>();
+  for (const dir of allDirs) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const stat = fs.statSync(dir);
+      newMap.set(dir, stat.mtimeMs);
+    } catch {
+      // skip
+    }
+  }
+  lastDirMtimes = newMap;
+}
 
 /**
  * Quick sync: only check filenames on disk (no archive opening).
@@ -147,12 +197,19 @@ export async function syncComicsToDatabase() {
   // Skip if already running
   if (syncInProgress) return;
 
+  // Quick check: if directories haven't changed, skip sync entirely
+  if (lastSyncTime > 0 && !directoriesChanged()) {
+    lastSyncTime = now; // Reset cooldown
+    return;
+  }
+
   syncInProgress = true;
   lastSyncTime = now;
 
   try {
     // Quick sync first (fast, just filenames)
     await quickSync();
+    updateDirMtimes();
   } catch (err) {
     console.error("[sync] Quick sync failed:", err);
   }
@@ -226,15 +283,37 @@ export async function getAllComics(options?: {
   const findOptions: any = {
     where,
     orderBy,
-    include: {
+    select: {
+      id: true,
+      filename: true,
+      title: true,
+      pageCount: true,
+      fileSize: true,
+      addedAt: true,
+      updatedAt: true,
+      lastReadPage: true,
+      lastReadAt: true,
+      isFavorite: true,
+      rating: true,
+      sortOrder: true,
+      totalReadTime: true,
+      author: true,
+      publisher: true,
+      year: true,
+      description: true,
+      language: true,
+      seriesName: true,
+      seriesIndex: true,
+      genre: true,
+      metadataSource: true,
       tags: {
-        include: {
-          tag: true,
+        select: {
+          tag: { select: { name: true, color: true } },
         },
       },
       categories: {
-        include: {
-          category: true,
+        select: {
+          category: { select: { id: true, name: true, slug: true, icon: true } },
         },
       },
     },
@@ -481,19 +560,32 @@ export async function batchSetFavorite(comicIds: string[], isFavorite: boolean) 
  * Batch add tags
  */
 export async function batchAddTags(comicIds: string[], tagNames: string[]) {
+  // First upsert all tags
+  const tags = [];
   for (const name of tagNames) {
     const tag = await prisma.tag.upsert({
       where: { name },
       create: { name },
       update: {},
     });
+    tags.push(tag);
+  }
+
+  // Then batch link all comics to tags in a transaction
+  const upserts = [];
+  for (const tag of tags) {
     for (const comicId of comicIds) {
-      await prisma.comicTag.upsert({
-        where: { comicId_tagId: { comicId, tagId: tag.id } },
-        create: { comicId, tagId: tag.id },
-        update: {},
-      });
+      upserts.push(
+        prisma.comicTag.upsert({
+          where: { comicId_tagId: { comicId, tagId: tag.id } },
+          create: { comicId, tagId: tag.id },
+          update: {},
+        })
+      );
     }
+  }
+  if (upserts.length > 0) {
+    await prisma.$transaction(upserts);
   }
 }
 
@@ -628,12 +720,15 @@ export async function getComicReadingHistory(comicId: string) {
  * Update sort order for multiple comics
  */
 export async function updateSortOrders(orders: { id: string; sortOrder: number }[]) {
-  for (const item of orders) {
-    await prisma.comic.update({
-      where: { id: item.id },
-      data: { sortOrder: item.sortOrder },
-    });
-  }
+  // Use transaction for batch update — much faster than sequential updates
+  await prisma.$transaction(
+    orders.map((item) =>
+      prisma.comic.update({
+        where: { id: item.id },
+        data: { sortOrder: item.sortOrder },
+      })
+    )
+  );
 }
 
 // ============================================================

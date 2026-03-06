@@ -46,7 +46,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": "image/webp",
-      "Cache-Control": "public, max-age=60, must-revalidate",
+      "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
       "Content-Length": thumbnail.length.toString(),
       ETag: etag,
     },

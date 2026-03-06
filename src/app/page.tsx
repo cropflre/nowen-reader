@@ -24,6 +24,16 @@ import DuplicateDetector from "@/components/DuplicateDetector";
 
 const DEFAULT_PAGE_SIZE = 24;
 
+/** Debounce hook: delays value updates to avoid rapid-fire API calls */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 // Convert API comic to display comic
 function apiToComic(api: ApiComic): Comic {
   return {
@@ -49,6 +59,7 @@ function apiToComic(api: ApiComic): Comic {
 export default function Home() {
   const t = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [uploading, setUploading] = useState(false);
@@ -88,7 +99,7 @@ export default function Home() {
   const { comics: apiComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
     page: currentPage,
     pageSize,
-    search: searchQuery || undefined,
+    search: debouncedSearch || undefined,
     tags: selectedTags.length > 0 ? selectedTags : undefined,
     favoritesOnly: favoritesOnly || undefined,
     sortBy: sortBy || undefined,
@@ -100,7 +111,7 @@ export default function Home() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder]);
+  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -114,14 +125,32 @@ export default function Home() {
     return mockComics;
   }, [apiComics, useRealData]);
 
-  // Extract all unique tags
-  const allTags = useMemo(() => {
+  // Extract all unique tags — fetch from API for complete global tags
+  const [allTags, setAllTags] = useState<string[]>([]);
+  useEffect(() => {
+    if (!useRealData) return;
+    fetch("/api/tags")
+      .then((r) => r.json())
+      .then((data) => {
+        const tags = Array.isArray(data) ? data : data.tags;
+        if (Array.isArray(tags)) {
+          setAllTags(tags.map((t: { name: string }) => t.name).sort());
+        }
+      })
+      .catch(() => {});
+  }, [useRealData]);
+
+  // For mock data, derive tags from display comics
+  const mockTags = useMemo(() => {
+    if (useRealData) return [];
     const tagSet = new Set<string>();
     displayComics.forEach((comic) =>
       comic.tags.forEach((tag) => tagSet.add(tag))
     );
     return Array.from(tagSet).sort();
-  }, [displayComics]);
+  }, [displayComics, useRealData]);
+
+  const effectiveTags = useRealData ? allTags : mockTags;
 
   // Filter comics (only needed for mock data; real data is filtered server-side)
   const filteredComics = useMemo(() => {
@@ -446,6 +475,7 @@ export default function Home() {
                   className="h-8 rounded-lg bg-card px-2 text-xs text-foreground outline-none"
                 >
                   <option value="title">{t.home.sortByTitle}</option>
+                  <option value="addedAt">{t.home.sortByAdded}</option>
                   <option value="lastReadAt">{t.home.sortByLastRead}</option>
                   <option value="rating">{t.home.sortByRating}</option>
                   <option value="custom">{t.home.sortByCustom}</option>
@@ -501,14 +531,26 @@ export default function Home() {
             )}
 
             {/* Tag Filter */}
-            {allTags.length > 0 && (
+            {(effectiveTags.length > 0 || useRealData) && (
               <div className="mt-4 mb-8">
                 <TagFilter
-                  allTags={allTags}
+                  allTags={effectiveTags}
                   selectedTags={selectedTags}
                   onTagToggle={handleTagToggle}
                   onClearAll={() => setSelectedTags([])}
-                  onTagsTranslated={refetch}
+                  onTagsTranslated={() => {
+                    refetch();
+                    // Refresh global tags after translation
+                    fetch("/api/tags")
+                      .then((r) => r.json())
+                      .then((data) => {
+                        const tags = Array.isArray(data) ? data : data.tags;
+                        if (Array.isArray(tags)) {
+                          setAllTags(tags.map((t: { name: string }) => t.name).sort());
+                        }
+                      })
+                      .catch(() => {});
+                  }}
                 />
               </div>
             )}
@@ -531,10 +573,10 @@ export default function Home() {
                     viewMode={viewMode}
                     batchMode={batchMode}
                     isSelected={selectedIds.has(comic.id)}
-                    onSelect={() => toggleSelect(comic.id)}
+                    onSelect={toggleSelect}
                     draggable={sortBy === "custom" && !batchMode}
-                    onDragStart={() => handleDragStart(comic.id)}
-                    onDragOver={() => handleDragOver(comic.id)}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
                     isDragOver={dragOverId === comic.id}
                   />

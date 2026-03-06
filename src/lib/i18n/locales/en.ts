@@ -12,6 +12,8 @@ const en: Translations = {
     loading: "Loading...",
     noData: "No data",
     close: "Close",
+    more: "more",
+    collapse: "Collapse",
   },
 
   // Navbar
@@ -32,6 +34,7 @@ const en: Translations = {
     mockDataNotice3: "directory, or click upload to add comics.",
     favorites: "Favorites",
     sortByTitle: "By Title",
+    sortByAdded: "By Date Added",
     sortByLastRead: "By Last Read",
     sortByRating: "By Rating",
     sortByCustom: "Custom Order",
@@ -430,6 +433,51 @@ const en: Translations = {
     confirmDeleteAllMsg: "This will delete {count} duplicate files (keeping one selected per group). This cannot be undone.",
     deletedCount: "Deleted {count} files",
     selectToKeep: "Click to select the item to keep",
+  },
+
+  // E-Hentai
+  ehentai: {
+    title: "E-Hentai Browser",
+    search: "Search",
+    searchPlaceholder: "Search gallery title, tags...",
+    searching: "Searching...",
+    noResults: "No results found",
+    emptyHint: "Enter keywords to search E-Hentai galleries",
+    resultsCount: "{count} results",
+    prevPage: "Previous",
+    nextPage: "Next",
+    pageNum: "Page {page}",
+    pages: "pages",
+    uploader: "Uploader",
+    fileCount: "Files",
+    tags: "Tags",
+    preview: "Preview",
+    downloadToLibrary: "Download to Library",
+    downloading: "Downloading",
+    downloadStarting: "Preparing...",
+    downloadFetchingInfo: "Fetching gallery info...",
+    downloadPackaging: "Packaging CBZ...",
+    downloadCompleted: "Download Complete",
+    downloadError: "Download Failed",
+    galleryId: "Gallery",
+    notConfigured: "E-Hentai Not Configured",
+    notConfiguredDesc: "Configure E-Hentai cookies in Settings to enable this feature. Click user menu → Settings → E-Hentai.",
+  },
+
+  // E-Hentai Settings
+  ehentaiSettings: {
+    title: "E-Hentai Config",
+    statusConfigured: "Configured",
+    statusNotConfigured: "Not Configured",
+    currentConfig: "Current Config",
+    description: "Get these values from your browser cookies after logging into E-Hentai. Open DevTools → Application → Cookies.",
+    keepCurrent: "Leave empty to keep current",
+    optional: "Optional, for ExHentai",
+    save: "Save",
+    test: "Test",
+    clear: "Clear",
+    testSuccess: "Connection test passed",
+    testFailed: "Connection failed, check cookie values",
   },
 };
 

@@ -10,6 +10,8 @@ const zhCN = {
     loading: "加载中...",
     noData: "暂无数据",
     close: "关闭",
+    more: "更多",
+    collapse: "收起",
   },
 
   // Navbar
@@ -30,6 +32,7 @@ const zhCN = {
     mockDataNotice3: "目录，或点击上传按钮添加漫画。",
     favorites: "收藏",
     sortByTitle: "按标题",
+    sortByAdded: "按添加时间",
     sortByLastRead: "按阅读时间",
     sortByRating: "按评分",
     sortByCustom: "自定义排序",
@@ -429,6 +432,51 @@ const zhCN = {
     deletedCount: "已删除 {count} 个文件",
     selectToKeep: "点击选择要保留的项",
   },
+
+  // E-Hentai
+  ehentai: {
+    title: "E-Hentai 浏览",
+    search: "搜索",
+    searchPlaceholder: "搜索画廊标题、标签...",
+    searching: "搜索中...",
+    noResults: "未找到结果",
+    emptyHint: "输入关键词搜索 E-Hentai 画廊",
+    resultsCount: "共 {count} 个结果",
+    prevPage: "上一页",
+    nextPage: "下一页",
+    pageNum: "第 {page} 页",
+    pages: "页",
+    uploader: "上传者",
+    fileCount: "文件数",
+    tags: "标签",
+    preview: "预览",
+    downloadToLibrary: "下载到本地库",
+    downloading: "下载中",
+    downloadStarting: "准备下载...",
+    downloadFetchingInfo: "获取画廊信息...",
+    downloadPackaging: "打包 CBZ 中...",
+    downloadCompleted: "下载完成",
+    downloadError: "下载失败",
+    galleryId: "画廊",
+    notConfigured: "未配置 E-Hentai",
+    notConfiguredDesc: "请在设置中配置 E-Hentai Cookie 以启用此功能。点击右上角用户菜单 → 设置 → E-Hentai。",
+  },
+
+  // E-Hentai Settings
+  ehentaiSettings: {
+    title: "E-Hentai 配置",
+    statusConfigured: "已配置",
+    statusNotConfigured: "未配置",
+    currentConfig: "当前配置",
+    description: "从 E-Hentai 登录后的浏览器 Cookie 中获取以下值。打开浏览器开发者工具 → Application → Cookies 查找。",
+    keepCurrent: "留空保持当前值",
+    optional: "可选，用于 ExHentai",
+    save: "保存",
+    test: "测试",
+    clear: "清除",
+    testSuccess: "连接测试成功",
+    testFailed: "连接失败，请检查 Cookie 值",
+  },
 } satisfies Translations;
 
 export default zhCN;
@@ -444,6 +492,8 @@ export interface Translations {
     loading: string;
     noData: string;
     close: string;
+    more: string;
+    collapse: string;
   };
   navbar: {
     searchPlaceholder: string;
@@ -460,6 +510,7 @@ export interface Translations {
     mockDataNotice3: string;
     favorites: string;
     sortByTitle: string;
+    sortByAdded: string;
     sortByLastRead: string;
     sortByRating: string;
     sortByCustom: string;
@@ -817,5 +868,19 @@ export interface Translations {
     confirmDeleteAllMsg: string;
     deletedCount: string;
     selectToKeep: string;
+  };
+  ehentaiSettings: {
+    title: string;
+    statusConfigured: string;
+    statusNotConfigured: string;
+    currentConfig: string;
+    description: string;
+    keepCurrent: string;
+    optional: string;
+    save: string;
+    test: string;
+    clear: string;
+    testSuccess: string;
+    testFailed: string;
   };
 }
