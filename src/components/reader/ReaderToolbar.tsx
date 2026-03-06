@@ -154,44 +154,44 @@ export default function ReaderToolbar({
           </div>
 
           {/* Mode & Settings */}
-          <div className="flex items-center justify-between border-t border-white/10 py-3">
+          <div className="flex items-center justify-between border-t border-white/10 py-2 sm:py-3">
             {/* Reading Mode */}
-            <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1">
+            <div className="flex items-center gap-0.5 sm:gap-1 rounded-xl bg-white/5 p-1">
               {modeOptions.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => onModeChange(opt.value)}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                     mode === opt.value
                       ? "bg-accent text-white shadow-sm"
                       : "text-white/60 hover:text-white hover:bg-white/10"
                   }`}
                 >
                   {opt.icon}
-                  <span>{opt.label}</span>
+                  <span className="hidden sm:inline">{opt.label}</span>
                 </button>
               ))}
             </div>
 
             {/* Direction Toggle */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 onClick={() =>
                   onDirectionChange(direction === "ltr" ? "rtl" : "ltr")
                 }
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   direction === "rtl"
                     ? "bg-amber-500/20 text-amber-400"
                     : "text-white/60 hover:text-white hover:bg-white/10"
                 }`}
               >
                 <ArrowLeftRight className="h-4 w-4" />
-                <span>{direction === "rtl" ? t.readerToolbar.rtl : t.readerToolbar.ltr}</span>
+                <span className="hidden sm:inline">{direction === "rtl" ? t.readerToolbar.rtl : t.readerToolbar.ltr}</span>
               </button>
 
               <button
                 onClick={onToggleTheme}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   readerTheme === "day"
                     ? "bg-amber-500/20 text-amber-400"
                     : "text-white/60 hover:text-white hover:bg-white/10"
@@ -202,7 +202,7 @@ export default function ReaderToolbar({
                 ) : (
                   <Moon className="h-4 w-4" />
                 )}
-                <span>{readerTheme === "day" ? t.readerToolbar.dayMode : t.readerToolbar.nightMode}</span>
+                <span className="hidden sm:inline">{readerTheme === "day" ? t.readerToolbar.dayMode : t.readerToolbar.nightMode}</span>
               </button>
             </div>
           </div>

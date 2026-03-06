@@ -60,11 +60,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="relative w-[600px] max-w-[90vw] max-h-[85vh] overflow-hidden rounded-2xl bg-card border border-border shadow-2xl">
+      {/* Modal — mobile: full-screen, desktop: centered card */}
+      <div className="relative w-full h-full sm:w-[600px] sm:max-w-[90vw] sm:h-auto sm:max-h-[85vh] overflow-hidden sm:rounded-2xl bg-card border-0 sm:border sm:border-border shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
-          <h2 className="text-lg font-semibold text-foreground">
+        <div className="flex items-center justify-between border-b border-border/50 px-4 sm:px-6 py-3 sm:py-4">
+          <h2 className="text-base sm:text-lg font-semibold text-foreground">
             {t.settings?.title || "Settings"}
           </h2>
           <button
@@ -75,9 +75,29 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        <div className="flex h-[calc(85vh-72px)] max-h-[500px]">
-          {/* Sidebar */}
-          <div className="w-40 flex-shrink-0 border-r border-border/50 p-2">
+        {/* Mobile: horizontal scrollable tabs at top */}
+        <div className="sm:hidden border-b border-border/50 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+          <div className="flex p-1.5 gap-1 min-w-max">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? "bg-accent/15 text-accent"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex h-[calc(100vh-110px)] sm:h-[calc(85vh-72px)] sm:max-h-[500px]">
+          {/* Desktop Sidebar — hidden on mobile */}
+          <div className="hidden sm:block w-40 flex-shrink-0 border-r border-border/50 p-2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -95,7 +115,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {activeTab === "site" && <SiteSettingsPanel />}
             {activeTab === "sync" && <CloudSyncPanel />}
             {activeTab === "plugins" && <PluginManagerPanel />}

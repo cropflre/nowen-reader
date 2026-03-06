@@ -150,6 +150,39 @@ html.light ::-webkit-scrollbar-thumb:hover {
   .touch-action-pan-y {
     touch-action: pan-y;
   }
+
+  /* Larger touch targets on mobile */
+  button, a, select {
+    min-height: 32px;
+  }
+
+  /* Bigger slider thumb for touch */
+  .reader-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .reader-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .reader-slider {
+    height: 6px;
+  }
+
+  /* Prevent text selection during swipe */
+  .touch-action-pan-y {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Scrollbar hide utility (for mobile horizontal scroll areas) */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Safe area for PWA standalone mode */

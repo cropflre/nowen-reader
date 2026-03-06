@@ -367,7 +367,7 @@ export default function Home() {
       />
 
       {/* Main Content */}
-      <main className={`mx-auto max-w-[1800px] px-6 pt-24 ${batchMode ? "pb-32" : "pb-12"}`}>
+      <main className={`mx-auto max-w-[1800px] px-3 sm:px-6 pt-20 sm:pt-24 ${batchMode ? "pb-32" : "pb-12"}`}>
         {/* Data Source Indicator */}
         {!loading && !useRealData && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
@@ -402,22 +402,23 @@ export default function Home() {
             {useRealData && <RecommendationStrip />}
 
             {/* Stats + Sort Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
               <StatsBar
                 totalComics={useRealData ? apiTotal : displayComics.length}
                 filteredCount={useRealData ? apiTotal : sortedComics.length}
               />
 
-              {/* Sort & Filter Controls */}
-              <div className="flex items-center gap-3">
+              {/* Sort & Filter Controls — horizontally scrollable on mobile */}
+              <div className="w-full sm:w-auto overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                <div className="flex items-center gap-2 sm:gap-3 min-w-max">
                 {/* Detect Duplicates */}
                 <button
                   onClick={() => setShowDuplicates(true)}
-                  className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-muted transition-all hover:text-foreground"
+                  className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-2.5 sm:px-3 text-xs font-medium text-muted transition-all hover:text-foreground"
                   title={t.duplicates.detect}
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  <span>{t.duplicates.detect}</span>
+                  <span className="hidden sm:inline">{t.duplicates.detect}</span>
                 </button>
 
                 {/* Batch Mode Toggle */}
@@ -426,7 +427,7 @@ export default function Home() {
                     if (batchMode) exitBatchMode();
                     else setBatchMode(true);
                   }}
-                  className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+                  className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
                     batchMode
                       ? "bg-accent text-white"
                       : "bg-card text-muted hover:text-foreground"
@@ -434,14 +435,14 @@ export default function Home() {
                   title={t.navbar.batch}
                 >
                   <CheckSquare className="h-3.5 w-3.5" />
-                  <span>{batchMode ? t.navbar.exitBatch : t.navbar.batch}</span>
+                  <span className="hidden sm:inline">{batchMode ? t.navbar.exitBatch : t.navbar.batch}</span>
                 </button>
 
                 {/* Select All (only in batch mode) */}
                 {batchMode && (
                   <button
                     onClick={handleSelectAll}
-                    className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+                    className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
                       selectedIds.size === sortedComics.length && sortedComics.length > 0
                         ? "bg-accent/20 text-accent"
                         : "bg-card text-muted hover:text-foreground"
@@ -449,7 +450,7 @@ export default function Home() {
                     title={t.navbar.selectAll}
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
-                    <span>{t.navbar.selectAll}</span>
+                    <span className="hidden sm:inline">{t.navbar.selectAll}</span>
                   </button>
                 )}
 
@@ -458,14 +459,14 @@ export default function Home() {
                 {/* Favorites toggle */}
                 <button
                   onClick={() => setFavoritesOnly(!favoritesOnly)}
-                  className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+                  className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
                     favoritesOnly
                       ? "bg-rose-500/20 text-rose-400"
                       : "bg-card text-muted hover:text-foreground"
                   }`}
                 >
                   <span>{favoritesOnly ? "♥" : "♡"}</span>
-                  <span>{t.home.favorites}</span>
+                  <span className="hidden sm:inline">{t.home.favorites}</span>
                 </button>
 
                 {/* Sort selector */}
@@ -516,6 +517,7 @@ export default function Home() {
                     <List className="h-3.5 w-3.5" />
                   </button>
                 </div>
+                </div>
               </div>
             </div>
 
@@ -561,8 +563,8 @@ export default function Home() {
               <div
                 className={
                   viewMode === "grid"
-                    ? "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                    : "grid grid-cols-1 gap-3"
+                    ? "grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                    : "grid grid-cols-1 gap-2 sm:gap-3"
                 }
               >
                 {sortedComics.map((comic) => (
@@ -603,11 +605,11 @@ export default function Home() {
 
             {/* Pagination */}
             {useRealData && totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-center gap-2">
+              <div className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
                 <button
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                   title={t.home.firstPage}
                 >
                   «
@@ -615,7 +617,7 @@ export default function Home() {
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                   title={t.home.prevPage}
                 >
                   ‹
@@ -623,7 +625,7 @@ export default function Home() {
 
                 {(() => {
                   const pages: (number | string)[] = [];
-                  const maxVisible = 7;
+                  const maxVisible = typeof window !== "undefined" && window.innerWidth < 640 ? 5 : 7;
                   if (totalPages <= maxVisible) {
                     for (let i = 1; i <= totalPages; i++) pages.push(i);
                   } else {
@@ -637,14 +639,14 @@ export default function Home() {
                   }
                   return pages.map((p, idx) =>
                     typeof p === "string" ? (
-                      <span key={`ellipsis-${idx}`} className="px-1 text-muted">
+                      <span key={`ellipsis-${idx}`} className="px-0.5 sm:px-1 text-muted">
                         ...
                       </span>
                     ) : (
                       <button
                         key={p}
                         onClick={() => setCurrentPage(p)}
-                        className={`flex h-9 min-w-[36px] items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors ${
+                        className={`flex h-8 min-w-[32px] sm:h-9 sm:min-w-[36px] items-center justify-center rounded-lg px-1.5 sm:px-2 text-xs sm:text-sm font-medium transition-colors ${
                           currentPage === p
                             ? "bg-accent text-white"
                             : "border border-border/60 text-muted hover:border-border hover:text-foreground"
@@ -659,7 +661,7 @@ export default function Home() {
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                   title={t.home.nextPage}
                 >
                   ›
@@ -667,17 +669,17 @@ export default function Home() {
                 <button
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                   title={t.home.lastPage}
                 >
                   »
                 </button>
 
-                <span className="ml-3 text-xs text-muted">
+                <span className="ml-2 sm:ml-3 text-xs text-muted">
                   {currentPage} / {totalPages}
                 </span>
 
-                <div className="ml-4 flex items-center gap-1.5">
+                <div className="hidden sm:flex ml-4 items-center gap-1.5">
                   <LayoutGrid className="h-3.5 w-3.5 text-muted" />
                   <select
                     value={pageSize}
