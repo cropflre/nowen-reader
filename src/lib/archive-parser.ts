@@ -92,19 +92,20 @@ class ZipArchiveReader implements ArchiveReader {
 // ============================================================
 
 class RarArchiveReader implements ArchiveReader {
-  private entries: { name: string; isDirectory: boolean; data?: Uint8Array }[] = [];
+  private entries: ArchiveEntry[] = [];
+  private filepath: string;
 
-  private constructor() {}
+  private constructor(filepath: string) {
+    this.filepath = filepath;
+  }
 
   static async create(filepath: string): Promise<RarArchiveReader | null> {
-    const instance = new RarArchiveReader();
-    const fileBuffer = fs.readFileSync(filepath);
+    const instance = new RarArchiveReader(filepath);
     try {
+      // 仅读取文件头获取列表，不解压任何数据
+      const fileBuffer = await fs.promises.readFile(filepath);
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { createExtractorFromData } = require("node-unrar-js");
-
-      // node-unrar-js v2.x: createExtractorFromData is async and needs wasmBinary
-      // Use process.cwd() to avoid Next.js RSC bundler rewriting require.resolve paths with (rsc)
       const wasmPath = path.join(
         process.cwd(),
         "node_modules",
@@ -113,7 +114,7 @@ class RarArchiveReader implements ArchiveReader {
         "js",
         "unrar.wasm"
       );
-      const wasmBinary = fs.readFileSync(wasmPath);
+      const wasmBinary = await fs.promises.readFile(wasmPath);
 
       const extractor = await createExtractorFromData({
         data: fileBuffer,
@@ -133,18 +134,7 @@ class RarArchiveReader implements ArchiveReader {
           isDirectory: header.flags.directory,
         });
       }
-
-      // Extract all files
-      const extracted = extractor.extract();
-      if (extracted && extracted.files) {
-        const files = [...extracted.files];
-        for (const file of files) {
-          const existing = instance.entries.find((e) => e.name === file.fileHeader.name);
-          if (existing && file.extraction) {
-            existing.data = file.extraction;
-          }
-        }
-      }
+      // 不再调用 extractor.extract()，彻底避免全量解压
     } catch (err: unknown) {
       console.warn("Skipping invalid RAR file:", filepath);
       return null;
@@ -153,16 +143,26 @@ class RarArchiveReader implements ArchiveReader {
   }
 
   listEntries(): ArchiveEntry[] {
-    return this.entries.map((e) => ({
-      name: e.name,
-      isDirectory: e.isDirectory,
-    }));
+    return this.entries;
   }
 
   extractEntry(entryName: string): Buffer | null {
-    const entry = this.entries.find((e) => e.name === entryName);
-    if (!entry?.data) return null;
-    return Buffer.from(entry.data);
+    try {
+      // 按需提取单文件：借用 7z 的 -so 输出到 stdout，速度快且不占磁盘
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sevenBin = require("7zip-bin");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { execFileSync } = require("child_process");
+      const result = execFileSync(
+        sevenBin.path7za,
+        ["e", "-y", "-so", this.filepath, entryName],
+        { maxBuffer: 100 * 1024 * 1024 }
+      );
+      return result;
+    } catch (err) {
+      console.error("RAR single-file extract error:", entryName, err);
+      return null;
+    }
   }
 
   close() {
@@ -177,19 +177,15 @@ class RarArchiveReader implements ArchiveReader {
 class SevenZipArchiveReader implements ArchiveReader {
   private filepath: string;
   private entryList: ArchiveEntry[] = [];
-  private tempDir: string;
-  private extracted = false;
 
   constructor(filepath: string) {
     this.filepath = filepath;
-    this.tempDir = path.join(
-      path.dirname(filepath),
-      ".7z-temp-" + path.basename(filepath, path.extname(filepath))
-    );
 
-    // List entries synchronously using child_process
+    // List entries using child_process
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const sevenBin = require("7zip-bin");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { execFileSync } = require("child_process");
       const result = execFileSync(sevenBin.path7za, ["l", "-slt", filepath], {
         encoding: "utf-8",
@@ -229,40 +225,26 @@ class SevenZipArchiveReader implements ArchiveReader {
   }
 
   extractEntry(entryName: string): Buffer | null {
-    if (!this.extracted) {
-      this.extractAll();
-    }
-
-    const filePath = path.join(this.tempDir, entryName);
-    if (fs.existsSync(filePath)) {
-      return fs.readFileSync(filePath);
-    }
-    return null;
-  }
-
-  private extractAll() {
+    // 按需解压单文件到 stdout（-so），不落盘、不全量解压
     try {
-      if (!fs.existsSync(this.tempDir)) {
-        fs.mkdirSync(this.tempDir, { recursive: true });
-      }
-
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const sevenBin = require("7zip-bin");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { execFileSync } = require("child_process");
-      execFileSync(sevenBin.path7za, ["x", "-y", `-o${this.tempDir}`, this.filepath], {
-        encoding: "utf-8",
-        maxBuffer: 100 * 1024 * 1024,
-      });
-      this.extracted = true;
+      const result = execFileSync(
+        sevenBin.path7za,
+        ["e", "-y", "-so", this.filepath, entryName],
+        { maxBuffer: 100 * 1024 * 1024 }
+      );
+      return result;
     } catch (err) {
-      console.error("Failed to extract 7z:", err);
+      console.error("7z single-file extract error:", entryName, err);
+      return null;
     }
   }
 
   close() {
-    // Clean up temp dir
-    if (fs.existsSync(this.tempDir)) {
-      fs.rmSync(this.tempDir, { recursive: true, force: true });
-    }
+    // 不再需要清理临时目录
   }
 }
 

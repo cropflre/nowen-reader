@@ -7,6 +7,7 @@ import {
   SUPPORTED_EXTENSIONS,
 } from "./config";
 import {
+  ArchiveReader,
   createArchiveReader,
   getImageEntriesFromArchive,
   getArchiveType,
@@ -43,6 +44,64 @@ export function filenameToId(filename: string): string {
 // Derive a clean title from filename
 export function filenameToTitle(filename: string): string {
   return path.basename(filename, path.extname(filename));
+}
+
+// ============================================================
+// ArchiveReader instance cache pool (prevents re-opening same file)
+// ============================================================
+
+interface CachedReader {
+  reader: ArchiveReader;
+  lastUsed: number;
+}
+
+const readerCache = new Map<string, CachedReader>();
+const READER_CACHE_TTL = 60_000; // 60 seconds
+const READER_CACHE_MAX_SIZE = 5; // 最多缓存 5 个 reader，防止内存失控
+
+// 定期清理过期 reader
+setInterval(() => {
+  const now = Date.now();
+  for (const [filepath, cached] of readerCache.entries()) {
+    if (now - cached.lastUsed > READER_CACHE_TTL) {
+      cached.reader.close();
+      readerCache.delete(filepath);
+    }
+  }
+}, 30_000);
+
+/**
+ * Get or create an ArchiveReader, with instance pooling.
+ * The caller should NOT call reader.close() — the pool manages lifecycle.
+ */
+async function getPooledReader(filepath: string): Promise<ArchiveReader | null> {
+  const cached = readerCache.get(filepath);
+  if (cached) {
+    cached.lastUsed = Date.now();
+    return cached.reader;
+  }
+
+  const reader = await createArchiveReader(filepath);
+  if (!reader) return null;
+
+  // 如果池满，淘汰最久未使用的
+  if (readerCache.size >= READER_CACHE_MAX_SIZE) {
+    let oldestKey = "";
+    let oldestTime = Infinity;
+    for (const [key, val] of readerCache.entries()) {
+      if (val.lastUsed < oldestTime) {
+        oldestTime = val.lastUsed;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      readerCache.get(oldestKey)?.reader.close();
+      readerCache.delete(oldestKey);
+    }
+  }
+
+  readerCache.set(filepath, { reader, lastUsed: Date.now() });
+  return reader;
 }
 
 // ============================================================
@@ -85,6 +144,11 @@ export function invalidateComicCaches() {
   fullScanCache = null;
   fullScanTimestamp = 0;
   pageListCache.clear();
+  // 关闭并清理所有池化的 reader
+  for (const [, cached] of readerCache.entries()) {
+    cached.reader.close();
+  }
+  readerCache.clear();
 }
 
 /**
@@ -233,13 +297,10 @@ export async function getComicPages(comicId: string): Promise<string[]> {
     const count = await getPdfPageCount(info.filepath);
     entries = Array.from({ length: count }, (_, i) => `page-${String(i + 1).padStart(4, "0")}.png`);
   } else {
-    const reader = await createArchiveReader(info.filepath);
+    const reader = await getPooledReader(info.filepath);
     if (!reader) return [];
-    try {
-      entries = getImageEntriesFromArchive(reader);
-    } finally {
-      reader.close();
-    }
+    entries = getImageEntriesFromArchive(reader);
+    // 不调用 reader.close()，由缓存池统一管理
   }
 
   pageListCache.set(comicId, { entries, ts: now });
@@ -284,8 +345,8 @@ export async function getPageImage(
     // Cache dir doesn't exist yet, proceed to extract
   }
 
-  // Extract from archive
-  const reader = await createArchiveReader(info.filepath);
+  // Extract from archive (using pooled reader)
+  const reader = await getPooledReader(info.filepath);
   if (!reader) return null;
 
   try {
@@ -305,9 +366,11 @@ export async function getPageImage(
       .catch(() => { /* Cache write failure is non-critical */ });
 
     return { buffer, mimeType };
-  } finally {
-    reader.close();
+  } catch (e) {
+    console.error("getPageImage extract error:", e);
+    return null;
   }
+  // 不调用 reader.close()，由缓存池统一管理
 }
 
 /**
