@@ -30,7 +30,7 @@ function naturalSort(a: string, b: string): number {
 }
 
 // Generate a stable ID from filename
-function filenameToId(filename: string): string {
+export function filenameToId(filename: string): string {
   const crypto = require("crypto");
   return crypto
     .createHash("md5")
@@ -40,7 +40,7 @@ function filenameToId(filename: string): string {
 }
 
 // Derive a clean title from filename
-function filenameToTitle(filename: string): string {
+export function filenameToTitle(filename: string): string {
   return path.basename(filename, path.extname(filename));
 }
 

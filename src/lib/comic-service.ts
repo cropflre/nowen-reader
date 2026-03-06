@@ -1,6 +1,6 @@
 import { prisma } from "./db";
-import { scanComicsDirectory, ComicArchiveInfo, invalidateComicCaches } from "./comic-parser";
-import { THUMBNAILS_DIR } from "./config";
+import { scanComicsDirectory, ComicArchiveInfo, invalidateComicCaches, filenameToId, filenameToTitle } from "./comic-parser";
+import { THUMBNAILS_DIR, getAllComicsDirs } from "./config";
 import path from "path";
 import fs from "fs";
 
@@ -17,30 +17,89 @@ function getCoverUrl(comicId: string): string {
 }
 
 /**
- * Sync the comics directory with the database.
- * - Adds new comics found on disk
- * - Removes DB entries for deleted files
- * - Updates page count / file size if changed
+ * Sync state: prevents overlapping syncs and tracks status.
  */
-export async function syncComicsToDatabase() {
-  // Invalidate caches before scanning to get fresh data
-  invalidateComicCaches();
+let syncInProgress = false;
+let lastSyncTime = 0;
+const SYNC_COOLDOWN = 30_000; // minimum 30s between full syncs
 
-  const filesOnDisk = await scanComicsDirectory();
-  const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
+/**
+ * Quick sync: only check filenames on disk (no archive opening).
+ * Adds new entries (with pageCount=0) and removes stale entries.
+ * Very fast even with thousands of files.
+ */
+async function quickSync() {
+  const allDirs = getAllComicsDirs();
+  const SUPPORTED = [".zip", ".cbz", ".cbr", ".rar", ".7z", ".cb7", ".pdf"];
 
-  // Get all comics in DB
-  const dbComics = await prisma.comic.findMany({ select: { id: true, filename: true } });
-  const dbMap = new Map(dbComics.map((c) => [c.id, c]));
+  const filesOnDisk: { id: string; filename: string; title: string; fileSize: number }[] = [];
 
-  // Add new comics
-  const toAdd: ComicArchiveInfo[] = [];
-  for (const file of filesOnDisk) {
-    if (!dbMap.has(file.id)) {
-      toAdd.push(file);
+  for (const dir of allDirs) {
+    if (!fs.existsSync(dir)) continue;
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      const ext = path.extname(file).toLowerCase();
+      if (!SUPPORTED.includes(ext)) continue;
+      try {
+        const stat = fs.statSync(path.join(dir, file));
+        filesOnDisk.push({
+          id: filenameToId(file),
+          filename: file,
+          title: filenameToTitle(file),
+          fileSize: stat.size,
+        });
+      } catch { /* skip unreadable files */ }
     }
   }
 
+  const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
+  const dbComics = await prisma.comic.findMany({ select: { id: true, filename: true } });
+  const dbMap = new Map(dbComics.map((c) => [c.id, c]));
+
+  // Add new comics (pageCount=0, will be filled by full sync later)
+  const toAdd = filesOnDisk.filter((f) => !dbMap.has(f.id));
+  if (toAdd.length > 0) {
+    await prisma.comic.createMany({
+      data: toAdd.map((f) => ({
+        id: f.id,
+        filename: f.filename,
+        title: f.title,
+        pageCount: 0,
+        fileSize: f.fileSize,
+      })),
+    });
+  }
+
+  // Remove stale entries
+  const toRemove = dbComics.filter((c) => !fileMap.has(c.id));
+  if (toRemove.length > 0) {
+    await prisma.comic.deleteMany({
+      where: { id: { in: toRemove.map((c) => c.id) } },
+    });
+  }
+
+  return { added: toAdd.length, removed: toRemove.length };
+}
+
+/**
+ * Full sync: opens archives to get accurate page counts.
+ * Runs in background, never blocks API responses.
+ */
+async function fullSync() {
+  invalidateComicCaches();
+  const filesOnDisk = await scanComicsDirectory();
+  const fileMap = new Map(filesOnDisk.map((f) => [f.id, f]));
+
+  const dbComics = await prisma.comic.findMany({
+    select: { id: true, filename: true, pageCount: true, fileSize: true },
+  });
+  const dbMap = new Map(dbComics.map((c) => [c.id, c]));
+
+  // Add any comics missed by quickSync
+  const toAdd: ComicArchiveInfo[] = [];
+  for (const file of filesOnDisk) {
+    if (!dbMap.has(file.id)) toAdd.push(file);
+  }
   if (toAdd.length > 0) {
     await prisma.comic.createMany({
       data: toAdd.map((f) => ({
@@ -53,7 +112,7 @@ export async function syncComicsToDatabase() {
     });
   }
 
-  // Remove stale entries (files deleted from disk)
+  // Remove stale
   const toRemove = dbComics.filter((c) => !fileMap.has(c.id));
   if (toRemove.length > 0) {
     await prisma.comic.deleteMany({
@@ -61,18 +120,47 @@ export async function syncComicsToDatabase() {
     });
   }
 
-  // Update changed entries
+  // Update only changed entries (avoid unnecessary writes)
   for (const file of filesOnDisk) {
-    if (dbMap.has(file.id)) {
+    const existing = dbMap.get(file.id);
+    if (existing && (existing.pageCount !== file.pageCount || existing.fileSize !== file.fileSize)) {
       await prisma.comic.update({
         where: { id: file.id },
-        data: {
-          pageCount: file.pageCount,
-          fileSize: file.fileSize,
-        },
+        data: { pageCount: file.pageCount, fileSize: file.fileSize },
       });
     }
   }
+}
+
+/**
+ * Sync the comics directory with the database.
+ * - Quick sync (fast, no archive opening) runs inline first time
+ * - Full sync (accurate page counts) runs in background
+ * - Never blocks the API response
+ */
+export async function syncComicsToDatabase() {
+  const now = Date.now();
+
+  // Skip if a sync was done recently
+  if (now - lastSyncTime < SYNC_COOLDOWN) return;
+
+  // Skip if already running
+  if (syncInProgress) return;
+
+  syncInProgress = true;
+  lastSyncTime = now;
+
+  try {
+    // Quick sync first (fast, just filenames)
+    await quickSync();
+  } catch (err) {
+    console.error("[sync] Quick sync failed:", err);
+  }
+
+  // Fire off full sync in background (don't await)
+  fullSync()
+    .catch((err) => console.error("[sync] Full sync failed:", err))
+    .finally(() => { syncInProgress = false; });
 }
 
 /**
