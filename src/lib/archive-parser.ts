@@ -379,6 +379,7 @@ export async function renderPdfPage(
 
     await page.render({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      canvas: canvas as any,
       canvasContext: context as any,
       viewport,
     }).promise;
