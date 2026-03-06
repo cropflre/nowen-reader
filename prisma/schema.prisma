@@ -63,9 +63,6 @@ model Comic {
   // Custom sort order (for drag-and-drop)
   sortOrder   Int      @default(0)
 
-  // Group / series name
-  groupName   String   @default("")
-
   // Total reading duration in seconds
   totalReadTime Int    @default(0)
 
@@ -94,7 +91,6 @@ model Comic {
   @@index([isFavorite])
   @@index([lastReadAt])
   @@index([sortOrder])
-  @@index([groupName])
   @@index([author])
   @@index([seriesName])
 }

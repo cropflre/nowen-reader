@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface ApiComicTag {
   name: string;
@@ -20,7 +20,6 @@ export interface ApiComic {
   rating: number | null;
   coverUrl: string;
   sortOrder: number;
-  groupName: string;
   totalReadTime: number;
   tags: ApiComicTag[];
   categories: { id: number; name: string; slug: string; icon: string }[];
@@ -65,12 +64,18 @@ export function useComics(options?: {
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const initializedRef = useRef(false);
 
   const fetchComics = useCallback(async () => {
-    setLoading(true);
+    // Only show full loading spinner on initial load
+    if (!initializedRef.current) {
+      setLoading(true);
+    }
+    setFetching(true);
     setError(null);
     try {
       const params = new URLSearchParams();
@@ -91,10 +96,12 @@ export function useComics(options?: {
       setComics(data.comics);
       setTotal(data.total);
       setTotalPages(data.totalPages);
+      initializedRef.current = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
+      setFetching(false);
     }
   }, [options?.search, options?.tags, options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize]);
 
@@ -102,7 +109,7 @@ export function useComics(options?: {
     fetchComics();
   }, [fetchComics]);
 
-  return { comics, loading, error, total, totalPages, refetch: fetchComics };
+  return { comics, loading, fetching, error, total, totalPages, refetch: fetchComics };
 }
 
 /**
@@ -380,44 +387,6 @@ export async function updateSortOrders(orders: { id: string; sortOrder: number }
   } catch {
     // ignore
   }
-}
-
-// ============================================================
-// Group Management
-// ============================================================
-
-export async function updateComicGroup(comicId: string, groupName: string) {
-  try {
-    await fetch(`/api/comics/${comicId}/group`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupName }),
-    });
-  } catch {
-    // ignore
-  }
-}
-
-export function useGroups() {
-  const [groups, setGroups] = useState<{ name: string; count: number }[]>([]);
-
-  const fetchGroups = useCallback(async () => {
-    try {
-      const res = await fetch("/api/groups");
-      if (res.ok) {
-        const data = await res.json();
-        setGroups(data.groups);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchGroups();
-  }, [fetchGroups]);
-
-  return { groups, refetch: fetchGroups };
 }
 
 // ============================================================

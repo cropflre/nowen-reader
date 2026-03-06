@@ -1076,9 +1076,6 @@ export async function applyMetadata(
   if (metadata.genre && shouldUpdate(existing?.genre)) updateData.genre = metadata.genre;
   if (metadata.seriesName && shouldUpdate(existing?.seriesName)) {
     updateData.seriesName = metadata.seriesName;
-    if (shouldUpdate(existing?.groupName)) {
-      updateData.groupName = metadata.seriesName;
-    }
   }
   if (metadata.seriesIndex !== undefined && shouldUpdate(existing?.seriesIndex)) updateData.seriesIndex = metadata.seriesIndex;
   if (metadata.source) updateData.metadataSource = metadata.source;

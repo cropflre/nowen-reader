@@ -406,11 +406,6 @@ export async function getSimilarComics(comicId: string, limit = 5): Promise<Scor
       reasons.push("same_series");
     }
 
-    // Same group
-    if (comic.groupName && comic.groupName === target.groupName) {
-      score += 10;
-      reasons.push("same_group");
-    }
 
     // Same category
     if (comic.categories?.length && target.categories?.length) {

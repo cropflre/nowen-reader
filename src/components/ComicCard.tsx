@@ -114,9 +114,6 @@ export default function ComicCard({
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-medium text-foreground/90">{comic.title}</h3>
               <div className="mt-1 flex items-center gap-2">
-                {comic.groupName && (
-                  <span className="rounded bg-border/50 px-1.5 py-0.5 text-[10px] text-muted">{comic.groupName}</span>
-                )}
                 {comic.rating && comic.rating > 0 && (
                   <div className="flex items-center gap-0.5">
                     <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
@@ -155,9 +152,6 @@ export default function ComicCard({
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-sm font-medium text-foreground/90 group-hover:text-foreground">{comic.title}</h3>
                 <div className="mt-1 flex items-center gap-2">
-                  {comic.groupName && (
-                    <span className="rounded bg-border/50 px-1.5 py-0.5 text-[10px] text-muted">{comic.groupName}</span>
-                  )}
                   {comic.rating && comic.rating > 0 && (
                     <div className="flex items-center gap-0.5">
                       <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
@@ -303,12 +297,6 @@ export default function ComicCard({
                   </div>
                 )}
 
-                {/* Group badge */}
-                {comic.groupName && (
-                  <div className="absolute bottom-8 left-2 z-10 rounded-md bg-black/60 px-1.5 py-0.5 backdrop-blur-sm">
-                    <span className="text-[10px] text-white/70">{comic.groupName}</span>
-                  </div>
-                )}
 
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-all duration-300 group-hover:opacity-100">
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/90 shadow-lg shadow-accent/30 backdrop-blur-sm transition-transform duration-300 group-hover:scale-100 scale-75">

@@ -49,7 +49,6 @@ export default function RecommendationsPage() {
     similar_tags: t.recommend?.similarTags || "Similar tags",
     similar_genre: t.recommend?.similarGenre || "Similar genre",
     same_series: t.recommend?.sameSeries || "Same series",
-    same_group: t.recommend?.sameGroup || "Same group",
   };
 
   return (

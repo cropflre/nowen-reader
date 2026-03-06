@@ -11,7 +11,6 @@ import {
   addComicTags,
   removeComicTag,
   deleteComicById,
-  updateComicGroup,
   useCategories,
   addComicCategories,
   removeComicCategory,
@@ -28,7 +27,6 @@ import {
   Clock,
   HardDrive,
   Calendar,
-  FolderOpen,
   Layers,
   Trash2,
   Play,
@@ -67,8 +65,6 @@ export default function ComicDetailPage() {
   const { comic, loading, refetch } = useComicDetail(comicId);
   const { categories: allCategories, refetch: refetchCategories, initCategories } = useCategories();
   const [newTag, setNewTag] = useState("");
-  const [editingGroup, setEditingGroup] = useState(false);
-  const [groupInput, setGroupInput] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showCoverMenu, setShowCoverMenu] = useState(false);
@@ -113,12 +109,6 @@ export default function ComicDetailPage() {
     },
     [comicId, refetch]
   );
-
-  const handleSaveGroup = useCallback(async () => {
-    await updateComicGroup(comicId, groupInput.trim());
-    setEditingGroup(false);
-    refetch();
-  }, [comicId, groupInput, refetch]);
 
   const handleAddCategory = useCallback(async (slug: string) => {
     await addComicCategories(comicId, [slug]);
@@ -619,47 +609,6 @@ export default function ComicDetailPage() {
               )}
             </div>
 
-            {/* Group */}
-            <div>
-              <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">{t.comicDetail.groupLabel}</h3>
-              {editingGroup ? (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={groupInput}
-                    onChange={(e) => setGroupInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSaveGroup()}
-                    placeholder={t.comicDetail.groupInputPlaceholder}
-                    className="flex-1 rounded-lg bg-card px-3 py-2 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleSaveGroup}
-                    className="rounded-lg bg-accent px-3 py-2 text-sm text-white"
-                  >
-                    {t.common.save}
-                  </button>
-                  <button
-                    onClick={() => setEditingGroup(false)}
-                    className="rounded-lg bg-card px-3 py-2 text-sm text-muted"
-                  >
-                    {t.common.cancel}
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    setGroupInput(comic.groupName || "");
-                    setEditingGroup(true);
-                  }}
-                  className="flex items-center gap-2 rounded-lg bg-card px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-card-hover"
-                >
-                  <FolderOpen className="h-4 w-4 text-muted" />
-                  {comic.groupName || t.comicDetail.ungrouped} 
-                  <span className="text-xs text-muted">{t.comicDetail.clickToEdit}</span>
-                </button>
-              )}
-            </div>
 
             {/* Metadata Info */}
             {(comic.author || comic.description || comic.publisher || comic.year || comic.genre || comic.seriesName) && (

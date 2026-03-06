@@ -61,11 +61,6 @@ const en: Translations = {
     label: "Tags",
   },
 
-  // Group Filter
-  groupFilter: {
-    label: "Groups",
-    ungrouped: "Ungrouped",
-  },
 
   // Category Filter
   categoryFilter: {
@@ -80,10 +75,8 @@ const en: Translations = {
     favorite: "Favorite",
     unfavorite: "Unfavorite",
     tags: "Tags",
-    group: "Group",
     category: "Category",
     tagInputPlaceholder: "Enter tags (comma separated), press Enter...",
-    groupInputPlaceholder: "Enter group name, leave empty to ungroup...",
     confirmDelete: "Confirm Delete",
     confirmDeleteMsg: "Are you sure you want to delete {count} selected comics? This cannot be undone.",
   },
@@ -110,10 +103,7 @@ const en: Translations = {
     tagsLabel: "Tags",
     noTags: "No tags",
     addTagPlaceholder: "Add tag...",
-    groupLabel: "Group",
-    ungrouped: "Ungrouped",
     clickToEdit: "(click to edit)",
-    groupInputPlaceholder: "Enter group name...",
     confirmDelete: "Confirm Delete",
     confirmDeleteMsg: "Are you sure you want to delete \"{title}\"? This will also delete the file on disk and cannot be undone.",
     changeCover: "Change Cover",
@@ -289,7 +279,6 @@ const en: Translations = {
     similarTags: "Similar tags",
     similarGenre: "Similar genre",
     sameSeries: "Same series",
-    sameGroup: "Same group",
     sameCategory: "Same category",
     semanticMatch: "AI semantic match",
   },

@@ -3,7 +3,6 @@ import {
   batchDeleteComics,
   batchSetFavorite,
   batchAddTags,
-  batchSetGroup,
   batchSetCategory,
 } from "@/lib/comic-service";
 
@@ -39,9 +38,6 @@ export async function POST(request: NextRequest) {
         await batchAddTags(comicIds, params.tags);
         return NextResponse.json({ success: true });
 
-      case "setGroup":
-        await batchSetGroup(comicIds, params.groupName || "");
-        return NextResponse.json({ success: true });
 
       case "setCategory":
         if (!Array.isArray(params.categorySlugs) || params.categorySlugs.length === 0) {

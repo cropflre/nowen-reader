@@ -59,11 +59,6 @@ const zhCN = {
     label: "标签筛选",
   },
 
-  // Group Filter (legacy)
-  groupFilter: {
-    label: "分组",
-    ungrouped: "未分组",
-  },
 
   // Category Filter
   categoryFilter: {
@@ -78,10 +73,8 @@ const zhCN = {
     favorite: "收藏",
     unfavorite: "取消收藏",
     tags: "标签",
-    group: "分组",
     category: "分类",
     tagInputPlaceholder: "输入标签 (逗号分隔多个)，回车确认...",
-    groupInputPlaceholder: "输入分组名称，留空则取消分组...",
     confirmDelete: "确认删除",
     confirmDeleteMsg: "确定要删除选中的 {count} 本漫画吗？此操作不可撤销。",
   },
@@ -108,10 +101,7 @@ const zhCN = {
     tagsLabel: "标签",
     noTags: "暂无标签",
     addTagPlaceholder: "添加标签...",
-    groupLabel: "分组",
-    ungrouped: "未分组",
     clickToEdit: "(点击编辑)",
-    groupInputPlaceholder: "输入分组名称...",
     confirmDelete: "确认删除",
     confirmDeleteMsg: "确定要删除「{title}」吗？此操作将同时删除磁盘上的文件，不可撤销。",
     changeCover: "更换封面",
@@ -287,7 +277,6 @@ const zhCN = {
     similarTags: "相似标签",
     similarGenre: "相似类型",
     sameSeries: "同一系列",
-    sameGroup: "同一分组",
     sameCategory: "同一分类",
     semanticMatch: "AI 语义匹配",
   },
@@ -487,10 +476,6 @@ export interface Translations {
   tagFilter: {
     label: string;
   };
-  groupFilter: {
-    label: string;
-    ungrouped: string;
-  };
   categoryFilter: {
     label: string;
     uncategorized: string;
@@ -501,10 +486,8 @@ export interface Translations {
     favorite: string;
     unfavorite: string;
     tags: string;
-    group: string;
     category: string;
     tagInputPlaceholder: string;
-    groupInputPlaceholder: string;
     confirmDelete: string;
     confirmDeleteMsg: string;
   };
@@ -527,10 +510,7 @@ export interface Translations {
     tagsLabel: string;
     noTags: string;
     addTagPlaceholder: string;
-    groupLabel: string;
-    ungrouped: string;
     clickToEdit: string;
-    groupInputPlaceholder: string;
     confirmDelete: string;
     confirmDeleteMsg: string;
     changeCover: string;
@@ -688,7 +668,6 @@ export interface Translations {
     similarTags: string;
     similarGenre: string;
     sameSeries: string;
-    sameGroup: string;
     sameCategory: string;
     semanticMatch: string;
   };

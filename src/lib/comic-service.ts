@@ -157,7 +157,6 @@ export async function getAllComics(options?: {
     isFavorite: c.isFavorite,
     rating: c.rating,
     sortOrder: c.sortOrder,
-    groupName: c.groupName,
     totalReadTime: c.totalReadTime,
     coverUrl: getCoverUrl(c.id),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -214,7 +213,6 @@ export async function getComicById(id: string) {
     isFavorite: comic.isFavorite,
     rating: comic.rating,
     sortOrder: comic.sortOrder,
-    groupName: comic.groupName,
     totalReadTime: comic.totalReadTime,
     tags: comic.tags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),
     categories: comic.categories.map((cc) => ({ id: cc.category.id, name: cc.category.name, slug: cc.category.slug, icon: cc.category.icon })),
@@ -395,15 +393,6 @@ export async function batchAddTags(comicIds: string[], tagNames: string[]) {
   }
 }
 
-/**
- * Batch set group
- */
-export async function batchSetGroup(comicIds: string[], groupName: string) {
-  return prisma.comic.updateMany({
-    where: { id: { in: comicIds } },
-    data: { groupName },
-  });
-}
 
 // ============================================================
 // Reading Statistics
@@ -671,38 +660,6 @@ export async function batchSetCategory(comicIds: string[], categorySlugs: string
   for (const comicId of comicIds) {
     await addCategoriesToComic(comicId, categorySlugs);
   }
-}
-
-/**
- * Update comic group (legacy — kept for backward compatibility)
- */
-export async function updateComicGroup(comicId: string, groupName: string) {
-  return prisma.comic.update({
-    where: { id: comicId },
-    data: { groupName },
-  });
-}
-
-/**
- * Get all groups (legacy)
- */
-export async function getAllGroups() {
-  const comics = await prisma.comic.findMany({
-    where: { groupName: { not: "" } },
-    select: { groupName: true },
-    distinct: ["groupName"],
-    orderBy: { groupName: "asc" },
-  });
-
-  const groups: { name: string; count: number }[] = [];
-  for (const c of comics) {
-    const count = await prisma.comic.count({
-      where: { groupName: c.groupName },
-    });
-    groups.push({ name: c.groupName, count });
-  }
-
-  return groups;
 }
 
 // ============================================================

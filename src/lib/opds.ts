@@ -122,22 +122,6 @@ export function generateRootCatalog(baseUrl: string): string {
             },
           },
         },
-        {
-          title: "By Group",
-          id: `${baseUrl}/api/opds/groups`,
-          updated: now,
-          content: {
-            $: { type: "text" },
-            _: "Browse comics by group/series",
-          },
-          link: {
-            $: {
-              rel: "subsection",
-              href: "/api/opds/groups",
-              type: OPDS_MIME,
-            },
-          },
-        },
       ],
     },
   };
@@ -249,64 +233,6 @@ export function generateAcquisitionFeed(
             rel: "search",
             href: "/api/opds/search?q={searchTerms}",
             type: OPDS_ACQUISITION_MIME,
-          },
-        },
-      ],
-      entry: entries,
-    },
-  };
-
-  return builder.buildObject(feed);
-}
-
-/**
- * Generate a navigation feed for groups
- */
-export function generateGroupsFeed(
-  baseUrl: string,
-  groups: { name: string; count: number }[]
-): string {
-  const now = new Date().toISOString();
-
-  const entries = groups.map((group) => ({
-    title: group.name,
-    id: `${baseUrl}/api/opds/groups/${encodeURIComponent(group.name)}`,
-    updated: now,
-    content: {
-      $: { type: "text" },
-      _: `${group.count} comics`,
-    },
-    link: {
-      $: {
-        rel: "subsection",
-        href: `/api/opds/groups/${encodeURIComponent(group.name)}`,
-        type: OPDS_ACQUISITION_MIME,
-      },
-    },
-  }));
-
-  const feed = {
-    feed: {
-      $: {
-        xmlns: OPDS_NS,
-        "xmlns:opds": OPDS_CATALOG_NS,
-      },
-      id: `${baseUrl}/api/opds/groups`,
-      title: "Groups",
-      updated: now,
-      link: [
-        {
-          $: {
-            rel: "self",
-            href: "/api/opds/groups",
-            type: OPDS_MIME,
-          },
-        },
-        {
-          $: {
-            rel: "start",
-            href: "/api/opds",
-            type: OPDS_MIME,
           },
         },
       ],

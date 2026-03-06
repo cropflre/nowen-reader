@@ -7,7 +7,6 @@ import {
   HeartOff,
   Trash2,
   Tag,
-  FolderOpen,
   Layers,
   CheckSquare,
 } from "lucide-react";
@@ -21,7 +20,6 @@ interface BatchToolbarProps {
   onFavorite: () => void;
   onUnfavorite: () => void;
   onAddTags: (tags: string[]) => void;
-  onSetGroup: (groupName: string) => void;
   onSetCategory?: (categorySlugs: string[]) => void;
 }
 
@@ -32,13 +30,10 @@ export default function BatchToolbar({
   onFavorite,
   onUnfavorite,
   onAddTags,
-  onSetGroup,
   onSetCategory,
 }: BatchToolbarProps) {
   const [showTagInput, setShowTagInput] = useState(false);
   const [tagInput, setTagInput] = useState("");
-  const [showGroupInput, setShowGroupInput] = useState(false);
-  const [groupInput, setGroupInput] = useState("");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const t = useTranslation();
@@ -90,19 +85,6 @@ export default function BatchToolbar({
               <span className="hidden sm:inline">{t.batch.tags}</span>
             </button>
 
-            {/* Set Group */}
-            <button
-              onClick={() => setShowGroupInput(!showGroupInput)}
-              className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
-                showGroupInput
-                  ? "bg-accent/20 text-accent"
-                  : "bg-card text-muted hover:bg-card-hover"
-              }`}
-              title={t.batch.group}
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t.batch.group}</span>
-            </button>
 
             {/* Set Category */}
             {onSetCategory && (
@@ -174,36 +156,6 @@ export default function BatchToolbar({
           </div>
         )}
 
-        {/* Group Input Inline */}
-        {showGroupInput && (
-          <div className="mx-auto mt-3 flex max-w-[1800px] items-center gap-2">
-            <input
-              type="text"
-              value={groupInput}
-              onChange={(e) => setGroupInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  onSetGroup(groupInput.trim());
-                  setGroupInput("");
-                  setShowGroupInput(false);
-                }
-              }}
-              placeholder={t.batch.groupInputPlaceholder}
-              className="flex-1 rounded-lg bg-card px-3 py-2 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
-              autoFocus
-            />
-            <button
-              onClick={() => {
-                onSetGroup(groupInput.trim());
-                setGroupInput("");
-                setShowGroupInput(false);
-              }}
-              className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
-            >
-              {t.common.confirm}
-            </button>
-          </div>
-        )}
 
         {/* Category Picker Inline */}
         {showCategoryPicker && onSetCategory && (

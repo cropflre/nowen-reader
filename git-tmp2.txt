@@ -1,12 +1,8 @@
-4688d09 fix: prisma-import-and-cicd-config
-On branch main
-Your branch is up to date with 'origin/main'.
-
-You are in a sparse checkout with 100% of tracked files present.
-
-Changes not staged for commit:
-  (use "git add <file>..." to update what will be committed)
-  (use "git restore <file>..." to discard changes in working directory)
-	modified:   git-tmp2.txt
-
-no changes added to commit (use "git add" and/or "git commit -a")
+﻿git : To https://github.com/cropflre/nowen-reader.git
+所在位置 行:1 字符: 36
++ Set-Location 'c:\AA\nowen-reader'; git push origin main 2>&1 | Out-Fi ...
++                                    ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (To https://gith...owen-reader.git:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   d572945..97ed409  main -> main

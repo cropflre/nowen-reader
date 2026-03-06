@@ -6,7 +6,6 @@ import ComicCard from "@/components/ComicCard";
 import TagFilter from "@/components/TagFilter";
 import StatsBar from "@/components/StatsBar";
 import CategoryFilter from "@/components/CategoryFilter";
-import GroupFilter from "@/components/GroupFilter";
 import BatchToolbar from "@/components/BatchToolbar";
 import { RecommendationStrip } from "@/components/Recommendations";
 import { mockComics } from "@/data/mock-comics";
@@ -16,7 +15,6 @@ import {
   ApiComic,
   batchOperation,
   updateSortOrders,
-  useGroups,
   useCategories,
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
@@ -43,7 +41,6 @@ function apiToComic(api: ApiComic): Comic {
     rating: api.rating ?? undefined,
     lastReadPage: api.lastReadPage,
     sortOrder: api.sortOrder,
-    groupName: api.groupName,
     totalReadTime: api.totalReadTime,
     categories: api.categories,
   };
@@ -58,7 +55,6 @@ export default function Home() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [sortBy, setSortBy] = useState<string>("title");
   const [sortOrder, setSortOrder] = useState<string>("asc");
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,17 +84,16 @@ export default function Home() {
   }, []);
 
   // Fetch real comics from API with pagination
-  const { comics: apiComics, loading, total: apiTotal, totalPages, refetch } = useComics({
+  const { comics: apiComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
     page: currentPage,
     pageSize,
   });
-  const { groups, refetch: refetchGroups } = useGroups();
   const { categories, refetch: refetchCategories, initCategories } = useCategories();
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedTags, favoritesOnly, selectedGroup, selectedCategory, sortBy, sortOrder]);
+  }, [searchQuery, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder]);
 
   // Use real comics if available, else fallback to mock
   const useRealData = apiComics.length > 0;
@@ -135,19 +130,15 @@ export default function Home() {
 
       const matchesFavorite = !favoritesOnly || comic.isFavorite;
 
-      const matchesGroup =
-        selectedGroup === null ||
-        (selectedGroup === "" ? !comic.groupName || comic.groupName === "" : comic.groupName === selectedGroup);
-
       const matchesCategory =
         selectedCategory === null ||
         (selectedCategory === "uncategorized"
           ? !comic.categories || comic.categories.length === 0
           : comic.categories?.some((c) => c.slug === selectedCategory));
 
-      return matchesSearch && matchesTags && matchesFavorite && matchesGroup && matchesCategory;
+      return matchesSearch && matchesTags && matchesFavorite && matchesCategory;
     });
-  }, [displayComics, searchQuery, selectedTags, favoritesOnly, selectedGroup, selectedCategory]);
+  }, [displayComics, searchQuery, selectedTags, favoritesOnly, selectedCategory]);
 
   // Sort comics
   const sortedComics = useMemo(() => {
@@ -198,7 +189,6 @@ export default function Home() {
         const result = await uploadComics(files);
         if (result.success) {
           await refetch();
-          refetchGroups();
         }
         alert(result.message);
       } catch {
@@ -208,7 +198,7 @@ export default function Home() {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [refetch, refetchGroups]
+    [refetch]
   );
 
   // Batch selection handlers
@@ -239,8 +229,7 @@ export default function Home() {
     await batchOperation("delete", ids);
     exitBatchMode();
     await refetch();
-    refetchGroups();
-  }, [selectedIds, exitBatchMode, refetch, refetchGroups]);
+  }, [selectedIds, exitBatchMode, refetch]);
 
   const handleBatchFavorite = useCallback(async () => {
     await batchOperation("favorite", Array.from(selectedIds), { isFavorite: true });
@@ -261,16 +250,6 @@ export default function Home() {
       await refetch();
     },
     [selectedIds, exitBatchMode, refetch]
-  );
-
-  const handleBatchSetGroup = useCallback(
-    async (groupName: string) => {
-      await batchOperation("setGroup", Array.from(selectedIds), { groupName });
-      exitBatchMode();
-      await refetch();
-      refetchGroups();
-    },
-    [selectedIds, exitBatchMode, refetch, refetchGroups]
   );
 
   const handleBatchSetCategory = useCallback(
@@ -509,17 +488,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Group Filter (legacy) */}
-            {groups.length > 0 && (
-              <div className="mt-2">
-                <GroupFilter
-                  groups={groups}
-                  selectedGroup={selectedGroup}
-                  onGroupSelect={setSelectedGroup}
-                />
-              </div>
-            )}
-
             {/* Tag Filter */}
             {allTags.length > 0 && (
               <div className="mt-4 mb-8">
@@ -533,6 +501,7 @@ export default function Home() {
             )}
 
             {/* Comics Grid */}
+            <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
             {sortedComics.length > 0 ? (
               <div
                 className={
@@ -575,6 +544,7 @@ export default function Home() {
                 </p>
               </div>
             )}
+            </div>
 
             {/* Pagination */}
             {useRealData && totalPages > 1 && (
@@ -693,7 +663,6 @@ export default function Home() {
           onFavorite={handleBatchFavorite}
           onUnfavorite={handleBatchUnfavorite}
           onAddTags={handleBatchAddTags}
-          onSetGroup={handleBatchSetGroup}
           onSetCategory={handleBatchSetCategory}
         />
       )}

@@ -31,7 +31,6 @@ export interface SyncComicData {
   lastReadAt: string | null;
   isFavorite: boolean;
   rating: number | null;
-  groupName: string;
   tags: string[];
 }
 
@@ -60,7 +59,6 @@ export async function exportSyncData(deviceId: string): Promise<SyncData> {
       lastReadAt: c.lastReadAt?.toISOString() || null,
       isFavorite: c.isFavorite,
       rating: c.rating,
-      groupName: c.groupName,
       tags: c.tags.map((ct) => ct.tag.name),
     })),
     settings: {},
@@ -107,7 +105,6 @@ export async function importSyncData(remote: SyncData): Promise<{
             : localComic.lastReadAt,
           isFavorite: remoteComic.isFavorite || localComic.isFavorite,
           rating: remoteComic.rating ?? localComic.rating,
-          groupName: remoteComic.groupName || localComic.groupName,
         },
       });
 
