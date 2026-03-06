@@ -1,14 +1,15 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { Tag, ChevronLeft, ChevronRight } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { Tag, ChevronLeft, ChevronRight, Languages } from "lucide-react";
+import { useTranslation, useLocale } from "@/lib/i18n";
 
 interface TagFilterProps {
   allTags: string[];
   selectedTags: string[];
   onTagToggle: (tag: string) => void;
   onClearAll: () => void;
+  onTagsTranslated?: () => void;
 }
 
 const tagColorMap: Record<string, string> = {
@@ -42,11 +43,14 @@ export default function TagFilter({
   selectedTags,
   onTagToggle,
   onClearAll,
+  onTagsTranslated,
 }: TagFilterProps) {
   const t = useTranslation();
+  const { locale } = useLocale();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [translating, setTranslating] = useState(false);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -75,12 +79,46 @@ export default function TagFilter({
     el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
   };
 
+  const handleTranslate = useCallback(async () => {
+    if (translating) return;
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/tags/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLang: locale }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.translated > 0) {
+          onClearAll(); // Clear selected tags since names changed
+          onTagsTranslated?.();
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setTranslating(false);
+    }
+  }, [translating, locale, onClearAll, onTagsTranslated]);
+
   return (
     <div className="relative flex items-center gap-2">
-      {/* Label */}
-      <div className="flex items-center gap-1.5 text-muted shrink-0">
-        <Tag className="h-3.5 w-3.5" />
-        <span className="text-xs font-medium whitespace-nowrap">{t.tagFilter.label}</span>
+      {/* Label + Translate */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 text-muted">
+          <Tag className="h-3.5 w-3.5" />
+          <span className="text-xs font-medium whitespace-nowrap">{t.tagFilter.label}</span>
+        </div>
+        <button
+          onClick={handleTranslate}
+          disabled={translating}
+          className="flex h-6 items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
+          title={t.tagFilter.translate}
+        >
+          <Languages className="h-3 w-3" />
+          <span>{translating ? t.tagFilter.translating : t.tagFilter.translate}</span>
+        </button>
       </div>
 
       {/* Left arrow */}

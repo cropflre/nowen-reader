@@ -63,6 +63,12 @@ export function SiteSettingsPanel() {
   const [batchDone, setBatchDone] = useState<BatchProgress | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Batch translate metadata states
+  const [translateRunning, setTranslateRunning] = useState(false);
+  const [translateProgress, setTranslateProgress] = useState<BatchProgress | null>(null);
+  const [translateDone, setTranslateDone] = useState<BatchProgress | null>(null);
+  const translateAbortRef = useRef<AbortController | null>(null);
+
   // New dir input
   const [newDir, setNewDir] = useState("");
 
@@ -213,6 +219,61 @@ export function SiteSettingsPanel() {
   const cancelBatch = () => {
     abortRef.current?.abort();
     setBatchRunning(false);
+  };
+
+  const startBatchTranslate = useCallback(async () => {
+    setTranslateRunning(true);
+    setTranslateProgress(null);
+    setTranslateDone(null);
+    const abort = new AbortController();
+    translateAbortRef.current = abort;
+
+    try {
+      const lang = config?.language === "auto" ? (navigator.language.startsWith("zh") ? "zh-CN" : "en") : config?.language;
+      const res = await fetch("/api/metadata/translate-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLang: lang }),
+        signal: abort.signal,
+      });
+
+      const reader = res.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === "done") {
+              setTranslateDone(data);
+            } else {
+              setTranslateProgress(data);
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        setTranslateDone({ type: "done", success: 0, failed: 0, skipped: 0, total: 0 });
+      }
+    } finally {
+      setTranslateRunning(false);
+      translateAbortRef.current = null;
+    }
+  }, [config?.language]);
+
+  const cancelTranslate = () => {
+    translateAbortRef.current?.abort();
+    setTranslateRunning(false);
   };
 
   if (loading) {
@@ -530,6 +591,85 @@ export function SiteSettingsPanel() {
             </div>
             <button
               onClick={() => setBatchDone(null)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-card-hover"
+            >
+              {t.common?.close || "Close"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Batch Translate Metadata */}
+      <div className="space-y-3 rounded-xl bg-background p-4">
+        <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+          <Languages className="h-3.5 w-3.5 text-accent" />
+          {siteT?.batchTranslateMetadata || "Batch Translate Metadata"}
+        </div>
+        <p className="text-[11px] text-muted">
+          {siteT?.batchTranslateMetadataDesc || "Translate all comic metadata (title, description, genre, series) to the current language"}
+        </p>
+
+        {!translateRunning && !translateDone && (
+          <button
+            onClick={startBatchTranslate}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-card-hover"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {siteT?.startBatchTranslate || "Start Translating"}
+          </button>
+        )}
+
+        {/* Progress */}
+        {translateRunning && translateProgress && (
+          <div className="space-y-2">
+            <div className="relative h-2 w-full rounded-full bg-border overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-accent transition-all duration-300"
+                style={{ width: `${translateProgress.percent || 0}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted truncate max-w-[70%]">
+                {translateProgress.title}
+              </span>
+              <span className="text-foreground font-medium shrink-0">
+                {(translateProgress.index ?? 0) + 1} / {translateProgress.total} ({translateProgress.percent}%)
+              </span>
+            </div>
+            <button
+              onClick={cancelTranslate}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-400/10"
+            >
+              <X className="h-3.5 w-3.5" />
+              {t.common?.cancel || "Cancel"}
+            </button>
+          </div>
+        )}
+
+        {/* Done */}
+        {translateDone && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-green-400">
+              <CheckCircle className="h-4 w-4" />
+              {siteT?.batchTranslateComplete || "Batch translation complete"}
+            </div>
+            <div className="flex items-center gap-4 text-[11px]">
+              <span className="text-green-400">
+                {siteT?.batchSuccess || "Success"}: {translateDone.success}
+              </span>
+              {(translateDone.failed ?? 0) > 0 && (
+                <span className="text-red-400">
+                  {siteT?.batchFailed || "Failed"}: {translateDone.failed}
+                </span>
+              )}
+              {(translateDone.skipped ?? 0) > 0 && (
+                <span className="text-muted">
+                  {siteT?.batchSkipped || "Skipped"}: {translateDone.skipped}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setTranslateDone(null)}
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-card-hover"
             >
               {t.common?.close || "Close"}

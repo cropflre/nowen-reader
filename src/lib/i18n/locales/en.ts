@@ -59,6 +59,8 @@ const en: Translations = {
   // Tag Filter
   tagFilter: {
     label: "Tags",
+    translate: "Translate",
+    translating: "Translating...",
   },
 
 
@@ -219,6 +221,8 @@ const en: Translations = {
       comicvine: "ComicVine",
       comicinfo: "ComicInfo (Local)",
     },
+    translateMetadata: "Translate",
+    translatingMetadata: "Translating...",
   },
 
   // PWA
@@ -339,6 +343,10 @@ const en: Translations = {
     batchSuccess: "Success",
     batchFailed: "Failed",
     batchSkipped: "Skipped",
+    batchTranslateMetadata: "Batch Translate Metadata",
+    batchTranslateMetadataDesc: "Translate all comic metadata (title, description, genre, series) to the current language",
+    startBatchTranslate: "Start Translating",
+    batchTranslateComplete: "Batch translation complete",
     pageSize: "Items Per Page",
     pageSizeDesc: "Number of comics displayed per page on the home screen",
     language: "Language",

@@ -57,6 +57,8 @@ const zhCN = {
   // Tag Filter
   tagFilter: {
     label: "标签筛选",
+    translate: "翻译标签",
+    translating: "翻译中...",
   },
 
 
@@ -217,6 +219,8 @@ const zhCN = {
       comicvine: "ComicVine (漫画藤)",
       comicinfo: "ComicInfo (本地)",
     },
+    translateMetadata: "翻译元数据",
+    translatingMetadata: "翻译中...",
   },
 
   // PWA
@@ -337,6 +341,10 @@ const zhCN = {
     batchSuccess: "成功",
     batchFailed: "失败",
     batchSkipped: "跳过",
+    batchTranslateMetadata: "批量翻译元数据",
+    batchTranslateMetadataDesc: "将所有漫画的元数据（标题、简介、类型、系列名）翻译为当前语言",
+    startBatchTranslate: "开始翻译",
+    batchTranslateComplete: "批量翻译完成",
     pageSize: "每页数量",
     pageSizeDesc: "首页每页显示的漫画数量",
     language: "语言",
@@ -475,6 +483,8 @@ export interface Translations {
   };
   tagFilter: {
     label: string;
+    translate: string;
+    translating: string;
   };
   categoryFilter: {
     label: string;
@@ -614,6 +624,8 @@ export interface Translations {
       comicvine: string;
       comicinfo: string;
     };
+    translateMetadata: string;
+    translatingMetadata: string;
   };
   pwa: {
     installTitle: string;
@@ -722,6 +734,10 @@ export interface Translations {
     batchSuccess: string;
     batchFailed: string;
     batchSkipped: string;
+    batchTranslateMetadata: string;
+    batchTranslateMetadataDesc: string;
+    startBatchTranslate: string;
+    batchTranslateComplete: string;
     pageSize: string;
     pageSizeDesc: string;
     language: string;

@@ -12,11 +12,12 @@ export async function GET(request: NextRequest) {
     const tagsParam = searchParams.get("tags");
     const tags = tagsParam ? tagsParam.split(",").filter(Boolean) : undefined;
     const favoritesOnly = searchParams.get("favorites") === "true";
-    const sortBy = (searchParams.get("sortBy") as "title" | "addedAt" | "lastReadAt" | "rating") || "title";
+    const sortBy = (searchParams.get("sortBy") as "title" | "addedAt" | "lastReadAt" | "rating" | "custom") || "title";
     const sortOrder = (searchParams.get("sortOrder") as "asc" | "desc") || "asc";
 
     const page = parseInt(searchParams.get("page") || "0", 10) || undefined;
     const pageSize = parseInt(searchParams.get("pageSize") || "0", 10) || undefined;
+    const category = searchParams.get("category") || undefined;
 
     const result = await getAllComics({
       search,
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
       sortOrder,
       page,
       pageSize,
+      category,
     });
 
     return NextResponse.json({

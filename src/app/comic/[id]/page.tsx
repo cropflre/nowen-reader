@@ -36,6 +36,7 @@ import {
   ImagePlus,
   RefreshCw,
   Download,
+  Languages,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { MetadataSearch } from "@/components/MetadataSearch";
@@ -73,6 +74,7 @@ export default function ComicDetailPage() {
   const [coverLoading, setCoverLoading] = useState(false);
   const [coverKey, setCoverKey] = useState(0); // force re-render cover image
   const coverFileRef = useRef<HTMLInputElement>(null);
+  const [metadataTranslating, setMetadataTranslating] = useState(false);
 
   // Auto-init categories on first load
   useEffect(() => {
@@ -223,6 +225,25 @@ export default function ComicDetailPage() {
       setCoverLoading(false);
     }
   }, [comic, comicId]);
+
+  const handleTranslateMetadata = useCallback(async () => {
+    if (metadataTranslating) return;
+    setMetadataTranslating(true);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/translate-metadata`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLang: locale }),
+      });
+      if (res.ok) {
+        refetch();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setMetadataTranslating(false);
+    }
+  }, [metadataTranslating, comicId, locale, refetch]);
 
   const handleDelete = useCallback(async () => {
     const success = await deleteComicById(comicId);
@@ -613,9 +634,20 @@ export default function ComicDetailPage() {
             {/* Metadata Info */}
             {(comic.author || comic.description || comic.publisher || comic.year || comic.genre || comic.seriesName) && (
               <div>
-                <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
-                  {t.metadata?.metadataSource || "Metadata"}
-                </h3>
+                <div className="mb-3 flex items-center gap-2">
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+                    {t.metadata?.metadataSource || "Metadata"}
+                  </h3>
+                  <button
+                    onClick={handleTranslateMetadata}
+                    disabled={metadataTranslating}
+                    className="flex items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 py-0.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
+                    title={t.metadata?.translateMetadata || "Translate Metadata"}
+                  >
+                    <Languages className="h-3 w-3" />
+                    <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (t.metadata?.translateMetadata || "Translate")}</span>
+                  </button>
+                </div>
                 <div className="space-y-2 rounded-xl bg-card p-4">
                   {comic.author && (
                     <div className="flex items-center gap-2 text-sm">

@@ -82,12 +82,13 @@ export async function getAllComics(options?: {
   search?: string;
   tags?: string[];
   favoritesOnly?: boolean;
-  sortBy?: "title" | "addedAt" | "lastReadAt" | "rating";
+  sortBy?: "title" | "addedAt" | "lastReadAt" | "rating" | "custom";
   sortOrder?: "asc" | "desc";
   page?: number;
   pageSize?: number;
+  category?: string;
 }) {
-  const { search, tags, favoritesOnly, sortBy = "title", sortOrder = "asc", page, pageSize } = options || {};
+  const { search, tags, favoritesOnly, sortBy = "title", sortOrder = "asc", page, pageSize, category } = options || {};
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
@@ -110,9 +111,24 @@ export async function getAllComics(options?: {
     };
   }
 
+  if (category) {
+    if (category === "uncategorized") {
+      where.categories = { none: {} };
+    } else {
+      where.categories = {
+        some: {
+          category: {
+            slug: category,
+          },
+        },
+      };
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderBy: any = {};
-  orderBy[sortBy] = sortOrder;
+  const dbSortField = sortBy === "custom" ? "sortOrder" : sortBy;
+  orderBy[dbSortField] = sortOrder;
 
   // Get total count for pagination
   const total = await prisma.comic.count({ where });

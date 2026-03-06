@@ -57,6 +57,7 @@ export default function Home() {
   const [sortOrder, setSortOrder] = useState<string>("asc");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initializedRef = useRef(false);
 
   // Batch selection
   const [batchMode, setBatchMode] = useState(false);
@@ -83,10 +84,16 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Fetch real comics from API with pagination
+  // Fetch real comics from API with pagination + server-side filtering
   const { comics: apiComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
     page: currentPage,
     pageSize,
+    search: searchQuery || undefined,
+    tags: selectedTags.length > 0 ? selectedTags : undefined,
+    favoritesOnly: favoritesOnly || undefined,
+    sortBy: sortBy || undefined,
+    sortOrder: sortOrder || undefined,
+    category: selectedCategory || undefined,
   });
   const { categories, refetch: refetchCategories, initCategories } = useCategories();
 
@@ -95,8 +102,11 @@ export default function Home() {
     setCurrentPage(1);
   }, [searchQuery, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder]);
 
-  // Use real comics if available, else fallback to mock
-  const useRealData = apiComics.length > 0;
+  // Use real comics if API has been initialized (even if current page is empty due to filters)
+  const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
+  if (useRealData && !initializedRef.current) {
+    initializedRef.current = true;
+  }
   const displayComics: Comic[] = useMemo(() => {
     if (useRealData) {
       return apiComics.map(apiToComic);
@@ -113,8 +123,9 @@ export default function Home() {
     return Array.from(tagSet).sort();
   }, [displayComics]);
 
-  // Filter comics
+  // Filter comics (only needed for mock data; real data is filtered server-side)
   const filteredComics = useMemo(() => {
+    if (useRealData) return displayComics;
     return displayComics.filter((comic) => {
       const matchesSearch =
         searchQuery === "" ||
@@ -138,10 +149,11 @@ export default function Home() {
 
       return matchesSearch && matchesTags && matchesFavorite && matchesCategory;
     });
-  }, [displayComics, searchQuery, selectedTags, favoritesOnly, selectedCategory]);
+  }, [displayComics, searchQuery, selectedTags, favoritesOnly, selectedCategory, useRealData]);
 
-  // Sort comics
+  // Sort comics (only needed for mock data; real data is sorted server-side)
   const sortedComics = useMemo(() => {
+    if (useRealData) return filteredComics;
     const sorted = [...filteredComics];
     sorted.sort((a, b) => {
       let cmp = 0;
@@ -364,7 +376,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <StatsBar
                 totalComics={useRealData ? apiTotal : displayComics.length}
-                filteredCount={sortedComics.length}
+                filteredCount={useRealData ? apiTotal : sortedComics.length}
               />
 
               {/* Sort & Filter Controls */}
@@ -496,6 +508,7 @@ export default function Home() {
                   selectedTags={selectedTags}
                   onTagToggle={handleTagToggle}
                   onClearAll={() => setSelectedTags([])}
+                  onTagsTranslated={refetch}
                 />
               </div>
             )}
