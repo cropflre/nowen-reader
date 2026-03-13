@@ -61,15 +61,15 @@ LABEL description="NowenReader - Self-hosted comic management platform"
 # - p7zip: for .7z/.cb7 archive extraction (also RAR fallback)
 # - mupdf-tools: for PDF page rendering (mutool draw)
 # - libwebp-tools: for thumbnail WebP conversion (cwebp)
-# - calibre: for .mobi/.azw3 ebook conversion (ebook-convert)
 # - tini: proper PID 1 signal handling
 # - ca-certificates: for HTTPS requests (metadata scrapers, AI APIs)
 # - tzdata: timezone support
+# Note: calibre (ebook-convert) is NOT available in Alpine repos.
+#       MOBI/AZW3 support is optional; mount ebook-convert binary or install via pip if needed.
 RUN apk add --no-cache \
     p7zip \
     mupdf-tools \
     libwebp-tools \
-    calibre \
     tini \
     ca-certificates \
     tzdata
