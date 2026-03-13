@@ -34,6 +34,8 @@ RUN go mod tidy && go mod download
 
 # Copy frontend build output into web/dist/ for embedding
 COPY --from=frontend-builder /frontend/dist/ ./web/dist/
+# Ensure dist/ has at least one file so go:embed doesn't fail on empty dir
+RUN if [ -z "$(ls -A ./web/dist/ 2>/dev/null)" ]; then echo "no frontend" > ./web/dist/.gitkeep; fi
 
 # Build static binary with version info
 ARG VERSION=docker
