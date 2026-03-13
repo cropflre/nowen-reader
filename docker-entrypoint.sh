@@ -2,41 +2,36 @@
 set -e
 
 # ============================================================
-# NowenReader Docker Entrypoint
+# NowenReader Go Docker Entrypoint
 # ============================================================
 
 echo "========================================="
 echo "  NowenReader - Starting up..."
 echo "========================================="
 
-# Ensure directories exist
-mkdir -p /data
-mkdir -p /app/.cache/thumbnails
-mkdir -p /app/comics
+# Ensure directories exist (volumes may be empty on first run)
+mkdir -p /data 2>/dev/null || true
+mkdir -p /app/.cache/thumbnails 2>/dev/null || true
+mkdir -p /app/.cache/pages 2>/dev/null || true
+mkdir -p /app/comics 2>/dev/null || true
 
-# Fix permissions for mounted volumes (NAS/Docker)
-chown -R nextjs:nodejs /data /app/.cache /app/comics 2>/dev/null || true
-
-# Set environment
-export DATABASE_URL="${DATABASE_URL:-file:/data/nowen-reader.db}"
+# Set defaults
+export DATABASE_URL="${DATABASE_URL:-/data/nowen-reader.db}"
 export COMICS_DIR="${COMICS_DIR:-/app/comics}"
+export DATA_DIR="${DATA_DIR:-/app/.cache}"
+export PORT="${PORT:-3000}"
+export GIN_MODE="${GIN_MODE:-release}"
 
-# Initialize database (as nextjs user)
-echo "[init] Checking database..."
+# First run detection
 if [ ! -f /data/nowen-reader.db ]; then
-    echo "[init] Creating database for first time..."
+    echo "[init] First run detected - database will be created automatically"
 fi
 
-echo "[init] Initializing database schema..."
-su-exec nextjs node ./db-init.mjs || {
-    echo "[error] Database initialization failed!"
-    exit 1
-}
-
-echo "[init] Database ready."
-echo "[init] Comics directory: ${COMICS_DIR}"
-echo "[init] Listening on port ${PORT:-3000}"
+echo "[init] Database: ${DATABASE_URL}"
+echo "[init] Comics:   ${COMICS_DIR}"
+echo "[init] Cache:    ${DATA_DIR}"
+echo "[init] Port:     ${PORT}"
 echo "========================================="
 
-# Start Next.js as non-root user
-exec su-exec nextjs node server.js
+# Start the server
+exec ./nowen-reader

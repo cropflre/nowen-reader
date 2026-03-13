@@ -6,6 +6,10 @@
 #
 # 或复制为 docker-compose.yml 后直接：
 #   docker compose up -d
+#
+# 更新镜像：
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
 # ============================================================
 
 services:
@@ -22,10 +26,12 @@ services:
       # - /path/to/your/comics:/app/comics
       - nowen-cache:/app/.cache
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=file:/data/nowen-reader.db
+      - GIN_MODE=release
+      - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
+      - DATA_DIR=/app/.cache
       - PORT=3000
+      - TZ=Asia/Shanghai
 
 volumes:
   nowen-data:

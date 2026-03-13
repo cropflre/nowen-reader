@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--theme-background);
+  --color-foreground: var(--theme-foreground);
+  --color-card: var(--theme-card);
+  --color-card-hover: var(--theme-card-hover);
+  --color-border: var(--theme-border);
+  --color-muted: var(--theme-muted);
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Dark theme (default) */
+:root,
+html.dark {
+  --theme-background: #09090b;
+  --theme-foreground: #fafafa;
+  --theme-card: #18181b;
+  --theme-card-hover: #27272a;
+  --theme-border: #27272a;
+  --theme-muted: #a1a1aa;
+}
+
+/* Light theme */
+html.light {
+  --theme-background: #f8f9fa;
+  --theme-foreground: #1a1a2e;
+  --theme-card: #ffffff;
+  --theme-card-hover: #f1f3f5;
+  --theme-border: #dee2e6;
+  --theme-muted: #6c757d;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+  border-radius: 3px;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}
+
+/* Tag color palette */
+.tag-action { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.tag-romance { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
+.tag-comedy { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.tag-fantasy { background: rgba(99, 102, 241, 0.15); color: #6366f1; }
+.tag-horror { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+.tag-sci-fi { background: rgba(6, 182, 212, 0.15); color: #06b6d4; }
+.tag-drama { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.tag-slice-of-life { background: rgba(251, 146, 60, 0.15); color: #fb923c; }
+.tag-adventure { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.tag-mystery { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
+.tag-default { background: rgba(161, 161, 170, 0.15); color: #a1a1aa; }
+
+/* Reader Slider */
+.reader-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+  cursor: pointer;
+}
+
+.reader-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.reader-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.7);
+}
+
+.reader-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+  cursor: pointer;
+  border: none;
+}
+
+/* Hide scrollbar for webtoon smooth scroll */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* PWA animations */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slide-down {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out;
+}
+
+/* Mobile touch improvements */
+@media (max-width: 640px) {
+  .touch-action-pan-y {
+    touch-action: pan-y;
+  }
+
+  /* Larger touch targets on mobile */
+  button, a, select {
+    min-height: 32px;
+  }
+
+  /* Bigger slider thumb for touch */
+  .reader-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .reader-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .reader-slider {
+    height: 6px;
+  }
+
+  /* Prevent text selection during swipe */
+  .touch-action-pan-y {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Scrollbar hide utility (for mobile horizontal scroll areas) */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area for PWA standalone mode */
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}

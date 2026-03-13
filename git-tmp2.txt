@@ -1,8 +1,0 @@
-﻿git : To https://github.com/cropflre/nowen-reader.git
-所在位置 行:1 字符: 36
-+ Set-Location 'c:\AA\nowen-reader'; git push origin main 2>&1 | Out-Fi ...
-+                                    ~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (To https://gith...owen-reader.git:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
-   d572945..97ed409  main -> main

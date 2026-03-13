@@ -1,3 +1,0 @@
-﻿origin	https://github.com/cropflre/nowen-reader.git (fetch)
-origin	https://github.com/cropflre/nowen-reader.git (push)
-* main 9854809 [origin/main] fix: 绉婚櫎Alpine涓嶅瓨鍦ㄧ殑unrar鍖咃紝node-unrar-js浣跨敤WASM涓嶉渶瑕佺郴缁熶緷璧?

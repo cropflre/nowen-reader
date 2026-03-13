@@ -11,7 +11,7 @@
 
 services:
   nowen-reader:
-    build: .
+    image: cropflre/nowen-reader:latest
     container_name: nowen-reader
     restart: unless-stopped
     ports:
@@ -30,9 +30,15 @@ services:
       # - /volume2/comics:/mnt/comics2
       # 然后在 Web 界面的"设置 → 额外漫画目录"中添加 /mnt/manga 和 /mnt/comics2
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=file:/data/nowen-reader.db
+      - GIN_MODE=release
+      - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
+      - DATA_DIR=/app/.cache
       - PORT=3000
       # 时区（改为你的时区）
       - TZ=Asia/Shanghai
+    # 内存限制（NAS 通常内存有限）
+    deploy:
+      resources:
+        limits:
+          memory: 512M
