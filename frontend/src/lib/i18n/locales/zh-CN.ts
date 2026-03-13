@@ -155,6 +155,8 @@ const zhCN = {
     loading: "正在加载...",
     loadError: "加载失败",
     retry: "重试",
+    toc: "目录",
+    typesetting: "排版",
   },
 
   // Reader Toolbar
@@ -481,6 +483,78 @@ const zhCN = {
     testSuccess: "连接测试成功",
     testFailed: "连接失败，请检查 Cookie 值",
   },
+
+  // 继续阅读
+  continueReading: {
+    title: "继续阅读",
+    justNow: "刚刚",
+    minutesAgo: "分钟前",
+    hoursAgo: "小时前",
+    daysAgo: "天前",
+    chapter: "第",
+    chapterUnit: "章",
+    pageUnit: "页",
+  },
+
+  // 书架
+  shelf: {
+    create: "新建书架",
+    namePlaceholder: "书架名称...",
+    confirmDeleteShelf: "确定要删除此书架吗？其中的漫画不会被删除。",
+    moveTo: "移动到",
+    title: "书架",
+  },
+
+  // 移动端导航
+  mobileNav: {
+    shelf: "书架",
+    stats: "统计",
+    explore: "发现",
+  },
+
+  // 增强统计
+  statsEnhanced: {
+    streak: "连续阅读",
+    days: "天",
+    longest: "最长",
+    today: "今日",
+    thisWeek: "本周",
+    speed: "速度",
+    pagesPerHour: "页/时",
+    tabOverview: "概览",
+    tabDaily: "每日",
+    tabMonthly: "月度",
+    tabGenre: "类型",
+    dailyChart: "近 90 天阅读时长",
+    monthlyTrend: "月度趋势",
+    genrePreference: "类型偏好",
+    sessionsUnit: "次",
+    comicsUnit: "本",
+  },
+
+  // 数据导出
+  dataExport: {
+    title: "导出",
+    jsonFull: "JSON 完整备份",
+    csvComics: "CSV 漫画库",
+    csvSessions: "CSV 阅读记录",
+    uploadFiles: "上传文件",
+    scanDirs: "扫描目录",
+    clearFilters: "清除筛选条件",
+  },
+
+  // 阅读目标
+  readingGoal: {
+    title: "阅读目标",
+    daily: "每日目标",
+    weekly: "每周目标",
+    minutes: "分钟",
+    books: "本",
+    setGoal: "设定目标",
+    achieved: "目标已达成！",
+    editGoal: "编辑",
+    deleteGoal: "删除",
+  },
 } satisfies Translations;
 
 export default zhCN;
@@ -620,6 +694,8 @@ export interface Translations {
     loading: string;
     loadError: string;
     retry: string;
+    toc: string;
+    typesetting: string;
   };
   readerToolbar: {
     single: string;
@@ -917,5 +993,65 @@ export interface Translations {
     clear: string;
     testSuccess: string;
     testFailed: string;
+  };
+  continueReading: {
+    title: string;
+    justNow: string;
+    minutesAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+    chapter: string;
+    chapterUnit: string;
+    pageUnit: string;
+  };
+  shelf: {
+    create: string;
+    namePlaceholder: string;
+    confirmDeleteShelf: string;
+    moveTo: string;
+    title: string;
+  };
+  mobileNav: {
+    shelf: string;
+    stats: string;
+    explore: string;
+  };
+  statsEnhanced: {
+    streak: string;
+    days: string;
+    longest: string;
+    today: string;
+    thisWeek: string;
+    speed: string;
+    pagesPerHour: string;
+    tabOverview: string;
+    tabDaily: string;
+    tabMonthly: string;
+    tabGenre: string;
+    dailyChart: string;
+    monthlyTrend: string;
+    genrePreference: string;
+    sessionsUnit: string;
+    comicsUnit: string;
+  };
+  dataExport: {
+    title: string;
+    jsonFull: string;
+    csvComics: string;
+    csvSessions: string;
+    uploadFiles: string;
+    scanDirs: string;
+    clearFilters: string;
+  };
+  readingGoal: {
+    title: string;
+    daily: string;
+    weekly: string;
+    minutes: string;
+    books: string;
+    setGoal: string;
+    achieved: string;
+    editGoal: string;
+    deleteGoal: string;
   };
 }

@@ -3,6 +3,7 @@ module github.com/nowen-reader/nowen-reader
 go 1.23
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
 	github.com/nwaples/rardecode/v2 v2.2.2

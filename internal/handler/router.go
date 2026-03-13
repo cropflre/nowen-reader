@@ -35,6 +35,7 @@ func SetupRoutes(r *gin.Engine) {
 	}
 
 	usersGroup := api.Group("/auth/users")
+	usersGroup.Use(middleware.AdminRequired())
 	{
 		usersGroup.GET("", auth.ListUsers)
 		usersGroup.PUT("", auth.UpdateUser)
@@ -53,10 +54,10 @@ func SetupRoutes(r *gin.Engine) {
 			"version": AppVersion,
 			"uptime":  time.Since(startTime).String(),
 			"runtime": gin.H{
-				"go":      runtime.Version(),
-				"os":      runtime.GOOS,
-				"arch":    runtime.GOARCH,
-				"cpus":    runtime.NumCPU(),
+				"go":         runtime.Version(),
+				"os":         runtime.GOOS,
+				"arch":       runtime.GOARCH,
+				"cpus":       runtime.NumCPU(),
 				"goroutines": runtime.NumGoroutine(),
 				"memoryMB":   memStats.Alloc / 1024 / 1024,
 			},
@@ -68,29 +69,41 @@ func SetupRoutes(r *gin.Engine) {
 	// ============================================================
 	comic := NewComicHandler()
 
-	// Comics listing & batch ops (no auth needed for browsing in self-hosted)
+	// Comics listing (read-only, no auth needed for browsing)
 	api.GET("/comics", comic.ListComics)
 	api.GET("/comics/duplicates", comic.DetectDuplicates)
-	api.POST("/comics/batch", comic.BatchOperation)
-	api.PUT("/comics/reorder", comic.Reorder)
 
-	// Single comic operations
+	// Comics write ops (require auth)
+	comicsWrite := api.Group("/comics")
+	comicsWrite.Use(middleware.AuthRequired())
+	{
+		comicsWrite.POST("/batch", comic.BatchOperation)
+		comicsWrite.PUT("/reorder", comic.Reorder)
+	}
+
+	// Single comic read operations (no auth)
 	comicByID := api.Group("/comics/:id")
 	{
 		comicByID.GET("", comic.GetComic)
-		comicByID.PUT("/favorite", comic.ToggleFavorite)
-		comicByID.PUT("/rating", comic.UpdateRating)
-		comicByID.PUT("/progress", comic.UpdateProgress)
-		comicByID.DELETE("/delete", comic.DeleteComic)
+	}
+
+	// Single comic write operations (require auth)
+	comicByIDWrite := api.Group("/comics/:id")
+	comicByIDWrite.Use(middleware.AuthRequired())
+	{
+		comicByIDWrite.PUT("/favorite", comic.ToggleFavorite)
+		comicByIDWrite.PUT("/rating", comic.UpdateRating)
+		comicByIDWrite.PUT("/progress", comic.UpdateProgress)
+		comicByIDWrite.DELETE("/delete", comic.DeleteComic)
 
 		// Tags per comic
-		comicByID.POST("/tags", comic.AddTags)
-		comicByID.DELETE("/tags", comic.RemoveTag)
+		comicByIDWrite.POST("/tags", comic.AddTags)
+		comicByIDWrite.DELETE("/tags", comic.RemoveTag)
 
 		// Categories per comic
-		comicByID.POST("/categories", comic.AddCategories)
-		comicByID.PUT("/categories", comic.SetCategories)
-		comicByID.DELETE("/categories", comic.RemoveCategory)
+		comicByIDWrite.POST("/categories", comic.AddCategories)
+		comicByIDWrite.PUT("/categories", comic.SetCategories)
+		comicByIDWrite.DELETE("/categories", comic.RemoveCategory)
 	}
 
 	// ============================================================
@@ -116,22 +129,54 @@ func SetupRoutes(r *gin.Engine) {
 	api.PUT("/stats/session", stats.EndSession)
 
 	// ============================================================
-	// Upload (Phase 2)
+	// Shelves (书架系统)
 	// ============================================================
-	upload := NewUploadHandler()
-	api.POST("/upload", upload.Upload)
+	shelf := NewShelfHandler()
+	api.GET("/shelves", shelf.ListShelves)
+	api.POST("/shelves/init", shelf.InitShelves)
+	api.GET("/stats/enhanced", shelf.GetEnhancedStats)
+
+	shelfWrite := api.Group("/shelves")
+	shelfWrite.Use(middleware.AuthRequired())
+	{
+		shelfWrite.POST("", shelf.CreateShelf)
+		shelfWrite.PUT("/:id", shelf.UpdateShelf)
+		shelfWrite.DELETE("/:id", shelf.DeleteShelf)
+		shelfWrite.POST("/:id/comics", shelf.AddComic)
+		shelfWrite.DELETE("/:id/comics", shelf.RemoveComic)
+	}
+	// 漫画的书架归属
+	comicByID.GET("/shelves", shelf.GetComicShelves)
 
 	// ============================================================
-	// Site Settings (Phase 2)
+	// Upload (Phase 2) — requires auth
+	// ============================================================
+	upload := NewUploadHandler()
+	uploadGroup := api.Group("")
+	uploadGroup.Use(middleware.AuthRequired())
+	{
+		uploadGroup.POST("/upload", upload.Upload)
+	}
+
+	// ============================================================
+	// Site Settings (Phase 2) — write requires auth
 	// ============================================================
 	settings := NewSettingsHandler()
 	api.GET("/site-settings", settings.GetSettings)
-	api.PUT("/site-settings", settings.UpdateSettings)
+	settingsWrite := api.Group("")
+	settingsWrite.Use(middleware.AuthRequired())
+	{
+		settingsWrite.PUT("/site-settings", settings.UpdateSettings)
+	}
 
 	// ============================================================
-	// Sync trigger (Phase 2)
+	// Sync trigger (Phase 2) — requires auth
 	// ============================================================
-	api.POST("/sync", comic.TriggerSync)
+	syncTrigger := api.Group("")
+	syncTrigger.Use(middleware.AuthRequired())
+	{
+		syncTrigger.POST("/sync", comic.TriggerSync)
+	}
 
 	// ============================================================
 	// Image serving (Phase 3)
@@ -140,7 +185,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	comicByID.GET("/pages", img.GetPages)
 	comicByID.GET("/thumbnail", img.GetThumbnail)
-	comicByID.POST("/cover", img.UpdateCover)
+	comicByIDWrite.POST("/cover", img.UpdateCover)
 
 	// Page image uses a different path pattern: /api/comics/:id/page/:pageIndex
 	api.GET("/comics/:id/page/:pageIndex", img.GetPageImage)
@@ -152,16 +197,44 @@ func SetupRoutes(r *gin.Engine) {
 	api.GET("/comics/:id/epub-resource/*resourcePath", img.GetEpubResource)
 
 	// ============================================================
-	// Cache management (Phase 3)
+	// Cache management (Phase 3) — requires auth
 	// ============================================================
 	cache := NewCacheHandler()
-	api.POST("/cache", cache.ClearCache)
+	cacheGroup := api.Group("")
+	cacheGroup.Use(middleware.AuthRequired())
+	{
+		cacheGroup.POST("/cache", cache.ClearCache)
+	}
 
 	// ============================================================
-	// Thumbnail management (Phase 3)
+	// Thumbnail management (Phase 3) — requires auth
 	// ============================================================
 	thumb := NewThumbnailHandler()
-	api.POST("/thumbnails/manage", thumb.ManageThumbnails)
+	thumbGroup := api.Group("")
+	thumbGroup.Use(middleware.AuthRequired())
+	{
+		thumbGroup.POST("/thumbnails/manage", thumb.ManageThumbnails)
+	}
+
+	// ============================================================
+	// Reading Goals (阅读目标)
+	// ============================================================
+	goal := NewGoalHandler()
+	api.GET("/goals", goal.GetGoalProgress)
+	goalWrite := api.Group("")
+	goalWrite.Use(middleware.AuthRequired())
+	{
+		goalWrite.POST("/goals", goal.SetGoal)
+		goalWrite.DELETE("/goals", goal.DeleteGoal)
+	}
+
+	// ============================================================
+	// Data Export (数据导出)
+	// ============================================================
+	export := NewExportHandler()
+	api.GET("/export/json", export.ExportJSON)
+	api.GET("/export/csv/sessions", export.ExportCSV)
+	api.GET("/export/csv/comics", export.ExportComicsCSV)
 
 	// ============================================================
 	// Phase 4: Metadata, AI, OPDS, WebDAV, Recommendations, etc.
@@ -239,6 +312,6 @@ func SetupRoutes(r *gin.Engine) {
 	tagTranslate := NewTagTranslateHandler()
 	api.POST("/tags/translate", tagTranslate.TranslateTags)
 
-	// Per-comic metadata translation
-	comicByID.POST("/translate-metadata", tagTranslate.TranslateMetadata)
+	// Per-comic metadata translation (requires auth)
+	comicByIDWrite.POST("/translate-metadata", tagTranslate.TranslateMetadata)
 }

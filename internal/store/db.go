@@ -32,9 +32,9 @@ func InitDB(dbPath string) error {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Connection pool settings for SQLite
-	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
-	db.SetMaxIdleConns(1)
+	// Connection pool settings for SQLite (WAL mode supports concurrent reads)
+	db.SetMaxOpenConns(4) // 允许并发读操作
+	db.SetMaxIdleConns(2)
 
 	// Verify connection
 	if err := db.Ping(); err != nil {
@@ -45,8 +45,8 @@ func InitDB(dbPath string) error {
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA synchronous = NORMAL",
-		"PRAGMA mmap_size = 268435456",  // 256MB
-		"PRAGMA cache_size = -64000",     // 64MB
+		"PRAGMA mmap_size = 268435456", // 256MB
+		"PRAGMA cache_size = -64000",   // 64MB
 		"PRAGMA temp_store = MEMORY",
 		"PRAGMA foreign_keys = ON",
 	}
@@ -216,6 +216,45 @@ func createTables() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS "ReadingSession_comicId_idx" ON "ReadingSession"("comicId")`,
 		`CREATE INDEX IF NOT EXISTS "ReadingSession_startedAt_idx" ON "ReadingSession"("startedAt")`,
+
+		// ============================================================
+		// Shelf (书架系统)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "Shelf" (
+			"id"        INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			"name"      TEXT NOT NULL,
+			"icon"      TEXT NOT NULL DEFAULT '📚',
+			"sortOrder" INTEGER NOT NULL DEFAULT 0,
+			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "Shelf_name_key" ON "Shelf"("name")`,
+
+		// ============================================================
+		// ComicShelf (漫画-书架关联)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "ComicShelf" (
+			"comicId" TEXT NOT NULL,
+			"shelfId" INTEGER NOT NULL,
+			PRIMARY KEY ("comicId", "shelfId"),
+			CONSTRAINT "ComicShelf_comicId_fkey" FOREIGN KEY ("comicId")
+				REFERENCES "Comic" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "ComicShelf_shelfId_fkey" FOREIGN KEY ("shelfId")
+				REFERENCES "Shelf" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS "ComicShelf_shelfId_idx" ON "ComicShelf"("shelfId")`,
+
+		// ============================================================
+		// ReadingGoal (阅读目标)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "ReadingGoal" (
+			"id"          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			"goalType"    TEXT NOT NULL,
+			"targetMins"  INTEGER NOT NULL DEFAULT 0,
+			"targetBooks" INTEGER NOT NULL DEFAULT 0,
+			"createdAt"   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updatedAt"   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "ReadingGoal_goalType_key" ON "ReadingGoal"("goalType")`,
 	}
 
 	for _, stmt := range statements {

@@ -55,6 +55,10 @@ export default function NovelReaderPage() {
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("night");
   const { theme: globalTheme, toggleTheme: globalToggleTheme } = useTheme();
 
+  // TOC 和 Settings 的外部控制状态
+  const [showTOC, setShowTOC] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
   // Sync readerTheme with global theme
   useEffect(() => {
     setReaderTheme(globalTheme === "light" ? "day" : "night");
@@ -286,6 +290,10 @@ export default function NovelReaderPage() {
         onPageChange={handlePageChange}
         onTapCenter={handleTapCenter}
         readerTheme={readerTheme}
+        externalShowTOC={showTOC}
+        externalShowSettings={showSettingsPanel}
+        onShowTOCChange={setShowTOC}
+        onShowSettingsChange={setShowSettingsPanel}
       />
 
       {/* Novel Toolbar */}
@@ -301,6 +309,8 @@ export default function NovelReaderPage() {
         onToggleFullscreen={toggleFullscreen}
         onToggleTheme={handleToggleTheme}
         onShowInfo={() => setShowInfoPanel(true)}
+        onShowTOC={() => setShowTOC(true)}
+        onShowSettings={() => setShowSettingsPanel(true)}
       />
 
       {/* Info Panel (slide-in from right) */}

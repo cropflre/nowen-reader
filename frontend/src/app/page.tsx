@@ -8,7 +8,8 @@ import StatsBar from "@/components/StatsBar";
 import CategoryFilter from "@/components/CategoryFilter";
 import BatchToolbar from "@/components/BatchToolbar";
 import { RecommendationStrip } from "@/components/Recommendations";
-import { mockComics } from "@/data/mock-comics";
+import { ContinueReading } from "@/components/ContinueReading";
+import ShelfManager from "@/components/ShelfManager";
 import {
   useComics,
   uploadComics,
@@ -19,7 +20,7 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy } from "lucide-react";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 
 const DEFAULT_PAGE_SIZE = 24;
@@ -41,6 +42,7 @@ function apiToComic(api: ApiComic): Comic {
     title: api.title,
     coverUrl: api.coverUrl,
     tags: (api.tags || []).map((t) => t.name),
+    tagData: api.tags || [],
     pageCount: api.pageCount,
     progress:
       api.pageCount > 0
@@ -77,6 +79,9 @@ export default function Home() {
 
   // Duplicate detection
   const [showDuplicates, setShowDuplicates] = useState(false);
+
+  // Shelf
+  const [selectedShelfId, setSelectedShelfId] = useState<number | null>(null);
 
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
@@ -120,16 +125,12 @@ export default function Home() {
     initializedRef.current = true;
   }
   const displayComics: Comic[] = useMemo(() => {
-    if (useRealData) {
-      return apiComics.map(apiToComic);
-    }
-    return mockComics;
-  }, [apiComics, useRealData]);
+    return apiComics.map(apiToComic);
+  }, [apiComics]);
 
   // Extract all unique tags — fetch from API for complete global tags
   const [allTags, setAllTags] = useState<string[]>([]);
   useEffect(() => {
-    if (!useRealData) return;
     fetch("/api/tags")
       .then((r) => r.json())
       .then((data) => {
@@ -139,76 +140,17 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, [useRealData]);
+  }, [apiComics]);
 
-  // For mock data, derive tags from display comics
-  const mockTags = useMemo(() => {
-    if (useRealData) return [];
-    const tagSet = new Set<string>();
-    displayComics.forEach((comic) =>
-      (comic.tags || []).forEach((tag) => tagSet.add(tag))
-    );
-    return Array.from(tagSet).sort();
-  }, [displayComics, useRealData]);
-
-  const effectiveTags = useRealData ? allTags : mockTags;
-
-  // Filter comics (only needed for mock data; real data is filtered server-side)
+  // Filter comics (server-side filtering is primary)
   const filteredComics = useMemo(() => {
-    if (useRealData) return displayComics;
-    return displayComics.filter((comic) => {
-      const matchesSearch =
-        searchQuery === "" ||
-        comic.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (comic.tags || []).some((tag) =>
-          tag.toLowerCase().includes(searchQuery.toLowerCase())
-        ) ||
-        comic.author?.toLowerCase().includes(searchQuery.toLowerCase());
+    return displayComics;
+  }, [displayComics]);
 
-      const matchesTags =
-        selectedTags.length === 0 ||
-        selectedTags.some((tag) => (comic.tags || []).includes(tag));
-
-      const matchesFavorite = !favoritesOnly || comic.isFavorite;
-
-      const matchesCategory =
-        selectedCategory === null ||
-        (selectedCategory === "uncategorized"
-          ? !comic.categories || comic.categories.length === 0
-          : comic.categories?.some((c) => c.slug === selectedCategory));
-
-      return matchesSearch && matchesTags && matchesFavorite && matchesCategory;
-    });
-  }, [displayComics, searchQuery, selectedTags, favoritesOnly, selectedCategory, useRealData]);
-
-  // Sort comics (only needed for mock data; real data is sorted server-side)
+  // Sort comics (server-side sorting is primary)
   const sortedComics = useMemo(() => {
-    if (useRealData) return filteredComics;
-    const sorted = [...filteredComics];
-    sorted.sort((a, b) => {
-      let cmp = 0;
-      switch (sortBy) {
-        case "title":
-          cmp = a.title.localeCompare(b.title);
-          break;
-        case "lastReadAt":
-          cmp =
-            (a.lastRead || "").localeCompare(b.lastRead || "") ||
-            a.title.localeCompare(b.title);
-          break;
-        case "rating":
-          cmp = (a.rating || 0) - (b.rating || 0);
-          break;
-        case "custom":
-          cmp = (a.sortOrder || 0) - (b.sortOrder || 0);
-          break;
-        default:
-          cmp = a.title.localeCompare(b.title);
-      }
-      return sortOrder === "desc" ? -cmp : cmp;
-    });
-    return sorted;
-  }, [filteredComics, sortBy, sortOrder]);
+    return filteredComics;
+  }, [filteredComics]);
 
   const handleTagToggle = (tag: string) => {
     setSelectedTags((prev) =>
@@ -355,7 +297,7 @@ export default function Home() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub"
+        accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3"
         className="hidden"
         onChange={handleFileChange}
       />
@@ -369,8 +311,8 @@ export default function Home() {
 
       {/* Main Content */}
       <main className={`mx-auto max-w-[1800px] px-3 sm:px-6 pt-20 sm:pt-24 ${batchMode ? "pb-32" : "pb-12"}`}>
-        {/* Data Source Indicator */}
-        {!loading && !useRealData && (
+        {/* Data Source Indicator — 空库提示 */}
+        {!loading && displayComics.length === 0 && apiTotal === 0 && !debouncedSearch && selectedTags.length === 0 && !favoritesOnly && !selectedCategory && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
             <span className="text-sm text-amber-400">
               {t.home.mockDataNotice}{" "}
@@ -399,14 +341,17 @@ export default function Home() {
 
         {!loading && (
           <>
+            {/* 继续阅读横条 */}
+            <ContinueReading />
+
             {/* Recommendations */}
-            {useRealData && <RecommendationStrip />}
+            <RecommendationStrip />
 
             {/* Stats + Sort Controls */}
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
               <StatsBar
-                totalComics={useRealData ? apiTotal : displayComics.length}
-                filteredCount={useRealData ? apiTotal : sortedComics.length}
+                totalComics={apiTotal}
+                filteredCount={apiTotal}
               />
 
               {/* Sort & Filter Controls — horizontally scrollable on mobile */}
@@ -421,6 +366,40 @@ export default function Home() {
                   <Copy className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">{t.duplicates.detect}</span>
                 </button>
+
+                {/* Export Data */}
+                <div className="relative group/export">
+                  <button
+                    className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-2.5 sm:px-3 text-xs font-medium text-muted transition-all hover:text-foreground"
+                    title={t.dataExport?.title || "导出数据"}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{t.dataExport?.title || "导出"}</span>
+                  </button>
+                  <div className="absolute right-0 top-full z-50 mt-1 hidden min-w-[160px] rounded-lg bg-card border border-border/60 p-1 shadow-xl group-hover/export:block">
+                    <a
+                      href="/api/export/json"
+                      download
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-foreground hover:bg-card-hover"
+                    >
+                      📄 {t.dataExport?.jsonFull || "JSON 完整备份"}
+                    </a>
+                    <a
+                      href="/api/export/csv/comics"
+                      download
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-foreground hover:bg-card-hover"
+                    >
+                      📊 {t.dataExport?.csvComics || "CSV 漫画库"}
+                    </a>
+                    <a
+                      href="/api/export/csv/sessions"
+                      download
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-foreground hover:bg-card-hover"
+                    >
+                      📈 {t.dataExport?.csvSessions || "CSV 阅读记录"}
+                    </a>
+                  </div>
+                </div>
 
                 {/* Batch Mode Toggle */}
                 <button
@@ -522,6 +501,16 @@ export default function Home() {
               </div>
             </div>
 
+            {/* 书架管理器 */}
+            <div className="mt-4">
+              <ShelfManager
+                  selectedShelfId={selectedShelfId}
+                  onShelfSelect={setSelectedShelfId}
+                  selectedComicIds={batchMode && selectedIds.size > 0 ? Array.from(selectedIds) : undefined}
+                  onBatchMoveComplete={() => { exitBatchMode(); refetch(); }}
+              />
+            </div>
+
             {/* Category Filter */}
             {categories.length > 0 && (
               <div className="mt-4">
@@ -534,10 +523,10 @@ export default function Home() {
             )}
 
             {/* Tag Filter */}
-            {(effectiveTags.length > 0 || useRealData) && (
+            {allTags.length > 0 && (
               <div className="mt-4 mb-8">
                 <TagFilter
-                  allTags={effectiveTags}
+                  allTags={allTags}
                   selectedTags={selectedTags}
                   onTagToggle={handleTagToggle}
                   onClearAll={() => setSelectedTags([])}
@@ -582,30 +571,66 @@ export default function Home() {
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
                     isDragOver={dragOverId === comic.id}
+                    tagData={comic.tagData}
                   />
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-32 text-center">
+              <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center">
                 <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-card">
-                  <span className="text-4xl">📚</span>
+                  <span className="text-4xl">{apiTotal === 0 ? "📚" : "🔍"}</span>
                 </div>
                 <h3 className="mb-2 text-lg font-medium text-foreground/80">
-                  {displayComics.length === 0
+                  {apiTotal === 0
                     ? t.home.emptyLibrary
                     : t.home.noMatchingComics}
                 </h3>
-                <p className="max-w-sm text-sm text-muted">
-                  {displayComics.length === 0
+                <p className="max-w-sm text-sm text-muted mb-5">
+                  {apiTotal === 0
                     ? t.home.emptyLibraryHint
                     : t.home.noMatchingHint}
                 </p>
+                {/* 引导性操作按钮 */}
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  {apiTotal === 0 ? (
+                    <>
+                      <button
+                        onClick={handleUpload}
+                        className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                      >
+                        <Upload className="h-4 w-4" />
+                        {t.dataExport?.uploadFiles || "上传文件"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          fetch("/api/sync", { method: "POST" }).then(() => refetch());
+                        }}
+                        className="flex items-center gap-2 rounded-lg border border-border/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-card"
+                      >
+                        🔄 {t.dataExport?.scanDirs || "扫描目录"}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedTags([]);
+                        setFavoritesOnly(false);
+                        setSelectedCategory(null);
+                        setSelectedShelfId(null);
+                      }}
+                      className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                    >
+                      ✖ {t.dataExport?.clearFilters || "清除筛选条件"}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             </div>
 
             {/* Pagination */}
-            {useRealData && totalPages > 1 && (
+            {totalPages > 1 && (
               <div className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
                 <button
                   onClick={() => setCurrentPage(1)}

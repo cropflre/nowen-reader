@@ -17,6 +17,10 @@ interface TextReaderViewProps {
   onPageChange: (page: number) => void;
   onTapCenter: () => void;
   readerTheme?: ReaderTheme;
+  onShowTOCChange?: (show: boolean) => void;
+  onShowSettingsChange?: (show: boolean) => void;
+  externalShowTOC?: boolean;
+  externalShowSettings?: boolean;
 }
 
 export default function TextReaderView({
@@ -25,6 +29,10 @@ export default function TextReaderView({
   onPageChange,
   onTapCenter,
   readerTheme = "night",
+  onShowTOCChange,
+  onShowSettingsChange,
+  externalShowTOC,
+  externalShowSettings,
 }: TextReaderViewProps) {
   const [content, setContent] = useState("");
   const [chapterTitle, setChapterTitle] = useState("");
@@ -44,6 +52,30 @@ export default function TextReaderView({
   });
   const [showTOC, setShowTOC] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // 外部控制TOC和Settings的显示
+  useEffect(() => {
+    if (externalShowTOC !== undefined) setShowTOC(externalShowTOC);
+  }, [externalShowTOC]);
+
+  useEffect(() => {
+    if (externalShowSettings !== undefined) setShowSettings(externalShowSettings);
+  }, [externalShowSettings]);
+
+  // 向父组件通知状态变化
+  useEffect(() => {
+    onShowTOCChange?.(showTOC);
+  }, [showTOC, onShowTOCChange]);
+
+  useEffect(() => {
+    onShowSettingsChange?.(showSettings);
+  }, [showSettings, onShowSettingsChange]);
+  const [fontFamily, setFontFamily] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("textReaderFontFamily") || "system";
+    }
+    return "system";
+  });
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Load chapter content
@@ -89,6 +121,27 @@ export default function TextReaderView({
   useEffect(() => {
     localStorage.setItem("textReaderLineHeight", String(lineHeight));
   }, [lineHeight]);
+
+  useEffect(() => {
+    localStorage.setItem("textReaderFontFamily", fontFamily);
+  }, [fontFamily]);
+
+  // 字体族映射
+  const fontFamilyMap: Record<string, string> = {
+    system: "system-ui, -apple-system, sans-serif",
+    serif: "'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif",
+    sans: "'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+    kai: "'KaiTi', 'STKaiti', 'AR PL KaitiM GB', serif",
+    mono: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+  };
+
+  const fontFamilyLabels: Record<string, string> = {
+    system: "系统默认",
+    serif: "宋体/衬线",
+    sans: "黑体/无衬线",
+    kai: "楷体",
+    mono: "等宽字体",
+  };
 
   // Keyboard shortcuts for chapter navigation
   const handleKeyDown = useCallback(
@@ -243,6 +296,7 @@ export default function TextReaderView({
           style={{
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
+            fontFamily: fontFamilyMap[fontFamily] || fontFamilyMap.system,
           }}
         >
           {loading ? (
@@ -393,7 +447,7 @@ export default function TextReaderView({
             </div>
 
             {/* Line height */}
-            <div>
+            <div className="mb-4">
               <label
                 className={`mb-2 block text-xs ${
                   isDark ? "text-zinc-400" : "text-zinc-500"
@@ -431,6 +485,37 @@ export default function TextReaderView({
                 >
                   <Plus className="h-4 w-4" />
                 </button>
+              </div>
+            </div>
+
+            {/* Font family */}
+            <div>
+              <label
+                className={`mb-2 block text-xs ${
+                  isDark ? "text-zinc-400" : "text-zinc-500"
+                }`}
+              >
+                字体
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(fontFamilyLabels).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setFontFamily(key)}
+                    className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                      fontFamily === key
+                        ? isDark
+                          ? "bg-accent/20 text-accent ring-1 ring-accent/40"
+                          : "bg-accent/10 text-accent ring-1 ring-accent/30"
+                        : isDark
+                        ? "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                        : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                    }`}
+                    style={{ fontFamily: fontFamilyMap[key] }}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

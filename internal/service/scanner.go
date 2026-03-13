@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
@@ -21,19 +22,66 @@ var (
 	syncInProgress bool
 	syncMu         sync.Mutex
 	lastSyncTime   time.Time
-	syncCooldown   = 30 * time.Second
 
 	lastDirMtimes   = make(map[string]time.Time)
 	lastDirMtimesMu sync.RWMutex
 
 	bgSyncStarted bool
-	bgSyncMu       sync.Mutex
+	bgSyncMu      sync.Mutex
 
 	// Configurable batch sizes
-	statBatchSize     = 100
-	dbBatchSize       = 500
-	fullSyncBatchSize = 50
+	statBatchSize = 100
+	dbBatchSize   = 500
+
+	// fsnotify watcher
+	fsWatcher   *fsnotify.Watcher
+	fsWatcherMu sync.Mutex
+
+	// 防抖：文件变更后延迟触发同步
+	fsDebounceTicker *time.Timer
+	fsDebounceMu     sync.Mutex
 )
+
+// 从配置文件读取可配置参数
+func getScannerCooldown() time.Duration {
+	cfg := config.GetSiteConfig()
+	if cfg.ScannerConfig != nil && cfg.ScannerConfig.SyncCooldownSec > 0 {
+		return time.Duration(cfg.ScannerConfig.SyncCooldownSec) * time.Second
+	}
+	return 30 * time.Second
+}
+
+func getFSDebounceDelay() time.Duration {
+	cfg := config.GetSiteConfig()
+	if cfg.ScannerConfig != nil && cfg.ScannerConfig.FSDebounceMs > 0 {
+		return time.Duration(cfg.ScannerConfig.FSDebounceMs) * time.Millisecond
+	}
+	return 2 * time.Second
+}
+
+func getFullSyncBatchSize() int {
+	cfg := config.GetSiteConfig()
+	if cfg.ScannerConfig != nil && cfg.ScannerConfig.FullSyncBatchSize > 0 {
+		return cfg.ScannerConfig.FullSyncBatchSize
+	}
+	return 50
+}
+
+func getQuickSyncInterval() time.Duration {
+	cfg := config.GetSiteConfig()
+	if cfg.ScannerConfig != nil && cfg.ScannerConfig.QuickSyncIntervalSec > 0 {
+		return time.Duration(cfg.ScannerConfig.QuickSyncIntervalSec) * time.Second
+	}
+	return 60 * time.Second
+}
+
+func getFullSyncInterval() time.Duration {
+	cfg := config.GetSiteConfig()
+	if cfg.ScannerConfig != nil && cfg.ScannerConfig.FullSyncIntervalSec > 0 {
+		return time.Duration(cfg.ScannerConfig.FullSyncIntervalSec) * time.Second
+	}
+	return 10 * time.Second
+}
 
 // ============================================================
 // Directory change detection
@@ -73,7 +121,7 @@ func updateDirMtimes() {
 }
 
 // ============================================================
-// Quick Sync: scan directories, add new comics, remove stale
+// 递归扫描目录
 // ============================================================
 
 type diskFile struct {
@@ -83,46 +131,57 @@ type diskFile struct {
 	FileSize int64
 }
 
+// walkDirRecursive 递归遍历目录中的所有支持文件。
+func walkDirRecursive(root string) []diskFile {
+	var files []diskFile
+
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // 跳过不可访问的目录
+		}
+		if d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if !config.IsSupportedFile(name) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		// 使用相对于 root 的路径作为文件名（保留子目录结构）
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			relPath = name
+		}
+		// 统一使用正斜杠
+		relPath = filepath.ToSlash(relPath)
+
+		files = append(files, diskFile{
+			ID:       store.FilenameToID(relPath),
+			Filename: relPath,
+			Title:    store.FilenameToTitle(name),
+			FileSize: info.Size(),
+		})
+		return nil
+	})
+
+	return files
+}
+
+// ============================================================
+// Quick Sync: scan directories, add new comics, remove stale
+// ============================================================
+
 func quickSync() (added, removed int) {
 	allDirs := config.GetAllComicsDirs()
 	var filesOnDisk []diskFile
 
 	for _, dir := range allDirs {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-
-		// Process entries in batches for stat
-		for i := 0; i < len(entries); i += statBatchSize {
-			end := i + statBatchSize
-			if end > len(entries) {
-				end = len(entries)
-			}
-			batch := entries[i:end]
-
-			for _, entry := range batch {
-				if entry.IsDir() {
-					continue
-				}
-				name := entry.Name()
-				if !config.IsSupportedFile(name) {
-					continue
-				}
-
-				info, err := entry.Info()
-				if err != nil {
-					continue
-				}
-
-				filesOnDisk = append(filesOnDisk, diskFile{
-					ID:       store.FilenameToID(name),
-					Filename: name,
-					Title:    store.FilenameToTitle(name),
-					FileSize: info.Size(),
-				})
-			}
-		}
+		// 递归扫描子目录
+		files := walkDirRecursive(dir)
+		filesOnDisk = append(filesOnDisk, files...)
 	}
 
 	// Get existing IDs from DB
@@ -201,7 +260,7 @@ func quickSync() (added, removed int) {
 // ============================================================
 
 func fullSync() {
-	comics, err := store.GetComicsNeedingPageCount(fullSyncBatchSize)
+	comics, err := store.GetComicsNeedingPageCount(getFullSyncBatchSize())
 	if err != nil || len(comics) == 0 {
 		return
 	}
@@ -258,7 +317,7 @@ func SyncComicsToDatabase() {
 	now := time.Now()
 
 	// Cooldown check
-	if now.Sub(lastSyncTime) < syncCooldown {
+	if now.Sub(lastSyncTime) < getScannerCooldown() {
 		syncMu.Unlock()
 		return
 	}
@@ -291,12 +350,113 @@ func SyncComicsToDatabase() {
 }
 
 // ============================================================
+// fsnotify 文件系统监控
+// ============================================================
+
+// triggerDebouncedSync 防抖触发同步，避免短时间内大量文件变更触发多次同步。
+func triggerDebouncedSync() {
+	fsDebounceMu.Lock()
+	defer fsDebounceMu.Unlock()
+
+	if fsDebounceTicker != nil {
+		fsDebounceTicker.Stop()
+	}
+	fsDebounceTicker = time.AfterFunc(getFSDebounceDelay(), func() {
+		log.Println("[fsnotify] File change detected, triggering sync...")
+		// 重置冷却时间以允许立即同步
+		syncMu.Lock()
+		lastSyncTime = time.Time{}
+		syncMu.Unlock()
+
+		SyncComicsToDatabase()
+	})
+}
+
+// watchDirectoriesRecursive 递归添加目录到 watcher。
+func watchDirectoriesRecursive(watcher *fsnotify.Watcher, root string) {
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if err := watcher.Add(path); err != nil {
+				log.Printf("[fsnotify] Failed to watch %s: %v", path, err)
+			}
+		}
+		return nil
+	})
+}
+
+// startFSWatcher 初始化并启动文件系统监控。
+func startFSWatcher() {
+	fsWatcherMu.Lock()
+	defer fsWatcherMu.Unlock()
+
+	if fsWatcher != nil {
+		return // 已启动
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("[fsnotify] Failed to create watcher: %v (falling back to polling)", err)
+		return
+	}
+	fsWatcher = watcher
+
+	// 递归添加所有漫画目录
+	for _, dir := range config.GetAllComicsDirs() {
+		if _, err := os.Stat(dir); err == nil {
+			watchDirectoriesRecursive(watcher, dir)
+			log.Printf("[fsnotify] Watching directory: %s (recursive)", dir)
+		}
+	}
+
+	// 事件处理协程
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				// 只关注文件创建、删除和重命名事件
+				if event.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
+					name := filepath.Base(event.Name)
+
+					// 新建子目录时也需要监控
+					if event.Op&fsnotify.Create != 0 {
+						if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+							watchDirectoriesRecursive(watcher, event.Name)
+							log.Printf("[fsnotify] New subdirectory detected, watching: %s", event.Name)
+						}
+					}
+
+					// 支持的文件类型变更触发同步
+					if config.IsSupportedFile(name) {
+						triggerDebouncedSync()
+					}
+				}
+
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("[fsnotify] Watcher error: %v", err)
+			}
+		}
+	}()
+
+	log.Println("[fsnotify] File system watcher started ✅")
+}
+
+// ============================================================
 // Background sync scheduler
 // ============================================================
 
 const (
-	bgQuickSyncInterval = 60 * time.Second
-	bgFullSyncInterval  = 10 * time.Second
+	bgQuickSyncInterval_deprecated = 0 // 已不使用，改为从配置读取
+	bgFullSyncInterval_deprecated  = 0
 )
 
 // StartBackgroundSync starts the background sync goroutines.
@@ -315,9 +475,12 @@ func StartBackgroundSync() {
 		SyncComicsToDatabase()
 	}()
 
-	// Periodic quick sync
+	// 启动 fsnotify 文件监控（实时响应文件变更）
+	go startFSWatcher()
+
+	// Periodic quick sync (作为 fsnotify 的兜底保障)
 	go func() {
-		ticker := time.NewTicker(bgQuickSyncInterval)
+		ticker := time.NewTicker(getQuickSyncInterval())
 		defer ticker.Stop()
 		for range ticker.C {
 			SyncComicsToDatabase()
@@ -329,12 +492,12 @@ func StartBackgroundSync() {
 		// Wait a bit for initial quick sync to finish
 		time.Sleep(5 * time.Second)
 
-		ticker := time.NewTicker(bgFullSyncInterval)
+		ticker := time.NewTicker(getFullSyncInterval())
 		defer ticker.Stop()
 		for range ticker.C {
 			fullSync()
 		}
 	}()
 
-	log.Println("[bg-sync] Background sync scheduler started")
+	log.Println("[bg-sync] Background sync scheduler started (fsnotify + polling fallback)")
 }

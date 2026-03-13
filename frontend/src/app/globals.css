@@ -194,3 +194,8 @@ html.light ::-webkit-scrollbar-thumb:hover {
     padding-right: env(safe-area-inset-right);
   }
 }
+
+/* Mobile bottom nav safe area */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

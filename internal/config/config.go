@@ -11,14 +11,24 @@ import (
 
 // SiteConfig represents the site-config.json file structure.
 type SiteConfig struct {
-	SiteName        string   `json:"siteName,omitempty"`
-	ComicsDir       string   `json:"comicsDir,omitempty"`
-	ExtraComicsDirs []string `json:"extraComicsDirs,omitempty"`
-	ThumbnailWidth  int      `json:"thumbnailWidth,omitempty"`
-	ThumbnailHeight int      `json:"thumbnailHeight,omitempty"`
-	PageSize        int      `json:"pageSize,omitempty"`
-	Language        string   `json:"language,omitempty"`
-	Theme           string   `json:"theme,omitempty"`
+	SiteName        string         `json:"siteName,omitempty"`
+	ComicsDir       string         `json:"comicsDir,omitempty"`
+	ExtraComicsDirs []string       `json:"extraComicsDirs,omitempty"`
+	ThumbnailWidth  int            `json:"thumbnailWidth,omitempty"`
+	ThumbnailHeight int            `json:"thumbnailHeight,omitempty"`
+	PageSize        int            `json:"pageSize,omitempty"`
+	Language        string         `json:"language,omitempty"`
+	Theme           string         `json:"theme,omitempty"`
+	ScannerConfig   *ScannerConfig `json:"scannerConfig,omitempty"`
+}
+
+// ScannerConfig 保存可配置化的扫描参数。
+type ScannerConfig struct {
+	SyncCooldownSec      int `json:"syncCooldownSec,omitempty"`
+	FSDebounceMs         int `json:"fsDebounceMs,omitempty"`
+	FullSyncBatchSize    int `json:"fullSyncBatchSize,omitempty"`
+	QuickSyncIntervalSec int `json:"quickSyncIntervalSec,omitempty"`
+	FullSyncIntervalSec  int `json:"fullSyncIntervalSec,omitempty"`
 }
 
 var (
@@ -190,7 +200,7 @@ func DatabaseURL() string {
 // Supported file extensions
 var (
 	SupportedExtensions = []string{".zip", ".cbz", ".cbr", ".rar", ".7z", ".cb7", ".pdf"}
-	NovelExtensions     = []string{".txt", ".epub"}
+	NovelExtensions     = []string{".txt", ".epub", ".mobi", ".azw3"}
 	ImageExtensions     = []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"}
 )
 

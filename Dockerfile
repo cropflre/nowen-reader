@@ -61,6 +61,7 @@ LABEL description="NowenReader - Self-hosted comic management platform"
 # - p7zip: for .7z/.cb7 archive extraction (also RAR fallback)
 # - mupdf-tools: for PDF page rendering (mutool draw)
 # - libwebp-tools: for thumbnail WebP conversion (cwebp)
+# - calibre: for .mobi/.azw3 ebook conversion (ebook-convert)
 # - tini: proper PID 1 signal handling
 # - ca-certificates: for HTTPS requests (metadata scrapers, AI APIs)
 # - tzdata: timezone support
@@ -68,6 +69,7 @@ RUN apk add --no-cache \
     p7zip \
     mupdf-tools \
     libwebp-tools \
+    calibre \
     tini \
     ca-certificates \
     tzdata

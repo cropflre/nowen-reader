@@ -17,8 +17,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/nwaples/rardecode/v2"
 	"github.com/nowen-reader/nowen-reader/internal/config"
+	"github.com/nwaples/rardecode/v2"
 )
 
 // ============================================================
@@ -55,6 +55,8 @@ const (
 	TypePdf  ArchiveType = "pdf"
 	TypeTxt  ArchiveType = "txt"
 	TypeEpub ArchiveType = "epub"
+	TypeMobi ArchiveType = "mobi"
+	TypeAzw3 ArchiveType = "azw3"
 )
 
 // DetectType returns the archive type based on file extension.
@@ -73,6 +75,10 @@ func DetectType(filepath string) ArchiveType {
 		return TypeTxt
 	case ".epub":
 		return TypeEpub
+	case ".mobi":
+		return TypeMobi
+	case ".azw3":
+		return TypeAzw3
 	default:
 		return ""
 	}
@@ -80,7 +86,7 @@ func DetectType(filepath string) ArchiveType {
 
 // IsNovelType returns true if the archive type is a novel/text format.
 func IsNovelType(t ArchiveType) bool {
-	return t == TypeTxt || t == TypeEpub
+	return t == TypeTxt || t == TypeEpub || t == TypeMobi || t == TypeAzw3
 }
 
 // ============================================================
@@ -109,6 +115,8 @@ func NewReader(filepath string) (Reader, error) {
 		return newTxtReader(filepath)
 	case TypeEpub:
 		return newEpubReader(filepath)
+	case TypeMobi, TypeAzw3:
+		return newMobiReader(filepath)
 	default:
 		return nil, fmt.Errorf("unsupported archive type: %s", filepath)
 	}
@@ -330,6 +338,119 @@ var (
 	sevenZipPath     string
 	sevenZipPathOnce sync.Once
 )
+
+// ============================================================
+// Calibre ebook-convert lookup (for MOBI/AZW3 → EPUB conversion)
+// ============================================================
+
+var (
+	ebookConvertPath     string
+	ebookConvertPathOnce sync.Once
+)
+
+// findEbookConvert locates the Calibre ebook-convert binary.
+func findEbookConvert() string {
+	ebookConvertPathOnce.Do(func() {
+		candidates := []string{"ebook-convert"}
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates,
+				"C:\\Program Files\\Calibre2\\ebook-convert.exe",
+				"C:\\Program Files (x86)\\Calibre2\\ebook-convert.exe",
+				"C:\\Program Files\\Calibre\\ebook-convert.exe",
+			)
+		} else if runtime.GOOS == "darwin" {
+			candidates = append(candidates,
+				"/Applications/calibre.app/Contents/MacOS/ebook-convert",
+			)
+		} else {
+			candidates = append(candidates,
+				"/usr/bin/ebook-convert",
+				"/usr/local/bin/ebook-convert",
+			)
+		}
+
+		for _, c := range candidates {
+			if p, err := exec.LookPath(c); err == nil {
+				ebookConvertPath = p
+				return
+			}
+		}
+
+		// Check if bundled in same directory as executable
+		exePath, _ := os.Executable()
+		if exePath != "" {
+			dir := filepath.Dir(exePath)
+			bundled := filepath.Join(dir, "ebook-convert")
+			if runtime.GOOS == "windows" {
+				bundled += ".exe"
+			}
+			if _, err := os.Stat(bundled); err == nil {
+				ebookConvertPath = bundled
+				return
+			}
+		}
+	})
+	return ebookConvertPath
+}
+
+// IsEbookConvertAvailable returns true if Calibre ebook-convert is found on the system.
+func IsEbookConvertAvailable() bool {
+	return findEbookConvert() != ""
+}
+
+// convertToEpub converts a MOBI/AZW3 file to EPUB using Calibre ebook-convert.
+// Returns the path to the converted EPUB file (stored in cache directory).
+func convertToEpub(inputPath string) (string, error) {
+	bin := findEbookConvert()
+	if bin == "" {
+		return "", fmt.Errorf("ebook-convert (Calibre) not found — install Calibre to read MOBI/AZW3 files: https://calibre-ebook.com")
+	}
+
+	// 生成缓存路径：.cache/converted/<md5>.epub
+	cacheDir := filepath.Join(config.DataDir(), "converted")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("create conversion cache dir: %w", err)
+	}
+
+	// 用源文件路径的 MD5 作为缓存文件名，避免重复转换
+	hash := md5.Sum([]byte(inputPath))
+	epubName := fmt.Sprintf("%x.epub", hash)
+	epubPath := filepath.Join(cacheDir, epubName)
+
+	// 如果已经转换过，直接返回
+	if info, err := os.Stat(epubPath); err == nil && info.Size() > 0 {
+		log.Printf("[mobi] Using cached EPUB conversion for %s", filepath.Base(inputPath))
+		return epubPath, nil
+	}
+
+	// 执行转换
+	log.Printf("[mobi] Converting %s to EPUB via ebook-convert...", filepath.Base(inputPath))
+	cmd := exec.Command(bin, inputPath, epubPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// 清理可能的部分文件
+		os.Remove(epubPath)
+		return "", fmt.Errorf("ebook-convert failed for %s: %w\nOutput: %s", filepath.Base(inputPath), err, string(output))
+	}
+
+	// 验证输出文件存在且非空
+	if info, err := os.Stat(epubPath); err != nil || info.Size() == 0 {
+		os.Remove(epubPath)
+		return "", fmt.Errorf("ebook-convert produced empty or missing output for %s", filepath.Base(inputPath))
+	}
+
+	log.Printf("[mobi] Successfully converted %s to EPUB", filepath.Base(inputPath))
+	return epubPath, nil
+}
+
+// newMobiReader converts a MOBI/AZW3 file to EPUB and returns an EPUB reader.
+func newMobiReader(fp string) (Reader, error) {
+	epubPath, err := convertToEpub(fp)
+	if err != nil {
+		return nil, err
+	}
+	return newEpubReader(epubPath)
+}
 
 // find7za locates the 7za binary.
 func find7za() string {

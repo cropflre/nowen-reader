@@ -527,8 +527,8 @@ func TestSortOrders(t *testing.T) {
 	}
 
 	orders := []struct {
-		ID        string
-		SortOrder int
+		ID        string `json:"id"`
+		SortOrder int    `json:"sortOrder"`
 	}{
 		{"sort-1", 2},
 		{"sort-2", 1},

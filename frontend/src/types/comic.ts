@@ -10,6 +10,7 @@ export interface Comic {
   title: string;
   coverUrl: string;
   tags: string[];
+  tagData?: { name: string; color: string }[];
   categories?: ComicCategory[];
   author?: string;
   pageCount?: number;

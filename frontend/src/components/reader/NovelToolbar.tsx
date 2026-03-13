@@ -9,6 +9,8 @@ import {
   Info,
   Sun,
   Moon,
+  List,
+  Type,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
@@ -25,6 +27,8 @@ interface NovelToolbarProps {
   onToggleFullscreen: () => void;
   onToggleTheme: () => void;
   onShowInfo?: () => void;
+  onShowTOC?: () => void;
+  onShowSettings?: () => void;
 }
 
 export default function NovelToolbar({
@@ -39,6 +43,8 @@ export default function NovelToolbar({
   onToggleFullscreen,
   onToggleTheme,
   onShowInfo,
+  onShowTOC,
+  onShowSettings,
 }: NovelToolbarProps) {
   const t = useTranslation();
 
@@ -134,7 +140,30 @@ export default function NovelToolbar({
           </div>
 
           {/* Theme toggle */}
-          <div className="flex items-center justify-end border-t border-white/10 py-2 sm:py-3">
+          <div className="flex items-center justify-between border-t border-white/10 py-2 sm:py-3">
+            <div className="flex items-center gap-1">
+              {/* TOC 按钮 */}
+              {onShowTOC && (
+                <button
+                  onClick={onShowTOC}
+                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10"
+                >
+                  <List className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t.reader?.toc || "目录"}</span>
+                </button>
+              )}
+
+              {/* 排版设置按钮 */}
+              {onShowSettings && (
+                <button
+                  onClick={onShowSettings}
+                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10"
+                >
+                  <Type className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t.reader?.typesetting || "排版"}</span>
+                </button>
+              )}
+            </div>
             <button
               onClick={onToggleTheme}
               className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${

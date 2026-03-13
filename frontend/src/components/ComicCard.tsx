@@ -6,12 +6,13 @@ import { memo } from "react";
 import { Comic } from "@/types/comic";
 import { BookOpen, Heart, Star, Info, GripVertical } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import type { ApiComicTag } from "@/hooks/useComicTypes";
 
 // Check if file is a novel type based on filename extension
 function isNovelFile(filename?: string): boolean {
   if (!filename) return false;
   const ext = filename.toLowerCase();
-  return ext.endsWith(".txt") || ext.endsWith(".epub");
+  return ext.endsWith(".txt") || ext.endsWith(".epub") || ext.endsWith(".mobi") || ext.endsWith(".azw3");
 }
 
 function getReaderUrl(comic: Comic): string {
@@ -33,8 +34,24 @@ const tagStyleMap: Record<string, string> = {
   Mystery: "tag-mystery",
 };
 
-function getTagClass(tag: string): string {
-  return tagStyleMap[tag] || "tag-default";
+/** 从DB color字段生成内联样式，fallback到预设CSS类 */
+function getTagStyle(tag: string | ApiComicTag): { className?: string; style?: React.CSSProperties } {
+  const name = typeof tag === "string" ? tag : tag.name;
+  const color = typeof tag === "string" ? "" : (tag.color || "");
+
+  // 如果DB中设置了自定义颜色（hex格式），使用内联样式
+  if (color && color.startsWith("#")) {
+    return {
+      style: {
+        background: `${color}26`, // 15% opacity
+        color: color,
+      },
+    };
+  }
+
+  // fallback: 预设映射 → 默认灰色
+  const cls = tagStyleMap[name] || "tag-default";
+  return { className: cls };
 }
 
 interface ComicCardProps {
@@ -50,6 +67,23 @@ interface ComicCardProps {
   onDragOver?: (id: string) => void;
   onDragEnd?: () => void;
   isDragOver?: boolean;
+  /** 带颜色的原始标签数据 */
+  tagData?: ApiComicTag[];
+}
+
+/** 渲染标签chip */
+function TagChip({ tag, tagObj }: { tag: string; tagObj?: ApiComicTag }) {
+  const source = tagObj || tag;
+  const { className, style } = getTagStyle(source);
+  const name = typeof source === "string" ? source : source.name;
+  return (
+    <span
+      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-medium ${className || ""}`}
+      style={style}
+    >
+      {name}
+    </span>
+  );
 }
 
 const ComicCard = memo(function ComicCard({
@@ -65,7 +99,16 @@ const ComicCard = memo(function ComicCard({
   onDragOver,
   onDragEnd,
   isDragOver,
+  tagData,
 }: ComicCardProps) {
+
+  // 构建 tag name → ApiComicTag 的映射
+  const tagMap = new Map<string, ApiComicTag>();
+  if (tagData) {
+    for (const t of tagData) {
+      tagMap.set(t.name, t);
+    }
+  }
   const t = useTranslation();
 
   const handleClick = (e: React.MouseEvent) => {
@@ -174,9 +217,7 @@ const ComicCard = memo(function ComicCard({
                   )}
                   <div className="flex flex-wrap gap-1">
                     {(comic.tags || []).slice(0, 3).map((tag) => (
-                      <span key={tag} className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-medium ${getTagClass(tag)}`}>
-                        {tag}
-                      </span>
+                      <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                     ))}
                   </div>
                 </div>
@@ -262,9 +303,7 @@ const ComicCard = memo(function ComicCard({
               <h3 className="mb-2 truncate text-sm font-medium text-foreground/90">{comic.title}</h3>
               <div className="flex flex-wrap gap-1.5">
                 {(comic.tags || []).slice(0, 3).map((tag) => (
-                  <span key={tag} className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-medium ${getTagClass(tag)}`}>
-                    {tag}
-                  </span>
+                  <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                 ))}
               </div>
             </div>
@@ -329,9 +368,7 @@ const ComicCard = memo(function ComicCard({
                 <h3 className="mb-2 truncate text-sm font-medium text-foreground/90 group-hover:text-foreground">{comic.title}</h3>
                 <div className="flex flex-wrap gap-1.5">
                   {(comic.tags || []).slice(0, 3).map((tag) => (
-                    <span key={tag} className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-medium ${getTagClass(tag)}`}>
-                      {tag}
-                    </span>
+                    <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                   ))}
                 </div>
               </div>

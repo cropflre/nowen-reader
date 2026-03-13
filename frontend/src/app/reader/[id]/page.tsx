@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { mockComics } from "@/data/mock-comics";
-import { getMockPages, comicPageCounts } from "@/data/mock-pages";
 import {
   useComicPages,
   useComicDetail,
@@ -45,16 +43,10 @@ export default function ReaderPage() {
   const { comic: comicDetail, refetch: refetchDetail } =
     useComicDetail(comicId);
 
-  // Fallback to mock data
-  const mockComic = mockComics.find((c) => c.id === comicId);
-  const mockPageCount = comicPageCounts[comicId] || 20;
-  const mockPages = mockComic ? getMockPages(comicId, mockPageCount) : [];
-
   // Determine data source
-  const useRealData = !apiError && apiPages.length > 0;
-  const pages = useRealData ? apiPages : mockPages;
-  const title = useRealData ? apiTitle : mockComic?.title || t.reader.unknownComic;
-  const isLoading = apiLoading && !mockComic;
+  const pages = apiPages;
+  const title = apiTitle || t.reader.unknownComic;
+  const isLoading = apiLoading;
 
   // Redirect novel files to the dedicated novel reader
   useEffect(() => {

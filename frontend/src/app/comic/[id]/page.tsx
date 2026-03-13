@@ -51,7 +51,7 @@ function formatFileSize(bytes: number) {
 function isNovelFile(filename?: string): boolean {
   if (!filename) return false;
   const ext = filename.toLowerCase();
-  return ext.endsWith(".txt") || ext.endsWith(".epub");
+  return ext.endsWith(".txt") || ext.endsWith(".epub") || ext.endsWith(".mobi") || ext.endsWith(".azw3");
 }
 
 export default function ComicDetailPage() {

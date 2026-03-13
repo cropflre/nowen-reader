@@ -9,6 +9,9 @@ import { AuthProvider } from "@/lib/auth-context";
 import { AuthGuard } from "@/components/AuthGuard";
 import { PWARegister } from "@/app/pwa-register";
 import { PWAInstallBanner } from "@/components/PWAInstall";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ToastProvider } from "@/components/Toast";
+import MobileBottomNav from "@/components/MobileBottomNav";
 
 // Pages — imported directly from original Next.js pages
 // The "use client" directive is harmless in Vite
@@ -23,24 +26,29 @@ import Stats from "@/app/stats/page";
 function App() {
   return (
     <BrowserRouter>
-      <ThemeProvider>
-        <I18nProvider>
-          <AuthProvider>
-            <AuthGuard>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/comic/:id" element={<ComicDetail />} />
-                <Route path="/reader/:id" element={<Reader />} />
-                <Route path="/novel/:id" element={<NovelReader />} />
-                <Route path="/ehentai" element={<EHentai />} />
-                <Route path="/recommendations" element={<Recommendations />} />
-                <Route path="/stats" element={<Stats />} />
-              </Routes>
-            </AuthGuard>
-            <PWAInstallBanner />
-          </AuthProvider>
-        </I18nProvider>
-      </ThemeProvider>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <I18nProvider>
+            <AuthProvider>
+              <ToastProvider>
+                <AuthGuard>
+                  <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/comic/:id" element={<ComicDetail />} />
+                    <Route path="/reader/:id" element={<Reader />} />
+                    <Route path="/novel/:id" element={<NovelReader />} />
+                    <Route path="/ehentai" element={<EHentai />} />
+                    <Route path="/recommendations" element={<Recommendations />} />
+                    <Route path="/stats" element={<Stats />} />
+                  </Routes>
+                </AuthGuard>
+                <MobileBottomNav />
+                <PWAInstallBanner />
+              </ToastProvider>
+            </AuthProvider>
+          </I18nProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
       <PWARegister />
     </BrowserRouter>
   );

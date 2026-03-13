@@ -53,10 +53,13 @@ export default function TagFilter({
   const [translating, setTranslating] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  // Limit visible tags to avoid rendering hundreds/thousands of DOM nodes
   const MAX_VISIBLE_TAGS = 50;
   const visibleTags = showAll ? allTags : allTags.slice(0, MAX_VISIBLE_TAGS);
   const hasMore = allTags.length > MAX_VISIBLE_TAGS;
+
+  // 超过 10 个标签时默认折叠（仅首次渲染时）
+  const [collapsed, setCollapsed] = useState(true);
+  const FOLD_THRESHOLD = 10;
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -111,7 +114,7 @@ export default function TagFilter({
   return (
     <div className="relative">
       <div className={`flex gap-2 ${showAll ? "items-start" : "items-center"}`}>
-        {/* Label + Translate */}
+        {/* Label + Translate + Fold Toggle */}
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
           <div className="flex items-center gap-1.5 text-muted">
             <Tag className="h-3.5 w-3.5" />
@@ -126,9 +129,40 @@ export default function TagFilter({
             <Languages className="h-3 w-3" />
             <span>{translating ? t.tagFilter.translating : t.tagFilter.translate}</span>
           </button>
+          {/* 折叠/展开切换 */}
+          {allTags.length > FOLD_THRESHOLD && (
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="flex h-6 items-center gap-0.5 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border"
+            >
+              <ChevronRight className={`h-3 w-3 transition-transform ${collapsed ? "" : "rotate-90"}`} />
+              <span>{collapsed ? `${allTags.length}` : t.common.collapse}</span>
+            </button>
+          )}
         </div>
 
-        {showAll ? (
+        {collapsed && allTags.length > FOLD_THRESHOLD ? (
+          /* 折叠时：仅显示已选中标签 + 数量提示 */
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedTags.length > 0 ? (
+              selectedTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => onTagToggle(tag)}
+                  className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                    tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
+                  }`}
+                >
+                  {tag} ×
+                </button>
+              ))
+            ) : (
+              <span className="text-xs text-muted">
+                {allTags.length} {t.tagFilter.label}
+              </span>
+            )}
+          </div>
+        ) : showAll ? (
           /* Expanded: wrap mode with max height */
           <div className="flex flex-wrap items-center gap-2 max-h-48 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
             {/* All Tag */}

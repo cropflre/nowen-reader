@@ -157,6 +157,8 @@ const en: Translations = {
     loading: "Loading...",
     loadError: "Failed to load",
     retry: "Retry",
+    toc: "Contents",
+    typesetting: "Typography",
   },
 
   // Reader Toolbar
@@ -482,6 +484,78 @@ const en: Translations = {
     clear: "Clear",
     testSuccess: "Connection test passed",
     testFailed: "Connection failed, check cookie values",
+  },
+
+  // Continue Reading
+  continueReading: {
+    title: "Continue Reading",
+    justNow: "Just now",
+    minutesAgo: "m ago",
+    hoursAgo: "h ago",
+    daysAgo: "d ago",
+    chapter: "Ch.",
+    chapterUnit: "",
+    pageUnit: "p",
+  },
+
+  // Shelves
+  shelf: {
+    create: "New Shelf",
+    namePlaceholder: "Shelf name...",
+    confirmDeleteShelf: "Delete this shelf? Comics won't be removed.",
+    moveTo: "Move to",
+    title: "Shelves",
+  },
+
+  // Mobile Navigation
+  mobileNav: {
+    shelf: "Shelf",
+    stats: "Stats",
+    explore: "Explore",
+  },
+
+  // Enhanced Stats
+  statsEnhanced: {
+    streak: "Streak",
+    days: "d",
+    longest: "Longest",
+    today: "Today",
+    thisWeek: "This Week",
+    speed: "Speed",
+    pagesPerHour: "p/h",
+    tabOverview: "Overview",
+    tabDaily: "Daily",
+    tabMonthly: "Monthly",
+    tabGenre: "Genre",
+    dailyChart: "Last 90 Days Reading Time",
+    monthlyTrend: "Monthly Trend",
+    genrePreference: "Genre Preference",
+    sessionsUnit: " sessions",
+    comicsUnit: " comics",
+  },
+
+  // Data Export
+  dataExport: {
+    title: "Export",
+    jsonFull: "JSON Full Backup",
+    csvComics: "CSV Comics Library",
+    csvSessions: "CSV Reading Sessions",
+    uploadFiles: "Upload Files",
+    scanDirs: "Scan Directories",
+    clearFilters: "Clear Filters",
+  },
+
+  // Reading Goal
+  readingGoal: {
+    title: "Reading Goals",
+    daily: "Daily Goal",
+    weekly: "Weekly Goal",
+    minutes: "min",
+    books: "books",
+    setGoal: "Set Goal",
+    achieved: "Goal Achieved!",
+    editGoal: "Edit",
+    deleteGoal: "Delete",
   },
 };
 

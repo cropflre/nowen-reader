@@ -235,16 +235,24 @@ function AboutPanel() {
           <span className="text-foreground">0.1.0</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted">Framework</span>
-          <span className="text-foreground">Next.js 16 + React 19</span>
+          <span className="text-muted">Backend</span>
+          <span className="text-foreground">Go (Gin)</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted">Frontend</span>
+          <span className="text-foreground">Vite + React 19</span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Database</span>
-          <span className="text-foreground">SQLite (Prisma)</span>
+          <span className="text-foreground">SQLite</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted">Formats</span>
+          <span className="text-muted">Comics</span>
           <span className="text-foreground">ZIP/CBZ/RAR/CBR/7Z/CB7/PDF</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted">Novels</span>
+          <span className="text-foreground">TXT/EPUB/MOBI/AZW3</span>
         </div>
       </div>
     </div>

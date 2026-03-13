@@ -220,7 +220,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 			return nil, err
 		}
 		// Set comic ID for EPUB image URL rewriting
-		if archiveType == archive.TypeEpub {
+		if archiveType == archive.TypeEpub || archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 {
 			archive.SetEpubComicID(reader, comicID)
 		}
 		// For novels, list entries directly (they are virtual chapter files)
@@ -265,7 +265,7 @@ func getChapterTitles(r archive.Reader, archiveType archive.ArchiveType) []strin
 	switch archiveType {
 	case archive.TypeTxt:
 		return archive.GetTxtChapterTitles(r)
-	case archive.TypeEpub:
+	case archive.TypeEpub, archive.TypeMobi, archive.TypeAzw3:
 		return archive.GetEpubChapterTitles(r)
 	}
 	return nil
@@ -300,7 +300,7 @@ func GetChapterContent(comicID string, chapterIndex int) (*ChapterContent, error
 	}
 
 	// Set comic ID on EPUB reader for image URL rewriting
-	if archiveType == archive.TypeEpub {
+	if archiveType == archive.TypeEpub || archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 {
 		archive.SetEpubComicID(reader, comicID)
 	}
 
@@ -337,7 +337,7 @@ func GetChapterContent(comicID string, chapterIndex int) (*ChapterContent, error
 	}
 
 	mimeType := "text/plain; charset=utf-8"
-	if archiveType == archive.TypeEpub {
+	if archiveType == archive.TypeEpub || archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 {
 		mimeType = "text/html; charset=utf-8" // EPUB returns sanitized HTML for rich rendering
 	}
 
@@ -366,7 +366,7 @@ func GetEpubResource(comicID string, resourcePath string) (*EpubResource, error)
 	}
 
 	archiveType := archive.DetectType(fp)
-	if archiveType != archive.TypeEpub {
+	if archiveType != archive.TypeEpub && archiveType != archive.TypeMobi && archiveType != archive.TypeAzw3 {
 		return nil, fmt.Errorf("not an EPUB file: %s", fp)
 	}
 

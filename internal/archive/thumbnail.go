@@ -48,8 +48,8 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 		}
 		pageBuffer = buf
 
-	case archiveType == TypeEpub:
-		// EPUB: try to extract cover image
+	case archiveType == TypeEpub || archiveType == TypeMobi || archiveType == TypeAzw3:
+		// EPUB/MOBI/AZW3: try to extract cover image (MOBI/AZW3 auto-converted to EPUB)
 		reader, err := NewReader(archivePath)
 		if err != nil {
 			return nil, err
@@ -325,6 +325,13 @@ func drawSimpleText(img *image.RGBA, text string, cx, cy int, clr color.RGBA) {
 		'P': {"#### ", "#   #", "#   #", "#### ", "#    ", "#    ", "#    "},
 		'U': {"#   #", "#   #", "#   #", "#   #", "#   #", "#   #", " ### "},
 		'B': {"#### ", "#   #", "#   #", "#### ", "#   #", "#   #", "#### "},
+		'M': {"#   #", "## ##", "# # #", "#   #", "#   #", "#   #", "#   #"},
+		'O': {" ### ", "#   #", "#   #", "#   #", "#   #", "#   #", " ### "},
+		'I': {"#####", "  #  ", "  #  ", "  #  ", "  #  ", "  #  ", "#####"},
+		'A': {" ### ", "#   #", "#   #", "#####", "#   #", "#   #", "#   #"},
+		'W': {"#   #", "#   #", "#   #", "#   #", "# # #", "## ##", "#   #"},
+		'Z': {"#####", "    #", "   # ", "  #  ", " #   ", "#    ", "#####"},
+		'3': {"#####", "    #", "    #", " ### ", "    #", "    #", "#####"},
 	}
 
 	scale := 4

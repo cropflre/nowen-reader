@@ -43,7 +43,13 @@ func (h *ImageHandler) GetPages(c *gin.Context) {
 	result, err := service.GetComicPagesEx(id)
 	if err != nil {
 		log.Printf("[pages] GetComicPagesEx failed for %s (%s) after %v: %v", id, comic.Filename, time.Since(start), err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get pages"})
+		errMsg := err.Error()
+		// 为用户提供更友好的错误提示
+		if strings.Contains(errMsg, "ebook-convert") {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "MOBI/AZW3 格式需要安装 Calibre 才能阅读。请前往 https://calibre-ebook.com 下载安装，确保 ebook-convert 可用后重试。"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errMsg})
+		}
 		return
 	}
 	elapsed := time.Since(start)
