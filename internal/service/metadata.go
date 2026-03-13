@@ -92,6 +92,50 @@ func TranslateGenre(genre, lang string) string {
 }
 
 // ============================================================
+// Search result relevance sorting
+// ============================================================
+
+// sortByRelevance 按标题与搜索关键词的相似度排序，最相关的排在最前面。
+func sortByRelevance(results []ComicMetadata, query string) {
+	if len(results) <= 1 {
+		return
+	}
+	queryLower := strings.ToLower(strings.TrimSpace(query))
+
+	// 计算匹配分数：完全匹配 > 包含 > 部分匹配
+	score := func(m ComicMetadata) int {
+		titleLower := strings.ToLower(strings.TrimSpace(m.Title))
+		if titleLower == queryLower {
+			return 100 // 完全匹配
+		}
+		if strings.Contains(titleLower, queryLower) || strings.Contains(queryLower, titleLower) {
+			return 80 // 包含关系
+		}
+		// 检查每个搜索词是否出现在标题中
+		words := strings.Fields(queryLower)
+		matched := 0
+		for _, w := range words {
+			if strings.Contains(titleLower, w) {
+				matched++
+			}
+		}
+		if len(words) > 0 {
+			return matched * 60 / len(words) // 部分匹配比例
+		}
+		return 0
+	}
+
+	// 简单冒泡排序（结果集通常很小）
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			if score(results[j]) > score(results[i]) {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+}
+
+// ============================================================
 // ComicInfo.xml parsing
 // ============================================================
 
@@ -160,11 +204,53 @@ func ExtractComicInfoFromArchive(archivePath string) (*ComicMetadata, error) {
 }
 
 // ============================================================
+// EPUB OPF metadata extraction (小说专用)
+// ============================================================
+
+// ExtractEpubMetadata 从 EPUB 文件中提取 OPF 元数据，转换为 ComicMetadata。
+// 支持提取 title、author、publisher、description、language、date、genre（subject）。
+func ExtractEpubMetadata(filePath string) (*ComicMetadata, error) {
+	epubMeta, err := archive.ExtractEpubOPFMetadata(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 至少需要标题才认为有效
+	if epubMeta.Title == "" {
+		return nil, nil
+	}
+
+	m := &ComicMetadata{
+		Title:       epubMeta.Title,
+		Author:      epubMeta.Author,
+		Publisher:   epubMeta.Publisher,
+		Description: epubMeta.Description,
+		Language:    epubMeta.Language,
+		Genre:       epubMeta.Genre,
+		SeriesName:  epubMeta.Title,
+		Source:      "epub_opf",
+	}
+
+	// 从日期中提取年份
+	if epubMeta.Date != "" {
+		var year int
+		if _, err := fmt.Sscanf(epubMeta.Date, "%d", &year); err == nil && year > 0 {
+			m.Year = &year
+		}
+	}
+
+	return m, nil
+}
+
+// ============================================================
 // Filename → search query extraction
 // ============================================================
 
 var (
-	bracketRe    = regexp.MustCompile(`[\[【\(（{][^\]】\)）}]*[\]】\)）}]`)
+	// bracketRe 匹配 [] 【】 () （） {} 及其内容，整体替换为空格
+	bracketRe = regexp.MustCompile(`[\[【\(（{][^\]】\)）}]*[\]】\)）}]`)
+	// bookTitleRe 仅去掉中文书名号 《》 符号本身，保留里面的内容
+	bookTitleRe  = regexp.MustCompile(`[《》]`)
 	volChRe      = regexp.MustCompile(`(?i)\b(v|vol|ch|c|#)\.?\s*\d+`)
 	resolutionRe = regexp.MustCompile(`(?i)\b\d{3,4}[px]\b`)
 	sepRe        = regexp.MustCompile(`[-_.]+`)
@@ -175,6 +261,7 @@ var (
 func ExtractSearchQuery(filename string) string {
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 	name = bracketRe.ReplaceAllString(name, " ")
+	name = bookTitleRe.ReplaceAllString(name, "") // 去掉《》符号，保留书名内容
 	name = volChRe.ReplaceAllString(name, " ")
 	name = resolutionRe.ReplaceAllString(name, " ")
 	name = sepRe.ReplaceAllString(name, " ")
@@ -189,9 +276,18 @@ func ExtractSearchQuery(filename string) string {
 const anilistAPI = "https://graphql.anilist.co"
 
 func SearchAniList(query, lang string) []ComicMetadata {
-	gql := `query ($search: String) {
+	return searchAniListWithType(query, lang, "MANGA", "anilist")
+}
+
+// SearchAniListNovel searches AniList for light novels.
+func SearchAniListNovel(query, lang string) []ComicMetadata {
+	return searchAniListWithType(query, lang, "NOVEL", "anilist_novel")
+}
+
+func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMetadata {
+	gql := fmt.Sprintf(`query ($search: String) {
 		Page(page: 1, perPage: 10) {
-			media(search: $search, type: MANGA, sort: SEARCH_MATCH) {
+			media(search: $search, type: %s, sort: SEARCH_MATCH) {`, mediaType) + `
 				id
 				title { romaji english native }
 				description(asHtml: false)
@@ -204,7 +300,7 @@ func SearchAniList(query, lang string) []ComicMetadata {
 				volumes
 			}
 		}
-	}`
+	}` + "}"
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"query":     gql,
@@ -300,7 +396,7 @@ func SearchAniList(query, lang string) []ComicMetadata {
 			Genre:       genre,
 			SeriesName:  m.Title.Romaji,
 			CoverURL:    m.CoverImage.Large,
-			Source:      "anilist",
+			Source:      sourceName,
 		})
 	}
 	return results
@@ -313,8 +409,17 @@ func SearchAniList(query, lang string) []ComicMetadata {
 const bangumiAPI = "https://api.bgm.tv"
 
 func SearchBangumi(query, lang string) []ComicMetadata {
-	u := fmt.Sprintf("%s/search/subject/%s?type=1&responseGroup=large&max_results=10",
-		bangumiAPI, url.PathEscape(query))
+	return searchBangumiWithType(query, lang, 1, "bangumi")
+}
+
+// SearchBangumiNovel searches Bangumi for novels (type=2).
+func SearchBangumiNovel(query, lang string) []ComicMetadata {
+	return searchBangumiWithType(query, lang, 2, "bangumi_novel")
+}
+
+func searchBangumiWithType(query, lang string, bangumiType int, sourceName string) []ComicMetadata {
+	u := fmt.Sprintf("%s/search/subject/%s?type=%d&responseGroup=large&max_results=10",
+		bangumiAPI, url.PathEscape(query), bangumiType)
 
 	resp, err := httpGet(u, map[string]string{
 		"User-Agent": "NowenReader/1.0",
@@ -436,7 +541,7 @@ func SearchBangumi(query, lang string) []ComicMetadata {
 			Genre:       strings.Join(tagNames, ", "),
 			SeriesName:  s.Name,
 			CoverURL:    coverURL,
-			Source:      "bangumi",
+			Source:      sourceName,
 		})
 	}
 	return results
@@ -465,10 +570,10 @@ func SearchMangaDex(query, lang string) []ComicMetadata {
 		Data []struct {
 			ID         string `json:"id"`
 			Attributes struct {
-				Title       map[string]string            `json:"title"`
-				AltTitles   []map[string]string          `json:"altTitles"`
-				Description map[string]string            `json:"description"`
-				Year        *int                         `json:"year"`
+				Title       map[string]string   `json:"title"`
+				AltTitles   []map[string]string `json:"altTitles"`
+				Description map[string]string   `json:"description"`
+				Year        *int                `json:"year"`
 				Tags        []struct {
 					Attributes struct {
 						Name  map[string]string `json:"name"`
@@ -596,8 +701,8 @@ func SearchMangaUpdates(query, lang string) []ComicMetadata {
 						Original string `json:"original"`
 					} `json:"url"`
 				} `json:"image"`
-				Year    string `json:"year"`
-				Genres  []struct {
+				Year   string `json:"year"`
+				Genres []struct {
 					Genre string `json:"genre"`
 				} `json:"genres"`
 				Authors []struct {
@@ -761,13 +866,121 @@ func SearchKitsu(query, lang string) []ComicMetadata {
 }
 
 // ============================================================
+// Google Books API (free, no key required for basic usage)
+// ============================================================
+
+const googleBooksAPI = "https://www.googleapis.com/books/v1/volumes"
+
+func SearchGoogleBooks(query, lang string) []ComicMetadata {
+	params := url.Values{}
+	params.Set("q", query)
+	params.Set("maxResults", "10")
+	params.Set("printType", "books")
+	if strings.HasPrefix(lang, "zh") {
+		params.Set("langRestrict", "zh")
+	}
+
+	u := fmt.Sprintf("%s?%s", googleBooksAPI, params.Encode())
+	resp, err := httpGet(u, map[string]string{
+		"User-Agent": "NowenReader/1.0",
+	}, 15*time.Second)
+	if err != nil {
+		log.Printf("[metadata] Google Books search failed: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var data struct {
+		Items []struct {
+			VolumeInfo struct {
+				Title         string   `json:"title"`
+				Authors       []string `json:"authors"`
+				Publisher     string   `json:"publisher"`
+				PublishedDate string   `json:"publishedDate"`
+				Description   string   `json:"description"`
+				Categories    []string `json:"categories"`
+				Language      string   `json:"language"`
+				ImageLinks    *struct {
+					Thumbnail      string `json:"thumbnail"`
+					SmallThumbnail string `json:"smallThumbnail"`
+				} `json:"imageLinks"`
+				IndustryIdentifiers []struct {
+					Type       string `json:"type"`
+					Identifier string `json:"identifier"`
+				} `json:"industryIdentifiers"`
+			} `json:"volumeInfo"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil
+	}
+
+	var results []ComicMetadata
+	for _, item := range data.Items {
+		vi := item.VolumeInfo
+
+		var year *int
+		if vi.PublishedDate != "" {
+			var y int
+			if _, err := fmt.Sscanf(vi.PublishedDate, "%d", &y); err == nil && y > 0 {
+				year = &y
+			}
+		}
+
+		genre := strings.Join(vi.Categories, ", ")
+		if genre != "" {
+			genre = TranslateGenre(genre, lang)
+		}
+
+		var coverURL string
+		if vi.ImageLinks != nil {
+			coverURL = vi.ImageLinks.Thumbnail
+			if coverURL == "" {
+				coverURL = vi.ImageLinks.SmallThumbnail
+			}
+			// Google Books 返回的是 http URL，转换为 https
+			if strings.HasPrefix(coverURL, "http://") {
+				coverURL = "https://" + coverURL[7:]
+			}
+		}
+
+		results = append(results, ComicMetadata{
+			Title:       vi.Title,
+			Author:      strings.Join(vi.Authors, ", "),
+			Publisher:   vi.Publisher,
+			Year:        year,
+			Description: vi.Description,
+			Genre:       genre,
+			Language:    vi.Language,
+			SeriesName:  vi.Title,
+			CoverURL:    coverURL,
+			Source:      "googlebooks",
+		})
+	}
+	return results
+}
+
+// ============================================================
 // Unified search (parallel)
 // ============================================================
 
 // SearchMetadata searches multiple sources concurrently.
-func SearchMetadata(query string, sources []string, lang string) []ComicMetadata {
+// contentType: "comic" | "novel" | "" (auto-detect default sources).
+func SearchMetadata(query string, sources []string, lang string, contentType ...string) []ComicMetadata {
+	ct := ""
+	if len(contentType) > 0 {
+		ct = contentType[0]
+	}
+
 	if len(sources) == 0 {
-		sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
+		switch ct {
+		case "novel":
+			sources = []string{"googlebooks", "anilist_novel", "bangumi_novel"}
+		case "comic":
+			sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
+		default:
+			sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
+		}
 	}
 
 	type result struct {
@@ -780,14 +993,21 @@ func SearchMetadata(query string, sources []string, lang string) []ComicMetadata
 			switch s {
 			case "anilist":
 				ch <- result{SearchAniList(query, lang)}
+			case "anilist_novel":
+				ch <- result{SearchAniListNovel(query, lang)}
 			case "bangumi":
 				ch <- result{SearchBangumi(query, lang)}
+			case "bangumi_novel":
+				ch <- result{SearchBangumiNovel(query, lang)}
 			case "mangadex":
 				ch <- result{SearchMangaDex(query, lang)}
 			case "mangaupdates":
 				ch <- result{SearchMangaUpdates(query, lang)}
 			case "kitsu":
 				ch <- result{SearchKitsu(query, lang)}
+			case "googlebooks":
+				ch <- result{SearchGoogleBooks(query, lang)}
+
 			default:
 				ch <- result{}
 			}
@@ -799,6 +1019,10 @@ func SearchMetadata(query string, sources []string, lang string) []ComicMetadata
 		r := <-ch
 		all = append(all, r.data...)
 	}
+
+	// 按标题与搜索关键词的匹配度排序，优先返回最相关的结果
+	sortByRelevance(all, query)
+
 	return all
 }
 

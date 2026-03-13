@@ -14,10 +14,11 @@ interface RecommendedComic {
   coverUrl: string;
   author: string;
   genre: string;
+  filename: string;
   tags: { name: string; color: string }[];
 }
 
-export function RecommendationStrip() {
+export function RecommendationStrip({ contentType }: { contentType?: string }) {
   const t = useTranslation();
   const [recommendations, setRecommendations] = useState<RecommendedComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,14 +29,16 @@ export function RecommendationStrip() {
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/recommendations?limit=8&excludeRead=false");
+      const params = new URLSearchParams({ limit: "8", excludeRead: "false" });
+      if (contentType) params.set("contentType", contentType);
+      const res = await fetch(`/api/recommendations?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setRecommendations(data.recommendations || []);
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, []);
+  }, [contentType]);
 
   useEffect(() => {
     fetchRecommendations();

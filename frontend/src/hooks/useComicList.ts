@@ -47,6 +47,7 @@ export function useComics(options?: {
   page?: number;
   pageSize?: number;
   category?: string;
+  contentType?: string; // "comic" | "novel" | ""
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +67,7 @@ export function useComics(options?: {
     if (options?.page) params.set("page", String(options.page));
     if (options?.pageSize) params.set("pageSize", String(options.pageSize));
     if (options?.category) params.set("category", options.category);
+    if (options?.contentType) params.set("contentType", options.contentType);
 
     const qs = params.toString();
     const cacheKey = qs || "__default__";
@@ -111,7 +113,7 @@ export function useComics(options?: {
       setLoading(false);
       setFetching(false);
     }
-  }, [options?.search, options?.tags, options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category]);
+  }, [options?.search, options?.tags, options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType]);
 
   useEffect(() => {
     fetchComics();

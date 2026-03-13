@@ -40,8 +40,17 @@ type opfPackage struct {
 }
 
 type opfMetadata struct {
-	Title   string `xml:"title"`
-	Creator string `xml:"creator"`
+	Title       string   `xml:"title"`
+	Creator     string   `xml:"creator"`
+	Publisher   string   `xml:"publisher"`
+	Description string   `xml:"description"`
+	Language    string   `xml:"language"`
+	Date        string   `xml:"date"`
+	Subjects    []string `xml:"subject"`
+	Identifiers []struct {
+		Value  string `xml:",chardata"`
+		Scheme string `xml:"scheme,attr"`
+	} `xml:"identifier"`
 }
 
 type opfManifest struct {
@@ -396,11 +405,11 @@ var (
 )
 
 // sanitizeEpubHTML cleans XHTML content for safe rendering:
-// - Removes <script>, <style>, <head>, <meta>, <link> blocks
-// - Extracts only <body> content
-// - Keeps safe formatting tags: p, div, h1-h6, span, em, strong, b, i, u, br, img,
-//   ul, ol, li, blockquote, a, table, tr, td, th, pre, code, sup, sub, hr, figure, figcaption
-// - Resolves relative image paths using chapterDir
+//   - Removes <script>, <style>, <head>, <meta>, <link> blocks
+//   - Extracts only <body> content
+//   - Keeps safe formatting tags: p, div, h1-h6, span, em, strong, b, i, u, br, img,
+//     ul, ol, li, blockquote, a, table, tr, td, th, pre, code, sup, sub, hr, figure, figcaption
+//   - Resolves relative image paths using chapterDir
 func sanitizeEpubHTML(rawHTML string, chapterDir string) string {
 	// Extract body content if present
 	bodyRegex := regexp.MustCompile(`(?is)<body[^>]*>(.*)</body>`)
@@ -566,4 +575,138 @@ func GetEpubCoverImage(r Reader) ([]byte, error) {
 		return er.GetCoverImage()
 	}
 	return nil, fmt.Errorf("not an EPUB reader")
+}
+
+// EpubOPFMetadata 从 EPUB 文件的 OPF 中提取的元数据
+type EpubOPFMetadata struct {
+	Title       string
+	Author      string
+	Publisher   string
+	Description string
+	Language    string
+	Date        string // 出版日期，格式如 "2023" 或 "2023-01-15"
+	Genre       string // 由 subject 拼接
+	ISBN        string // 从 identifier 中提取的 ISBN
+}
+
+// ExtractEpubOPFMetadata 从 EPUB 文件中提取 OPF 元数据，不需要完整解析章节内容。
+// 适用于小说刮削时快速提取本地元数据。
+func ExtractEpubOPFMetadata(filePath string) (*EpubOPFMetadata, error) {
+	rc, err := zip.OpenReader(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("open epub %s: %w", filePath, err)
+	}
+	defer rc.Close()
+
+	// 查找 OPF 文件路径
+	opfPath := ""
+
+	// 先尝试从 container.xml 获取
+	for _, f := range rc.File {
+		if f.Name == "META-INF/container.xml" {
+			data, err := readZipEntry(f)
+			if err == nil {
+				var container epubContainer
+				if err := xml.Unmarshal(data, &container); err == nil {
+					for _, rf := range container.RootFiles {
+						if rf.MediaType == "application/oebps-package+xml" || strings.HasSuffix(rf.FullPath, ".opf") {
+							opfPath = rf.FullPath
+							break
+						}
+					}
+					if opfPath == "" && len(container.RootFiles) > 0 {
+						opfPath = container.RootFiles[0].FullPath
+					}
+				}
+			}
+			break
+		}
+	}
+
+	// 兜底：直接搜索 .opf 文件
+	if opfPath == "" {
+		for _, f := range rc.File {
+			if strings.HasSuffix(strings.ToLower(f.Name), ".opf") {
+				opfPath = f.Name
+				break
+			}
+		}
+	}
+
+	if opfPath == "" {
+		return nil, fmt.Errorf("no OPF file found in EPUB")
+	}
+
+	// 读取 OPF 文件
+	var opfData []byte
+	for _, f := range rc.File {
+		if f.Name == opfPath {
+			opfData, err = readZipEntry(f)
+			if err != nil {
+				return nil, fmt.Errorf("read OPF: %w", err)
+			}
+			break
+		}
+	}
+	if opfData == nil {
+		return nil, fmt.Errorf("OPF file not found: %s", opfPath)
+	}
+
+	// 解析 OPF
+	var pkg opfPackage
+	if err := xml.Unmarshal(opfData, &pkg); err != nil {
+		return nil, fmt.Errorf("parse OPF: %w", err)
+	}
+
+	meta := &EpubOPFMetadata{
+		Title:       strings.TrimSpace(pkg.Metadata.Title),
+		Author:      strings.TrimSpace(pkg.Metadata.Creator),
+		Publisher:   strings.TrimSpace(pkg.Metadata.Publisher),
+		Description: strings.TrimSpace(pkg.Metadata.Description),
+		Language:    strings.TrimSpace(pkg.Metadata.Language),
+		Date:        strings.TrimSpace(pkg.Metadata.Date),
+	}
+
+	// 提取 genre（从 subject 标签）
+	var subjects []string
+	for _, s := range pkg.Metadata.Subjects {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			subjects = append(subjects, s)
+		}
+	}
+	if len(subjects) > 0 {
+		meta.Genre = strings.Join(subjects, ", ")
+	}
+
+	// 提取 ISBN
+	for _, id := range pkg.Metadata.Identifiers {
+		scheme := strings.ToLower(id.Scheme)
+		value := strings.TrimSpace(id.Value)
+		if scheme == "isbn" || strings.Contains(value, "978") || strings.Contains(value, "979") {
+			// 清理 ISBN 中的非数字字符（保留 X）
+			cleaned := ""
+			for _, ch := range value {
+				if (ch >= '0' && ch <= '9') || ch == 'X' || ch == 'x' {
+					cleaned += string(ch)
+				}
+			}
+			if len(cleaned) == 10 || len(cleaned) == 13 {
+				meta.ISBN = cleaned
+				break
+			}
+		}
+	}
+
+	return meta, nil
+}
+
+// readZipEntry 读取 zip 文件中的一个条目
+func readZipEntry(f *zip.File) ([]byte, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
 }

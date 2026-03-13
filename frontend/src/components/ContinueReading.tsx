@@ -11,7 +11,7 @@ import type { ApiComic } from "@/hooks/useComics";
  * 继续阅读横条 — 显示最近阅读的漫画/小说，带阅读进度
  * 类似 Netflix "继续观看" 的体验
  */
-export function ContinueReading() {
+export function ContinueReading({ contentType }: { contentType?: string }) {
   const t = useTranslation();
   const [recentComics, setRecentComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,8 +19,15 @@ export function ContinueReading() {
   const fetchRecent = useCallback(async () => {
     try {
       // 获取按最近阅读时间排序的漫画，只取有阅读记录的
+      const params = new URLSearchParams({
+        sortBy: "lastReadAt",
+        sortOrder: "desc",
+        pageSize: "10",
+        page: "1",
+      });
+      if (contentType) params.set("contentType", contentType);
       const res = await fetch(
-        "/api/comics?sortBy=lastReadAt&sortOrder=desc&pageSize=10&page=1"
+        `/api/comics?${params.toString()}`
       );
       if (res.ok) {
         const data = await res.json();
@@ -38,7 +45,7 @@ export function ContinueReading() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [contentType]);
 
   useEffect(() => {
     fetchRecent();

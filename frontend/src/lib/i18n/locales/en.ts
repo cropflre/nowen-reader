@@ -116,6 +116,13 @@ const en: Translations = {
     coverFromUrl: "Image URL",
     coverFromPlatform: "Fetch from Platform",
     resetCover: "Reset to Default",
+    editTitle: "Edit Title",
+    editMetadata: "Edit Metadata",
+    saveMetadata: "Save",
+    cancelEdit: "Cancel",
+    metadataSaved: "Metadata saved",
+    metadataSaveFailed: "Save failed",
+    noMetadata: "No metadata",
   },
 
   // Stats Page
@@ -206,10 +213,14 @@ const en: Translations = {
     searchPlaceholder: "Search metadata...",
     search: "Search",
     scanArchive: "Scan archive for ComicInfo.xml",
+    scanNovel: "Scan novel metadata (EPUB OPF + online)",
     noResults: "No results found",
     apply: "Apply",
     applied: "Applied",
     appliedFromArchive: "Metadata applied from ComicInfo.xml",
+    appliedFromNovelScan: "Novel metadata applied successfully",
+    noEpubMetadata: "No EPUB metadata or online results found",
+    noComicInfo: "No ComicInfo.xml found",
     author: "Author",
     publisher: "Publisher",
     year: "Year",
@@ -222,16 +233,21 @@ const en: Translations = {
     selectSources: "Select sources",
     sources: {
       anilist: "AniList",
+      anilist_novel: "AniList (Novels)",
       bangumi: "Bangumi",
+      bangumi_novel: "Bangumi (Novels)",
       mangadex: "MangaDex",
       mangaupdates: "MangaUpdates",
       kitsu: "Kitsu",
-      mal: "MyAnimeList",
-      comicvine: "ComicVine",
+      googlebooks: "Google Books",
       comicinfo: "ComicInfo (Local)",
+      epub_opf: "EPUB OPF (Local)",
     },
     translateMetadata: "Translate",
     translatingMetadata: "Translating...",
+    editMetadata: "Edit",
+    editingMetadata: "Edit Metadata",
+    seriesIndex: "Volume",
   },
 
   // PWA
@@ -296,20 +312,10 @@ const en: Translations = {
     semanticMatch: "AI semantic match",
   },
 
-  // Plugins
-  plugins: {
-    title: "Plugins",
-    noPlugins: "No plugins installed",
-    author: "Author",
-    permissions: "Permissions",
-    settings: "Settings",
-  },
-
   // Settings
   settings: {
     title: "Settings",
     sync: "Sync",
-    plugins: "Plugins",
     ai: "AI",
     pwa: "App",
     about: "About",
@@ -532,6 +538,13 @@ const en: Translations = {
     genrePreference: "Genre Preference",
     sessionsUnit: " sessions",
     comicsUnit: " comics",
+  },
+
+  // Content Type Tab
+  contentTab: {
+    all: "All",
+    comic: "Comics",
+    novel: "Novels",
   },
 
   // Data Export

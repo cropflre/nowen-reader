@@ -23,17 +23,21 @@ func (h *MetadataHandler) Search(c *gin.Context) {
 	var query, lang string
 	var sources []string
 
+	var contentType string
+
 	if c.Request.Method == "GET" {
 		query = c.Query("q")
 		lang = c.DefaultQuery("lang", "en")
+		contentType = c.Query("contentType")
 		if s := c.Query("sources"); s != "" {
 			sources = strings.Split(s, ",")
 		}
 	} else {
 		var body struct {
-			Query   string   `json:"query"`
-			Sources []string `json:"sources"`
-			Lang    string   `json:"lang"`
+			Query       string   `json:"query"`
+			Sources     []string `json:"sources"`
+			Lang        string   `json:"lang"`
+			ContentType string   `json:"contentType"`
 		}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(400, gin.H{"error": "invalid request body"})
@@ -42,6 +46,7 @@ func (h *MetadataHandler) Search(c *gin.Context) {
 		query = body.Query
 		sources = body.Sources
 		lang = body.Lang
+		contentType = body.ContentType
 		if lang == "" {
 			lang = "en"
 		}
@@ -52,7 +57,7 @@ func (h *MetadataHandler) Search(c *gin.Context) {
 		return
 	}
 
-	results := service.SearchMetadata(query, sources, lang)
+	results := service.SearchMetadata(query, sources, lang, contentType)
 	if results == nil {
 		results = []service.ComicMetadata{}
 	}
@@ -137,7 +142,13 @@ func (h *MetadataHandler) Scan(c *gin.Context) {
 		return
 	}
 
-	results := service.SearchMetadata(searchQuery, nil, body.Lang)
+	// 根据文件名自动判断内容类型
+	scanContentType := "comic"
+	if service.IsNovelFilename(comic.Filename) {
+		scanContentType = "novel"
+	}
+
+	results := service.SearchMetadata(searchQuery, nil, body.Lang, scanContentType)
 	if len(results) == 0 {
 		c.JSON(200, gin.H{
 			"comic":   comic,
@@ -147,8 +158,93 @@ func (h *MetadataHandler) Scan(c *gin.Context) {
 		return
 	}
 
-	// Apply best match
-	updated, err := service.ApplyMetadata(body.ComicID, results[0], body.Lang, false)
+	// Apply best match — scan 是用户主动触发的，使用 overwrite 覆盖旧数据
+	updated, err := service.ApplyMetadata(body.ComicID, results[0], body.Lang, true)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to apply metadata"})
+		return
+	}
+	c.JSON(200, gin.H{
+		"comic":  updated,
+		"source": results[0].Source,
+	})
+}
+
+// POST /api/metadata/novel-scan — 小说专用刮削接口
+// 优先从 EPUB OPF 提取本地元数据，再通过小说数据源在线搜索。
+func (h *MetadataHandler) NovelScan(c *gin.Context) {
+	var body struct {
+		ComicID string `json:"comicId"`
+		Lang    string `json:"lang"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.ComicID == "" {
+		c.JSON(400, gin.H{"error": "comicId is required"})
+		return
+	}
+	if body.Lang == "" {
+		body.Lang = "en"
+	}
+
+	comic, err := store.GetComicByID(body.ComicID)
+	if err != nil || comic == nil {
+		c.JSON(404, gin.H{"error": "Comic not found"})
+		return
+	}
+
+	// 查找文件路径
+	filePath := findComicFile(comic.Filename)
+	if filePath == "" {
+		c.JSON(404, gin.H{"error": "File not found on disk"})
+		return
+	}
+
+	// 步骤1：尝试从 EPUB OPF 提取本地元数据
+	ext := strings.ToLower(filepath.Ext(comic.Filename))
+	if ext == ".epub" {
+		epubMeta, err := service.ExtractEpubMetadata(filePath)
+		if err == nil && epubMeta != nil && epubMeta.Title != "" {
+			result, err := service.ApplyMetadata(body.ComicID, *epubMeta, body.Lang, false)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Failed to apply metadata"})
+				return
+			}
+			c.JSON(200, gin.H{
+				"comic":  result,
+				"source": "epub_opf",
+			})
+			return
+		}
+	}
+
+	// 步骤2：对于 MOBI/AZW3，尝试先转换为 EPUB 再提取
+	if ext == ".mobi" || ext == ".azw3" {
+		// MOBI/AZW3 会通过 Calibre 转换为 EPUB，转换后的路径在 cache 中
+		// 直接走在线搜索即可（MOBI 内嵌元数据较少且不标准）
+	}
+
+	// 步骤3：在线搜索兜底
+	searchQuery := service.ExtractSearchQuery(comic.Filename)
+	if searchQuery == "" {
+		c.JSON(200, gin.H{
+			"comic":   comic,
+			"source":  "none",
+			"message": "No search query could be derived from filename",
+		})
+		return
+	}
+
+	results := service.SearchMetadata(searchQuery, nil, body.Lang, "novel")
+	if len(results) == 0 {
+		c.JSON(200, gin.H{
+			"comic":   comic,
+			"source":  "none",
+			"message": "No metadata found online",
+		})
+		return
+	}
+
+	// 应用最佳匹配结果 — novel-scan 是用户主动触发的，使用 overwrite 覆盖旧数据
+	updated, err := service.ApplyMetadata(body.ComicID, results[0], body.Lang, true)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to apply metadata"})
 		return
@@ -224,8 +320,28 @@ func (h *MetadataHandler) Batch(c *gin.Context) {
 
 		filePath := findComicFile(comic.Filename)
 
-		// Try ComicInfo.xml first
-		if filePath != "" {
+		isNovel := service.IsNovelFilename(comic.Filename)
+
+		// 小说文件：优先尝试从 EPUB OPF 提取本地元数据
+		if isNovel && filePath != "" {
+			ext := strings.ToLower(filepath.Ext(comic.Filename))
+			if ext == ".epub" {
+				epubMeta, err := service.ExtractEpubMetadata(filePath)
+				if err == nil && epubMeta != nil && epubMeta.Title != "" {
+					_, err := service.ApplyMetadata(comic.ID, *epubMeta, body.Lang, false)
+					if err == nil {
+						progress["status"] = "success"
+						progress["source"] = "epub_opf"
+						sendSSE(progress)
+						success++
+						continue
+					}
+				}
+			}
+		}
+
+		// 漫画文件：尝试从 ComicInfo.xml 提取
+		if !isNovel && filePath != "" {
 			comicInfo, _ := service.ExtractComicInfoFromArchive(filePath)
 			if comicInfo != nil && comicInfo.Title != "" {
 				_, err := service.ApplyMetadata(comic.ID, *comicInfo, body.Lang, false)
@@ -249,7 +365,13 @@ func (h *MetadataHandler) Batch(c *gin.Context) {
 			continue
 		}
 
-		results := service.SearchMetadata(searchQuery, nil, body.Lang)
+		// 根据文件名自动判断内容类型
+		batchContentType := "comic"
+		if service.IsNovelFilename(comic.Filename) {
+			batchContentType = "novel"
+		}
+
+		results := service.SearchMetadata(searchQuery, nil, body.Lang, batchContentType)
 		if len(results) > 0 {
 			_, err := service.ApplyMetadata(comic.ID, results[0], body.Lang, false)
 			if err == nil {

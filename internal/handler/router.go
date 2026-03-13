@@ -104,6 +104,9 @@ func SetupRoutes(r *gin.Engine) {
 		comicByIDWrite.POST("/categories", comic.AddCategories)
 		comicByIDWrite.PUT("/categories", comic.SetCategories)
 		comicByIDWrite.DELETE("/categories", comic.RemoveCategory)
+
+		// Metadata editing
+		comicByIDWrite.PUT("/metadata", comic.UpdateMetadata)
 	}
 
 	// ============================================================
@@ -248,6 +251,7 @@ func SetupRoutes(r *gin.Engine) {
 		metadataGroup.POST("/search", meta.Search)
 		metadataGroup.POST("/apply", meta.Apply)
 		metadataGroup.POST("/scan", meta.Scan)
+		metadataGroup.POST("/novel-scan", meta.NovelScan)
 		metadataGroup.POST("/batch", meta.Batch)
 		metadataGroup.POST("/translate-batch", meta.TranslateBatch)
 	}
@@ -302,11 +306,6 @@ func SetupRoutes(r *gin.Engine) {
 		ehGroup.GET("/download", eh.Download)
 		ehGroup.POST("/download", eh.Download)
 	}
-
-	// Plugins
-	plugin := NewPluginHandler()
-	api.GET("/plugins", plugin.List)
-	api.POST("/plugins", plugin.Action)
 
 	// Tag translation
 	tagTranslate := NewTagTranslateHandler()

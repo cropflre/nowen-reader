@@ -14,6 +14,7 @@
 
 // 类型导出
 export type { ApiComicTag, ApiComic, ComicsResponse, ApiCategory } from "./useComicTypes";
+export type { ComicMetadataUpdate } from "@/api/comics";
 
 // Hook 导出
 export { useComics, invalidateComicsCache } from "./useComicList";
@@ -37,4 +38,5 @@ export {
   addComicCategories,
   setComicCategories,
   removeComicCategory,
+  updateComicMetadata,
 } from "@/api/comics";

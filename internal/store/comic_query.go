@@ -22,6 +22,7 @@ type ComicListOptions struct {
 	Page          int
 	PageSize      int
 	Category      string
+	ContentType   string // "comic" | "novel" | "" (全部)
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -115,6 +116,13 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			conditions = append(conditions, `c."id" IN (SELECT cc."comicId" FROM "ComicCategory" cc JOIN "Category" cat ON cc."categoryId" = cat."id" WHERE cat."slug" = ?)`)
 			args = append(args, opts.Category)
 		}
+	}
+
+	// ContentType filtering: 按文件名后缀区分小说和漫画
+	if opts.ContentType == "novel" {
+		conditions = append(conditions, `(c."filename" LIKE '%.txt' OR c."filename" LIKE '%.epub' OR c."filename" LIKE '%.mobi' OR c."filename" LIKE '%.azw3')`)
+	} else if opts.ContentType == "comic" {
+		conditions = append(conditions, `c."filename" NOT LIKE '%.txt' AND c."filename" NOT LIKE '%.epub' AND c."filename" NOT LIKE '%.mobi' AND c."filename" NOT LIKE '%.azw3'`)
 	}
 
 	whereClause := ""
@@ -443,6 +451,7 @@ type RecommendationComic struct {
 	Author        string
 	Genre         string
 	SeriesName    string
+	Filename      string
 	PageCount     int
 	LastReadPage  int
 	LastReadAt    *time.Time
@@ -457,7 +466,7 @@ type RecommendationComic struct {
 func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 	rows, err := db.Query(`
 		SELECT "id", "title", "author", "genre", "seriesName",
-		       "pageCount", "lastReadPage", "lastReadAt", "isFavorite",
+		       "filename", "pageCount", "lastReadPage", "lastReadAt", "isFavorite",
 		       "rating", "totalReadTime"
 		FROM "Comic"
 	`)
@@ -475,7 +484,7 @@ func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Author, &c.Genre, &c.SeriesName,
-			&c.PageCount, &c.LastReadPage, &lastReadAt, &isFav,
+			&c.Filename, &c.PageCount, &c.LastReadPage, &lastReadAt, &isFav,
 			&rating, &c.TotalReadTime,
 		); err != nil {
 			continue

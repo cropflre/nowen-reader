@@ -16,38 +16,57 @@ interface MetadataResult {
   source: string;
 }
 
-const ALL_SOURCES = [
+function isNovelFile(filename?: string): boolean {
+  if (!filename) return false;
+  const ext = filename.toLowerCase();
+  return ext.endsWith(".txt") || ext.endsWith(".epub") || ext.endsWith(".mobi") || ext.endsWith(".azw3");
+}
+
+// 漫画数据源
+const COMIC_SOURCES = [
   { id: "anilist", name: "AniList", icon: "🅰" },
   { id: "bangumi", name: "Bangumi", icon: "🅱" },
   { id: "mangadex", name: "MangaDex", icon: "📖" },
   { id: "mangaupdates", name: "MangaUpdates", icon: "📋" },
   { id: "kitsu", name: "Kitsu", icon: "🦊" },
-  { id: "mal", name: "MAL", icon: "Ⓜ" },
-  { id: "comicvine", name: "ComicVine", icon: "💬" },
 ] as const;
 
-const DEFAULT_SOURCES = ALL_SOURCES.map((s) => s.id);
+// 小说数据源
+const NOVEL_SOURCES = [
+  { id: "googlebooks", name: "Google Books", icon: "📚" },
+  { id: "bangumi_novel", name: "Bangumi", icon: "🅱" },
+  { id: "anilist_novel", name: "AniList", icon: "🅰" },
+] as const;
+
+const DEFAULT_COMIC_SOURCES = COMIC_SOURCES.map((s) => s.id);
+const DEFAULT_NOVEL_SOURCES = NOVEL_SOURCES.map((s) => s.id);
 
 const SOURCE_COLORS: Record<string, string> = {
   anilist: "bg-blue-500/15 text-blue-400",
+  anilist_novel: "bg-blue-500/15 text-blue-400",
   bangumi: "bg-pink-500/15 text-pink-400",
+  bangumi_novel: "bg-pink-500/15 text-pink-400",
   mangadex: "bg-orange-500/15 text-orange-400",
   mangaupdates: "bg-purple-500/15 text-purple-400",
   kitsu: "bg-amber-500/15 text-amber-400",
-  mal: "bg-sky-500/15 text-sky-400",
-  comicvine: "bg-green-500/15 text-green-400",
+  googlebooks: "bg-emerald-500/15 text-emerald-400",
   comicinfo: "bg-gray-500/15 text-gray-400",
 };
 
 interface Props {
   comicId: string;
   comicTitle: string;
+  filename?: string;
   onApplied?: () => void;
 }
 
-export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
+export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Props) {
   const t = useTranslation();
   const { locale } = useLocale();
+
+  const isNovel = isNovelFile(filename);
+  const availableSources = isNovel ? NOVEL_SOURCES : COMIC_SOURCES;
+  const defaultSources = isNovel ? DEFAULT_NOVEL_SOURCES : DEFAULT_COMIC_SOURCES;
 
   const getSourceName = (id: string) => {
     return (t.metadata?.sources as Record<string, string>)?.[id] || id;
@@ -59,7 +78,7 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
   const [applying, setApplying] = useState<number | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [enabledSources, setEnabledSources] = useState<string[]>(DEFAULT_SOURCES);
+  const [enabledSources, setEnabledSources] = useState<string[]>(defaultSources as unknown as string[]);
   const [showSourceFilter, setShowSourceFilter] = useState(false);
 
   const toggleSource = (id: string) => {
@@ -81,6 +100,7 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
         q: query,
         sources: enabledSources.join(","),
         lang: locale,
+        contentType: isNovel ? "novel" : "comic",
       });
       const res = await fetch(`/api/metadata/search?${params}`);
       const data = await res.json();
@@ -100,18 +120,22 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
     setScanning(true);
     setError("");
     try {
-      const res = await fetch("/api/metadata/scan", {
+      // 小说使用专用刮削接口，漫画使用通用刮削接口
+      const scanUrl = isNovel ? "/api/metadata/novel-scan" : "/api/metadata/scan";
+      const res = await fetch(scanUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comicId, lang: locale }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      if (data.found) {
+      if (data.source && data.source !== "none") {
         setApplied(-1);
         onApplied?.();
       } else {
-        setError(data.message || "No ComicInfo.xml found");
+        setError(data.message || (isNovel
+          ? (t.metadata?.noEpubMetadata || "No EPUB metadata or online results found")
+          : (t.metadata?.noComicInfo || "No ComicInfo.xml found")));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
@@ -176,7 +200,9 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
           onClick={handleScanArchive}
           disabled={scanning}
           className="px-3 py-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] rounded-lg text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50 flex items-center gap-1.5"
-          title={t.metadata?.scanArchive || "Scan archive for ComicInfo.xml"}
+          title={isNovel
+            ? (t.metadata?.scanNovel || "Scan novel metadata (EPUB OPF + online)")
+            : (t.metadata?.scanArchive || "Scan archive for ComicInfo.xml")}
         >
           {scanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
         </button>
@@ -185,7 +211,7 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
       {/* Source filter panel */}
       {showSourceFilter && (
         <div className="flex flex-wrap gap-1.5 p-2 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg">
-          {ALL_SOURCES.map((src) => (
+          {availableSources.map((src) => (
             <button
               key={src.id}
               onClick={() => toggleSource(src.id)}
@@ -207,7 +233,9 @@ export function MetadataSearch({ comicId, comicTitle, onApplied }: Props) {
       {applied === -1 && (
         <div className="text-sm text-green-400 flex items-center gap-1.5">
           <Check className="w-4 h-4" />
-          {t.metadata?.appliedFromArchive || "Metadata applied from ComicInfo.xml"}
+          {isNovel
+            ? (t.metadata?.appliedFromNovelScan || "Novel metadata applied successfully")
+            : (t.metadata?.appliedFromArchive || "Metadata applied from ComicInfo.xml")}
         </div>
       )}
 

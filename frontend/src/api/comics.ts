@@ -229,3 +229,38 @@ export async function removeComicCategory(comicId: string, categorySlug: string)
     // ignore
   }
 }
+
+// ============================================================
+// 元数据编辑
+// ============================================================
+
+export interface ComicMetadataUpdate {
+  title?: string;
+  author?: string;
+  publisher?: string;
+  year?: number | null;
+  description?: string;
+  language?: string;
+  genre?: string;
+  seriesName?: string;
+  seriesIndex?: number | null;
+}
+
+/**
+ * 更新漫画/小说的元数据字段
+ */
+export async function updateComicMetadata(
+  comicId: string,
+  metadata: ComicMetadataUpdate
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/comics/${comicId}/metadata`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metadata),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

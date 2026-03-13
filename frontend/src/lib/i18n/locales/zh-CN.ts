@@ -114,6 +114,13 @@ const zhCN = {
     coverFromUrl: "输入图片URL",
     coverFromPlatform: "从漫画平台获取",
     resetCover: "恢复默认封面",
+    editTitle: "编辑标题",
+    editMetadata: "编辑元数据",
+    saveMetadata: "保存",
+    cancelEdit: "取消",
+    metadataSaved: "元数据已保存",
+    metadataSaveFailed: "保存失败",
+    noMetadata: "暂无元数据",
   },
 
   // Stats Page
@@ -204,10 +211,14 @@ const zhCN = {
     searchPlaceholder: "搜索元数据...",
     search: "搜索",
     scanArchive: "从压缩包提取 ComicInfo.xml",
+    scanNovel: "刮削小说元数据（EPUB 本地 + 在线搜索）",
     noResults: "未找到结果",
     apply: "应用",
     applied: "已应用",
     appliedFromArchive: "已从 ComicInfo.xml 应用元数据",
+    appliedFromNovelScan: "小说元数据应用成功",
+    noEpubMetadata: "未找到 EPUB 元数据或在线搜索结果",
+    noComicInfo: "未找到 ComicInfo.xml",
     author: "作者",
     publisher: "出版社",
     year: "年份",
@@ -220,16 +231,21 @@ const zhCN = {
     selectSources: "选择数据源",
     sources: {
       anilist: "AniList (动漫列表)",
+      anilist_novel: "AniList (轻小说)",
       bangumi: "Bangumi (番组计划)",
+      bangumi_novel: "Bangumi (小说)",
       mangadex: "MangaDex (漫画索引)",
       mangaupdates: "MangaUpdates (漫画更新)",
       kitsu: "Kitsu (狐狸)",
-      mal: "MAL (动漫列表)",
-      comicvine: "ComicVine (漫画藤)",
+      googlebooks: "Google Books (谷歌图书)",
       comicinfo: "ComicInfo (本地)",
+      epub_opf: "EPUB OPF (本地)",
     },
     translateMetadata: "翻译元数据",
     translatingMetadata: "翻译中...",
+    editMetadata: "编辑",
+    editingMetadata: "编辑元数据",
+    seriesIndex: "卷号",
   },
 
   // PWA
@@ -294,20 +310,10 @@ const zhCN = {
     semanticMatch: "AI 语义匹配",
   },
 
-  // Plugins
-  plugins: {
-    title: "插件",
-    noPlugins: "暂无已安装插件",
-    author: "作者",
-    permissions: "权限",
-    settings: "设置",
-  },
-
   // Settings
   settings: {
     title: "设置",
     sync: "同步",
-    plugins: "插件",
     ai: "AI",
     pwa: "应用",
     about: "关于",
@@ -532,6 +538,13 @@ const zhCN = {
     comicsUnit: "本",
   },
 
+  // 内容类型 Tab
+  contentTab: {
+    all: "全部",
+    comic: "漫画",
+    novel: "小说",
+  },
+
   // 数据导出
   dataExport: {
     title: "导出",
@@ -657,6 +670,13 @@ export interface Translations {
     coverFromUrl: string;
     coverFromPlatform: string;
     resetCover: string;
+    editTitle: string;
+    editMetadata: string;
+    saveMetadata: string;
+    cancelEdit: string;
+    metadataSaved: string;
+    metadataSaveFailed: string;
+    noMetadata: string;
   };
   stats: {
     title: string;
@@ -735,10 +755,14 @@ export interface Translations {
     searchPlaceholder: string;
     search: string;
     scanArchive: string;
+    scanNovel: string;
     noResults: string;
     apply: string;
     applied: string;
     appliedFromArchive: string;
+    appliedFromNovelScan: string;
+    noEpubMetadata: string;
+    noComicInfo: string;
     author: string;
     publisher: string;
     year: string;
@@ -751,16 +775,21 @@ export interface Translations {
     selectSources: string;
     sources: {
       anilist: string;
+      anilist_novel: string;
       bangumi: string;
+      bangumi_novel: string;
       mangadex: string;
       mangaupdates: string;
       kitsu: string;
-      mal: string;
-      comicvine: string;
+      googlebooks: string;
       comicinfo: string;
+      epub_opf: string;
     };
     translateMetadata: string;
     translatingMetadata: string;
+    editMetadata: string;
+    editingMetadata: string;
+    seriesIndex: string;
   };
   pwa: {
     installTitle: string;
@@ -818,17 +847,9 @@ export interface Translations {
     sameCategory: string;
     semanticMatch: string;
   };
-  plugins: {
-    title: string;
-    noPlugins: string;
-    author: string;
-    permissions: string;
-    settings: string;
-  };
   settings: {
     title: string;
     sync: string;
-    plugins: string;
     ai: string;
     pwa: string;
     about: string;
@@ -1033,6 +1054,11 @@ export interface Translations {
     genrePreference: string;
     sessionsUnit: string;
     comicsUnit: string;
+  };
+  contentTab: {
+    all: string;
+    comic: string;
+    novel: string;
   };
   dataExport: {
     title: string;

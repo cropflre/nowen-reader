@@ -20,7 +20,7 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download } from "lucide-react";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download, BookMarked, Image, BookOpen } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 
 const DEFAULT_PAGE_SIZE = 24;
@@ -83,6 +83,9 @@ export default function Home() {
   // Shelf
   const [selectedShelfId, setSelectedShelfId] = useState<number | null>(null);
 
+  // 内容类型 Tab
+  const [contentType, setContentType] = useState<"" | "comic" | "novel">("");
+
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -111,13 +114,14 @@ export default function Home() {
     sortBy: sortBy || undefined,
     sortOrder: sortOrder || undefined,
     category: selectedCategory || undefined,
+    contentType: contentType || undefined,
   });
   const { categories, refetch: refetchCategories, initCategories } = useCategories();
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder]);
+  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, contentType]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -341,11 +345,33 @@ export default function Home() {
 
         {!loading && (
           <>
+            {/* 内容类型 Tab: 全部 / 漫画 / 小说 */}
+            <div className="flex items-center gap-1.5 mb-4">
+              {([
+                { key: "", label: t.contentTab.all, icon: BookMarked },
+                { key: "comic", label: t.contentTab.comic, icon: Image },
+                { key: "novel", label: t.contentTab.novel, icon: BookOpen },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setContentType(tab.key)}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+                    contentType === tab.key
+                      ? "bg-accent text-white shadow-sm shadow-accent/25"
+                      : "bg-card text-muted hover:text-foreground hover:bg-card-hover"
+                  }`}
+                >
+                  <tab.icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             {/* 继续阅读横条 */}
-            <ContinueReading />
+            <ContinueReading contentType={contentType} />
 
             {/* Recommendations */}
-            <RecommendationStrip />
+            <RecommendationStrip contentType={contentType} />
 
             {/* Stats + Sort Controls */}
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
@@ -618,6 +644,7 @@ export default function Home() {
                         setFavoritesOnly(false);
                         setSelectedCategory(null);
                         setSelectedShelfId(null);
+                        setContentType("");
                       }}
                       className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                     >

@@ -14,8 +14,10 @@ import {
   useCategories,
   addComicCategories,
   removeComicCategory,
+  updateComicMetadata,
   ApiCategory,
 } from "@/hooks/useComics";
+import type { ComicMetadataUpdate } from "@/hooks/useComics";
 import {
   ArrowLeft,
   Heart,
@@ -37,6 +39,9 @@ import {
   RefreshCw,
   Download,
   Languages,
+  Pencil,
+  Check,
+  Save,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { MetadataSearch } from "@/components/MetadataSearch";
@@ -82,12 +87,77 @@ export default function ComicDetailPage() {
   const coverFileRef = useRef<HTMLInputElement>(null);
   const [metadataTranslating, setMetadataTranslating] = useState(false);
 
+  // 标题编辑 state
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState("");
+  const [titleSaving, setTitleSaving] = useState(false);
+
+  // 元数据编辑 state
+  const [editingMetadata, setEditingMetadata] = useState(false);
+  const [metaForm, setMetaForm] = useState<ComicMetadataUpdate>({});
+  const [metaSaving, setMetaSaving] = useState(false);
+
   // Auto-init categories on first load
   useEffect(() => {
     if (allCategories.length === 0) {
       initCategories(locale);
     }
   }, [allCategories.length, initCategories, locale]);
+
+  // 开始编辑标题
+  const startEditTitle = useCallback(() => {
+    if (comic) {
+      setTitleInput(comic.title);
+      setEditingTitle(true);
+    }
+  }, [comic]);
+
+  // 保存标题
+  const handleSaveTitle = useCallback(async () => {
+    if (!titleInput.trim() || titleInput.trim() === comic?.title) {
+      setEditingTitle(false);
+      return;
+    }
+    setTitleSaving(true);
+    try {
+      const ok = await updateComicMetadata(comicId, { title: titleInput.trim() });
+      if (ok) refetch();
+    } finally {
+      setTitleSaving(false);
+      setEditingTitle(false);
+    }
+  }, [titleInput, comic?.title, comicId, refetch]);
+
+  // 开始编辑元数据
+  const startEditMetadata = useCallback(() => {
+    if (comic) {
+      setMetaForm({
+        author: comic.author || "",
+        publisher: comic.publisher || "",
+        year: comic.year ?? undefined,
+        description: comic.description || "",
+        language: comic.language || "",
+        genre: comic.genre || "",
+        seriesName: comic.seriesName || "",
+        seriesIndex: comic.seriesIndex ?? undefined,
+      });
+      setEditingMetadata(true);
+    }
+  }, [comic]);
+
+  // 保存元数据
+  const handleSaveMetadata = useCallback(async () => {
+    setMetaSaving(true);
+    try {
+      const ok = await updateComicMetadata(comicId, metaForm);
+      if (ok) {
+        refetch();
+        setEditingMetadata(false);
+      }
+    } finally {
+      setMetaSaving(false);
+    }
+  }, [comicId, metaForm, refetch]);
 
   const handleToggleFavorite = useCallback(async () => {
     await toggleComicFavorite(comicId);
@@ -431,8 +501,46 @@ export default function ComicDetailPage() {
           <div className="space-y-6">
             {/* Title & Favorite */}
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground">{comic.title}</h2>
+              <div className="flex-1 min-w-0">
+                {editingTitle ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={titleInput}
+                      onChange={(e) => setTitleInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveTitle();
+                        if (e.key === "Escape") setEditingTitle(false);
+                      }}
+                      autoFocus
+                      className="flex-1 rounded-lg bg-card px-3 py-1.5 text-2xl font-bold text-foreground outline-none ring-1 ring-accent/50"
+                    />
+                    <button
+                      onClick={handleSaveTitle}
+                      disabled={titleSaving}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/20 text-accent transition-colors hover:bg-accent/30"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditingTitle(false)}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg bg-card text-muted transition-colors hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="group/title flex items-center gap-2">
+                    <h2 className="text-2xl font-bold text-foreground truncate">{comic.title}</h2>
+                    <button
+                      onClick={startEditTitle}
+                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted/40 opacity-0 transition-all hover:text-foreground group-hover/title:opacity-100"
+                      title={t.comicDetail.editTitle || "Edit Title"}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
                 <p className="mt-1 text-sm text-muted">{comic.filename}</p>
               </div>
               <button
@@ -638,22 +746,90 @@ export default function ComicDetailPage() {
 
 
             {/* Metadata Info */}
-            {(comic.author || comic.description || comic.publisher || comic.year || comic.genre || comic.seriesName) && (
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-                    {t.metadata?.metadataSource || "Metadata"}
-                  </h3>
-                  <button
-                    onClick={handleTranslateMetadata}
-                    disabled={metadataTranslating}
-                    className="flex items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 py-0.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
-                    title={t.metadata?.translateMetadata || "Translate Metadata"}
-                  >
-                    <Languages className="h-3 w-3" />
-                    <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (t.metadata?.translateMetadata || "Translate")}</span>
-                  </button>
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+                  {t.metadata?.metadataSource || "Metadata"}
+                </h3>
+                {!editingMetadata && (
+                  <>
+                    <button
+                      onClick={startEditMetadata}
+                      className="flex items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 py-0.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border"
+                      title={t.metadata?.editMetadata || "Edit"}
+                    >
+                      <Pencil className="h-3 w-3" />
+                      <span>{t.metadata?.editMetadata || "Edit"}</span>
+                    </button>
+                    <button
+                      onClick={handleTranslateMetadata}
+                      disabled={metadataTranslating}
+                      className="flex items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 py-0.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
+                      title={t.metadata?.translateMetadata || "Translate Metadata"}
+                    >
+                      <Languages className="h-3 w-3" />
+                      <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (t.metadata?.translateMetadata || "Translate")}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {editingMetadata ? (
+                /* 元数据编辑表单 */
+                <div className="space-y-3 rounded-xl bg-card p-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">{t.metadata?.author || "Author"}</label>
+                      <input type="text" value={metaForm.author || ""} onChange={(e) => setMetaForm({ ...metaForm, author: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">{t.metadata?.publisher || "Publisher"}</label>
+                      <input type="text" value={metaForm.publisher || ""} onChange={(e) => setMetaForm({ ...metaForm, publisher: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">{t.metadata?.year || "Year"}</label>
+                      <input type="number" value={metaForm.year ?? ""} onChange={(e) => setMetaForm({ ...metaForm, year: e.target.value ? Number(e.target.value) : undefined })} className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">{t.metadata?.language || "Language"}</label>
+                      <input type="text" value={metaForm.language || ""} onChange={(e) => setMetaForm({ ...metaForm, language: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">{t.metadata?.series || "Series"}</label>
+                      <input type="text" value={metaForm.seriesName || ""} onChange={(e) => setMetaForm({ ...metaForm, seriesName: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">{t.metadata?.seriesIndex || "Volume"}</label>
+                      <input type="number" value={metaForm.seriesIndex ?? ""} onChange={(e) => setMetaForm({ ...metaForm, seriesIndex: e.target.value ? Number(e.target.value) : undefined })} className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-muted">{t.metadata?.genre || "Genre"}</label>
+                    <input type="text" value={metaForm.genre || ""} onChange={(e) => setMetaForm({ ...metaForm, genre: e.target.value })} placeholder="Action, Fantasy, ..." className="w-full rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-muted">{t.metadata?.description || "Description"}</label>
+                    <textarea value={metaForm.description || ""} onChange={(e) => setMetaForm({ ...metaForm, description: e.target.value })} rows={4} className="w-full resize-none rounded-lg bg-background px-3 py-1.5 text-sm text-foreground outline-none ring-1 ring-border/60 focus:ring-accent/50" />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      onClick={() => setEditingMetadata(false)}
+                      className="rounded-lg bg-card px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+                    >
+                      {t.comicDetail.cancelEdit || "Cancel"}
+                    </button>
+                    <button
+                      onClick={handleSaveMetadata}
+                      disabled={metaSaving}
+                      className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {metaSaving ? "..." : (t.comicDetail.saveMetadata || "Save")}
+                    </button>
+                  </div>
                 </div>
+              ) : (comic.author || comic.description || comic.publisher || comic.year || comic.genre || comic.seriesName) ? (
+                /* 元数据只读展示 */
                 <div className="space-y-2 rounded-xl bg-card p-4">
                   {comic.author && (
                     <div className="flex items-center gap-2 text-sm">
@@ -717,8 +893,19 @@ export default function ComicDetailPage() {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                /* 无元数据时显示提示 */
+                <div className="rounded-xl bg-card p-4 text-center text-sm text-muted">
+                  {t.comicDetail.noMetadata || "No metadata"}
+                  <button
+                    onClick={startEditMetadata}
+                    className="ml-2 text-accent hover:underline"
+                  >
+                    {t.metadata?.editMetadata || "Edit"}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Metadata Scraping */}
             <div>
@@ -728,6 +915,7 @@ export default function ComicDetailPage() {
               <MetadataSearch
                 comicId={comic.id}
                 comicTitle={comic.title}
+                filename={comic.filename}
                 onApplied={() => refetch()}
               />
             </div>

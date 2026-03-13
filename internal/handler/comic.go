@@ -44,6 +44,7 @@ func (h *ComicHandler) ListComics(c *gin.Context) {
 	sortBy := c.DefaultQuery("sortBy", "title")
 	sortOrder := c.DefaultQuery("sortOrder", "asc")
 	category := c.Query("category")
+	contentType := c.Query("contentType") // "comic" | "novel" | ""
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "0"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "0"))
@@ -57,6 +58,7 @@ func (h *ComicHandler) ListComics(c *gin.Context) {
 		Page:          page,
 		PageSize:      pageSize,
 		Category:      category,
+		ContentType:   contentType,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comics"})
@@ -388,4 +390,95 @@ func (h *ComicHandler) DetectDuplicates(c *gin.Context) {
 func (h *ComicHandler) TriggerSync(c *gin.Context) {
 	go service.SyncComicsToDatabase()
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sync triggered"})
+}
+
+// ============================================================
+// PUT /api/comics/:id/metadata — 手动编辑元数据
+// ============================================================
+
+func (h *ComicHandler) UpdateMetadata(c *gin.Context) {
+	id := c.Param("id")
+	var body struct {
+		Title       *string `json:"title"`
+		Author      *string `json:"author"`
+		Publisher   *string `json:"publisher"`
+		Year        *int    `json:"year"`
+		Description *string `json:"description"`
+		Language    *string `json:"language"`
+		Genre       *string `json:"genre"`
+		SeriesName  *string `json:"seriesName"`
+		SeriesIndex *int    `json:"seriesIndex"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// 检查漫画是否存在
+	existing, err := store.GetComicByID(id)
+	if err != nil || existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
+		return
+	}
+
+	updates := map[string]interface{}{}
+
+	if body.Title != nil {
+		updates["title"] = *body.Title
+	}
+	if body.Author != nil {
+		updates["author"] = *body.Author
+	}
+	if body.Publisher != nil {
+		updates["publisher"] = *body.Publisher
+	}
+	if body.Year != nil {
+		updates["year"] = *body.Year
+	}
+	if body.Description != nil {
+		updates["description"] = *body.Description
+	}
+	if body.Language != nil {
+		updates["language"] = *body.Language
+	}
+	if body.Genre != nil {
+		updates["genre"] = *body.Genre
+	}
+	if body.SeriesName != nil {
+		updates["seriesName"] = *body.SeriesName
+	}
+	if body.SeriesIndex != nil {
+		updates["seriesIndex"] = *body.SeriesIndex
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+		return
+	}
+
+	// 标记为手动编辑来源
+	updates["metadataSource"] = "manual"
+
+	if err := store.UpdateComicFields(id, updates); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update metadata"})
+		return
+	}
+
+	// 如果 genre 被修改，同步更新 tags
+	if body.Genre != nil && *body.Genre != "" {
+		genres := strings.Split(*body.Genre, ",")
+		var tagNames []string
+		for _, g := range genres {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				tagNames = append(tagNames, g)
+			}
+		}
+		if len(tagNames) > 0 {
+			_ = store.AddTagsToComic(id, tagNames)
+		}
+	}
+
+	updated, _ := store.GetComicByID(id)
+	c.JSON(http.StatusOK, gin.H{"success": true, "comic": updated})
 }

@@ -25,7 +25,9 @@ func (h *RecommendationHandler) GetRecommendations(c *gin.Context) {
 		excludeRead = true
 	}
 
-	recommendations, err := service.GetRecommendations(limit, excludeRead)
+	contentType := c.Query("contentType")
+
+	recommendations, err := service.GetRecommendations(limit, excludeRead, contentType)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to get recommendations"})
 		return

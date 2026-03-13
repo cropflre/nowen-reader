@@ -11,18 +11,19 @@ import (
 
 // ScoredComic represents a recommended comic with scoring details.
 type ScoredComic struct {
-	ID       string              `json:"id"`
-	Title    string              `json:"title"`
-	Score    float64             `json:"score"`
-	Reasons  []string            `json:"reasons"`
-	CoverURL string              `json:"coverUrl"`
-	Author   string              `json:"author"`
-	Genre    string              `json:"genre"`
+	ID       string               `json:"id"`
+	Title    string               `json:"title"`
+	Score    float64              `json:"score"`
+	Reasons  []string             `json:"reasons"`
+	CoverURL string               `json:"coverUrl"`
+	Author   string               `json:"author"`
+	Genre    string               `json:"genre"`
+	Filename string               `json:"filename"`
 	Tags     []store.ComicTagInfo `json:"tags"`
 }
 
 // GetRecommendations returns personalized comic recommendations.
-func GetRecommendations(limit int, excludeRead bool) ([]ScoredComic, error) {
+func GetRecommendations(limit int, excludeRead bool, contentType string) ([]ScoredComic, error) {
 	allComics, err := store.GetAllComicsForRecommendation()
 	if err != nil || len(allComics) == 0 {
 		return []ScoredComic{}, nil
@@ -32,6 +33,14 @@ func GetRecommendations(limit int, excludeRead bool) ([]ScoredComic, error) {
 
 	var scored []ScoredComic
 	for _, comic := range allComics {
+		// 按内容类型过滤
+		if contentType == "novel" && !IsNovelFilename(comic.Filename) {
+			continue
+		}
+		if contentType == "comic" && IsNovelFilename(comic.Filename) {
+			continue
+		}
+
 		if excludeRead && comic.LastReadPage > 0 && comic.PageCount > 0 {
 			progress := float64(comic.LastReadPage) / float64(comic.PageCount)
 			if progress >= 0.9 {
@@ -49,6 +58,7 @@ func GetRecommendations(limit int, excludeRead bool) ([]ScoredComic, error) {
 			CoverURL: fmt.Sprintf("/api/comics/%s/thumbnail", comic.ID),
 			Author:   comic.Author,
 			Genre:    comic.Genre,
+			Filename: comic.Filename,
 			Tags:     comic.Tags,
 		})
 	}
@@ -188,6 +198,7 @@ func GetSimilarComics(comicID string, limit int) ([]ScoredComic, error) {
 				CoverURL: fmt.Sprintf("/api/comics/%s/thumbnail", comic.ID),
 				Author:   comic.Author,
 				Genre:    comic.Genre,
+				Filename: comic.Filename,
 				Tags:     comic.Tags,
 			})
 		}
@@ -387,4 +398,13 @@ func calculateRecommendationScore(c store.RecommendationComic, profile userProfi
 		reasons = []string{}
 	}
 	return score, reasons
+}
+
+// IsNovelFilename 判断文件名是否为小说格式
+func IsNovelFilename(filename string) bool {
+	lower := strings.ToLower(filename)
+	return strings.HasSuffix(lower, ".txt") ||
+		strings.HasSuffix(lower, ".epub") ||
+		strings.HasSuffix(lower, ".mobi") ||
+		strings.HasSuffix(lower, ".azw3")
 }
