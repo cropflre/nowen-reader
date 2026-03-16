@@ -14,7 +14,9 @@ WORKDIR /frontend
 #   1. Build it externally and copy to web/dist/ before docker build
 #   2. Include it as a submodule at frontend/
 COPY frontend/package*.json ./
-RUN npm ci --production=false
+# Use China npm mirror for faster & more reliable access
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm ci --production=false
 
 COPY frontend/ ./
 RUN npm run build && \
