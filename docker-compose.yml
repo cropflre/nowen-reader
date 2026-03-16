@@ -4,7 +4,7 @@
 # 使用方法（只需一条命令）:
 #   docker compose up -d
 #
-# 然后打开浏览器访问: http://localhost:6666
+# 然后打开浏览器访问: http://localhost:6680
 # ============================================================
 
 services:
@@ -34,5 +34,5 @@ services:
       - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
       - DATA_DIR=/app/.cache
-      - PORT=6666
+      - PORT=6680
       - TZ=Asia/Shanghai
