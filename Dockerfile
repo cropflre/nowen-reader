@@ -99,8 +99,8 @@ WORKDIR /app
 COPY --from=builder /build/nowen-reader .
 
 # Copy entrypoint script (sed removes Windows CRLF line endings if present)
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
+COPY --chown=appuser:appgroup docker-entrypoint.sh /docker-entrypoint.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod 755 /docker-entrypoint.sh
 
 # Create data directories with correct permissions
 RUN mkdir -p /data /app/comics /app/.cache/thumbnails /app/.cache/pages && \
