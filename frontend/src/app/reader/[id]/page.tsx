@@ -47,6 +47,7 @@ export default function ReaderPage() {
   const pages = apiPages;
   const title = apiTitle || t.reader.unknownComic;
   const isLoading = apiLoading;
+  const useRealData = pages.length > 0 || (comicDetail !== null);
 
   // Redirect novel files to the dedicated novel reader
   useEffect(() => {
@@ -274,7 +275,7 @@ export default function ReaderPage() {
   }
 
   // Error state (e.g. timeout for large files)
-  if (apiError && !mockComic) {
+  if (apiError && pages.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
         <div className="text-center">

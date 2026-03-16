@@ -8,7 +8,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -54,11 +53,8 @@ var ProviderPresets = map[string]ProviderPreset{
 }
 
 type AIConfig struct {
-	EnableLocalAI        bool   `json:"enableLocalAI"`
-	EnableAutoTag        bool   `json:"enableAutoTag"`
-	EnableSemanticSearch bool   `json:"enableSemanticSearch"`
-	EnablePerceptualHash bool   `json:"enablePerceptualHash"`
-	AutoTagConfidence    float64 `json:"autoTagConfidence"`
+	EnableLocalAI        bool `json:"enableLocalAI"`
+	EnablePerceptualHash bool `json:"enablePerceptualHash"`
 
 	EnableCloudAI bool   `json:"enableCloudAI"`
 	CloudProvider string `json:"cloudProvider"`
@@ -69,10 +65,7 @@ type AIConfig struct {
 
 var defaultAIConfig = AIConfig{
 	EnableLocalAI:        true,
-	EnableAutoTag:        true,
-	EnableSemanticSearch: true,
 	EnablePerceptualHash: true,
-	AutoTagConfidence:    0.3,
 	EnableCloudAI:        false,
 	CloudProvider:        "openai",
 	CloudAPIKey:          "",
@@ -315,8 +308,6 @@ type AIStatus struct {
 	LocalAI struct {
 		Available      bool `json:"available"`
 		PerceptualHash bool `json:"perceptualHash"`
-		SemanticSearch bool `json:"semanticSearch"`
-		AutoTag        bool `json:"autoTag"`
 	} `json:"localAI"`
 	CloudAI struct {
 		Configured bool   `json:"configured"`
@@ -335,8 +326,6 @@ func GetAIStatus() AIStatus {
 	var status AIStatus
 	status.LocalAI.Available = true
 	status.LocalAI.PerceptualHash = cfg.EnablePerceptualHash
-	status.LocalAI.SemanticSearch = cfg.EnableSemanticSearch
-	status.LocalAI.AutoTag = cfg.EnableAutoTag
 	status.CloudAI.Configured = cfg.EnableCloudAI && cfg.CloudAPIKey != ""
 	status.CloudAI.Provider = cfg.CloudProvider
 	status.CloudAI.Model = cfg.CloudModel
@@ -471,7 +460,7 @@ func callGemini(cfg AIConfig, apiURL, systemPrompt, userPrompt string) (string, 
 			{"parts": []map[string]string{{"text": systemPrompt + "\n\n" + userPrompt}}},
 		},
 		"generationConfig": map[string]interface{}{
-			"temperature":    0.3,
+			"temperature":     0.3,
 			"maxOutputTokens": 500,
 		},
 	})
@@ -507,133 +496,6 @@ func callGemini(cfg AIConfig, apiURL, systemPrompt, userPrompt string) (string, 
 		return data.Candidates[0].Content.Parts[0].Text, nil
 	}
 	return "", fmt.Errorf("no response from Gemini")
-}
-
-// ============================================================
-// Semantic Search (TF-IDF n-gram, no external model)
-// ============================================================
-
-type TextVector map[string]float64
-
-func tokenize(text string) []string {
-	text = strings.ToLower(text)
-	// Replace non-word chars (keep CJK)
-	var b strings.Builder
-	for _, r := range text {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' ||
-			(r >= 0x4e00 && r <= 0x9fff) || (r >= 0x3040 && r <= 0x30ff) || r == ' ' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune(' ')
-		}
-	}
-	parts := strings.Fields(b.String())
-	var result []string
-	for _, p := range parts {
-		if len(p) > 1 {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-func BuildTextVector(title string, tags []string, genre, author, description string) TextVector {
-	v := make(TextVector)
-	for _, t := range tokenize(title) {
-		v["t:"+t] += 3
-	}
-	for _, tag := range tags {
-		v["tag:"+strings.ToLower(tag)] += 5
-	}
-	for _, g := range tokenize(genre) {
-		v["g:"+g] += 4
-	}
-	if author != "" {
-		v["a:"+strings.ToLower(author)] = 3
-	}
-	for _, d := range tokenize(description) {
-		v["d:"+d] += 1
-	}
-	return v
-}
-
-func CosineSimilarity(v1, v2 TextVector) float64 {
-	var dot, norm1, norm2 float64
-	for k, val := range v1 {
-		norm1 += val * val
-		if other, ok := v2[k]; ok {
-			dot += val * other
-		}
-	}
-	for _, val := range v2 {
-		norm2 += val * val
-	}
-	if norm1 == 0 || norm2 == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(norm1) * math.Sqrt(norm2))
-}
-
-// SemanticSearch finds comics similar to a query.
-func SemanticSearch(query string, comics []struct {
-	ID          string
-	Title       string
-	Tags        []string
-	Genre       string
-	Author      string
-	Description string
-}, limit int) []struct {
-	ID    string  `json:"id"`
-	Score float64 `json:"score"`
-} {
-	queryTokens := tokenize(query)
-	queryVector := make(TextVector)
-	for _, t := range queryTokens {
-		queryVector["t:"+t] = 3
-		queryVector["tag:"+t] = 5
-		queryVector["g:"+t] = 4
-		queryVector["a:"+t] = 3
-		queryVector["d:"+t] = 1
-	}
-
-	type scored struct {
-		ID    string
-		Score float64
-	}
-	var results []scored
-
-	for _, comic := range comics {
-		cv := BuildTextVector(comic.Title, comic.Tags, comic.Genre, comic.Author, comic.Description)
-		score := CosineSimilarity(queryVector, cv)
-		if score > 0.01 {
-			results = append(results, scored{comic.ID, score})
-		}
-	}
-
-	// Sort by score desc
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].Score > results[i].Score {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
-
-	if limit > 0 && len(results) > limit {
-		results = results[:limit]
-	}
-
-	var out []struct {
-		ID    string  `json:"id"`
-		Score float64 `json:"score"`
-	}
-	for _, r := range results {
-		out = append(out, struct {
-			ID    string  `json:"id"`
-			Score float64 `json:"score"`
-		}{r.ID, r.Score})
-	}
-	return out
 }
 
 // ============================================================

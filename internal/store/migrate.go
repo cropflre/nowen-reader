@@ -31,12 +31,12 @@ var Migrations = []Migration{
 	{
 		Version:     2,
 		Description: "Add coverImageUrl field to Comic",
-		SQL: `ALTER TABLE "Comic" ADD COLUMN "coverImageUrl" TEXT NOT NULL DEFAULT '' ;`,
+		SQL:         `ALTER TABLE "Comic" ADD COLUMN "coverImageUrl" TEXT NOT NULL DEFAULT '' ;`,
 	},
 	{
 		Version:     3,
 		Description: "Add composite index for duplicate detection",
-		SQL: `CREATE INDEX IF NOT EXISTS "Comic_fileSize_pageCount_idx" ON "Comic"("fileSize", "pageCount");`,
+		SQL:         `CREATE INDEX IF NOT EXISTS "Comic_fileSize_pageCount_idx" ON "Comic"("fileSize", "pageCount");`,
 	},
 	{
 		Version:     4,
@@ -44,6 +44,41 @@ var Migrations = []Migration{
 		SQL: strings.Join([]string{
 			`CREATE INDEX IF NOT EXISTS "ReadingSession_duration_idx" ON "ReadingSession"("duration");`,
 			`CREATE INDEX IF NOT EXISTS "Comic_totalReadTime_idx" ON "Comic"("totalReadTime");`,
+		}, "\n"),
+	},
+	{
+		Version:     5,
+		Description: "Add type field to Comic for efficient content type filtering",
+		SQL: strings.Join([]string{
+			`ALTER TABLE "Comic" ADD COLUMN "type" TEXT NOT NULL DEFAULT 'comic';`,
+			`UPDATE "Comic" SET "type" = 'novel' WHERE "filename" LIKE '%.txt' OR "filename" LIKE '%.epub' OR "filename" LIKE '%.mobi' OR "filename" LIKE '%.azw3';`,
+			`CREATE INDEX IF NOT EXISTS "Comic_type_idx" ON "Comic"("type");`,
+		}, "\n"),
+	},
+	{
+		Version:     6,
+		Description: "Add readingStatus field for reading list (want/reading/finished/shelved)",
+		SQL: strings.Join([]string{
+			`ALTER TABLE "Comic" ADD COLUMN "readingStatus" TEXT NOT NULL DEFAULT '';`,
+			`UPDATE "Comic" SET "readingStatus" = 'reading' WHERE "lastReadPage" > 0 AND "lastReadPage" < "pageCount";`,
+			`UPDATE "Comic" SET "readingStatus" = 'finished' WHERE "pageCount" > 0 AND "lastReadPage" >= "pageCount";`,
+			`CREATE INDEX IF NOT EXISTS "Comic_readingStatus_idx" ON "Comic"("readingStatus");`,
+		}, "\n"),
+	},
+	{
+		Version:     7,
+		Description: "Add composite indexes for common query patterns",
+		SQL: strings.Join([]string{
+			// 常用列表查询：按标题排序 + 收藏筛选
+			`CREATE INDEX IF NOT EXISTS "Comic_fav_title_idx" ON "Comic"("isFavorite", "title");`,
+			// 常用列表查询：按添加时间倒序 + 类型筛选
+			`CREATE INDEX IF NOT EXISTS "Comic_type_addedAt_idx" ON "Comic"("type", "addedAt" DESC);`,
+			// 阅读状态 + 类型复合查询
+			`CREATE INDEX IF NOT EXISTS "Comic_status_type_idx" ON "Comic"("readingStatus", "type");`,
+			// 系列查询优化
+			`CREATE INDEX IF NOT EXISTS "Comic_seriesName_idx" ON "Comic"("seriesName");`,
+			// ReadingSession 查询优化
+			`CREATE INDEX IF NOT EXISTS "ReadingSession_startedAt_idx" ON "ReadingSession"("startedAt" DESC);`,
 		}, "\n"),
 	},
 }

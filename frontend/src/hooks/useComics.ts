@@ -5,7 +5,6 @@
  * - useComicTypes.ts    — 共享类型定义
  * - useComicList.ts     — useComics hook + 缓存
  * - useComicReader.ts   — useComicPages + useComicDetail hooks
- * - useComicStats.ts    — useReadingStats hook
  * - useCategories.ts    — useCategories hook
  * - @/api/comics.ts     — 独立 API 调用函数
  *
@@ -19,7 +18,6 @@ export type { ComicMetadataUpdate } from "@/api/comics";
 // Hook 导出
 export { useComics, invalidateComicsCache } from "./useComicList";
 export { useComicPages, useComicDetail } from "./useComicReader";
-export { useReadingStats } from "./useComicStats";
 export { useCategories } from "./useCategories";
 
 // API 函数导出
@@ -39,4 +37,5 @@ export {
   setComicCategories,
   removeComicCategory,
   updateComicMetadata,
+  setReadingStatus,
 } from "@/api/comics";

@@ -150,8 +150,8 @@ func BulkCreateComics(comics []struct {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO "Comic" ("id", "filename", "title", "pageCount", "fileSize")
-		VALUES (?, ?, ?, 0, ?)
+		INSERT INTO "Comic" ("id", "filename", "title", "pageCount", "fileSize", "type")
+		VALUES (?, ?, ?, 0, ?, ?)
 		ON CONFLICT("id") DO NOTHING
 	`)
 	if err != nil {
@@ -160,11 +160,22 @@ func BulkCreateComics(comics []struct {
 	defer stmt.Close()
 
 	for _, c := range comics {
-		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, c.FileSize); err != nil {
+		comicType := detectComicType(c.Filename)
+		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, c.FileSize, comicType); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// detectComicType 根据文件名后缀判断内容类型。
+func detectComicType(filename string) string {
+	lower := strings.ToLower(filename)
+	if strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".epub") ||
+		strings.HasSuffix(lower, ".mobi") || strings.HasSuffix(lower, ".azw3") {
+		return "novel"
+	}
+	return "comic"
 }
 
 // BulkDeleteComicsByIDs 批量删除指定ID的漫画。

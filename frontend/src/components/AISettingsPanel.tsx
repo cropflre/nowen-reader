@@ -5,15 +5,10 @@ import {
   Brain,
   Cloud,
   Eye,
-  Search,
-  Tag,
   Fingerprint,
   Loader2,
-  CheckCircle,
-  XCircle,
   Sparkles,
   ChevronDown,
-  ImageIcon,
   RefreshCw,
   Edit3,
 } from "lucide-react";
@@ -71,10 +66,7 @@ const CHINA_PROVIDERS: CloudProvider[] = ["deepseek", "zhipu", "qwen", "doubao",
 
 interface AIConfig {
   enableLocalAI: boolean;
-  enableAutoTag: boolean;
-  enableSemanticSearch: boolean;
   enablePerceptualHash: boolean;
-  autoTagConfidence: number;
   enableCloudAI: boolean;
   cloudProvider: CloudProvider;
   cloudApiKey: string;
@@ -86,8 +78,6 @@ interface AIStatus {
   localAI: {
     available: boolean;
     perceptualHash: boolean;
-    semanticSearch: boolean;
-    autoTag: boolean;
   };
   cloudAI: {
     configured: boolean;
@@ -104,10 +94,7 @@ export function AISettingsPanel() {
   const [config, setConfig] = useState<AIConfig | null>(null);
   const [status, setStatus] = useState<AIStatus | null>(null);
   const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [modelMode, setModelMode] = useState<"preset" | "fetch" | "manual">("preset");
   const [fetchedModels, setFetchedModels] = useState<{ id: string; name?: string }[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -141,32 +128,7 @@ export function AISettingsPanel() {
     }
   }, [config]);
 
-  const handleTestCloud = useCallback(async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      // Save first
-      await fetch("/api/ai/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
-      // Test with a simple metadata completion
-      const res = await fetch("/api/ai/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "completeMetadata",
-          title: "Test Connection",
-        }),
-      });
-      setTestResult(res.ok ? "success" : "error");
-    } catch {
-      setTestResult("error");
-    } finally {
-      setTesting(false);
-    }
-  }, [config]);
+
 
   const handleFetchModels = useCallback(async () => {
     if (!config) return;
@@ -254,44 +216,6 @@ export function AISettingsPanel() {
               onChange={(v) => setConfig({ ...config, enablePerceptualHash: v })}
               stat={status ? `${status.stats.pHashCacheSize} cached` : undefined}
             />
-
-            {/* Semantic Search */}
-            <FeatureRow
-              icon={<Search className="h-3.5 w-3.5" />}
-              label={aiT.semanticSearch || "Semantic Search"}
-              description={aiT.semanticSearchDesc || "Natural language comic search"}
-              checked={config.enableSemanticSearch}
-              onChange={(v) => setConfig({ ...config, enableSemanticSearch: v })}
-            />
-
-            {/* Auto Tag */}
-            <FeatureRow
-              icon={<Tag className="h-3.5 w-3.5" />}
-              label={aiT.autoTag || "Smart Auto Tag"}
-              description={aiT.autoTagDesc || "AI-powered tag suggestions"}
-              checked={config.enableAutoTag}
-              onChange={(v) => setConfig({ ...config, enableAutoTag: v })}
-            />
-
-            {config.enableAutoTag && (
-              <div className="ml-3 sm:ml-6 flex items-center gap-2">
-                <span className="text-xs text-muted">
-                  {aiT.confidence || "Confidence"}:
-                </span>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="0.9"
-                  step="0.1"
-                  value={config.autoTagConfidence}
-                  onChange={(e) => setConfig({ ...config, autoTagConfidence: parseFloat(e.target.value) })}
-                  className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-accent"
-                />
-                <span className="w-8 text-right text-xs text-foreground">
-                  {Math.round(config.autoTagConfidence * 100)}%
-                </span>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -361,19 +285,6 @@ export function AISettingsPanel() {
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
               </div>
-
-              {/* Vision support indicator */}
-              {PROVIDER_PRESETS[config.cloudProvider]?.supportsVision && (
-                <div className="flex items-center gap-1 text-[10px] text-green-400">
-                  <ImageIcon className="h-3 w-3" />
-                  <span>{aiT.visionSupported || "Supports vision (cover analysis)"}</span>
-                </div>
-              )}
-              {!PROVIDER_PRESETS[config.cloudProvider]?.supportsVision && (
-                <div className="flex items-center gap-1 text-[10px] text-amber-400">
-                  <span>{aiT.textOnly || "Text only (no cover analysis)"}</span>
-                </div>
-              )}
             </div>
 
             {/* API URL */}
@@ -550,46 +461,7 @@ export function AISettingsPanel() {
               )}
             </div>
 
-            {/* Cloud features */}
-            <div className="space-y-1 border-t border-border/30 pt-2">
-              <div className="flex items-center gap-2 text-xs text-muted">
-                <Eye className="h-3 w-3" />
-                <span>{aiT.coverAnalysis || "Cover Image Analysis"}</span>
-                {!PROVIDER_PRESETS[config.cloudProvider]?.supportsVision && (
-                  <span className="rounded bg-amber-500/15 px-1 text-[9px] text-amber-400">N/A</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted">
-                <Brain className="h-3 w-3" />
-                <span>{aiT.metadataCompletion || "Smart Metadata Completion"}</span>
-              </div>
-            </div>
-
-            {/* Test Connection */}
-            <button
-              onClick={handleTestCloud}
-              disabled={testing || !config.cloudApiKey}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-card-hover disabled:opacity-50"
-            >
-              {testing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : testResult === "success" ? (
-                <CheckCircle className="h-3.5 w-3.5 text-green-400" />
-              ) : testResult === "error" ? (
-                <XCircle className="h-3.5 w-3.5 text-red-400" />
-              ) : (
-                <Cloud className="h-3.5 w-3.5" />
-              )}
-              <span>
-                {testing
-                  ? (aiT.testing || "Testing...")
-                  : testResult === "success"
-                  ? (aiT.connectionSuccess || "Connection OK")
-                  : testResult === "error"
-                  ? (aiT.connectionFailed || "Connection Failed")
-                  : (aiT.testConnection || "Test Connection")}
-              </span>
-            </button>
+            {/* API URL */}
           </div>
         )}
       </div>

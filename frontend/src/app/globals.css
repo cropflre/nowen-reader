@@ -9,11 +9,13 @@
   --color-muted: var(--theme-muted);
   --color-accent: #6366f1;
   --color-accent-hover: #818cf8;
+  --color-surface: var(--theme-surface);
+  --color-elevated: var(--theme-elevated);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-/* Dark theme (default) */
+/* Dark theme (default) — 增强层次感 */
 :root,
 html.dark {
   --theme-background: #09090b;
@@ -22,6 +24,8 @@ html.dark {
   --theme-card-hover: #27272a;
   --theme-border: #27272a;
   --theme-muted: #a1a1aa;
+  --theme-surface: #111113;  /* 介于 bg 和 card 之间 */
+  --theme-elevated: #1f1f23; /* 悬浮/弹窗层 */
 }
 
 /* Light theme */
@@ -32,6 +36,8 @@ html.light {
   --theme-card-hover: #f1f3f5;
   --theme-border: #dee2e6;
   --theme-muted: #6c757d;
+  --theme-surface: #f0f1f3;
+  --theme-elevated: #ffffff;
 }
 
 body {

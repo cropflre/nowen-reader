@@ -80,7 +80,7 @@ func getFullSyncInterval() time.Duration {
 	if cfg.ScannerConfig != nil && cfg.ScannerConfig.FullSyncIntervalSec > 0 {
 		return time.Duration(cfg.ScannerConfig.FullSyncIntervalSec) * time.Second
 	}
-	return 10 * time.Second
+	return 120 * time.Second
 }
 
 // ============================================================
@@ -252,6 +252,12 @@ func quickSync() (added, removed int) {
 	if len(toAdd) > 0 || len(toRemove) > 0 {
 		log.Printf("[quick-sync] Added %d, removed %d", len(toAdd), len(toRemove))
 	}
+
+	// 对新增的漫画自动检测系列信息
+	if len(toAdd) > 0 {
+		go autoDetectSeries(toAdd)
+	}
+
 	return len(toAdd), len(toRemove)
 }
 
@@ -500,4 +506,78 @@ func StartBackgroundSync() {
 	}()
 
 	log.Println("[bg-sync] Background sync scheduler started (fsnotify + polling fallback)")
+}
+
+// autoDetectSeries 对新增的漫画自动检测系列信息（在后台运行）。
+func autoDetectSeries(comics []struct {
+	ID       string
+	Filename string
+	Title    string
+	FileSize int64
+}) {
+	updated := 0
+	for _, c := range comics {
+		info := DetectSeries(c.Filename)
+		if info != nil {
+			fields := map[string]interface{}{
+				"seriesName":  info.SeriesName,
+				"seriesIndex": info.SeriesIndex,
+			}
+			if err := store.UpdateComicFields(c.ID, fields); err == nil {
+				updated++
+			}
+		}
+	}
+	if updated > 0 {
+		log.Printf("[series-detect] Auto-detected series info for %d/%d comics", updated, len(comics))
+	}
+}
+
+// ============================================================
+// 清理无效漫画（文件已不存在的数据库记录）
+// ============================================================
+
+// CleanupInvalidComics 检查数据库中所有漫画记录，删除磁盘上文件已不存在的记录。
+// 返回被删除的漫画数量。
+func CleanupInvalidComics() (int, error) {
+	allComics, err := store.GetAllComicIDsAndFilenames()
+	if err != nil {
+		return 0, err
+	}
+
+	allDirs := config.GetAllComicsDirs()
+	var invalidIDs []string
+
+	for _, c := range allComics {
+		found := false
+		for _, dir := range allDirs {
+			fp := filepath.Join(dir, c.Filename)
+			if _, err := os.Stat(fp); err == nil {
+				found = true
+				break
+			}
+		}
+		if !found {
+			invalidIDs = append(invalidIDs, c.ID)
+		}
+	}
+
+	if len(invalidIDs) == 0 {
+		return 0, nil
+	}
+
+	// 批量删除无效记录
+	for i := 0; i < len(invalidIDs); i += dbBatchSize {
+		end := i + dbBatchSize
+		if end > len(invalidIDs) {
+			end = len(invalidIDs)
+		}
+		if err := store.BulkDeleteComicsByIDs(invalidIDs[i:end]); err != nil {
+			log.Printf("[cleanup] Failed to bulk delete invalid comics: %v", err)
+			return 0, err
+		}
+	}
+
+	log.Printf("[cleanup] Removed %d invalid comics (files not found on disk)", len(invalidIDs))
+	return len(invalidIDs), nil
 }

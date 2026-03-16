@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, Cloud, Smartphone, Info, Brain, Globe, BookOpen } from "lucide-react";
+import { X, Smartphone, Info, Brain, Globe, BookOpen } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { clearServiceWorkerCache } from "@/lib/pwa";
 import dynamic from "next/dynamic";
@@ -15,10 +15,7 @@ const SiteSettingsPanel = dynamic(
   () => import("@/components/SiteSettingsPanel").then((mod) => mod.SiteSettingsPanel),
   { loading: LoadingSkeleton }
 );
-const CloudSyncPanel = dynamic(
-  () => import("@/components/CloudSync").then((mod) => mod.CloudSyncPanel),
-  { loading: LoadingSkeleton }
-);
+
 const AISettingsPanel = dynamic(
   () => import("@/components/AISettingsPanel").then((mod) => mod.AISettingsPanel),
   { loading: LoadingSkeleton }
@@ -33,7 +30,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTab = "site" | "sync" | "ai" | "ehentai" | "pwa" | "about";
+type SettingsTab = "site" | "ai" | "ehentai" | "pwa" | "about";
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const t = useTranslation();
@@ -71,7 +68,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: "site", label: t.siteSettings?.tab || "站点", icon: <Globe className="h-4 w-4" /> },
-    { id: "sync", label: t.settings?.sync || "Sync", icon: <Cloud className="h-4 w-4" /> },
     { id: "ai", label: t.ai?.title || "AI", icon: <Brain className="h-4 w-4" /> },
     { id: "ehentai", label: "E-Hentai", icon: <BookOpen className="h-4 w-4" /> },
     { id: "pwa", label: t.settings?.pwa || "App", icon: <Smartphone className="h-4 w-4" /> },
@@ -153,7 +149,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {activeTab === "site" && <SiteSettingsPanel />}
-            {activeTab === "sync" && <CloudSyncPanel />}
             {activeTab === "ai" && <AISettingsPanel />}
             {activeTab === "ehentai" && <EHentaiSettingsPanel />}
             {activeTab === "pwa" && <PWASettings />}

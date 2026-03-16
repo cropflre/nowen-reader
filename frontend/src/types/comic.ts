@@ -32,6 +32,8 @@ export interface Comic {
   seriesIndex?: number;
   genre?: string;
   metadataSource?: string;
+  readingStatus?: string; // "want" | "reading" | "finished" | "shelved" | ""
+  type?: string; // "comic" | "novel"
 }
 
 export interface ReadingSessionData {

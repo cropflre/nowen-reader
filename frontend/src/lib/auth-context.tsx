@@ -29,11 +29,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me");
+      if (!res.ok) {
+        // 服务端错误（如数据库临时锁定），保持当前状态，不清空 user
+        if (res.status >= 500) {
+          console.warn("[Auth] /api/auth/me returned", res.status, "— keeping current state");
+          return;
+        }
+        // 4xx 错误，视为未认证
+        setUser(null);
+        return;
+      }
       const data = await res.json();
       setUser(data.user || null);
       setNeedsSetup(data.needsSetup || false);
     } catch {
-      setUser(null);
+      // 网络错误，不清空 user（可能只是暂时连接问题）
+      console.warn("[Auth] Failed to reach /api/auth/me — keeping current state");
     } finally {
       setLoading(false);
     }

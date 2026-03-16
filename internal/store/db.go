@@ -44,6 +44,7 @@ func InitDB(dbPath string) error {
 	// Apply performance PRAGMAs (matching Node.js version)
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
+		"PRAGMA busy_timeout = 5000", // 等待锁最多5秒，避免并发写入时查询立即失败
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA mmap_size = 268435456", // 256MB
 		"PRAGMA cache_size = -64000",   // 64MB
@@ -132,7 +133,9 @@ func createTables() error {
 			"seriesIndex"    INTEGER,
 			"genre"          TEXT NOT NULL DEFAULT '',
 			"metadataSource" TEXT NOT NULL DEFAULT '',
-			"coverImageUrl"  TEXT NOT NULL DEFAULT ''
+			"coverImageUrl"  TEXT NOT NULL DEFAULT '',
+			"type"           TEXT NOT NULL DEFAULT 'comic',
+			"readingStatus"  TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS "Comic_filename_key" ON "Comic"("filename")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_title_idx" ON "Comic"("title")`,
@@ -144,6 +147,7 @@ func createTables() error {
 		`CREATE INDEX IF NOT EXISTS "Comic_rating_idx" ON "Comic"("rating")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_addedAt_idx" ON "Comic"("addedAt")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_fileSize_pageCount_idx" ON "Comic"("fileSize", "pageCount")`,
+		`CREATE INDEX IF NOT EXISTS "Comic_type_idx" ON "Comic"("type")`,
 
 		// ============================================================
 		// Tag
@@ -216,32 +220,6 @@ func createTables() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS "ReadingSession_comicId_idx" ON "ReadingSession"("comicId")`,
 		`CREATE INDEX IF NOT EXISTS "ReadingSession_startedAt_idx" ON "ReadingSession"("startedAt")`,
-
-		// ============================================================
-		// Shelf (书架系统)
-		// ============================================================
-		`CREATE TABLE IF NOT EXISTS "Shelf" (
-			"id"        INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			"name"      TEXT NOT NULL,
-			"icon"      TEXT NOT NULL DEFAULT '📚',
-			"sortOrder" INTEGER NOT NULL DEFAULT 0,
-			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS "Shelf_name_key" ON "Shelf"("name")`,
-
-		// ============================================================
-		// ComicShelf (漫画-书架关联)
-		// ============================================================
-		`CREATE TABLE IF NOT EXISTS "ComicShelf" (
-			"comicId" TEXT NOT NULL,
-			"shelfId" INTEGER NOT NULL,
-			PRIMARY KEY ("comicId", "shelfId"),
-			CONSTRAINT "ComicShelf_comicId_fkey" FOREIGN KEY ("comicId")
-				REFERENCES "Comic" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-			CONSTRAINT "ComicShelf_shelfId_fkey" FOREIGN KEY ("shelfId")
-				REFERENCES "Shelf" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-		)`,
-		`CREATE INDEX IF NOT EXISTS "ComicShelf_shelfId_idx" ON "ComicShelf"("shelfId")`,
 
 		// ============================================================
 		// ReadingGoal (阅读目标)

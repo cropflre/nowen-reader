@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -23,6 +25,23 @@ func (h *StatsHandler) GetStats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, stats)
+}
+
+// GET /api/stats/yearly?year=2024 — 年度阅读报告
+func (h *StatsHandler) GetYearlyReport(c *gin.Context) {
+	yearStr := c.DefaultQuery("year", strconv.Itoa(time.Now().Year()))
+	year, err := strconv.Atoi(yearStr)
+	if err != nil || year < 2000 || year > 2100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid year"})
+		return
+	}
+
+	report, err := store.GetYearlyReadingReport(year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get yearly report"})
+		return
+	}
+	c.JSON(http.StatusOK, report)
 }
 
 // POST /api/stats/session — Start reading session
@@ -69,4 +88,14 @@ func (h *StatsHandler) EndSession(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// GET /api/stats/enhanced — 增强版阅读统计
+func (h *StatsHandler) GetEnhancedStats(c *gin.Context) {
+	stats, err := store.GetEnhancedReadingStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }

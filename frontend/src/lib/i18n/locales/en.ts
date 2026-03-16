@@ -64,6 +64,7 @@ const en: Translations = {
     label: "Tags",
     translate: "Translate",
     translating: "Translating...",
+    empty: "No tags yet. Add tags in comic detail page.",
   },
 
 
@@ -94,7 +95,7 @@ const en: Translations = {
   // Comic Detail Page
   comicDetail: {
     comicNotFound: "Comic not found",
-    backToShelf: "Back to Shelf",
+    backToShelf: "Back to Library",
     continueReading: "Continue Reading (Page {page})",
     startReading: "Start Reading",
     deleteComic: "Delete Comic",
@@ -144,7 +145,7 @@ const en: Translations = {
   reader: {
     unknownComic: "Unknown Comic",
     comicNotFound: "Comic not found",
-    backToShelf: "Back to Shelf",
+    backToShelf: "Back to Library",
     favorited: "Favorited",
     addFavorite: "Add Favorite",
     rating: "Rating",
@@ -268,30 +269,6 @@ const en: Translations = {
     cacheCleared: "Cache cleared",
   },
 
-  // Cloud Sync
-  sync: {
-    title: "Cloud Sync",
-    export: "Export Data",
-    import: "Import Data",
-    syncNow: "Sync Now",
-    syncing: "Syncing...",
-    syncComplete: "Sync complete",
-    syncFailed: "Sync failed",
-    itemsUpdated: "items updated",
-    lastSync: "Last sync",
-    webdavUrl: "WebDAV URL",
-    username: "Username",
-    password: "Password",
-    testConnection: "Test Connection",
-    testing: "Testing...",
-    connectionSuccess: "Connection successful",
-    connectionFailed: "Connection failed",
-    exportSuccess: "Data exported",
-    exportFailed: "Export failed",
-    importSuccess: "Imported",
-    importFailed: "Import failed",
-  },
-
   // Recommendations
   recommend: {
     title: "Recommended for You",
@@ -315,10 +292,33 @@ const en: Translations = {
   // Settings
   settings: {
     title: "Settings",
-    sync: "Sync",
     ai: "AI",
     pwa: "App",
     about: "About",
+  },
+
+  // Error Logs
+  errorLogs: {
+    tab: "Logs",
+    title: "Error Logs",
+    autoRefresh: "Auto refresh (every 5s)",
+    refresh: "Refresh",
+    clear: "Clear logs",
+    confirmClear: "Are you sure you want to clear all error logs?",
+    statistics: "Statistics",
+    statusDistribution: "Status Code Distribution",
+    topPaths: "Top Error Paths",
+    filtering: "Filtering",
+    loading: "Loading...",
+    noLogs: "No error logs",
+    noLogsHint: "Errors will be recorded when API returns 4xx/5xx responses",
+    pageInfo: "Page {page} / {total}",
+    prevPage: "Previous",
+    nextPage: "Next",
+    export: "Export Logs",
+    exportJSON: "Export JSON",
+    exportCSV: "Export CSV",
+    exporting: "Exporting...",
   },
 
   // Site Settings
@@ -350,6 +350,11 @@ const en: Translations = {
     clearThumbnails: "Clear Thumbnail Cache",
     clearSearch: "Reset Search Cache",
     cacheDesc: "Clear cached data to free disk space or fix display issues",
+    cleanupInvalid: "Cleanup Invalid Comics",
+    cleanupInvalidDesc: "Remove database records whose source files no longer exist on disk, fixing 404/500 errors",
+    cleanupInvalidBtn: "Scan & Cleanup",
+    cleanupRunning: "Scanning...",
+    cleanupDone: "Cleanup complete: removed {count} invalid comics",
     batchMetadata: "Batch Metadata Fetch",
     batchMetadataDesc: "Automatically fetch metadata for all comics from online sources (AniList, Bangumi, etc.)",
     batchMissing: "Fetch Missing Metadata Only",
@@ -381,32 +386,16 @@ const en: Translations = {
     cloudAI: "Cloud AI",
     perceptualHash: "Perceptual Hash Dedup",
     perceptualHashDesc: "Detect visually similar comic covers",
-    semanticSearch: "Semantic Search",
-    semanticSearchDesc: "Natural language comic search",
-    autoTag: "Smart Auto Tag",
-    autoTagDesc: "AI-powered tag suggestions",
-    confidence: "Confidence",
     provider: "Provider",
     compatible: "Compatible API",
     model: "Model",
-    coverAnalysis: "Cover Image Analysis",
-    metadataCompletion: "Smart Metadata Completion",
     testConnection: "Test Connection",
     testing: "Testing...",
     connectionSuccess: "Connection OK",
     connectionFailed: "Connection Failed",
     saving: "Saving...",
     saveSettings: "Save Settings",
-    analyzing: "AI analyzing...",
-    analyzeComplete: "Analysis complete",
-    analyzeFailed: "Analysis failed",
-    aiAnalyze: "AI Analyze",
-    aiComplete: "AI Complete",
     similarCover: "Visually similar cover",
-    semanticSearchPlaceholder: "Describe the comics you're looking for...",
-    searchResults: "Semantic Search Results",
-    noAIResults: "No matching results",
-    relevance: "Relevance",
     internationalProviders: "International",
     chinaProviders: "China",
     customProvider: "Custom",
@@ -504,18 +493,9 @@ const en: Translations = {
     pageUnit: "p",
   },
 
-  // Shelves
-  shelf: {
-    create: "New Shelf",
-    namePlaceholder: "Shelf name...",
-    confirmDeleteShelf: "Delete this shelf? Comics won't be removed.",
-    moveTo: "Move to",
-    title: "Shelves",
-  },
-
   // Mobile Navigation
   mobileNav: {
-    shelf: "Shelf",
+    library: "Library",
     stats: "Stats",
     explore: "Explore",
   },

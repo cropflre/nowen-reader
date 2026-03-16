@@ -30,7 +30,7 @@ export default function MobileBottomNav() {
     {
       href: "/",
       icon: BookMarked,
-      label: t.mobileNav?.shelf || "书架",
+      label: t.mobileNav?.library || "书库",
       active: pathname === "/",
     },
     {

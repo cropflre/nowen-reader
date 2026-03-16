@@ -72,6 +72,10 @@ export function SiteSettingsPanel() {
   // New dir input
   const [newDir, setNewDir] = useState("");
 
+  // Cleanup invalid comics states
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<number | null>(null);
+
   useEffect(() => {
     fetch("/api/site-settings")
       .then((r) => r.json())
@@ -508,6 +512,63 @@ export function SiteSettingsPanel() {
         <p className="text-[11px] text-muted">
           {siteT?.cacheDesc || "Clear cached data to free disk space or fix display issues"}
         </p>
+      </div>
+
+      {/* Cleanup Invalid Comics */}
+      <div className="space-y-3 rounded-xl bg-background p-4">
+        <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+          <AlertCircle className="h-3.5 w-3.5 text-accent" />
+          {siteT?.cleanupInvalid || "Cleanup Invalid Comics"}
+        </div>
+        <p className="text-[11px] text-muted">
+          {siteT?.cleanupInvalidDesc || "Remove database records whose source files no longer exist on disk, fixing 404/500 errors"}
+        </p>
+
+        {!cleaningUp && cleanupResult === null && (
+          <button
+            onClick={async () => {
+              setCleaningUp(true);
+              setCleanupResult(null);
+              try {
+                const res = await fetch("/api/comics/cleanup", { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                  setCleanupResult(data.removed ?? 0);
+                }
+              } catch { /* ignore */ } finally {
+                setCleaningUp(false);
+              }
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-amber-500/10"
+          >
+            <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+            {siteT?.cleanupInvalidBtn || "Scan & Cleanup"}
+          </button>
+        )}
+
+        {cleaningUp && (
+          <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted">
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            {siteT?.cleanupRunning || "Scanning..."}
+          </div>
+        )}
+
+        {cleanupResult !== null && !cleaningUp && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-[11px]">
+              <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+              <span className="text-green-400">
+                {(siteT?.cleanupDone || "Cleanup complete: removed {count} invalid comics").replace("{count}", String(cleanupResult))}
+              </span>
+            </div>
+            <button
+              onClick={() => setCleanupResult(null)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-card-hover"
+            >
+              {t.common?.close || "Close"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Batch AI Metadata */}

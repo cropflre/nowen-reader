@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +23,21 @@ func SecurityHeaders() gin.HandlerFunc {
 
 		// Permissions policy (disable unnecessary features)
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+
+		// Content Security Policy — 允许自身和内联样式（Tailwind需要），允许图片代理和blob
+		c.Header("Content-Security-Policy",
+			"default-src 'self'; "+
+				"script-src 'self'; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data: blob: https:; "+
+				"font-src 'self' data:; "+
+				"connect-src 'self'; "+
+				"frame-ancestors 'self'")
+
+		// HSTS — 仅在 HTTPS 连接时发送
+		if c.Request.TLS != nil || strings.Contains(strings.ToLower(c.GetHeader("X-Forwarded-Proto")), "https") {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		c.Next()
 	}

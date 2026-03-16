@@ -196,25 +196,6 @@ func collectExportData() (map[string]interface{}, error) {
 		data["categories"] = categories
 	}
 
-	// 书架
-	shelves, err := store.GetAllShelves()
-	if err == nil {
-		// 附带每个书架的漫画ID
-		type shelfExport struct {
-			store.Shelf
-			ComicIDs []string `json:"comicIds"`
-		}
-		var shelvesWithComics []shelfExport
-		for _, s := range shelves {
-			ids, _ := store.GetShelfComicIDs(s.ID)
-			shelvesWithComics = append(shelvesWithComics, shelfExport{
-				Shelf:    s,
-				ComicIDs: ids,
-			})
-		}
-		data["shelves"] = shelvesWithComics
-	}
-
 	// 格式化为美化JSON
 	_, err = json.MarshalIndent(data, "", "  ")
 	if err != nil {

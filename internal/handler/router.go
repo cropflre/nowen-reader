@@ -79,6 +79,7 @@ func SetupRoutes(r *gin.Engine) {
 	{
 		comicsWrite.POST("/batch", comic.BatchOperation)
 		comicsWrite.PUT("/reorder", comic.Reorder)
+		comicsWrite.POST("/cleanup", comic.CleanupInvalid)
 	}
 
 	// Single comic read operations (no auth)
@@ -107,6 +108,9 @@ func SetupRoutes(r *gin.Engine) {
 
 		// Metadata editing
 		comicByIDWrite.PUT("/metadata", comic.UpdateMetadata)
+
+		// 阅读状态管理
+		comicByIDWrite.PUT("/reading-status", comic.SetReadingStatus)
 	}
 
 	// ============================================================
@@ -128,28 +132,10 @@ func SetupRoutes(r *gin.Engine) {
 	// ============================================================
 	stats := NewStatsHandler()
 	api.GET("/stats", stats.GetStats)
+	api.GET("/stats/yearly", stats.GetYearlyReport)
 	api.POST("/stats/session", stats.StartSession)
 	api.PUT("/stats/session", stats.EndSession)
-
-	// ============================================================
-	// Shelves (书架系统)
-	// ============================================================
-	shelf := NewShelfHandler()
-	api.GET("/shelves", shelf.ListShelves)
-	api.POST("/shelves/init", shelf.InitShelves)
-	api.GET("/stats/enhanced", shelf.GetEnhancedStats)
-
-	shelfWrite := api.Group("/shelves")
-	shelfWrite.Use(middleware.AuthRequired())
-	{
-		shelfWrite.POST("", shelf.CreateShelf)
-		shelfWrite.PUT("/:id", shelf.UpdateShelf)
-		shelfWrite.DELETE("/:id", shelf.DeleteShelf)
-		shelfWrite.POST("/:id/comics", shelf.AddComic)
-		shelfWrite.DELETE("/:id/comics", shelf.RemoveComic)
-	}
-	// 漫画的书架归属
-	comicByID.GET("/shelves", shelf.GetComicShelves)
+	api.GET("/stats/enhanced", stats.GetEnhancedStats)
 
 	// ============================================================
 	// Upload (Phase 2) — requires auth
@@ -263,10 +249,8 @@ func SetupRoutes(r *gin.Engine) {
 		aiGroup.GET("/status", ai.Status)
 		aiGroup.GET("/settings", ai.GetSettings)
 		aiGroup.PUT("/settings", ai.UpdateSettings)
-		aiGroup.GET("/search", ai.Search)
 		aiGroup.GET("/duplicates", ai.Duplicates)
 		aiGroup.GET("/models", ai.Models)
-		aiGroup.POST("/analyze", ai.Analyze)
 	}
 
 	// OPDS protocol
@@ -280,11 +264,6 @@ func SetupRoutes(r *gin.Engine) {
 		opdsGroup.GET("/search", opds.Search)
 		opdsGroup.GET("/download/:id", opds.Download)
 	}
-
-	// Cloud sync
-	syncH := NewSyncHandler()
-	api.GET("/cloud-sync", syncH.Export)
-	api.POST("/cloud-sync", syncH.Sync)
 
 	// Recommendations
 	rec := NewRecommendationHandler()
@@ -313,4 +292,17 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Per-comic metadata translation (requires auth)
 	comicByIDWrite.POST("/translate-metadata", tagTranslate.TranslateMetadata)
+
+	// ============================================================
+	// Error Logs (错误日志查看) — requires admin
+	// ============================================================
+	logH := NewLogHandler()
+	logGroup := api.Group("/logs")
+	logGroup.Use(middleware.AdminRequired())
+	{
+		logGroup.GET("", logH.GetErrorLogs)
+		logGroup.GET("/stats", logH.GetErrorLogStats)
+		logGroup.GET("/export", logH.ExportErrorLogs)
+		logGroup.DELETE("", logH.ClearErrorLogs)
+	}
 }

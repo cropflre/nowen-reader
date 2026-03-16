@@ -9,7 +9,6 @@ import CategoryFilter from "@/components/CategoryFilter";
 import BatchToolbar from "@/components/BatchToolbar";
 import { RecommendationStrip } from "@/components/Recommendations";
 import { ContinueReading } from "@/components/ContinueReading";
-import ShelfManager from "@/components/ShelfManager";
 import {
   useComics,
   uploadComics,
@@ -80,11 +79,10 @@ export default function Home() {
   // Duplicate detection
   const [showDuplicates, setShowDuplicates] = useState(false);
 
-  // Shelf
-  const [selectedShelfId, setSelectedShelfId] = useState<number | null>(null);
-
   // 内容类型 Tab
   const [contentType, setContentType] = useState<"" | "comic" | "novel">("");
+
+
 
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
@@ -115,6 +113,7 @@ export default function Home() {
     sortOrder: sortOrder || undefined,
     category: selectedCategory || undefined,
     contentType: contentType || undefined,
+
   });
   const { categories, refetch: refetchCategories, initCategories } = useCategories();
 
@@ -365,6 +364,8 @@ export default function Home() {
                   {tab.label}
                 </button>
               ))}
+
+
             </div>
 
             {/* 继续阅读横条 */}
@@ -527,16 +528,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 书架管理器 */}
-            <div className="mt-4">
-              <ShelfManager
-                  selectedShelfId={selectedShelfId}
-                  onShelfSelect={setSelectedShelfId}
-                  selectedComicIds={batchMode && selectedIds.size > 0 ? Array.from(selectedIds) : undefined}
-                  onBatchMoveComplete={() => { exitBatchMode(); refetch(); }}
-              />
-            </div>
-
             {/* Category Filter */}
             {categories.length > 0 && (
               <div className="mt-4">
@@ -549,29 +540,27 @@ export default function Home() {
             )}
 
             {/* Tag Filter */}
-            {allTags.length > 0 && (
-              <div className="mt-4 mb-8">
-                <TagFilter
-                  allTags={allTags}
-                  selectedTags={selectedTags}
-                  onTagToggle={handleTagToggle}
-                  onClearAll={() => setSelectedTags([])}
-                  onTagsTranslated={() => {
-                    refetch();
-                    // Refresh global tags after translation
-                    fetch("/api/tags")
-                      .then((r) => r.json())
-                      .then((data) => {
-                        const tags = Array.isArray(data) ? data : data.tags;
-                        if (Array.isArray(tags)) {
-                          setAllTags(tags.map((t: { name: string }) => t.name).sort());
-                        }
-                      })
-                      .catch(() => {});
-                  }}
-                />
-              </div>
-            )}
+            <div className="mt-4 mb-8">
+              <TagFilter
+                allTags={allTags}
+                selectedTags={selectedTags}
+                onTagToggle={handleTagToggle}
+                onClearAll={() => setSelectedTags([])}
+                onTagsTranslated={() => {
+                  refetch();
+                  // Refresh global tags after translation
+                  fetch("/api/tags")
+                    .then((r) => r.json())
+                    .then((data) => {
+                      const tags = Array.isArray(data) ? data : data.tags;
+                      if (Array.isArray(tags)) {
+                        setAllTags(tags.map((t: { name: string }) => t.name).sort());
+                      }
+                    })
+                    .catch(() => {});
+                }}
+              />
+            </div>
 
             {/* Comics Grid */}
             <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
@@ -643,7 +632,6 @@ export default function Home() {
                         setSelectedTags([]);
                         setFavoritesOnly(false);
                         setSelectedCategory(null);
-                        setSelectedShelfId(null);
                         setContentType("");
                       }}
                       className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -59,8 +60,11 @@ func (h *ComicHandler) ListComics(c *gin.Context) {
 		PageSize:      pageSize,
 		Category:      category,
 		ContentType:   contentType,
+		ReadingStatus: c.Query("readingStatus"),
 	})
 	if err != nil {
+		log.Printf("[API] ListComics error: %v (sortBy=%s, contentType=%s, readingStatus=%s)",
+			err, sortBy, contentType, c.Query("readingStatus"))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comics"})
 		return
 	}
@@ -393,6 +397,19 @@ func (h *ComicHandler) TriggerSync(c *gin.Context) {
 }
 
 // ============================================================
+// POST /api/comics/cleanup — 清理无效漫画（文件不存在的记录）
+// ============================================================
+
+func (h *ComicHandler) CleanupInvalid(c *gin.Context) {
+	removed, err := service.CleanupInvalidComics()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cleanup invalid comics"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "removed": removed})
+}
+
+// ============================================================
 // PUT /api/comics/:id/metadata — 手动编辑元数据
 // ============================================================
 
@@ -481,4 +498,32 @@ func (h *ComicHandler) UpdateMetadata(c *gin.Context) {
 
 	updated, _ := store.GetComicByID(id)
 	c.JSON(http.StatusOK, gin.H{"success": true, "comic": updated})
+}
+
+// ============================================================
+// PUT /api/comics/:id/reading-status — 设置阅读状态
+// ============================================================
+
+func (h *ComicHandler) SetReadingStatus(c *gin.Context) {
+	id := c.Param("id")
+	var body struct {
+		Status string `json:"status"` // "want" | "reading" | "finished" | "shelved" | ""
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// 验证状态值
+	validStatuses := map[string]bool{"": true, "want": true, "reading": true, "finished": true, "shelved": true}
+	if !validStatuses[body.Status] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status. Must be one of: want, reading, finished, shelved, or empty"})
+		return
+	}
+
+	if err := store.UpdateComicFields(id, map[string]interface{}{"readingStatus": body.Status}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update reading status"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "readingStatus": body.Status})
 }

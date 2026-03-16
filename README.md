@@ -374,10 +374,8 @@ make fmt
 | GET | `/api/ai/status` | AI 服务状态 |
 | GET | `/api/ai/settings` | 获取 AI 设置 |
 | PUT | `/api/ai/settings` | 更新 AI 设置 |
-| GET | `/api/ai/search` | 语义搜索 |
 | GET | `/api/ai/duplicates` | 视觉相似检测 |
 | GET | `/api/ai/models` | 可用模型列表 |
-| POST | `/api/ai/analyze` | 分析漫画 |
 
 ### 阅读统计
 | 方法 | 路径 | 说明 |

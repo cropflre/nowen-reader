@@ -151,12 +151,15 @@ func DeleteSession(token string) error {
 	return err
 }
 
-// CleanExpiredSessions removes all expired sessions.
+// RenewSession 更新 Session 的过期时间（自动续期）。
+func RenewSession(token string, newExpiry time.Time) error {
+	_, err := db.Exec(`UPDATE "UserSession" SET "expiresAt" = ? WHERE "id" = ?`, newExpiry, token)
+	return err
+}
+
+// CleanExpiredSessions 删除所有已过期的 Session，返回删除的数量。
 func CleanExpiredSessions() (int64, error) {
-	result, err := db.Exec(
-		`DELETE FROM "UserSession" WHERE "expiresAt" < ?`,
-		time.Now(),
-	)
+	result, err := db.Exec(`DELETE FROM "UserSession" WHERE "expiresAt" < ?`, time.Now())
 	if err != nil {
 		return 0, err
 	}

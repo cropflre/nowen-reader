@@ -1,9 +1,10 @@
-import React from "react";
-import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+"use client";
+
+import React, { Component, ErrorInfo, ReactNode } from "react";
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+  children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -12,9 +13,9 @@ interface ErrorBoundaryState {
 }
 
 /**
- * 全局错误边界 — 捕获子组件渲染异常，防止白屏
+ * 全局错误边界组件 — 捕获 React 渲染错误，防止整个页面白屏。
  */
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -24,17 +25,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[ErrorBoundary] Uncaught error:", error, errorInfo);
   }
-
-  handleReload = () => {
-    window.location.reload();
-  };
-
-  handleGoHome = () => {
-    window.location.href = "/";
-  };
 
   handleRetry = () => {
     this.setState({ hasError: false, error: null });
@@ -47,50 +40,41 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       }
 
       return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-6">
-          <div className="w-full max-w-md text-center">
-            {/* 图标 */}
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10">
-              <AlertTriangle className="h-8 w-8 text-red-400" />
-            </div>
-
-            {/* 标题 */}
-            <h1 className="mb-2 text-xl font-semibold text-foreground">
-              页面出现了错误
-            </h1>
-            <p className="mb-6 text-sm text-muted">
-              很抱歉，渲染过程中发生了意外错误。您可以尝试以下操作：
-            </p>
-
-            {/* 错误详情 (可折叠) */}
-            {this.state.error && (
-              <details className="mb-6 rounded-lg border border-border bg-card p-3 text-left">
-                <summary className="cursor-pointer text-xs font-medium text-muted">
-                  查看错误详情
-                </summary>
-                <pre className="mt-2 overflow-x-auto text-xs text-red-400/80">
-                  {this.state.error.message}
-                </pre>
-              </details>
-            )}
-
-            {/* 操作按钮 */}
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={this.handleRetry}
-                className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-              >
-                <RefreshCw className="h-4 w-4" />
-                重试
-              </button>
-              <button
-                onClick={this.handleGoHome}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-card-hover"
-              >
-                <Home className="h-4 w-4" />
-                返回首页
-              </button>
-            </div>
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-8">
+          <div className="rounded-full bg-red-500/10 p-4">
+            <svg
+              className="h-8 w-8 text-red-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-foreground">
+            页面出现了错误
+          </h2>
+          <p className="max-w-md text-center text-sm text-muted">
+            {this.state.error?.message || "发生了未知错误"}
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={this.handleRetry}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              重试
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card-hover"
+            >
+              刷新页面
+            </button>
           </div>
         </div>
       );

@@ -95,6 +95,11 @@ func main() {
 	service.StartBackgroundSync()
 
 	// ============================================================
+	// Start session cleanup scheduler
+	// ============================================================
+	service.StartSessionCleanup()
+
+	// ============================================================
 	// Setup Gin router
 	// ============================================================
 	mode := os.Getenv("GIN_MODE")
@@ -112,8 +117,10 @@ func main() {
 	} else {
 		r.Use(middleware.RequestLogger())
 	}
+	r.Use(middleware.ErrorLogCapture()) // 捕获错误请求到内存缓冲区
 	r.Use(middleware.CORS())
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.RequestTimeout(30 * time.Second))
 	r.Use(middleware.Gzip())
 
 	// Register all API routes

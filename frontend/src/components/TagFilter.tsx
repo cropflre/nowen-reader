@@ -120,15 +120,17 @@ export default function TagFilter({
             <Tag className="h-3.5 w-3.5" />
             <span className="text-xs font-medium whitespace-nowrap">{t.tagFilter.label}</span>
           </div>
-          <button
-            onClick={handleTranslate}
-            disabled={translating}
-            className="flex h-6 items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
-            title={t.tagFilter.translate}
-          >
-            <Languages className="h-3 w-3" />
-            <span>{translating ? t.tagFilter.translating : t.tagFilter.translate}</span>
-          </button>
+          {allTags.length > 0 && (
+            <button
+              onClick={handleTranslate}
+              disabled={translating}
+              className="flex h-6 items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
+              title={t.tagFilter.translate}
+            >
+              <Languages className="h-3 w-3" />
+              <span>{translating ? t.tagFilter.translating : t.tagFilter.translate}</span>
+            </button>
+          )}
           {/* 折叠/展开切换 */}
           {allTags.length > FOLD_THRESHOLD && (
             <button
@@ -141,7 +143,14 @@ export default function TagFilter({
           )}
         </div>
 
-        {collapsed && allTags.length > FOLD_THRESHOLD ? (
+        {allTags.length === 0 ? (
+          /* 无标签时：显示空状态提示 */
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted">
+              {t.tagFilter.empty || "暂无标签，可在漫画详情页添加"}
+            </span>
+          </div>
+        ) : collapsed && allTags.length > FOLD_THRESHOLD ? (
           /* 折叠时：仅显示已选中标签 + 数量提示 */
           <div className="flex items-center gap-2 flex-wrap">
             {selectedTags.length > 0 ? (

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Comic } from "@/types/comic";
 import { BookOpen, Heart, Star, Info, GripVertical } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
@@ -110,6 +110,7 @@ const ComicCard = memo(function ComicCard({
     }
   }
   const t = useTranslation();
+  const [coverLoaded, setCoverLoaded] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
     if (batchMode) {
@@ -326,13 +327,20 @@ const ComicCard = memo(function ComicCard({
             <div className="relative overflow-hidden rounded-xl bg-card transition-all duration-300 ease-out group-hover:scale-[1.03] group-hover:shadow-2xl group-hover:shadow-accent/10">
               {/* Cover Image */}
               <div className="relative aspect-[5/7] w-full overflow-hidden">
+                {/* 骨架屏加载占位 */}
+                {!coverLoaded && (
+                  <div className="absolute inset-0 animate-pulse bg-gradient-to-b from-muted/30 to-muted/10" />
+                )}
                 <Image
                   src={comic.coverUrl}
                   alt={comic.title}
                   fill
                   unoptimized={isReal}
-                  className="object-cover transition-transform duration-500 group-hover:scale-110"
+                  className={`object-cover transition-all duration-500 group-hover:scale-110 ${
+                    coverLoaded ? "opacity-100" : "opacity-0"
+                  }`}
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                  onLoad={() => setCoverLoaded(true)}
                 />
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

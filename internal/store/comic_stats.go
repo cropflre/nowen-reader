@@ -320,3 +320,150 @@ func DetectDuplicates(comicsDir string) ([]DuplicateGroup, error) {
 	}
 	return groups, nil
 }
+
+// ============================================================
+// 年度阅读报告
+// ============================================================
+
+// YearlyReadingReport 年度阅读报告数据。
+type YearlyReadingReport struct {
+	Year              int                     `json:"year"`
+	TotalReadTime     int                     `json:"totalReadTime"`     // 总阅读时长(秒)
+	TotalSessions     int                     `json:"totalSessions"`     // 总阅读次数
+	TotalComicsRead   int                     `json:"totalComicsRead"`   // 阅读过的作品数
+	TotalPagesRead    int                     `json:"totalPagesRead"`    // 翻阅总页数
+	MonthlyStats      []MonthlyReadingStat    `json:"monthlyStats"`      // 月度统计
+	TopComics         []TopReadComic          `json:"topComics"`         // 阅读时长Top10
+	GenreDistribution []GenreDistributionItem `json:"genreDistribution"` // 类型分布
+}
+
+type MonthlyReadingStat struct {
+	Month    int `json:"month"`
+	Duration int `json:"duration"` // 秒
+	Sessions int `json:"sessions"`
+	Comics   int `json:"comics"`
+}
+
+type TopReadComic struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	ReadTime int    `json:"readTime"` // 秒
+	Sessions int    `json:"sessions"`
+}
+
+type GenreDistributionItem struct {
+	Genre    string `json:"genre"`
+	Count    int    `json:"count"`
+	ReadTime int    `json:"readTime"`
+}
+
+// GetYearlyReadingReport 查询指定年份的阅读统计。
+func GetYearlyReadingReport(year int) (*YearlyReadingReport, error) {
+	startDate := fmt.Sprintf("%d-01-01", year)
+	endDate := fmt.Sprintf("%d-01-01", year+1)
+
+	report := &YearlyReadingReport{Year: year}
+
+	// 1. 年度汇总
+	err := db.QueryRow(`
+		SELECT COALESCE(SUM("duration"), 0),
+		       COUNT(*),
+		       COUNT(DISTINCT "comicId"),
+		       COALESCE(SUM("endPage" - "startPage"), 0)
+		FROM "ReadingSession"
+		WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
+	`, startDate, endDate).Scan(
+		&report.TotalReadTime,
+		&report.TotalSessions,
+		&report.TotalComicsRead,
+		&report.TotalPagesRead,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 月度统计
+	rows, err := db.Query(`
+		SELECT CAST(strftime('%m', "startedAt") AS INTEGER) as month,
+		       COALESCE(SUM("duration"), 0),
+		       COUNT(*),
+		       COUNT(DISTINCT "comicId")
+		FROM "ReadingSession"
+		WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
+		GROUP BY month ORDER BY month
+	`, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	monthMap := make(map[int]MonthlyReadingStat)
+	for rows.Next() {
+		var s MonthlyReadingStat
+		if err := rows.Scan(&s.Month, &s.Duration, &s.Sessions, &s.Comics); err == nil {
+			monthMap[s.Month] = s
+		}
+	}
+	// 填充12个月
+	for m := 1; m <= 12; m++ {
+		if s, ok := monthMap[m]; ok {
+			report.MonthlyStats = append(report.MonthlyStats, s)
+		} else {
+			report.MonthlyStats = append(report.MonthlyStats, MonthlyReadingStat{Month: m})
+		}
+	}
+
+	// 3. Top 10 最多阅读的作品
+	topRows, err := db.Query(`
+		SELECT rs."comicId", COALESCE(c."title", rs."comicId"),
+		       SUM(rs."duration"), COUNT(*)
+		FROM "ReadingSession" rs
+		LEFT JOIN "Comic" c ON c."id" = rs."comicId"
+		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0
+		GROUP BY rs."comicId"
+		ORDER BY SUM(rs."duration") DESC
+		LIMIT 10
+	`, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer topRows.Close()
+
+	for topRows.Next() {
+		var tc TopReadComic
+		if err := topRows.Scan(&tc.ID, &tc.Title, &tc.ReadTime, &tc.Sessions); err == nil {
+			report.TopComics = append(report.TopComics, tc)
+		}
+	}
+	if report.TopComics == nil {
+		report.TopComics = []TopReadComic{}
+	}
+
+	// 4. 类型分布
+	genreRows, err := db.Query(`
+		SELECT COALESCE(c."genre", '未分类'),
+		       COUNT(DISTINCT c."id"),
+		       COALESCE(SUM(rs."duration"), 0)
+		FROM "ReadingSession" rs
+		LEFT JOIN "Comic" c ON c."id" = rs."comicId"
+		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0
+		GROUP BY c."genre"
+		ORDER BY SUM(rs."duration") DESC
+	`, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer genreRows.Close()
+
+	for genreRows.Next() {
+		var g GenreDistributionItem
+		if err := genreRows.Scan(&g.Genre, &g.Count, &g.ReadTime); err == nil {
+			report.GenreDistribution = append(report.GenreDistribution, g)
+		}
+	}
+	if report.GenreDistribution == nil {
+		report.GenreDistribution = []GenreDistributionItem{}
+	}
+
+	return report, nil
+}

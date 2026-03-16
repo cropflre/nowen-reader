@@ -23,6 +23,7 @@ type ComicListOptions struct {
 	PageSize      int
 	Category      string
 	ContentType   string // "comic" | "novel" | "" (全部)
+	ReadingStatus string // "want" | "reading" | "finished" | "shelved" | "" (全部)
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -50,6 +51,8 @@ type ComicListItem struct {
 	SeriesIndex    *int                `json:"seriesIndex"`
 	Genre          string              `json:"genre"`
 	MetadataSource string              `json:"metadataSource"`
+	ReadingStatus  string              `json:"readingStatus"`
+	ComicType      string              `json:"type"`
 	Tags           []ComicTagInfo      `json:"tags"`
 	Categories     []ComicCategoryInfo `json:"categories"`
 }
@@ -118,11 +121,17 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		}
 	}
 
-	// ContentType filtering: 按文件名后缀区分小说和漫画
+	// ContentType filtering: 使用 type 字段高效筛选
 	if opts.ContentType == "novel" {
-		conditions = append(conditions, `(c."filename" LIKE '%.txt' OR c."filename" LIKE '%.epub' OR c."filename" LIKE '%.mobi' OR c."filename" LIKE '%.azw3')`)
+		conditions = append(conditions, `c."type" = 'novel'`)
 	} else if opts.ContentType == "comic" {
-		conditions = append(conditions, `c."filename" NOT LIKE '%.txt' AND c."filename" NOT LIKE '%.epub' AND c."filename" NOT LIKE '%.mobi' AND c."filename" NOT LIKE '%.azw3'`)
+		conditions = append(conditions, `c."type" = 'comic'`)
+	}
+
+	// ReadingStatus filtering: 阅读状态筛选
+	if opts.ReadingStatus != "" {
+		conditions = append(conditions, `c."readingStatus" = ?`)
+		args = append(args, opts.ReadingStatus)
 	}
 
 	whereClause := ""
@@ -185,7 +194,8 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		       c."addedAt", c."updatedAt", c."lastReadPage", c."lastReadAt",
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
-		       c."language", c."seriesName", c."seriesIndex", c."genre", c."metadataSource"
+		       c."language", c."seriesName", c."seriesIndex", c."genre", c."metadataSource",
+		       c."readingStatus", c."type"
 		FROM "Comic" c
 		%s %s %s
 	`, whereClause, orderClause, limitClause)
@@ -212,6 +222,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
 			&c.Author, &c.Publisher, &year, &c.Description,
 			&c.Language, &c.SeriesName, &seriesIndex, &c.Genre, &c.MetadataSource,
+			&c.ReadingStatus, &c.ComicType,
 		); err != nil {
 			return nil, fmt.Errorf("scan comic: %w", err)
 		}
@@ -357,7 +368,8 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		       c."addedAt", c."updatedAt", c."lastReadPage", c."lastReadAt",
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
-		       c."language", c."seriesName", c."seriesIndex", c."genre", c."metadataSource"
+		       c."language", c."seriesName", c."seriesIndex", c."genre", c."metadataSource",
+		       c."readingStatus", c."type"
 		FROM "Comic" c WHERE c."id" = ?
 	`
 	var c ComicListItem
@@ -374,6 +386,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
 		&c.Author, &c.Publisher, &year, &c.Description,
 		&c.Language, &c.SeriesName, &seriesIndex, &c.Genre, &c.MetadataSource,
+		&c.ReadingStatus, &c.ComicType,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil

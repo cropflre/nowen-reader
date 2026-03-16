@@ -77,6 +77,15 @@ func GetCurrentUser(c *gin.Context) *model.AuthUser {
 		return nil
 	}
 
+	// 自动续期：当 Session 剩余有效期不足 7 天时，自动延长到 30 天
+	const renewThreshold = 7 * 24 * time.Hour
+	if time.Until(session.ExpiresAt) < renewThreshold {
+		newExpiry := time.Now().Add(time.Duration(SessionMaxAge) * time.Second)
+		if err := store.RenewSession(token, newExpiry); err == nil {
+			SetSessionCookie(c, token)
+		}
+	}
+
 	authUser := &model.AuthUser{
 		ID:       user.ID,
 		Username: user.Username,

@@ -62,6 +62,7 @@ const zhCN = {
     label: "标签筛选",
     translate: "翻译标签",
     translating: "翻译中...",
+    empty: "暂无标签，可在漫画详情页添加",
   },
 
 
@@ -92,7 +93,7 @@ const zhCN = {
   // Comic Detail Page
   comicDetail: {
     comicNotFound: "漫画不存在",
-    backToShelf: "返回书架",
+    backToShelf: "返回书库",
     continueReading: "继续阅读 (第 {page} 页)",
     startReading: "开始阅读",
     deleteComic: "删除漫画",
@@ -142,7 +143,7 @@ const zhCN = {
   reader: {
     unknownComic: "未知漫画",
     comicNotFound: "漫画不存在",
-    backToShelf: "返回书架",
+    backToShelf: "返回书库",
     favorited: "已收藏",
     addFavorite: "添加收藏",
     rating: "评分",
@@ -266,30 +267,6 @@ const zhCN = {
     cacheCleared: "缓存已清除",
   },
 
-  // Cloud Sync
-  sync: {
-    title: "云同步",
-    export: "导出数据",
-    import: "导入数据",
-    syncNow: "立即同步",
-    syncing: "同步中...",
-    syncComplete: "同步完成",
-    syncFailed: "同步失败",
-    itemsUpdated: "项已更新",
-    lastSync: "上次同步",
-    webdavUrl: "WebDAV 地址",
-    username: "用户名",
-    password: "密码",
-    testConnection: "测试连接",
-    testing: "测试中...",
-    connectionSuccess: "连接成功",
-    connectionFailed: "连接失败",
-    exportSuccess: "数据已导出",
-    exportFailed: "导出失败",
-    importSuccess: "导入成功",
-    importFailed: "导入失败",
-  },
-
   // Recommendations
   recommend: {
     title: "为你推荐",
@@ -313,10 +290,33 @@ const zhCN = {
   // Settings
   settings: {
     title: "设置",
-    sync: "同步",
     ai: "AI",
     pwa: "应用",
     about: "关于",
+  },
+
+  // Error Logs
+  errorLogs: {
+    tab: "日志",
+    title: "错误日志",
+    autoRefresh: "自动刷新（每5秒）",
+    refresh: "刷新",
+    clear: "清空日志",
+    confirmClear: "确定要清空所有错误日志吗？",
+    statistics: "统计概览",
+    statusDistribution: "状态码分布",
+    topPaths: "高频错误路径",
+    filtering: "过滤中",
+    loading: "加载中...",
+    noLogs: "暂无错误日志",
+    noLogsHint: "当接口返回 4xx/5xx 错误时会自动记录",
+    pageInfo: "第 {page} / {total} 页",
+    prevPage: "上一页",
+    nextPage: "下一页",
+    export: "导出日志",
+    exportJSON: "导出 JSON",
+    exportCSV: "导出 CSV",
+    exporting: "导出中...",
   },
 
   // Site Settings
@@ -348,6 +348,11 @@ const zhCN = {
     clearThumbnails: "清除缩略图缓存",
     clearSearch: "重置搜索缓存",
     cacheDesc: "清除缓存数据以释放磁盘空间或修复显示问题",
+    cleanupInvalid: "清理无效漫画",
+    cleanupInvalidDesc: "删除数据库中源文件已不存在的漫画记录，修复 404/500 错误",
+    cleanupInvalidBtn: "扫描并清理",
+    cleanupRunning: "正在扫描...",
+    cleanupDone: "清理完成：已移除 {count} 条无效记录",
     batchMetadata: "批量获取元数据",
     batchMetadataDesc: "自动从在线源（AniList、Bangumi 等）获取所有漫画的元数据",
     batchMissing: "仅获取缺失的元数据",
@@ -379,32 +384,16 @@ const zhCN = {
     cloudAI: "云端 AI",
     perceptualHash: "感知哈希去重",
     perceptualHashDesc: "检测封面视觉相似的重复漫画",
-    semanticSearch: "语义搜索",
-    semanticSearchDesc: "支持自然语言搜索漫画",
-    autoTag: "智能自动标签",
-    autoTagDesc: "基于 AI 的标签推荐",
-    confidence: "置信度",
     provider: "服务商",
     compatible: "兼容 API",
     model: "模型",
-    coverAnalysis: "封面图像分析",
-    metadataCompletion: "智能元数据补全",
     testConnection: "测试连接",
     testing: "测试中...",
     connectionSuccess: "连接成功",
     connectionFailed: "连接失败",
     saving: "保存中...",
     saveSettings: "保存设置",
-    analyzing: "AI 分析中...",
-    analyzeComplete: "分析完成",
-    analyzeFailed: "分析失败",
-    aiAnalyze: "AI 分析",
-    aiComplete: "AI 补全",
     similarCover: "封面视觉相似",
-    semanticSearchPlaceholder: "用自然语言描述你想找的漫画...",
-    searchResults: "语义搜索结果",
-    noAIResults: "未找到匹配结果",
-    relevance: "相关度",
     internationalProviders: "国际服务商",
     chinaProviders: "国内服务商",
     customProvider: "自定义",
@@ -502,18 +491,9 @@ const zhCN = {
     pageUnit: "页",
   },
 
-  // 书架
-  shelf: {
-    create: "新建书架",
-    namePlaceholder: "书架名称...",
-    confirmDeleteShelf: "确定要删除此书架吗？其中的漫画不会被删除。",
-    moveTo: "移动到",
-    title: "书架",
-  },
-
   // 移动端导航
   mobileNav: {
-    shelf: "书架",
+    library: "书库",
     stats: "统计",
     explore: "发现",
   },
@@ -627,6 +607,7 @@ export interface Translations {
     label: string;
     translate: string;
     translating: string;
+    empty: string;
   };
   categoryFilter: {
     label: string;
@@ -807,28 +788,6 @@ export interface Translations {
     clearCache: string;
     cacheCleared: string;
   };
-  sync: {
-    title: string;
-    export: string;
-    import: string;
-    syncNow: string;
-    syncing: string;
-    syncComplete: string;
-    syncFailed: string;
-    itemsUpdated: string;
-    lastSync: string;
-    webdavUrl: string;
-    username: string;
-    password: string;
-    testConnection: string;
-    testing: string;
-    connectionSuccess: string;
-    connectionFailed: string;
-    exportSuccess: string;
-    exportFailed: string;
-    importSuccess: string;
-    importFailed: string;
-  };
   recommend: {
     title: string;
     refresh: string;
@@ -849,10 +808,31 @@ export interface Translations {
   };
   settings: {
     title: string;
-    sync: string;
     ai: string;
     pwa: string;
     about: string;
+  };
+  errorLogs: {
+    tab: string;
+    title: string;
+    autoRefresh: string;
+    refresh: string;
+    clear: string;
+    confirmClear: string;
+    statistics: string;
+    statusDistribution: string;
+    topPaths: string;
+    filtering: string;
+    loading: string;
+    noLogs: string;
+    noLogsHint: string;
+    pageInfo: string;
+    prevPage: string;
+    nextPage: string;
+    export: string;
+    exportJSON: string;
+    exportCSV: string;
+    exporting: string;
   };
   siteSettings: {
     tab: string;
@@ -882,6 +862,11 @@ export interface Translations {
     clearThumbnails: string;
     clearSearch: string;
     cacheDesc: string;
+    cleanupInvalid: string;
+    cleanupInvalidDesc: string;
+    cleanupInvalidBtn: string;
+    cleanupRunning: string;
+    cleanupDone: string;
     batchMetadata: string;
     batchMetadataDesc: string;
     batchMissing: string;
@@ -911,32 +896,16 @@ export interface Translations {
     cloudAI: string;
     perceptualHash: string;
     perceptualHashDesc: string;
-    semanticSearch: string;
-    semanticSearchDesc: string;
-    autoTag: string;
-    autoTagDesc: string;
-    confidence: string;
     provider: string;
     compatible: string;
     model: string;
-    coverAnalysis: string;
-    metadataCompletion: string;
     testConnection: string;
     testing: string;
     connectionSuccess: string;
     connectionFailed: string;
     saving: string;
     saveSettings: string;
-    analyzing: string;
-    analyzeComplete: string;
-    analyzeFailed: string;
-    aiAnalyze: string;
-    aiComplete: string;
     similarCover: string;
-    semanticSearchPlaceholder: string;
-    searchResults: string;
-    noAIResults: string;
-    relevance: string;
     internationalProviders: string;
     chinaProviders: string;
     customProvider: string;
@@ -1025,15 +994,8 @@ export interface Translations {
     chapterUnit: string;
     pageUnit: string;
   };
-  shelf: {
-    create: string;
-    namePlaceholder: string;
-    confirmDeleteShelf: string;
-    moveTo: string;
-    title: string;
-  };
   mobileNav: {
-    shelf: string;
+    library: string;
     stats: string;
     explore: string;
   };

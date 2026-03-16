@@ -264,3 +264,23 @@ export async function updateComicMetadata(
     return false;
   }
 }
+
+/**
+ * 设置漫画/小说的阅读状态
+ * @param status - "want" | "reading" | "finished" | "shelved" | "" (清除状态)
+ */
+export async function setReadingStatus(
+  comicId: string,
+  status: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/comics/${comicId}/reading-status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

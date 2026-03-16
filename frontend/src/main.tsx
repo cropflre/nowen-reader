@@ -22,6 +22,7 @@ import NovelReader from "@/app/novel/[id]/page";
 import EHentai from "@/app/ehentai/page";
 import Recommendations from "@/app/recommendations/page";
 import Stats from "@/app/stats/page";
+import Logs from "@/app/logs/page";
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
                     <Route path="/ehentai" element={<EHentai />} />
                     <Route path="/recommendations" element={<Recommendations />} />
                     <Route path="/stats" element={<Stats />} />
+                    <Route path="/logs" element={<Logs />} />
                   </Routes>
                 </AuthGuard>
                 <MobileBottomNav />

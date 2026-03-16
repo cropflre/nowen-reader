@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -187,7 +188,9 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 func (h *AuthHandler) Me(c *gin.Context) {
 	hasUsers, err := store.CountUsers()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"user": nil, "needsSetup": false})
+		// 数据库出错时返回500，避免前端误以为未登录而跳转到登录页
+		log.Printf("[Auth] CountUsers error in /api/auth/me: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
