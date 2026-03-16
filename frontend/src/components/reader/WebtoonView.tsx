@@ -30,7 +30,7 @@ export default function WebtoonView({
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const isScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout>(undefined);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const t = useTranslation();
 
   // Track which pages are "in range" to render

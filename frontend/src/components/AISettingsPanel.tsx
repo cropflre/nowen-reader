@@ -98,6 +98,7 @@ export function AISettingsPanel() {
   const [fetchedModels, setFetchedModels] = useState<{ id: string; name?: string }[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [modelMode, setModelMode] = useState<"preset" | "fetch" | "manual">("preset");
 
   const aiT = t.ai || {} as Record<string, string>;
 

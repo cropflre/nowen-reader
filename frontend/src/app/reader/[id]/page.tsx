@@ -75,7 +75,7 @@ export default function ReaderPage() {
   }, [globalTheme]);
 
   // Debounced progress save ref
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reading session tracking
   const sessionIdRef = useRef<number | null>(null);

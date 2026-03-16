@@ -66,7 +66,7 @@ function methodColor(method: string): string {
 export default function LogsPage() {
   const router = useRouter();
   const t = useTranslation();
-  const logT = (t as Record<string, Record<string, string>>).errorLogs || {};
+  const logT = (t as unknown as Record<string, Record<string, string>>).errorLogs || {};
 
   const [logs, setLogs] = useState<ErrorLogEntry[]>([]);
   const [stats, setStats] = useState<LogStats | null>(null);

@@ -83,7 +83,7 @@ export default function Navbar({
           <Link
             href="/logs"
             className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
-            title={(t as Record<string, Record<string, string>>).errorLogs?.title || "错误日志"}
+            title={(t as unknown as Record<string, Record<string, string>>).errorLogs?.title || "错误日志"}
           >
             <AlertTriangle className="h-4 w-4" />
           </Link>
