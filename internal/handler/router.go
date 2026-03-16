@@ -159,6 +159,16 @@ func SetupRoutes(r *gin.Engine) {
 	}
 
 	// ============================================================
+	// Directory Browser (文件夹浏览) — requires auth
+	// ============================================================
+	browse := NewBrowseHandler()
+	browseGroup := api.Group("")
+	browseGroup.Use(middleware.AuthRequired())
+	{
+		browseGroup.GET("/browse-dirs", browse.BrowseDirs)
+	}
+
+	// ============================================================
 	// Sync trigger (Phase 2) — requires auth
 	// ============================================================
 	syncTrigger := api.Group("")

@@ -314,6 +314,13 @@ const zhCN = {
     extraDirs: "额外漫画目录（Docker / NAS）",
     extraDirsDesc: "挂载多个目录用于 Docker 或 NAS，所有目录都会被扫描",
     extraDirPlaceholder: "/mnt/nas/comics 或 /data/manga",
+    browseDir: "浏览目录",
+    selectDir: "选择此目录",
+    parentDir: "上级目录",
+    emptyDir: "此目录下没有子目录",
+    browseDirTitle: "选择文件夹",
+    currentPath: "当前路径",
+    browseError: "无法读取目录",
     thumbnailSize: "缩略图尺寸",
     width: "宽度",
     height: "高度",
@@ -808,6 +815,13 @@ export interface Translations {
     extraDirs: string;
     extraDirsDesc: string;
     extraDirPlaceholder: string;
+    browseDir: string;
+    selectDir: string;
+    parentDir: string;
+    emptyDir: string;
+    browseDirTitle: string;
+    currentPath: string;
+    browseError: string;
     thumbnailSize: string;
     width: string;
     height: string;

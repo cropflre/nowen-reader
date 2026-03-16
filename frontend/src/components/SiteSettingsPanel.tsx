@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Globe, Save, FolderOpen, Image, Languages,
   CheckCircle, Trash2, RefreshCw, Plus, X, Search, Sparkles,
-  ImagePlus, AlertCircle,
+  ImagePlus, AlertCircle, ChevronRight, ChevronUp, Folder,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
@@ -40,6 +40,160 @@ interface BatchProgress {
   reason?: string;
 }
 
+interface BrowseDirResponse {
+  current: string;
+  parent: string;
+  dirs: { name: string; path: string }[];
+}
+
+// 文件夹浏览器弹窗组件
+function FolderBrowser({
+  open,
+  onClose,
+  onSelect,
+  siteT,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (path: string) => void;
+  siteT: any;
+}) {
+  const [currentPath, setCurrentPath] = useState("/");
+  const [dirs, setDirs] = useState<{ name: string; path: string }[]>([]);
+  const [parentPath, setParentPath] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const browseTo = useCallback(async (path: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/browse-dirs?path=${encodeURIComponent(path)}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || siteT?.browseError || "Cannot read directory");
+        return;
+      }
+      const data: BrowseDirResponse = await res.json();
+      setCurrentPath(data.current);
+      setParentPath(data.parent);
+      setDirs(data.dirs || []);
+    } catch {
+      setError(siteT?.browseError || "Cannot read directory");
+    } finally {
+      setLoading(false);
+    }
+  }, [siteT]);
+
+  useEffect(() => {
+    if (open) {
+      browseTo("/");
+    }
+  }, [open, browseTo]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative w-full max-w-md mx-4 max-h-[70vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 标题栏 */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="h-4 w-4 text-accent" />
+            <span className="text-sm font-medium text-foreground">
+              {siteT?.browseDirTitle || "Select Folder"}
+            </span>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted hover:text-foreground hover:bg-background transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* 当前路径 */}
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2 bg-background/50">
+          <span className="text-[11px] text-muted shrink-0">{siteT?.currentPath || "Current path"}:</span>
+          <span className="text-xs font-mono text-foreground truncate flex-1" title={currentPath}>{currentPath}</span>
+        </div>
+
+        {/* 目录列表 */}
+        <div className="flex-1 overflow-y-auto min-h-0 max-h-[40vh]">
+          {loading ? (
+            <div className="flex items-center justify-center py-8 text-xs text-muted">
+              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              Loading...
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-8 text-xs text-red-400">
+              <AlertCircle className="h-4 w-4 mr-2" />
+              {error}
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {/* 上级目录 */}
+              {parentPath && (
+                <button
+                  onClick={() => browseTo(parentPath)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-accent hover:bg-accent/5 transition-colors"
+                >
+                  <ChevronUp className="h-4 w-4 shrink-0" />
+                  <span className="font-medium">{siteT?.parentDir || "Parent directory"} ..</span>
+                </button>
+              )}
+
+              {/* 子目录列表 */}
+              {dirs.length === 0 && !parentPath ? (
+                <div className="py-8 text-center text-xs text-muted">
+                  {siteT?.emptyDir || "No subdirectories found"}
+                </div>
+              ) : dirs.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted">
+                  {siteT?.emptyDir || "No subdirectories found"}
+                </div>
+              ) : (
+                dirs.map((dir) => (
+                  <button
+                    key={dir.path}
+                    onClick={() => browseTo(dir.path)}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-foreground hover:bg-accent/5 transition-colors group"
+                  >
+                    <Folder className="h-4 w-4 shrink-0 text-accent/70" />
+                    <span className="flex-1 truncate">{dir.name}</span>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 底部操作按钮 */}
+        <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-background"
+          >
+            {/* Cancel */}
+            取消
+          </button>
+          <button
+            onClick={() => {
+              onSelect(currentPath);
+              onClose();
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-accent/90"
+          >
+            <CheckCircle className="h-3.5 w-3.5" />
+            {siteT?.selectDir || "Select this directory"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SiteSettingsPanel() {
   const t = useTranslation();
   const [config, setConfig] = useState<SiteConfig | null>(null);
@@ -71,6 +225,10 @@ export function SiteSettingsPanel() {
 
   // New dir input
   const [newDir, setNewDir] = useState("");
+
+  // Folder browser states
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseTarget, setBrowseTarget] = useState<"primary" | "extra">("extra");
 
   // Cleanup invalid comics states
   const [cleaningUp, setCleaningUp] = useState(false);
@@ -344,6 +502,13 @@ export function SiteSettingsPanel() {
               {siteT?.primaryDir || "Primary"}
             </span>
           </div>
+          <button
+            onClick={() => { setBrowseTarget("primary"); setBrowseOpen(true); }}
+            className="shrink-0 rounded-lg bg-accent/15 p-1.5 text-accent hover:bg-accent/25 transition-colors"
+            title={siteT?.browseDir || "Browse"}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Extra dirs */}
@@ -372,6 +537,13 @@ export function SiteSettingsPanel() {
             placeholder={siteT?.extraDirPlaceholder || "/mnt/nas/comics or /data/manga"}
           />
           <button
+            onClick={() => { setBrowseTarget("extra"); setBrowseOpen(true); }}
+            className="shrink-0 rounded-lg bg-accent/15 p-1.5 text-accent hover:bg-accent/25 transition-colors"
+            title={siteT?.browseDir || "Browse"}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </button>
+          <button
             onClick={addExtraDir}
             disabled={!newDir.trim()}
             className="shrink-0 rounded-lg bg-accent/15 p-1.5 text-accent hover:bg-accent/25 transition-colors disabled:opacity-30"
@@ -380,6 +552,22 @@ export function SiteSettingsPanel() {
           </button>
         </div>
       </div>
+
+      {/* Folder Browser Modal */}
+      <FolderBrowser
+        open={browseOpen}
+        onClose={() => setBrowseOpen(false)}
+        onSelect={(path) => {
+          if (browseTarget === "primary") {
+            update("comicsDir", path);
+          } else {
+            if (!config.extraComicsDirs.includes(path)) {
+              update("extraComicsDirs", [...config.extraComicsDirs, path]);
+            }
+          }
+        }}
+        siteT={siteT}
+      />
 
       {/* Thumbnail Size */}
       <div className="space-y-3 rounded-xl bg-background p-4">
