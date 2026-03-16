@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,14 +64,10 @@ func GetRecommendations(limit int, excludeRead bool, contentType string) ([]Scor
 		})
 	}
 
-	// Sort by score desc
-	for i := 0; i < len(scored); i++ {
-		for j := i + 1; j < len(scored); j++ {
-			if scored[j].Score > scored[i].Score {
-				scored[i], scored[j] = scored[j], scored[i]
-			}
-		}
-	}
+	// 使用 sort.Slice 替代冒泡排序，O(n²) → O(n log n)
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
 
 	if limit > 0 && len(scored) > limit {
 		scored = scored[:limit]
@@ -204,14 +201,10 @@ func GetSimilarComics(comicID string, limit int) ([]ScoredComic, error) {
 		}
 	}
 
-	// Sort
-	for i := 0; i < len(scored); i++ {
-		for j := i + 1; j < len(scored); j++ {
-			if scored[j].Score > scored[i].Score {
-				scored[i], scored[j] = scored[j], scored[i]
-			}
-		}
-	}
+	// 使用 sort.Slice 替代冒泡排序，O(n²) → O(n log n)
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
 
 	if limit > 0 && len(scored) > limit {
 		scored = scored[:limit]

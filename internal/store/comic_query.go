@@ -288,75 +288,90 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	}, nil
 }
 
-// loadComicTags 批量加载一组漫画的标签。
+// batchSize 是 IN 查询的最大参数数量，避免超出 SQLite SQLITE_MAX_VARIABLE_NUMBER 限制。
+const batchSize = 500
+
+// loadComicTags 批量加载一组漫画的标签（自动分批，避免 IN 参数超限）。
 func loadComicTags(comics []ComicListItem, ids []string, idx map[string]int) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	query := fmt.Sprintf(`
-		SELECT ct."comicId", t."name", t."color"
-		FROM "ComicTag" ct
-		JOIN "Tag" t ON ct."tagId" = t."id"
-		WHERE ct."comicId" IN (%s)
-	`, strings.Join(placeholders, ","))
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var comicID, name, color string
-		if err := rows.Scan(&comicID, &name, &color); err != nil {
-			continue
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
 		}
-		if i, ok := idx[comicID]; ok {
-			comics[i].Tags = append(comics[i].Tags, ComicTagInfo{Name: name, Color: color})
+		batch := ids[start:end]
+		placeholders := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for i, id := range batch {
+			placeholders[i] = "?"
+			args[i] = id
 		}
+		query := fmt.Sprintf(`
+			SELECT ct."comicId", t."name", t."color"
+			FROM "ComicTag" ct
+			JOIN "Tag" t ON ct."tagId" = t."id"
+			WHERE ct."comicId" IN (%s)
+		`, strings.Join(placeholders, ","))
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var comicID, name, color string
+			if err := rows.Scan(&comicID, &name, &color); err != nil {
+				continue
+			}
+			if i, ok := idx[comicID]; ok {
+				comics[i].Tags = append(comics[i].Tags, ComicTagInfo{Name: name, Color: color})
+			}
+		}
+		rows.Close()
 	}
 	return nil
 }
 
-// loadComicCategories 批量加载一组漫画的分类。
+// loadComicCategories 批量加载一组漫画的分类（自动分批）。
 func loadComicCategories(comics []ComicListItem, ids []string, idx map[string]int) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	query := fmt.Sprintf(`
-		SELECT cc."comicId", cat."id", cat."name", cat."slug", cat."icon"
-		FROM "ComicCategory" cc
-		JOIN "Category" cat ON cc."categoryId" = cat."id"
-		WHERE cc."comicId" IN (%s)
-	`, strings.Join(placeholders, ","))
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var comicID string
-		var ci ComicCategoryInfo
-		if err := rows.Scan(&comicID, &ci.ID, &ci.Name, &ci.Slug, &ci.Icon); err != nil {
-			continue
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
 		}
-		if i, ok := idx[comicID]; ok {
-			comics[i].Categories = append(comics[i].Categories, ci)
+		batch := ids[start:end]
+		placeholders := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for i, id := range batch {
+			placeholders[i] = "?"
+			args[i] = id
 		}
+		query := fmt.Sprintf(`
+			SELECT cc."comicId", cat."id", cat."name", cat."slug", cat."icon"
+			FROM "ComicCategory" cc
+			JOIN "Category" cat ON cc."categoryId" = cat."id"
+			WHERE cc."comicId" IN (%s)
+		`, strings.Join(placeholders, ","))
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var comicID string
+			var ci ComicCategoryInfo
+			if err := rows.Scan(&comicID, &ci.ID, &ci.Name, &ci.Slug, &ci.Icon); err != nil {
+				continue
+			}
+			if i, ok := idx[comicID]; ok {
+				comics[i].Categories = append(comics[i].Categories, ci)
+			}
+		}
+		rows.Close()
 	}
 	return nil
 }
@@ -475,7 +490,7 @@ type RecommendationComic struct {
 	Categories    []ComicCategoryInfo
 }
 
-// GetAllComicsForRecommendation 返回所有漫画的推荐所需数据。
+// GetAllComicsForRecommendation 返回所有漫画的推荐所需数据（分批加载标签/分类，避免 IN 参数超限）。
 func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 	rows, err := db.Query(`
 		SELECT "id", "title", "author", "genre", "seriesName",
@@ -519,7 +534,7 @@ func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 		return comics, nil
 	}
 
-	// Batch load tags
+	// 构建 ID 索引
 	ids := make([]string, len(comics))
 	idx := make(map[string]int, len(comics))
 	for i, c := range comics {
@@ -527,47 +542,68 @@ func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 		idx[c.ID] = i
 	}
 
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	tagQuery := fmt.Sprintf(`
-		SELECT ct."comicId", t."name", t."color"
-		FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id"
-		WHERE ct."comicId" IN (%s)
-	`, strings.Join(placeholders, ","))
-	tagRows, err := db.Query(tagQuery, args...)
-	if err == nil {
-		defer tagRows.Close()
-		for tagRows.Next() {
-			var comicID, name, color string
-			if tagRows.Scan(&comicID, &name, &color) == nil {
-				if i, ok := idx[comicID]; ok {
-					comics[i].Tags = append(comics[i].Tags, ComicTagInfo{Name: name, Color: color})
+	// 分批加载标签
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		ph := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for i, id := range batch {
+			ph[i] = "?"
+			args[i] = id
+		}
+		tagQuery := fmt.Sprintf(`
+			SELECT ct."comicId", t."name", t."color"
+			FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id"
+			WHERE ct."comicId" IN (%s)
+		`, strings.Join(ph, ","))
+		tagRows, err := db.Query(tagQuery, args...)
+		if err == nil {
+			for tagRows.Next() {
+				var comicID, name, color string
+				if tagRows.Scan(&comicID, &name, &color) == nil {
+					if i, ok := idx[comicID]; ok {
+						comics[i].Tags = append(comics[i].Tags, ComicTagInfo{Name: name, Color: color})
+					}
 				}
 			}
+			tagRows.Close()
 		}
 	}
 
-	// Batch load categories
-	catQuery := fmt.Sprintf(`
-		SELECT cc."comicId", cat."id", cat."name", cat."slug", cat."icon"
-		FROM "ComicCategory" cc JOIN "Category" cat ON cc."categoryId" = cat."id"
-		WHERE cc."comicId" IN (%s)
-	`, strings.Join(placeholders, ","))
-	catRows, err := db.Query(catQuery, args...)
-	if err == nil {
-		defer catRows.Close()
-		for catRows.Next() {
-			var comicID string
-			var ci ComicCategoryInfo
-			if catRows.Scan(&comicID, &ci.ID, &ci.Name, &ci.Slug, &ci.Icon) == nil {
-				if i, ok := idx[comicID]; ok {
-					comics[i].Categories = append(comics[i].Categories, ci)
+	// 分批加载分类
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		ph := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for i, id := range batch {
+			ph[i] = "?"
+			args[i] = id
+		}
+		catQuery := fmt.Sprintf(`
+			SELECT cc."comicId", cat."id", cat."name", cat."slug", cat."icon"
+			FROM "ComicCategory" cc JOIN "Category" cat ON cc."categoryId" = cat."id"
+			WHERE cc."comicId" IN (%s)
+		`, strings.Join(ph, ","))
+		catRows, err := db.Query(catQuery, args...)
+		if err == nil {
+			for catRows.Next() {
+				var comicID string
+				var ci ComicCategoryInfo
+				if catRows.Scan(&comicID, &ci.ID, &ci.Name, &ci.Slug, &ci.Icon) == nil {
+					if i, ok := idx[comicID]; ok {
+						comics[i].Categories = append(comics[i].Categories, ci)
+					}
 				}
 			}
+			catRows.Close()
 		}
 	}
 
@@ -595,8 +631,8 @@ type OPDSComicRow struct {
 	Filename    string
 }
 
-// GetOPDSComics 返回适用于 OPDS feed 生成的漫画数据。
-func GetOPDSComics(where string, args []interface{}, orderBy string, limit int) ([]OPDSComicRow, error) {
+// GetOPDSComics 返回适用于 OPDS feed 生成的漫画数据。支持分页参数。
+func GetOPDSComics(where string, args []interface{}, orderBy string, limit int, offset ...int) ([]OPDSComicRow, error) {
 	query := fmt.Sprintf(`
 		SELECT c."id", c."title", c."author", c."description", c."language",
 		       c."genre", c."publisher", c."year", c."pageCount",
@@ -605,6 +641,9 @@ func GetOPDSComics(where string, args []interface{}, orderBy string, limit int) 
 	`, where, orderBy)
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
+		if len(offset) > 0 && offset[0] > 0 {
+			query += fmt.Sprintf(" OFFSET %d", offset[0])
+		}
 	}
 
 	rows, err := db.Query(query, args...)
@@ -635,7 +674,7 @@ func GetOPDSComics(where string, args []interface{}, orderBy string, limit int) 
 		comics = append(comics, c)
 	}
 
-	// Load tags
+	// 分批加载标签（避免 IN 参数超限）
 	if len(comics) > 0 {
 		ids := make([]string, len(comics))
 		idx := make(map[string]int, len(comics))
@@ -643,27 +682,34 @@ func GetOPDSComics(where string, args []interface{}, orderBy string, limit int) 
 			ids[i] = c.ID
 			idx[c.ID] = i
 		}
-		ph := make([]string, len(ids))
-		targs := make([]interface{}, len(ids))
-		for i, id := range ids {
-			ph[i] = "?"
-			targs[i] = id
-		}
-		tagQuery := fmt.Sprintf(`
-			SELECT ct."comicId", t."name"
-			FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id"
-			WHERE ct."comicId" IN (%s)
-		`, strings.Join(ph, ","))
-		tagRows, err := db.Query(tagQuery, targs...)
-		if err == nil {
-			defer tagRows.Close()
-			for tagRows.Next() {
-				var comicID, name string
-				if tagRows.Scan(&comicID, &name) == nil {
-					if i, ok := idx[comicID]; ok {
-						comics[i].Tags = append(comics[i].Tags, name)
+		for start := 0; start < len(ids); start += batchSize {
+			end := start + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			batch := ids[start:end]
+			ph := make([]string, len(batch))
+			targs := make([]interface{}, len(batch))
+			for i, id := range batch {
+				ph[i] = "?"
+				targs[i] = id
+			}
+			tagQuery := fmt.Sprintf(`
+				SELECT ct."comicId", t."name"
+				FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id"
+				WHERE ct."comicId" IN (%s)
+			`, strings.Join(ph, ","))
+			tagRows, err := db.Query(tagQuery, targs...)
+			if err == nil {
+				for tagRows.Next() {
+					var comicID, name string
+					if tagRows.Scan(&comicID, &name) == nil {
+						if i, ok := idx[comicID]; ok {
+							comics[i].Tags = append(comics[i].Tags, name)
+						}
 					}
 				}
+				tagRows.Close()
 			}
 		}
 	}
@@ -723,42 +769,48 @@ func GetAllComicsForSync() ([]SyncComic, error) {
 		return comics, nil
 	}
 
-	// Load tags
+	// 分批加载标签（避免 IN 参数超限）
 	ids := make([]string, len(comics))
 	idx := make(map[string]int, len(comics))
 	for i, c := range comics {
 		ids[i] = c.ID
 		idx[c.ID] = i
 	}
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	tagQuery := fmt.Sprintf(`
-		SELECT ct."comicId", t."name"
-		FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id"
-		WHERE ct."comicId" IN (%s)
-	`, strings.Join(placeholders, ","))
-	tagRows, err := db.Query(tagQuery, args...)
-	if err == nil {
-		defer tagRows.Close()
-		for tagRows.Next() {
-			var comicID, name string
-			if tagRows.Scan(&comicID, &name) == nil {
-				if i, ok := idx[comicID]; ok {
-					comics[i].Tags = append(comics[i].Tags, name)
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		ph := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for i, id := range batch {
+			ph[i] = "?"
+			args[i] = id
+		}
+		tagQuery := fmt.Sprintf(`
+			SELECT ct."comicId", t."name"
+			FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id"
+			WHERE ct."comicId" IN (%s)
+		`, strings.Join(ph, ","))
+		tagRows, err := db.Query(tagQuery, args...)
+		if err == nil {
+			for tagRows.Next() {
+				var comicID, name string
+				if tagRows.Scan(&comicID, &name) == nil {
+					if i, ok := idx[comicID]; ok {
+						comics[i].Tags = append(comics[i].Tags, name)
+					}
 				}
 			}
+			tagRows.Close()
 		}
 	}
 
 	return comics, nil
 }
 
-// GetSyncComic 返回单个漫画的同步数据。
-func GetSyncComic(comicID string) (*SyncComic, error) {
+// GetSyncComicfunc GetSyncComic(comicID string) (*SyncComic, error) {
 	var c SyncComic
 	var lastReadAt sql.NullTime
 	var rating sql.NullInt64

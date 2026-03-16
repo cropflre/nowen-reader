@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -34,10 +35,34 @@ func (h *OPDSHandler) Root(c *gin.Context) {
 	c.Data(200, opdsMIMEType, []byte(xml))
 }
 
-// GET /api/opds/all
+// opdsDefaultPageSize 是 OPDS 分页的默认每页数量，避免万级数据一次性返回。
+const opdsDefaultPageSize = 100
+
+// parseOPDSPagination 从查询参数中解析 OPDS 分页参数。
+func parseOPDSPagination(c *gin.Context) (limit, offset int) {
+	limit = opdsDefaultPageSize
+	offset = 0
+	if ps := c.Query("pageSize"); ps != "" {
+		if n, err := strconv.Atoi(ps); err == nil && n > 0 {
+			limit = n
+			if limit > 500 {
+				limit = 500 // 上限保护
+			}
+		}
+	}
+	if p := c.Query("page"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 1 {
+			offset = (n - 1) * limit
+		}
+	}
+	return
+}
+
+// GET /api/opds/all —— 支持分页（?page=1&pageSize=100）
 func (h *OPDSHandler) All(c *gin.Context) {
 	baseURL := getBaseURL(c)
-	comics, err := store.GetOPDSComics("", nil, `ORDER BY c."title" ASC`, 0)
+	limit, offset := parseOPDSPagination(c)
+	comics, err := store.GetOPDSComics("", nil, `ORDER BY c."title" ASC`, limit, offset)
 	if err != nil {
 		c.Data(500, "text/plain", []byte("Failed to get comics"))
 		return
@@ -62,10 +87,11 @@ func (h *OPDSHandler) Recent(c *gin.Context) {
 	c.Data(200, opdsMIMEType, []byte(xml))
 }
 
-// GET /api/opds/favorites
+// GET /api/opds/favorites —— 支持分页
 func (h *OPDSHandler) Favorites(c *gin.Context) {
 	baseURL := getBaseURL(c)
-	comics, err := store.GetOPDSComics(`WHERE c."isFavorite" = 1`, nil, `ORDER BY c."title" ASC`, 0)
+	limit, offset := parseOPDSPagination(c)
+	comics, err := store.GetOPDSComics(`WHERE c."isFavorite" = 1`, nil, `ORDER BY c."title" ASC`, limit, offset)
 	if err != nil {
 		c.Data(500, "text/plain", []byte("Failed to get comics"))
 		return
@@ -76,7 +102,7 @@ func (h *OPDSHandler) Favorites(c *gin.Context) {
 	c.Data(200, opdsMIMEType, []byte(xml))
 }
 
-// GET /api/opds/search?q=...
+// GET /api/opds/search?q=... —— 支持分页
 func (h *OPDSHandler) Search(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
@@ -89,7 +115,8 @@ func (h *OPDSHandler) Search(c *gin.Context) {
 	where := `WHERE (c."title" LIKE ? OR c."author" LIKE ? OR c."seriesName" LIKE ?)`
 	args := []interface{}{searchPattern, searchPattern, searchPattern}
 
-	comics, err := store.GetOPDSComics(where, args, `ORDER BY c."title" ASC`, 0)
+	limit, offset := parseOPDSPagination(c)
+	comics, err := store.GetOPDSComics(where, args, `ORDER BY c."title" ASC`, limit, offset)
 	if err != nil {
 		c.Data(500, "text/plain", []byte("Failed to search"))
 		return
