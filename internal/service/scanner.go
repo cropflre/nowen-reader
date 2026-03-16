@@ -184,36 +184,86 @@ func quickSync() (added, removed int) {
 		filesOnDisk = append(filesOnDisk, files...)
 	}
 
-	// Get existing IDs from DB
-	dbIDs, err := store.GetAllComicIDs()
-	if err != nil {
-		log.Printf("[quick-sync] Failed to get DB IDs: %v", err)
+	if len(filesOnDisk) == 0 {
 		return 0, 0
 	}
-	dbSet := make(map[string]bool, len(dbIDs))
-	for _, id := range dbIDs {
-		dbSet[id] = true
+
+	// ============================================================
+	// 使用 SQLite 临时表做差异对比（替代内存中两个 map 对比）
+	// 优势：万级记录时避免在 Go 中构建两个大 map（省约 20MB 内存）
+	// ============================================================
+	tx, err := store.DB().Begin()
+	if err != nil {
+		log.Printf("[quick-sync] Failed to begin transaction: %v", err)
+		return 0, 0
+	}
+	defer tx.Rollback()
+
+	// 创建临时表（仅在本连接/事务中存在）
+	if _, err := tx.Exec(`CREATE TEMP TABLE IF NOT EXISTS "_DiskFiles" ("id" TEXT PRIMARY KEY, "filename" TEXT, "title" TEXT, "fileSize" INTEGER)`); err != nil {
+		log.Printf("[quick-sync] Failed to create temp table: %v", err)
+		return 0, 0
+	}
+	// 清空临时表（防止上次残留）
+	tx.Exec(`DELETE FROM "_DiskFiles"`)
+
+	// 批量插入磁盘文件到临时表
+	insertStmt, err := tx.Prepare(`INSERT OR IGNORE INTO "_DiskFiles" ("id", "filename", "title", "fileSize") VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		log.Printf("[quick-sync] Failed to prepare insert: %v", err)
+		return 0, 0
+	}
+	defer insertStmt.Close()
+
+	for _, f := range filesOnDisk {
+		if _, err := insertStmt.Exec(f.ID, f.Filename, f.Title, f.FileSize); err != nil {
+			log.Printf("[quick-sync] Failed to insert temp file: %v", err)
+		}
 	}
 
-	// Find new comics
-	fileSet := make(map[string]bool, len(filesOnDisk))
+	// SQL JOIN: 找出磁盘有但数据库没有的文件（新增）
+	rows, err := tx.Query(`SELECT d."id", d."filename", d."title", d."fileSize" FROM "_DiskFiles" d LEFT JOIN "Comic" c ON d."id" = c."id" WHERE c."id" IS NULL`)
+	if err != nil {
+		log.Printf("[quick-sync] Failed to query new comics: %v", err)
+		return 0, 0
+	}
 	var toAdd []struct {
 		ID       string
 		Filename string
 		Title    string
 		FileSize int64
 	}
-	for _, f := range filesOnDisk {
-		fileSet[f.ID] = true
-		if !dbSet[f.ID] {
-			toAdd = append(toAdd, struct {
-				ID       string
-				Filename string
-				Title    string
-				FileSize int64
-			}{f.ID, f.Filename, f.Title, f.FileSize})
+	for rows.Next() {
+		var item struct {
+			ID       string
+			Filename string
+			Title    string
+			FileSize int64
+		}
+		if rows.Scan(&item.ID, &item.Filename, &item.Title, &item.FileSize) == nil {
+			toAdd = append(toAdd, item)
 		}
 	}
+	rows.Close()
+
+	// SQL JOIN: 找出数据库有但磁盘没有的文件（过期待删除）
+	rows2, err := tx.Query(`SELECT c."id" FROM "Comic" c LEFT JOIN "_DiskFiles" d ON c."id" = d."id" WHERE d."id" IS NULL`)
+	if err != nil {
+		log.Printf("[quick-sync] Failed to query stale comics: %v", err)
+		return 0, 0
+	}
+	var toRemove []string
+	for rows2.Next() {
+		var id string
+		if rows2.Scan(&id) == nil {
+			toRemove = append(toRemove, id)
+		}
+	}
+	rows2.Close()
+
+	// 清理临时表并提交事务
+	tx.Exec(`DROP TABLE IF EXISTS "_DiskFiles"`)
+	tx.Commit()
 
 	// Batch insert new comics
 	if len(toAdd) > 0 {
@@ -225,14 +275,6 @@ func quickSync() (added, removed int) {
 			if err := store.BulkCreateComics(toAdd[i:end]); err != nil {
 				log.Printf("[quick-sync] Failed to bulk create: %v", err)
 			}
-		}
-	}
-
-	// Find stale comics to remove
-	var toRemove []string
-	for _, id := range dbIDs {
-		if !fileSet[id] {
-			toRemove = append(toRemove, id)
 		}
 	}
 

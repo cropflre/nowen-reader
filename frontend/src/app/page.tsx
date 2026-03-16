@@ -133,9 +133,9 @@ export default function Home() {
     return apiComics.map(apiToComic);
   }, [apiComics]);
 
-  // Extract all unique tags — fetch from API for complete global tags
+  // Extract all unique tags — fetch from API once on mount (not on every apiComics change)
   const [allTags, setAllTags] = useState<string[]>([]);
-  useEffect(() => {
+  const fetchTags = useCallback(() => {
     fetch("/api/tags")
       .then((r) => r.json())
       .then((data) => {
@@ -145,7 +145,10 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, [apiComics]);
+  }, []);
+  useEffect(() => {
+    fetchTags();
+  }, [fetchTags]);
 
   // Filter comics (server-side filtering is primary)
   const filteredComics = useMemo(() => {
@@ -561,15 +564,7 @@ export default function Home() {
                 onTagsTranslated={() => {
                   refetch();
                   // Refresh global tags after translation
-                  fetch("/api/tags")
-                    .then((r) => r.json())
-                    .then((data) => {
-                      const tags = Array.isArray(data) ? data : data.tags;
-                      if (Array.isArray(tags)) {
-                        setAllTags(tags.map((t: { name: string }) => t.name).sort());
-                      }
-                    })
-                    .catch(() => {});
+                  fetchTags();
                 }}
               />
             </div>

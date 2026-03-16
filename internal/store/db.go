@@ -33,8 +33,8 @@ func InitDB(dbPath string) error {
 	}
 
 	// Connection pool settings for SQLite (WAL mode supports concurrent reads)
-	db.SetMaxOpenConns(4) // 允许并发读操作
-	db.SetMaxIdleConns(2)
+	db.SetMaxOpenConns(8) // 万级数据量下允许更多并发读操作
+	db.SetMaxIdleConns(4)
 
 	// Verify connection
 	if err := db.Ping(); err != nil {
