@@ -5,7 +5,7 @@
 #   docker compose up -d
 #
 # 然后打开浏览器访问: http://localhost:6680
-# 默认端口映射: 宿主机6680 -> 容器3008
+# 默认端口映射: 宿主机6680 -> 容器3000
 # ============================================================
 
 services:
@@ -17,7 +17,7 @@ services:
     container_name: nowen-reader
     restart: unless-stopped
     ports:
-      - "6680:3008"
+      - "6680:3000"
     privileged: true
     volumes:
       # 数据库持久化（不要删除，否则丢失所有数据）
@@ -36,5 +36,5 @@ services:
       - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
       - DATA_DIR=/app/.cache
-      - PORT=3008
+      - PORT=3000
       - TZ=Asia/Shanghai

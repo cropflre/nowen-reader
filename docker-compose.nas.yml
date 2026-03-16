@@ -15,7 +15,7 @@ services:
     container_name: nowen-reader
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "6680:3000"
     volumes:
       # 数据库和配置（持久化，不要删除）
       - /volume1/docker/nowen-reader/data:/data
