@@ -276,7 +276,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
                                     : "border-muted/40"
                                 }`}
                               >
-                                {isKept && <Shield className="h-3 w-3 text-white" />}
+                {isKept && <FileCheck className="h-3 w-3 text-white" />}
                               </div>
                             </div>
 
