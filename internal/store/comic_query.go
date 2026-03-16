@@ -842,7 +842,8 @@ func GetAllComicsForSync() ([]SyncComic, error) {
 	return comics, nil
 }
 
-// GetSyncComicfunc GetSyncComic(comicID string) (*SyncComic, error) {
+// GetSyncComic 获取同步漫画信息。
+func GetSyncComic(comicID string) (*SyncComic, error) {
 	var c SyncComic
 	var lastReadAt sql.NullTime
 	var rating sql.NullInt64

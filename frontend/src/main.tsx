@@ -8,7 +8,8 @@ import { I18nProvider } from "@/lib/i18n";
 import { AuthProvider } from "@/lib/auth-context";
 import { AuthGuard } from "@/components/AuthGuard";
 import { PWARegister } from "@/app/pwa-register";
-import { PWAInstallBanner } from "@/components/PWAInstall";
+
+
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/Toast";
 import MobileBottomNav from "@/components/MobileBottomNav";
@@ -45,7 +46,6 @@ function App() {
                   </Routes>
                 </AuthGuard>
                 <MobileBottomNav />
-                <PWAInstallBanner />
               </ToastProvider>
             </AuthProvider>
           </I18nProvider>

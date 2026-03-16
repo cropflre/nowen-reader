@@ -250,24 +250,6 @@ const zhCN = {
     seriesIndex: "卷号",
   },
 
-  // PWA
-  pwa: {
-    installTitle: "安装 NowenReader",
-    installDesc: "添加到主屏幕获得更好体验",
-    install: "安装",
-    updateAvailable: "有新版本可用",
-    updateDesc: "新版本已准备就绪",
-    update: "更新",
-    appSettings: "应用设置",
-    installStatus: "安装状态",
-    installed: "已安装",
-    notInstalled: "未安装",
-    offlineSupport: "离线支持",
-    enabled: "已启用",
-    clearCache: "清除离线缓存",
-    cacheCleared: "缓存已清除",
-  },
-
   // Recommendations
   recommend: {
     title: "为你推荐",
@@ -292,7 +274,6 @@ const zhCN = {
   settings: {
     title: "设置",
     ai: "AI",
-    pwa: "应用",
     about: "关于",
   },
 
@@ -774,22 +755,6 @@ export interface Translations {
     editingMetadata: string;
     seriesIndex: string;
   };
-  pwa: {
-    installTitle: string;
-    installDesc: string;
-    install: string;
-    updateAvailable: string;
-    updateDesc: string;
-    update: string;
-    appSettings: string;
-    installStatus: string;
-    installed: string;
-    notInstalled: string;
-    offlineSupport: string;
-    enabled: string;
-    clearCache: string;
-    cacheCleared: string;
-  };
   recommend: {
     title: string;
     refresh: string;
@@ -811,7 +776,6 @@ export interface Translations {
   settings: {
     title: string;
     ai: string;
-    pwa: string;
     about: string;
   };
   errorLogs: {

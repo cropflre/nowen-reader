@@ -2,9 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, Smartphone, Info, Brain, Globe, BookOpen } from "lucide-react";
+import { X, Info, Brain, Globe, BookOpen } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { clearServiceWorkerCache } from "@/lib/pwa";
 import dynamic from "next/dynamic";
 
 const LoadingSkeleton = () => (
@@ -30,7 +29,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTab = "site" | "ai" | "ehentai" | "pwa" | "about";
+type SettingsTab = "site" | "ai" | "ehentai" | "about";
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const t = useTranslation();
@@ -70,7 +69,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     { id: "site", label: t.siteSettings?.tab || "站点", icon: <Globe className="h-4 w-4" /> },
     { id: "ai", label: t.ai?.title || "AI", icon: <Brain className="h-4 w-4" /> },
     { id: "ehentai", label: "E-Hentai", icon: <BookOpen className="h-4 w-4" /> },
-    { id: "pwa", label: t.settings?.pwa || "App", icon: <Smartphone className="h-4 w-4" /> },
     { id: "about", label: t.settings?.about || "About", icon: <Info className="h-4 w-4" /> },
   ];
 
@@ -151,58 +149,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             {activeTab === "site" && <SiteSettingsPanel />}
             {activeTab === "ai" && <AISettingsPanel />}
             {activeTab === "ehentai" && <EHentaiSettingsPanel />}
-            {activeTab === "pwa" && <PWASettings />}
             {activeTab === "about" && <AboutPanel />}
           </div>
         </div>
       </div>
     </div>,
     document.body
-  );
-}
-
-function PWASettings() {
-  const t = useTranslation();
-  const [isStandalone] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(display-mode: standalone)").matches;
-  });
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Smartphone className="h-5 w-5 text-accent" />
-        <h3 className="text-sm font-medium text-foreground">
-          {t.pwa?.appSettings || "App Settings"}
-        </h3>
-      </div>
-
-      <div className="space-y-3 rounded-xl bg-background p-4">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted">{t.pwa?.installStatus || "Install Status"}</span>
-          <span className={isStandalone ? "text-green-400" : "text-muted"}>
-            {isStandalone
-              ? (t.pwa?.installed || "Installed")
-              : (t.pwa?.notInstalled || "Not installed")}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted">{t.pwa?.offlineSupport || "Offline Support"}</span>
-          <span className="text-green-400">{t.pwa?.enabled || "Enabled"}</span>
-        </div>
-      </div>
-
-      <button
-        onClick={() => {
-          clearServiceWorkerCache();
-          alert(t.pwa?.cacheCleared || "Cache cleared");
-        }}
-        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-xs font-medium text-foreground transition-colors hover:bg-card-hover"
-      >
-        {t.pwa?.clearCache || "Clear Offline Cache"}
-      </button>
-    </div>
   );
 }
 

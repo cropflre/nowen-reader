@@ -252,24 +252,6 @@ const en: Translations = {
     seriesIndex: "Volume",
   },
 
-  // PWA
-  pwa: {
-    installTitle: "Install NowenReader",
-    installDesc: "Add to home screen for a better experience",
-    install: "Install",
-    updateAvailable: "Update Available",
-    updateDesc: "A new version is ready",
-    update: "Update",
-    appSettings: "App Settings",
-    installStatus: "Install Status",
-    installed: "Installed",
-    notInstalled: "Not installed",
-    offlineSupport: "Offline Support",
-    enabled: "Enabled",
-    clearCache: "Clear Offline Cache",
-    cacheCleared: "Cache cleared",
-  },
-
   // Recommendations
   recommend: {
     title: "Recommended for You",
@@ -294,7 +276,6 @@ const en: Translations = {
   settings: {
     title: "Settings",
     ai: "AI",
-    pwa: "App",
     about: "About",
   },
 
