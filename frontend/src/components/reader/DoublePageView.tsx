@@ -26,6 +26,8 @@ export default function DoublePageView({
 }: DoublePageViewProps) {
   const [loadedLeft, setLoadedLeft] = useState(false);
   const [loadedRight, setLoadedRight] = useState(false);
+  const [errorLeft, setErrorLeft] = useState(false);
+  const [errorRight, setErrorRight] = useState(false);
 
   // Preload next 4 pages (2 spreads ahead)
   useImagePreloader(pages, currentPage, 4);
@@ -42,6 +44,8 @@ export default function DoublePageView({
   useEffect(() => {
     setLoadedLeft(false);
     setLoadedRight(false);
+    setErrorLeft(false);
+    setErrorRight(false);
   }, [spreadIndex]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -71,17 +75,31 @@ export default function DoublePageView({
     pageIndex: number,
     loaded: boolean,
     setLoaded: (v: boolean) => void,
+    error: boolean,
+    setError: (v: boolean) => void,
     keyPrefix: string
   ) => {
     if (!pageUrl) return <div className="flex-1" />;
 
     return (
       <div className="relative h-full flex-1 max-w-[50vw] flex items-center justify-center">
-        {!loaded && (
+        {!loaded && !error && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className={`h-6 w-6 animate-spin rounded-full border-2 border-t-accent ${
               readerTheme === "day" ? "border-gray-300" : "border-white/20"
             }`} />
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span className="text-2xl">⚠️</span>
+              <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>加载失败</p>
+              <button
+                onClick={(e) => { e.stopPropagation(); setError(false); setLoaded(false); }}
+                className="text-xs text-accent hover:text-accent/80"
+              >重试</button>
+            </div>
           </div>
         )}
         {useRealData ? (
@@ -94,6 +112,7 @@ export default function DoublePageView({
               loaded ? "opacity-100" : "opacity-0"
             }`}
             onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
           />
         ) : (
           <Image
@@ -105,6 +124,7 @@ export default function DoublePageView({
               loaded ? "opacity-100" : "opacity-0"
             }`}
             onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
             sizes="50vw"
           />
         )}
@@ -120,9 +140,9 @@ export default function DoublePageView({
       onClick={handleClick}
     >
       <div className="flex h-full items-center justify-center gap-1 p-4">
-        {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, "left")}
+        {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, errorLeft, setErrorLeft, "left")}
         <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
-        {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, "right")}
+        {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right")}
       </div>
     </div>
   );

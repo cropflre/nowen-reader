@@ -9,6 +9,7 @@ interface PagesResponse {
   totalPages: number;
   pages: { index: number; name: string; url: string; title?: string }[];
   isNovel?: boolean;
+  isPdf?: boolean;
 }
 
 /**
@@ -19,6 +20,7 @@ export function useComicPages(comicId: string) {
   const [chapters, setChapters] = useState<{ index: number; name: string; url: string; title?: string }[]>([]);
   const [title, setTitle] = useState("");
   const [isNovel, setIsNovel] = useState(false);
+  const [isPdf, setIsPdf] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +51,7 @@ export function useComicPages(comicId: string) {
         if (cancelled) return;
         setTitle(data.title);
         setIsNovel(!!data.isNovel);
+        setIsPdf(!!data.isPdf);
         setChapters(data.pages || []);
         setPages((data.pages || []).map((p) => p.url));
       })
@@ -76,7 +79,7 @@ export function useComicPages(comicId: string) {
     };
   }, [comicId]);
 
-  return { pages, chapters, title, isNovel, loading, error };
+  return { pages, chapters, title, isNovel, isPdf, loading, error };
 }
 
 /**

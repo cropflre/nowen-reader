@@ -1,0 +1,288 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { ReaderTheme } from "./ReaderToolbar";
+
+// PDF.js 类型
+type PDFDocumentProxy = import("pdfjs-dist").PDFDocumentProxy;
+
+interface PdfViewProps {
+  comicId: string;
+  totalPages: number;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  onTotalPagesChange?: (total: number) => void;
+  onTapCenter: () => void;
+  readerTheme: ReaderTheme;
+}
+
+export default function PdfView({
+  comicId,
+  totalPages,
+  currentPage,
+  onPageChange,
+  onTotalPagesChange,
+  onTapCenter,
+  readerTheme,
+}: PdfViewProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [rendering, setRendering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scale, setScale] = useState(1);
+  const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
+
+  // 加载 PDF 文档
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPdf() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // 动态导入 pdfjs-dist
+        const pdfjsLib = await import("pdfjs-dist");
+
+        // 设置 worker — 优先使用本地文件，回退到 CDN
+        try {
+          const workerModule = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+        } catch {
+          // 回退到 CDN
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+        }
+
+        const loadingTask = pdfjsLib.getDocument(`/api/comics/${comicId}/pdf`);
+        const doc = await loadingTask.promise;
+
+        if (!cancelled) {
+          setPdfDoc(doc);
+          // 使用 PDF.js 获取的真实页数同步到父组件
+          if (onTotalPagesChange && doc.numPages !== totalPages) {
+            onTotalPagesChange(doc.numPages);
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[PdfView] Failed to load PDF:", err);
+          setError(err instanceof Error ? err.message : "PDF 加载失败");
+          setLoading(false);
+        }
+      }
+    }
+
+    loadPdf();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [comicId]);
+
+  // 渲染当前页面
+  const renderPage = useCallback(
+    async (pageNum: number) => {
+      if (!pdfDoc || !canvasRef.current || !containerRef.current) return;
+
+      // 取消之前的渲染任务
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+
+      setRendering(true);
+
+      try {
+        const page = await pdfDoc.getPage(pageNum + 1); // PDF.js 使用 1-based 页码
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const container = containerRef.current;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+
+        // 计算适合容器的缩放比
+        const viewport = page.getViewport({ scale: 1 });
+        const scaleX = containerWidth / viewport.width;
+        const scaleY = containerHeight / viewport.height;
+        const baseScale = Math.min(scaleX, scaleY);
+        const finalScale = baseScale * scale;
+
+        // 高分辨率渲染（devicePixelRatio）
+        const dpr = window.devicePixelRatio || 1;
+        const scaledViewport = page.getViewport({ scale: finalScale * dpr });
+
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        canvas.style.width = `${scaledViewport.width / dpr}px`;
+        canvas.style.height = `${scaledViewport.height / dpr}px`;
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: scaledViewport,
+        };
+
+        const renderTask = page.render(renderContext);
+        renderTaskRef.current = renderTask;
+
+        await renderTask.promise;
+        setRendering(false);
+      } catch (err: unknown) {
+        // RenderingCancelledException 是正常的（翻页时取消之前的渲染）
+        if (
+          err &&
+          typeof err === "object" &&
+          "name" in err &&
+          (err as { name: string }).name === "RenderingCancelledException"
+        ) {
+          return;
+        }
+        console.error("[PdfView] Render error:", err);
+        setRendering(false);
+      }
+    },
+    [pdfDoc, scale]
+  );
+
+  // 当前页面或缩放变化时重新渲染
+  useEffect(() => {
+    renderPage(currentPage);
+  }, [currentPage, renderPage]);
+
+  // 窗口大小变化时重新渲染
+  useEffect(() => {
+    const handleResize = () => renderPage(currentPage);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [currentPage, renderPage]);
+
+  // 点击导航（三区域：左翻页 / 中间呼出菜单 / 右翻页）
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const width = rect.width;
+      const zone = x / width;
+
+      if (zone < 0.3) {
+        // 左区域 → 上一页
+        onPageChange(Math.max(0, currentPage - 1));
+      } else if (zone > 0.7) {
+        // 右区域 → 下一页
+        onPageChange(Math.min(totalPages - 1, currentPage + 1));
+      } else {
+        // 中间区域 → 呼出/隐藏工具栏
+        onTapCenter();
+      }
+    },
+    [currentPage, totalPages, onPageChange, onTapCenter]
+  );
+
+  // 鼠标滚轮缩放
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        setScale((prev) => Math.max(0.5, Math.min(3, prev + delta)));
+      }
+    },
+    []
+  );
+
+  // 加载中
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className={`h-8 w-8 animate-spin rounded-full border-2 border-t-accent ${
+              readerTheme === "day" ? "border-gray-300" : "border-white/20"
+            }`}
+          />
+          <p
+            className={`text-sm ${
+              readerTheme === "day" ? "text-gray-500" : "text-white/40"
+            }`}
+          >
+            PDF 加载中...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 错误
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-center px-4">
+          <div className="text-4xl">⚠️</div>
+          <p
+            className={`text-sm font-medium ${
+              readerTheme === "day" ? "text-gray-600" : "text-white/70"
+            }`}
+          >
+            PDF 加载失败
+          </p>
+          <p
+            className={`text-xs max-w-sm ${
+              readerTheme === "day" ? "text-gray-400" : "text-white/40"
+            }`}
+          >
+            {error}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-1 rounded-lg bg-accent/20 px-4 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
+          >
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-full w-full flex items-center justify-center overflow-auto cursor-pointer"
+      onClick={handleClick}
+      onWheel={handleWheel}
+    >
+      {/* 渲染中的半透明指示器 */}
+      {rendering && (
+        <div className="absolute top-4 right-4 z-10">
+          <div
+            className={`h-5 w-5 animate-spin rounded-full border-2 border-t-accent ${
+              readerTheme === "day" ? "border-gray-300" : "border-white/20"
+            }`}
+          />
+        </div>
+      )}
+
+      {/* 缩放指示器 */}
+      {scale !== 1 && (
+        <div
+          className={`absolute top-4 left-4 z-10 rounded-full px-2 py-0.5 text-xs backdrop-blur-sm ${
+            readerTheme === "day"
+              ? "bg-white/70 text-gray-500 shadow"
+              : "bg-black/50 text-white/50"
+          }`}
+        >
+          {Math.round(scale * 100)}%
+        </div>
+      )}
+
+      <canvas
+        ref={canvasRef}
+        className="max-w-full max-h-full"
+        style={{ imageRendering: "auto" }}
+      />
+    </div>
+  );
+}

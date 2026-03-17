@@ -10,14 +10,16 @@
 ## ✨ 特性
 
 ### 📚 内容管理
-- � **多格式支持** — 漫画：ZIP/CBZ/CBR/RAR/7Z/CB7/PDF；小说：TXT/EPUB/MOBI/AZW3
-- � **自动扫描** — 文件系统监听 + 定时同步，自动发现新文件
+- 📖 **多格式支持** — 漫画：ZIP/CBZ/CBR/RAR/7Z/CB7/PDF；小说：TXT/EPUB/MOBI/AZW3
+- 🔄 **自动扫描** — 文件系统监听 + 定时同步，自动发现新文件
 - 🏷️ **标签 & 分类** — 多标签、多分类管理，标签颜色自定义
-- � **书架系统** — 自定义书架，灵活归类漫画和小说
+- 📚 **书架系统** — 自定义书架，灵活归类漫画和小说
 - ⭐ **收藏 & 评分** — 一键收藏、1-5 星评分
+- 📋 **阅读状态** — 未读 / 在读 / 已读，配合「继续阅读」快速恢复
 - ✏️ **元数据编辑** — 在线编辑标题、作者、出版社等元数据字段
 - 📤 **文件上传** — 支持 ZIP/CBZ/CBR/RAR/7Z/PDF 直接上传
 - 🔄 **批量操作** — 批量打标签、分类、删除、翻译
+- 🧹 **无效清理** — 一键清理文件已不存在的失效条目
 
 ### 🔍 元数据 & 智能
 - 🌐 **元数据抓取** — AniList / Bangumi / MangaDex / MangaUpdates / Kitsu
@@ -26,27 +28,32 @@
 - 🏷️ **标签翻译** — 中英文标签自动翻译
 - 🎯 **个性化推荐** — 基于阅读历史 + 相似度的智能推荐
 
-### � 阅读体验
-- �📖 **漫画阅读器** — 内置翻页阅读器，支持进度记忆
+### 📖 阅读体验
+- 📖 **漫画阅读器** — 内置翻页阅读器，支持进度记忆
 - 📕 **小说阅读器** — EPUB 章节渲染、TXT 智能分章阅读
-- 📊 **阅读统计** — 阅读时间、会话记录、每日趋势、增强统计
+- ▶️ **继续阅读** — 首页快速恢复上次阅读位置
+- 📊 **阅读统计** — 阅读时间、会话记录、每日趋势、增强统计、年度报告
+- 📁 **文件统计** — 各格式文件数量、存储空间占用分析
 - 🎯 **阅读目标** — 设定每日/每周阅读目标，追踪达成进度
 - 📤 **数据导出** — JSON 全量导出、CSV 会话/漫画导出
 
 ### 🔗 协议 & 同步
 - 📡 **OPDS 协议** — 支持 KOReader / Moon+ Reader 等阅读器
 - 🔄 **WebDAV 云同步** — 跨设备阅读进度同步
--  **E-Hentai 集成** — 搜索、预览、下载
+- 🔗 **E-Hentai 集成** — 搜索、预览、下载
 
 ### 🛠️ 部署 & 架构
 - 🚀 **Go 单二进制** — 无需 Node.js / npm，开箱即用
-- � **前端嵌入** — Vite SPA 前端编译进二进制，一个文件部署
-- � **用户认证** — 多用户支持，管理员 / 普通用户角色
-- �️ **缩略图管理** — WebP 自动生成，批量管理
+- 📦 **前端嵌入** — Vite SPA 前端编译进二进制，一个文件部署
+- 🔐 **用户认证** — 多用户支持，管理员 / 普通用户角色
+- 🖼️ **缩略图管理** — WebP 自动生成，批量管理，自定义尺寸
+- 📂 **文件夹浏览** — Web 界面直接浏览并选择服务器目录
+- 📋 **错误日志** — 管理员可查看、导出、清理系统错误日志
 - 💾 **SQLite** — 零配置数据库，WAL 模式高性能
 - 🐳 **Docker** — 多平台镜像（amd64/arm64）
 - 📱 **PWA** — 可安装为桌面 / 移动应用
 - 🔌 **插件系统** — 内置插件，可扩展
+- ⚙️ **独立设置页** — 站点设置、AI 配置、文件统计、关于信息集中管理
 
 ## 📁 项目结构
 
@@ -70,6 +77,11 @@ nowen-reader/
 │   │   ├── export_handler.go # 数据导出 (JSON/CSV)
 │   │   ├── ehentai_handler.go # E-Hentai 集成
 │   │   ├── opds_handler.go  # OPDS 协议
+│   │   ├── browse.go        # 文件夹浏览 (服务器目录选择)
+│   │   ├── log_handler.go   # 错误日志 (查看/统计/导出/清理)
+│   │   ├── thumbnails.go    # 缩略图管理 (批量生成/清理)
+│   │   ├── tag_translate_handler.go # 标签翻译
+│   │   ├── spa.go           # SPA 路由
 │   │   └── ...              # 其他 (标签/分类/统计/上传/缓存/同步/设置)
 │   ├── middleware/           # 中间件 (CORS/Auth/Gzip/Logger/RateLimit/Security)
 │   ├── model/               # 数据模型 (User/Comic/Tag/Category/ReadingSession)
@@ -94,8 +106,10 @@ nowen-reader/
 │           ├── comic/[id]/         # 漫画详情页
 │           ├── novel/[id]/         # 小说详情页
 │           ├── reader/[id]/        # 阅读器
+│           ├── settings/           # 独立设置页 (站点/AI/文件统计/关于)
 │           ├── stats/              # 阅读统计
 │           ├── recommendations/    # 推荐页
+│           ├── logs/               # 错误日志页 (管理员)
 │           └── ehentai/            # E-Hentai 页
 ├── Dockerfile               # 多阶段构建
 ├── docker-compose.yml       # 一键部署 (源码构建)
@@ -118,7 +132,7 @@ cd nowen-reader
 # 一键启动（从源码构建）
 docker compose up -d
 
-# 访问 http://localhost:3000
+# 访问 http://localhost:6680
 ```
 
 ### 方式 2: Docker Hub 镜像（生产部署）
@@ -310,9 +324,11 @@ make fmt
 | PUT | `/api/comics/:id/favorite` | 切换收藏 🔒 |
 | PUT | `/api/comics/:id/rating` | 更新评分 🔒 |
 | PUT | `/api/comics/:id/progress` | 更新阅读进度 🔒 |
+| PUT | `/api/comics/:id/reading-status` | 设置阅读状态（未读/在读/已读） 🔒 |
 | PUT | `/api/comics/:id/metadata` | 编辑元数据 🔒 |
 | DELETE | `/api/comics/:id/delete` | 删除 🔒 |
 | POST | `/api/comics/batch` | 批量操作 🔒 |
+| POST | `/api/comics/cleanup` | 清理无效条目 🔒 |
 | PUT | `/api/comics/reorder` | 排序 🔒 |
 | GET | `/api/comics/duplicates` | 重复检测 |
 
@@ -374,16 +390,18 @@ make fmt
 | GET | `/api/ai/status` | AI 服务状态 |
 | GET | `/api/ai/settings` | 获取 AI 设置 |
 | PUT | `/api/ai/settings` | 更新 AI 设置 |
-| GET | `/api/ai/duplicates` | 视觉相似检测 |
 | GET | `/api/ai/models` | 可用模型列表 |
 
 ### 阅读统计
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/stats` | 阅读统计 |
+| GET | `/api/stats/yearly` | 年度阅读报告 |
 | POST | `/api/stats/session` | 开始阅读会话 |
 | PUT | `/api/stats/session` | 结束阅读会话 |
+| POST | `/api/stats/session/end` | 结束阅读会话（sendBeacon 兜底） |
 | GET | `/api/stats/enhanced` | 增强统计数据 |
+| GET | `/api/stats/files` | 文件统计（格式/大小分布） |
 
 ### 阅读目标
 | 方法 | 路径 | 说明 |
@@ -430,9 +448,21 @@ make fmt
 | POST | `/api/upload` | 文件上传 🔒 |
 | POST | `/api/cache` | 缓存管理 🔒 |
 | POST | `/api/sync` | 触发文件同步 🔒 |
-| GET/POST | `/api/cloud-sync` | WebDAV 云同步 |
 | GET | `/api/recommendations` | 个性化推荐 |
 | GET | `/api/recommendations/similar/:id` | 相似推荐 |
+
+### 文件夹浏览
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/browse-dirs` | 浏览服务器目录 🔒 |
+
+### 错误日志
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/logs` | 错误日志列表 🔒管理员 |
+| GET | `/api/logs/stats` | 错误日志统计 🔒管理员 |
+| GET | `/api/logs/export` | 导出错误日志 🔒管理员 |
+| DELETE | `/api/logs` | 清理错误日志 🔒管理员 |
 
 > 🔒 = 需要认证
 

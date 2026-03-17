@@ -25,6 +25,7 @@ export default function SinglePageView({
   readerTheme = "night",
 }: SinglePageViewProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const [scale, setScale] = useState(1);
 
   // 触摸手势状态
@@ -38,6 +39,7 @@ export default function SinglePageView({
   // Reset loaded state and scale when page changes
   useEffect(() => {
     setImageLoaded(false);
+    setImageError(false);
     setScale(1);
   }, [currentPage]);
 
@@ -176,11 +178,30 @@ export default function SinglePageView({
         className="relative h-full w-full flex items-center justify-center transition-transform duration-200"
         style={{ transform: `scale(${scale})` }}
       >
-        {!imageLoaded && (
+        {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className={`h-8 w-8 animate-spin rounded-full border-2 border-t-accent ${
               readerTheme === "day" ? "border-gray-300" : "border-white/20"
             }`} />
+          </div>
+        )}
+        {imageError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3 text-center px-4">
+              <div className={`text-4xl`}>⚠️</div>
+              <p className={`text-sm font-medium ${readerTheme === "day" ? "text-gray-600" : "text-white/70"}`}>
+                页面加载失败
+              </p>
+              <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>
+                PDF 渲染可能需要安装 mutool 等工具
+              </p>
+              <button
+                onClick={(e) => { e.stopPropagation(); setImageError(false); setImageLoaded(false); }}
+                className="mt-1 rounded-lg bg-accent/20 px-4 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
+              >
+                重试
+              </button>
+            </div>
           </div>
         )}
         {useRealData ? (
@@ -193,6 +214,7 @@ export default function SinglePageView({
               imageLoaded ? "opacity-100" : "opacity-0"
             }`}
             onLoad={() => setImageLoaded(true)}
+            onError={() => setImageError(true)}
             draggable={false}
           />
         ) : (

@@ -191,6 +191,9 @@ func SetupRoutes(r *gin.Engine) {
 	// Page image uses a different path pattern: /api/comics/:id/page/:pageIndex
 	api.GET("/comics/:id/page/:pageIndex", img.GetPageImage)
 
+	// PDF file streaming (for frontend PDF.js rendering)
+	api.GET("/comics/:id/pdf", img.GetPdfFile)
+
 	// Chapter content for novel formats: /api/comics/:id/chapter/:chapterIndex
 	api.GET("/comics/:id/chapter/:chapterIndex", img.GetChapterContent)
 

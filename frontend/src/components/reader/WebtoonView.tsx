@@ -39,6 +39,9 @@ export default function WebtoonView({
   // Track loaded image heights for accurate positioning
   const [pageHeights, setPageHeights] = useState<Map<number, number>>(new Map());
 
+  // Track which pages failed to load
+  const [errorPages, setErrorPages] = useState<Set<number>>(new Set());
+
   // Preload images ahead of current page
   useImagePreloader(pages, currentPage, 5);
 
@@ -155,13 +158,29 @@ export default function WebtoonView({
               {isInRange ? (
                 useRealData ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={pageUrl}
-                    alt={`Page ${index + 1}`}
-                    className="w-full h-auto"
-                    loading={Math.abs(index - currentPage) < 3 ? "eager" : "lazy"}
-                    onLoad={(e) => handleImageLoad(index, e)}
-                  />
+                  errorPages.has(index) ? (
+                    <div
+                      className={`w-full flex items-center justify-center py-16 ${readerTheme === "day" ? "bg-gray-200" : "bg-white/5"}`}
+                    >
+                      <div className="flex flex-col items-center gap-2 text-center">
+                        <span className="text-2xl">⚠️</span>
+                        <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>第 {index + 1} 页加载失败</p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setErrorPages(prev => { const next = new Set(prev); next.delete(index); return next; }); }}
+                          className="text-xs text-accent hover:text-accent/80"
+                        >重试</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <img
+                      src={pageUrl}
+                      alt={`Page ${index + 1}`}
+                      className="w-full h-auto"
+                      loading={Math.abs(index - currentPage) < 3 ? "eager" : "lazy"}
+                      onLoad={(e) => handleImageLoad(index, e)}
+                      onError={() => setErrorPages(prev => new Set(prev).add(index))}
+                    />
+                  )
                 ) : (
                   <div className="relative aspect-2/3 w-full">
                     {/* Next/Image for mock data */}

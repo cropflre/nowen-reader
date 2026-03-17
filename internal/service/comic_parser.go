@@ -122,6 +122,7 @@ func InvalidateReaderPool() {
 type pageListCacheEntry struct {
 	entries       []string
 	chapterTitles []string
+	isPdf         bool
 	ts            time.Time
 }
 
@@ -176,6 +177,7 @@ type PagesResult struct {
 	Entries       []string
 	ChapterTitles []string // non-nil only for novel formats
 	IsNovel       bool
+	IsPdf         bool
 }
 
 // GetComicPagesEx returns pages with extended info (chapter titles for novels).
@@ -192,7 +194,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 	pageListCacheMu.RLock()
 	if cached, ok := pageListCache[comicID]; ok && time.Since(cached.ts) < pageListCacheTTL {
 		pageListCacheMu.RUnlock()
-		result := &PagesResult{Entries: cached.entries, IsNovel: isNovel}
+		result := &PagesResult{Entries: cached.entries, IsNovel: isNovel, IsPdf: cached.isPdf}
 		if isNovel {
 			result.ChapterTitles = cached.chapterTitles
 		}
@@ -202,6 +204,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 
 	var entries []string
 	var chapterTitles []string
+	var isPdf bool
 
 	switch {
 	case archiveType == archive.TypePdf:
@@ -213,6 +216,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 		for i := 0; i < count; i++ {
 			entries[i] = fmt.Sprintf("page-%04d.png", i+1)
 		}
+		isPdf = true
 
 	case isNovel:
 		reader, err := getPooledReader(fp)
@@ -241,13 +245,14 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 
 	// Update cache
 	pageListCacheMu.Lock()
-	pageListCache[comicID] = &pageListCacheEntry{entries: entries, chapterTitles: chapterTitles, ts: time.Now()}
+	pageListCache[comicID] = &pageListCacheEntry{entries: entries, chapterTitles: chapterTitles, isPdf: isPdf, ts: time.Now()}
 	pageListCacheMu.Unlock()
 
 	return &PagesResult{
 		Entries:       entries,
 		ChapterTitles: chapterTitles,
 		IsNovel:       isNovel,
+		IsPdf:         isPdf,
 	}, nil
 }
 

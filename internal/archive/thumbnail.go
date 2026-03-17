@@ -50,8 +50,9 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 		// PDF: render first page
 		buf, err := RenderPdfPage(archivePath, 0)
 		if err != nil {
-			log.Printf("[thumbnail] PDF render failed for %s: %v", comicID, err)
-			return nil, err
+			log.Printf("[thumbnail] PDF render failed for %s: %v, generating text cover", comicID, err)
+			// 渲染工具不可用时，回退到文字封面
+			return generateTextCover(archivePath, comicID, thumbDir, cachePath)
 		}
 		pageBuffer = buf
 

@@ -86,6 +86,7 @@ func (h *ImageHandler) GetPages(c *gin.Context) {
 		"totalPages": len(result.Entries),
 		"pages":      pageList,
 		"isNovel":    result.IsNovel,
+		"isPdf":      result.IsPdf,
 	})
 }
 
@@ -111,7 +112,20 @@ func (h *ImageHandler) GetPageImage(c *gin.Context) {
 	}
 
 	result, err := service.GetPageImage(id, pageIndex)
-	if err != nil || result == nil {
+	if err != nil {
+		errMsg := err.Error()
+		log.Printf("[page] GetPageImage failed for %s page %d: %v", id, pageIndex, err)
+		// PDF渲染工具缺失 → 返回 500 + 友好提示
+		if strings.Contains(errMsg, "no PDF renderer available") {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 阅读需要安装 PDF 渲染工具（mutool / pdftoppm / imagemagick），Docker 镜像已内置。如非 Docker 部署请手动安装。"})
+		} else if strings.Contains(errMsg, "render PDF page") {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("PDF 页面渲染失败: %s", errMsg)})
+		} else {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Page not found: " + errMsg})
+		}
+		return
+	}
+	if result == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Page not found"})
 		return
 	}
@@ -288,6 +302,48 @@ func (h *ImageHandler) UpdateCover(c *gin.Context) {
 // isMultipart checks if a Content-Type header indicates multipart form data.
 func isMultipart(ct string) bool {
 	return strings.HasPrefix(ct, "multipart/form-data")
+}
+
+// ============================================================
+// GET /api/comics/:id/pdf — Stream PDF file for frontend rendering
+// ============================================================
+
+func (h *ImageHandler) GetPdfFile(c *gin.Context) {
+	id := c.Param("id")
+
+	comic, err := store.GetComicByID(id)
+	if err != nil || comic == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
+		return
+	}
+
+	fp, _, err := service.FindComicFilePath(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found: " + err.Error()})
+		return
+	}
+
+	// 验证是 PDF 文件
+	if archive.DetectType(fp) != archive.TypePdf {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not a PDF file"})
+		return
+	}
+
+	// 获取文件信息
+	fileInfo, err := os.Stat(fp)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	// 设置响应头
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header("Accept-Ranges", "bytes")
+
+	// 支持 Range 请求（PDF.js 需要）
+	c.File(fp)
 }
 
 // ============================================================

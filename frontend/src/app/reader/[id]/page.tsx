@@ -21,6 +21,7 @@ import { useTheme } from "@/lib/theme-context";
 import SinglePageView from "@/components/reader/SinglePageView";
 import DoublePageView from "@/components/reader/DoublePageView";
 import WebtoonView from "@/components/reader/WebtoonView";
+import PdfView from "@/components/reader/PdfView";
 import { Heart, Star, Tag, X, Plus } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 
@@ -36,6 +37,7 @@ export default function ReaderPage() {
     pages: apiPages,
     title: apiTitle,
     isNovel,
+    isPdf,
     loading: apiLoading,
     error: apiError,
   } = useComicPages(comicId);
@@ -45,7 +47,10 @@ export default function ReaderPage() {
     useComicDetail(comicId);
 
   // Determine data source
-  const pages = apiPages;
+  const [pdfTotalPages, setPdfTotalPages] = useState<number | null>(null);
+  const pages = pdfTotalPages && isPdf
+    ? Array.from({ length: pdfTotalPages }, (_, i) => `/api/comics/${comicId}/page/${i}`)
+    : apiPages;
   const title = apiTitle || t.reader.unknownComic;
   const isLoading = apiLoading;
   const useRealData = pages.length > 0 || (comicDetail !== null);
@@ -337,7 +342,17 @@ export default function ReaderPage() {
       readerTheme === "day" ? "bg-gray-100" : "bg-black"
     }`}>
       {/* Reading View */}
-      {mode === "single" && (
+      {isPdf ? (
+        <PdfView
+          comicId={comicId}
+          totalPages={pages.length}
+          currentPage={currentPage}
+          onPageChange={handlePageChange}
+          onTotalPagesChange={setPdfTotalPages}
+          onTapCenter={handleTapCenter}
+          readerTheme={readerTheme}
+        />
+      ) : mode === "single" ? (
         <SinglePageView
           pages={pages}
           currentPage={currentPage}
@@ -347,9 +362,7 @@ export default function ReaderPage() {
           useRealData={useRealData}
           readerTheme={readerTheme}
         />
-      )}
-
-      {mode === "double" && (
+      ) : mode === "double" ? (
         <DoublePageView
           pages={pages}
           currentPage={currentPage}
@@ -359,9 +372,7 @@ export default function ReaderPage() {
           useRealData={useRealData}
           readerTheme={readerTheme}
         />
-      )}
-
-      {mode === "webtoon" && (
+      ) : (
         <WebtoonView
           pages={pages}
           currentPage={currentPage}

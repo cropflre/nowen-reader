@@ -644,69 +644,100 @@ func countPdfPages(fp string) (int, error) {
 	}
 	defer f.Close()
 
-	// Read last 2KB to find the /Count or /N value in the trailer/catalog
-	stat, err := f.Stat()
+	all, err := io.ReadAll(f)
 	if err != nil {
 		return 0, err
 	}
-	size := stat.Size()
-	readSize := int64(4096)
-	if readSize > size {
-		readSize = size
-	}
-	buf := make([]byte, readSize)
-	if _, err := f.ReadAt(buf, size-readSize); err != nil && err != io.EOF {
-		return 0, err
+
+	content := string(all)
+
+	// Method 1: 查找 /Type /Pages 中的 /Count N（页面树根节点的总页数）
+	// 这是最可靠的方法，大多数 PDF 都有这个结构
+	// 查找所有 /Type /Pages 对象，取其中的 /Count 值
+	maxCount := 0
+	searchStr := content
+	for {
+		pagesIdx := strings.Index(searchStr, "/Type /Pages")
+		if pagesIdx < 0 {
+			pagesIdx = strings.Index(searchStr, "/Type/Pages")
+		}
+		if pagesIdx < 0 {
+			break
+		}
+
+		// 在此对象中查找 /Count
+		// 向后搜索直到 endobj
+		objEnd := strings.Index(searchStr[pagesIdx:], "endobj")
+		if objEnd < 0 {
+			objEnd = len(searchStr) - pagesIdx
+		}
+		objContent := searchStr[pagesIdx : pagesIdx+objEnd]
+
+		countIdx := strings.Index(objContent, "/Count ")
+		if countIdx < 0 {
+			countIdx = strings.Index(objContent, "/Count\n")
+		}
+		if countIdx >= 0 {
+			rest := strings.TrimSpace(objContent[countIdx+7:])
+			var n int
+			fmt.Sscanf(rest, "%d", &n)
+			if n > maxCount {
+				maxCount = n
+			}
+		}
+
+		searchStr = searchStr[pagesIdx+12:]
 	}
 
-	content := string(buf)
+	if maxCount > 0 {
+		return maxCount, nil
+	}
 
-	// Look for /Count N pattern (page count in page tree)
-	// Search from end for the most recent /Count
+	// Method 2: 计算 /Type /Page 出现的次数（排除 /Type /Pages）
+	// 逐个对象计数
 	count := 0
-	idx := strings.LastIndex(content, "/Count ")
-	if idx >= 0 {
-		rest := content[idx+7:]
-		fmt.Sscanf(rest, "%d", &count)
+	searchStr = content
+	for {
+		idx := strings.Index(searchStr, "/Type /Page")
+		if idx < 0 {
+			idx = strings.Index(searchStr, "/Type/Page")
+		}
+		if idx < 0 {
+			break
+		}
+
+		// 检查紧随其后的字符，确保不是 /Pages
+		afterLen := 11
+		if searchStr[idx+6] == '/' {
+			afterLen = 10
+		}
+		after := idx + afterLen
+		if after < len(searchStr) {
+			ch := searchStr[after]
+			if ch == 's' || ch == 'S' {
+				// 这是 /Type /Pages，跳过
+				searchStr = searchStr[after:]
+				continue
+			}
+		}
+
+		count++
+		searchStr = searchStr[after:]
 	}
 
 	if count > 0 {
 		return count, nil
 	}
 
-	// Fallback: read entire file and count "/Type /Page\n" entries
-	if _, err := f.Seek(0, 0); err != nil {
-		return 0, err
-	}
-	all, err := io.ReadAll(f)
-	if err != nil {
-		return 0, err
-	}
-	allStr := string(all)
-	// Count "/Type /Page" but not "/Type /Pages"
-	count = strings.Count(allStr, "/Type /Page\n") +
-		strings.Count(allStr, "/Type /Page\r") +
-		strings.Count(allStr, "/Type/Page\n") +
-		strings.Count(allStr, "/Type/Page\r")
-
-	if count == 0 {
-		// Last resort: count occurrences of "endobj"
-		count = strings.Count(allStr, "/Type /Page")
-		// Subtract /Type /Pages
-		count -= strings.Count(allStr, "/Type /Pages")
-	}
-
-	if count <= 0 {
-		log.Printf("[pdf] Could not determine page count for %s, defaulting to 1", fp)
-		return 1, nil
-	}
-	return count, nil
+	log.Printf("[pdf] Could not determine page count for %s, defaulting to 1", fp)
+	return 1, nil
 }
 
 // RenderPdfPage renders a single PDF page to a PNG image.
 // Uses external tools (mutool, pdftoppm, or convert).
 func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	pageNum := pageIndex + 1 // External tools use 1-based page numbers
+	var errors []string
 
 	// Method 1: mutool (from MuPDF — best quality)
 	if mutool, err := exec.LookPath("mutool"); err == nil {
@@ -715,6 +746,19 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 		if err == nil && len(out) > 0 {
 			return out, nil
 		}
+		if err != nil {
+			errDetail := err.Error()
+			if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+				errDetail = string(exitErr.Stderr)
+			}
+			log.Printf("[pdf] mutool failed for %s page %d: %s", fp, pageNum, errDetail)
+			errors = append(errors, fmt.Sprintf("mutool: %s", errDetail))
+		} else {
+			log.Printf("[pdf] mutool returned empty output for %s page %d", fp, pageNum)
+			errors = append(errors, "mutool: empty output")
+		}
+	} else {
+		errors = append(errors, "mutool: not installed")
 	}
 
 	// Method 2: pdftoppm (from poppler)
@@ -724,6 +768,14 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 		if err == nil && len(out) > 0 {
 			return out, nil
 		}
+		if err != nil {
+			log.Printf("[pdf] pdftoppm failed for %s page %d: %v", fp, pageNum, err)
+			errors = append(errors, fmt.Sprintf("pdftoppm: %v", err))
+		} else {
+			errors = append(errors, "pdftoppm: empty output")
+		}
+	} else {
+		errors = append(errors, "pdftoppm: not installed")
 	}
 
 	// Method 3: convert from ImageMagick
@@ -733,7 +785,27 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 		if err == nil && len(out) > 0 {
 			return out, nil
 		}
+		if err != nil {
+			log.Printf("[pdf] imagemagick failed for %s page %d: %v", fp, pageNum, err)
+			errors = append(errors, fmt.Sprintf("imagemagick: %v", err))
+		} else {
+			errors = append(errors, "imagemagick: empty output")
+		}
+	} else {
+		errors = append(errors, "imagemagick: not installed")
 	}
 
-	return nil, fmt.Errorf("no PDF renderer available (install mutool, pdftoppm, or imagemagick)")
+	// 判断是没有安装渲染工具还是渲染出错
+	allNotInstalled := true
+	for _, e := range errors {
+		if !strings.Contains(e, "not installed") {
+			allNotInstalled = false
+			break
+		}
+	}
+
+	if allNotInstalled {
+		return nil, fmt.Errorf("no PDF renderer available (install mutool, pdftoppm, or imagemagick)")
+	}
+	return nil, fmt.Errorf("render PDF page %d failed: %s", pageNum, strings.Join(errors, "; "))
 }
