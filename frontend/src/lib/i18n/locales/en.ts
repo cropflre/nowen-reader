@@ -323,6 +323,7 @@ const en: Translations = {
     browseDirTitle: "Select Folder",
     currentPath: "Current path",
     browseError: "Cannot read directory",
+    permissionFixTitle: "💡 How to fix permissions:",
     thumbnailSize: "Thumbnail Size",
     width: "Width",
     height: "Height",

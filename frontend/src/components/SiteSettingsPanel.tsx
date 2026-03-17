@@ -63,15 +63,18 @@ function FolderBrowser({
   const [parentPath, setParentPath] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hint, setHint] = useState("");
 
   const browseTo = useCallback(async (path: string) => {
     setLoading(true);
     setError("");
+    setHint("");
     try {
       const res = await fetch(`/api/browse-dirs?path=${encodeURIComponent(path)}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error || siteT?.browseError || "Cannot read directory");
+        if (data.hint) setHint(data.hint);
         return;
       }
       const data: BrowseDirResponse = await res.json();
@@ -126,9 +129,27 @@ function FolderBrowser({
               Loading...
             </div>
           ) : error ? (
-            <div className="flex items-center justify-center py-8 text-xs text-red-400">
-              <AlertCircle className="h-4 w-4 mr-2" />
-              {error}
+            <div className="flex flex-col items-center gap-3 py-6 px-4">
+              <div className="flex items-center gap-2 text-xs text-red-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+              {hint && (
+                <div className="w-full rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 px-3 py-2.5">
+                  <div className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1.5">
+                    {siteT?.permissionFixTitle || "💡 如何获取权限："}
+                  </div>
+                  <pre className="text-[10px] text-amber-700 dark:text-amber-200/90 whitespace-pre-wrap break-all leading-relaxed font-mono">{hint}</pre>
+                </div>
+              )}
+              {parentPath && (
+                <button
+                  onClick={() => browseTo(parentPath)}
+                  className="text-[11px] text-accent hover:underline"
+                >
+                  ← {siteT?.parentDir || "Parent directory"}
+                </button>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-border/50">

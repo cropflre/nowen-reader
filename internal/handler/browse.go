@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +25,19 @@ type DirEntry struct {
 	Path string `json:"path"`
 }
 
+// permissionHint 返回权限不足时的解决提示。
+func permissionHint(path string) string {
+	return fmt.Sprintf(
+		"没有权限访问: %s\n"+
+			"请尝试以下方式获取权限:\n"+
+			"1. SSH 到服务器执行: chmod -R 755 %s\n"+
+			"2. 或更改目录所有者: chown -R 1000:1000 %s\n"+
+			"3. Docker 用户请在 docker-compose.yml 中添加 volumes 挂载, 并确保容器有读取权限 (如: user: \"0:0\" 以 root 运行)\n"+
+			"4. 绿联/群晖 NAS 请在 Docker 管理界面的存储空间/卷挂载中添加该路径, 并设置为读写模式",
+		path, path, path,
+	)
+}
+
 // GET /api/browse-dirs?path=/some/path
 // 浏览服务器文件系统目录，返回指定路径下的子目录列表。
 func (h *BrowseHandler) BrowseDirs(c *gin.Context) {
@@ -41,11 +55,14 @@ func (h *BrowseHandler) BrowseDirs(c *gin.Context) {
 	info, err := os.Stat(requestPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "路径不存在"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "路径不存在: " + requestPath})
 		} else if os.IsPermission(err) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "没有权限访问此路径"})
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "没有权限访问此路径",
+				"hint":  permissionHint(requestPath),
+			})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "无法访问路径"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "无法访问路径: " + err.Error()})
 		}
 		return
 	}
@@ -59,9 +76,12 @@ func (h *BrowseHandler) BrowseDirs(c *gin.Context) {
 	entries, err := os.ReadDir(requestPath)
 	if err != nil {
 		if os.IsPermission(err) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "没有权限读取此目录"})
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "没有权限读取此目录",
+				"hint":  permissionHint(requestPath),
+			})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "无法读取目录内容"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "无法读取目录内容: " + err.Error()})
 		}
 		return
 	}

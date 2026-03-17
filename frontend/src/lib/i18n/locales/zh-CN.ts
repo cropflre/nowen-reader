@@ -321,6 +321,7 @@ const zhCN = {
     browseDirTitle: "选择文件夹",
     currentPath: "当前路径",
     browseError: "无法读取目录",
+    permissionFixTitle: "💡 如何获取权限：",
     thumbnailSize: "缩略图尺寸",
     width: "宽度",
     height: "高度",
@@ -822,6 +823,7 @@ export interface Translations {
     browseDirTitle: string;
     currentPath: string;
     browseError: string;
+    permissionFixTitle: string;
     thumbnailSize: string;
     width: string;
     height: string;
