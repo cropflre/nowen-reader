@@ -36,6 +36,8 @@ func (h *AIHandler) GetSettings(c *gin.Context) {
 		"cloudApiKey":     maskedKey,
 		"cloudApiUrl":     cfg.CloudAPIURL,
 		"cloudModel":      cfg.CloudModel,
+		"maxTokens":       cfg.MaxTokens,
+		"maxRetries":      cfg.MaxRetries,
 		"providerPresets": service.ProviderPresets,
 	})
 }
@@ -102,5 +104,40 @@ func (h *AIHandler) Models(c *gin.Context) {
 		"models":   []string{},
 		"provider": provider,
 		"source":   "none",
+	})
+}
+
+// GET /api/ai/usage — 获取 AI 使用量统计
+func (h *AIHandler) GetUsageStats(c *gin.Context) {
+	stats := service.GetAIUsageStats()
+	c.JSON(200, stats)
+}
+
+// DELETE /api/ai/usage — 重置 AI 使用量统计
+func (h *AIHandler) ResetUsageStats(c *gin.Context) {
+	service.ResetAIUsageStats()
+	c.JSON(200, gin.H{"success": true})
+}
+
+// POST /api/ai/test — 测试 AI 连接
+func (h *AIHandler) TestConnection(c *gin.Context) {
+	cfg := service.LoadAIConfig()
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		c.JSON(400, gin.H{"error": "AI not configured"})
+		return
+	}
+
+	result, err := service.CallCloudLLM(cfg, "You are a helpful assistant.", "Reply with exactly: OK", &service.LLMCallOptions{
+		Scenario:  "test",
+		MaxTokens: 10,
+	})
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"success": true,
+		"reply":   result,
 	})
 }

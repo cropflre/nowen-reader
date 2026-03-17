@@ -396,6 +396,26 @@ const zhCN = {
     manualModelPlaceholder: "输入模型名称，如 gpt-4o",
     modelsFetched: "已拉取 {count} 个模型",
     noModelsFound: "未找到可用模型",
+    // Phase 0 新增
+    maxTokens: "最大输出 Token",
+    maxTokensHint: "AI 单次回复的最大 token 数（默认 2000）",
+    maxRetries: "失败重试次数",
+    maxRetriesHint: "API 调用失败时自动重试的次数（0-5）",
+    advancedSettings: "高级设置",
+    usage: "使用量统计",
+    totalCalls: "总调用次数",
+    successCalls: "成功",
+    failedCalls: "失败",
+    totalTokens: "总 Token 消耗",
+    promptTokens: "输入 Token",
+    outputTokens: "输出 Token",
+    avgDuration: "平均耗时",
+    resetUsage: "重置统计",
+    resetUsageConfirm: "确定要重置 AI 使用量统计吗？",
+    noUsageData: "暂无使用记录",
+    scenario: "场景",
+    recentCalls: "最近调用",
+    duration: "耗时",
   },
 
   // Duplicates
@@ -901,6 +921,25 @@ export interface Translations {
     manualModelPlaceholder: string;
     modelsFetched: string;
     noModelsFound: string;
+    maxTokens: string;
+    maxTokensHint: string;
+    maxRetries: string;
+    maxRetriesHint: string;
+    advancedSettings: string;
+    usage: string;
+    totalCalls: string;
+    successCalls: string;
+    failedCalls: string;
+    totalTokens: string;
+    promptTokens: string;
+    outputTokens: string;
+    avgDuration: string;
+    resetUsage: string;
+    resetUsageConfirm: string;
+    noUsageData: string;
+    scenario: string;
+    recentCalls: string;
+    duration: string;
   };
   duplicates: {
     title: string;

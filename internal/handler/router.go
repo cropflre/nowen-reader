@@ -265,6 +265,9 @@ func SetupRoutes(r *gin.Engine) {
 		aiGroup.GET("/settings", ai.GetSettings)
 		aiGroup.PUT("/settings", ai.UpdateSettings)
 		aiGroup.GET("/models", ai.Models)
+		aiGroup.GET("/usage", ai.GetUsageStats)
+		aiGroup.DELETE("/usage", ai.ResetUsageStats)
+		aiGroup.POST("/test", ai.TestConnection)
 	}
 
 	// OPDS protocol
