@@ -26,6 +26,7 @@ import { Heart, Star, Tag, X, Plus } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import AIChatPanel from "@/components/reader/AIChatPanel";
 import PageTranslateOverlay from "@/components/reader/PageTranslateOverlay";
+import { useAIStatus } from "@/hooks/useAIStatus";
 
 export default function ReaderPage() {
   const params = useParams();
@@ -33,9 +34,9 @@ export default function ReaderPage() {
   const comicId = params.id as string;
   const t = useTranslation();
   const { locale } = useLocale();
+  const { aiConfigured } = useAIStatus();
 
   // Try API first
-  const {
     pages: apiPages,
     title: apiTitle,
     isNovel,
@@ -418,16 +419,18 @@ export default function ReaderPage() {
       )}
 
       {/* AI Chat Panel */}
-      <AIChatPanel
-        comicId={comicId}
-        locale={locale}
-        contextImageUrl={pages[currentPage] || undefined}
-        contextLabel={`${t.reader.currentPage}: ${currentPage + 1} / ${pages.length}`}
-        readerTheme={readerTheme}
-      />
+      {aiConfigured && (
+        <AIChatPanel
+          comicId={comicId}
+          locale={locale}
+          contextImageUrl={pages[currentPage] || undefined}
+          contextLabel={`${t.reader.currentPage}: ${currentPage + 1} / ${pages.length}`}
+          readerTheme={readerTheme}
+        />
+      )}
 
       {/* Page Translation Overlay (Phase 4) */}
-      {!isNovel && !isPdf && (
+      {aiConfigured && !isNovel && !isPdf && (
         <PageTranslateOverlay
           comicId={comicId}
           pageIndex={currentPage}

@@ -37,7 +37,7 @@ export default function TextReaderView({
   externalShowSettings,
   comicId,
 }: TextReaderViewProps) {
-  const locale = useLocale();
+  const { locale } = useLocale();
   const [content, setContent] = useState("");
   const [chapterTitle, setChapterTitle] = useState("");
   const [isHTML, setIsHTML] = useState(false);
@@ -561,7 +561,7 @@ export default function TextReaderView({
                         ? "text-zinc-400 hover:text-zinc-200"
                         : "text-zinc-500 hover:text-zinc-700"
                     }`}
-                    title={locale === "zh" ? "AI 章节摘要" : "AI Chapter Summaries"}
+                    title={locale === "zh-CN" ? "AI 章节摘要" : "AI Chapter Summaries"}
                   >
                     <Brain className="h-3 w-3" />
                     AI
@@ -615,7 +615,7 @@ export default function TextReaderView({
                         isDark ? "text-zinc-500" : "text-zinc-400"
                       }`}>
                         <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        {locale === "zh" ? "生成中..." : "Generating..."}
+                        {locale === "zh-CN" ? "生成中..." : "Generating..."}
                       </span>
                     )}
                   </span>

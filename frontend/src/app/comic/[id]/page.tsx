@@ -51,6 +51,7 @@ import {
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { MetadataSearch } from "@/components/MetadataSearch";
 import { SimilarComics } from "@/components/Recommendations";
+import { useAIStatus } from "@/hooks/useAIStatus";
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -93,6 +94,7 @@ export default function ComicDetailPage() {
   const [metadataTranslating, setMetadataTranslating] = useState(false);
 
   // AI 功能 state
+  const { aiConfigured } = useAIStatus();
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiParseLoading, setAiParseLoading] = useState(false);
   const [aiParsedResult, setAiParsedResult] = useState<Record<string, unknown> | null>(null);
@@ -830,15 +832,17 @@ export default function ComicDetailPage() {
                 >
                   <Plus className="h-4 w-4" />
                 </button>
-                <button
-                  onClick={handleAiSuggestTags}
-                  disabled={aiSuggestLoading}
-                  className="flex items-center gap-1.5 rounded-lg bg-purple-500/15 px-3 py-2 text-xs font-medium text-purple-400 transition-colors hover:bg-purple-500/25 disabled:opacity-50"
-                  title={t.comicDetail.aiSuggestTags || "AI Suggest Tags"}
-                >
-                  {aiSuggestLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
-                  <span className="hidden sm:inline">{aiSuggestLoading ? (t.comicDetail.aiSuggestTagsLoading || "Analyzing...") : (t.comicDetail.aiSuggestTags || "AI Tags")}</span>
-                </button>
+                {aiConfigured && (
+                  <button
+                    onClick={handleAiSuggestTags}
+                    disabled={aiSuggestLoading}
+                    className="flex items-center gap-1.5 rounded-lg bg-purple-500/15 px-3 py-2 text-xs font-medium text-purple-400 transition-colors hover:bg-purple-500/25 disabled:opacity-50"
+                    title={t.comicDetail.aiSuggestTags || "AI Suggest Tags"}
+                  >
+                    {aiSuggestLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+                    <span className="hidden sm:inline">{aiSuggestLoading ? (t.comicDetail.aiSuggestTagsLoading || "Analyzing...") : (t.comicDetail.aiSuggestTags || "AI Tags")}</span>
+                  </button>
+                )}
               </div>
 
               {/* AI 建议标签展示 */}
@@ -976,33 +980,39 @@ export default function ComicDetailPage() {
                       <Languages className="h-3 w-3" />
                       <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (t.metadata?.translateMetadata || "Translate")}</span>
                     </button>
-                    <button
-                      onClick={handleAiSummary}
-                      disabled={aiSummaryLoading}
-                      className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
-                      title={t.comicDetail.aiSummary || "AI Summary"}
-                    >
-                      {aiSummaryLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                      <span>{aiSummaryLoading ? (t.comicDetail.aiSummaryGenerating || "Generating...") : (t.comicDetail.aiSummary || "AI Summary")}</span>
-                    </button>
-                    <button
-                      onClick={handleAiParseFilename}
-                      disabled={aiParseLoading}
-                      className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
-                      title={t.comicDetail.aiParseFilename || "AI Parse Filename"}
-                    >
-                      {aiParseLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
-                      <span>{aiParseLoading ? (t.comicDetail.aiParseFilenameLoading || "Parsing...") : (t.comicDetail.aiParseFilename || "AI Parse")}</span>
-                    </button>
-                    <button
-                      onClick={handleAiAnalyzeCover}
-                      disabled={aiCoverLoading}
-                      className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
-                      title={t.comicDetail.aiAnalyzeCover || "AI Analyze Cover"}
-                    >
-                      {aiCoverLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
-                      <span>{aiCoverLoading ? (t.comicDetail.aiAnalyzeCoverLoading || "Analyzing...") : (t.comicDetail.aiAnalyzeCover || "AI Cover")}</span>
-                    </button>
+                    {aiConfigured && (
+                      <button
+                        onClick={handleAiSummary}
+                        disabled={aiSummaryLoading}
+                        className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
+                        title={t.comicDetail.aiSummary || "AI Summary"}
+                      >
+                        {aiSummaryLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                        <span>{aiSummaryLoading ? (t.comicDetail.aiSummaryGenerating || "Generating...") : (t.comicDetail.aiSummary || "AI Summary")}</span>
+                      </button>
+                    )}
+                    {aiConfigured && (
+                      <button
+                        onClick={handleAiParseFilename}
+                        disabled={aiParseLoading}
+                        className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
+                        title={t.comicDetail.aiParseFilename || "AI Parse Filename"}
+                      >
+                        {aiParseLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                        <span>{aiParseLoading ? (t.comicDetail.aiParseFilenameLoading || "Parsing...") : (t.comicDetail.aiParseFilename || "AI Parse")}</span>
+                      </button>
+                    )}
+                    {aiConfigured && (
+                      <button
+                        onClick={handleAiAnalyzeCover}
+                        disabled={aiCoverLoading}
+                        className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
+                        title={t.comicDetail.aiAnalyzeCover || "AI Analyze Cover"}
+                      >
+                        {aiCoverLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+                        <span>{aiCoverLoading ? (t.comicDetail.aiAnalyzeCoverLoading || "Analyzing...") : (t.comicDetail.aiAnalyzeCover || "AI Cover")}</span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>
