@@ -25,6 +25,7 @@ import PdfView from "@/components/reader/PdfView";
 import { Heart, Star, Tag, X, Plus } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import AIChatPanel from "@/components/reader/AIChatPanel";
+import PageTranslateOverlay from "@/components/reader/PageTranslateOverlay";
 
 export default function ReaderPage() {
   const params = useParams();
@@ -424,6 +425,16 @@ export default function ReaderPage() {
         contextLabel={`${t.reader.currentPage}: ${currentPage + 1} / ${pages.length}`}
         readerTheme={readerTheme}
       />
+
+      {/* Page Translation Overlay (Phase 4) */}
+      {!isNovel && !isPdf && (
+        <PageTranslateOverlay
+          comicId={comicId}
+          pageIndex={currentPage}
+          locale={locale}
+          readerTheme={readerTheme}
+        />
+      )}
 
       {/* Info Panel (slide-in from right) */}
       {showInfoPanel && useRealData && (

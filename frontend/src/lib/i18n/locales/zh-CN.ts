@@ -23,6 +23,9 @@ const zhCN = {
     upload: "上传",
     uploading: "上传中...",
     stats: "阅读统计",
+    aiSearchPlaceholder: "用自然语言搜索，如「关于巨人的漫画」...",
+    aiSearchTitle: "AI 语义搜索结果",
+    aiSearchNoResults: "未找到匹配结果，试试换个描述方式",
   },
 
   // Home page
@@ -610,6 +613,9 @@ export interface Translations {
     upload: string;
     uploading: string;
     stats: string;
+    aiSearchPlaceholder: string;
+    aiSearchTitle: string;
+    aiSearchNoResults: string;
   };
   home: {
     mockDataNotice: string;

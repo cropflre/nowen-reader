@@ -18,8 +18,8 @@ import {
   useCategories,
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
-import { useTranslation } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download, BookMarked, Image, BookOpen } from "lucide-react";
+import { useTranslation, useLocale } from "@/lib/i18n";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download, BookMarked, Image, BookOpen, Brain, Loader2 } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 import { useToast } from "@/components/Toast";
 
@@ -61,6 +61,8 @@ function apiToComic(api: ApiComic): Comic {
 
 export default function Home() {
   const t = useTranslation();
+  const { locale: rawLocale } = useLocale();
+  const locale = rawLocale === "zh-CN" ? "zh" : "en";
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
@@ -74,6 +76,11 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
 
+  // AI 语义搜索 (Phase 4)
+  const [aiSearchMode, setAiSearchMode] = useState(false);
+  const [aiSearchLoading, setAiSearchLoading] = useState(false);
+  const [aiSearchResults, setAiSearchResults] = useState<{comicId:string;title:string;score:number;reason:string;matchedOn:string[]}[]>([]);
+
   // Batch selection
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -83,6 +90,35 @@ export default function Home() {
 
   // 内容类型 Tab
   const [contentType, setContentType] = useState<"" | "comic" | "novel">("");
+
+  // AI 语义搜索 handler
+  const handleAiSearch = useCallback(async (query: string) => {
+    if (!query.trim() || aiSearchLoading) return;
+    setAiSearchLoading(true);
+    setAiSearchResults([]);
+    try {
+      const res = await fetch("/api/ai/semantic-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, targetLang: locale }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiSearchResults(data.results || []);
+      }
+    } catch { /* ignore */ }
+    finally { setAiSearchLoading(false); }
+  }, [aiSearchLoading, locale]);
+
+  // 当 AI 模式下搜索词变化时触发 AI 搜索
+  useEffect(() => {
+    if (aiSearchMode && debouncedSearch && debouncedSearch.length >= 2) {
+      handleAiSearch(debouncedSearch);
+    }
+    if (!debouncedSearch) {
+      setAiSearchResults([]);
+    }
+  }, [aiSearchMode, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -325,6 +361,8 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
         onSearchChange={setSearchQuery}
         onUpload={handleUpload}
         uploading={uploading}
+        aiSearchMode={aiSearchMode}
+        onAiSearchModeChange={setAiSearchMode}
       />
 
       {/* Main Content */}
@@ -568,6 +606,53 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 }}
               />
             </div>
+
+            {/* AI Semantic Search Results (Phase 4) */}
+            {aiSearchMode && debouncedSearch && (
+              <div className="mb-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-purple-400" />
+                  <span className="text-sm font-medium text-purple-400">
+                    {t.navbar?.aiSearchTitle || "AI 语义搜索结果"}
+                  </span>
+                  {aiSearchLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />}
+                </div>
+                {aiSearchResults.length > 0 ? (
+                  <div className="space-y-2">
+                    {aiSearchResults.map((result) => (
+                      <a
+                        key={result.comicId}
+                        href={`/comic/${result.comicId}`}
+                        className="flex items-center gap-4 rounded-xl border border-purple-500/15 bg-purple-500/5 p-3 transition-all hover:border-purple-500/30 hover:bg-purple-500/10"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500/15">
+                          <span className="text-xs font-bold text-purple-400">{Math.round(result.score)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{result.title}</p>
+                          {result.reason && (
+                            <p className="mt-0.5 text-xs text-purple-400/70 line-clamp-1">{result.reason}</p>
+                          )}
+                        </div>
+                        {result.matchedOn && result.matchedOn.length > 0 && (
+                          <div className="flex shrink-0 gap-1">
+                            {result.matchedOn.slice(0, 3).map((m) => (
+                              <span key={m} className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[9px] text-purple-400/60">
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                ) : !aiSearchLoading ? (
+                  <p className="text-xs text-muted/50 py-4 text-center">
+                    {t.navbar?.aiSearchNoResults || "未找到匹配结果，试试换个描述方式"}
+                  </p>
+                ) : null}
+              </div>
+            )}
 
             {/* Comics Grid */}
             <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>

@@ -8,6 +8,7 @@ import {
   Loader2,
   Sun,
   Moon,
+  Brain,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme-context";
@@ -19,6 +20,8 @@ interface NavbarProps {
   onSearchChange: (query: string) => void;
   onUpload?: () => void;
   uploading?: boolean;
+  aiSearchMode?: boolean;
+  onAiSearchModeChange?: (mode: boolean) => void;
 }
 
 export default function Navbar({
@@ -26,6 +29,8 @@ export default function Navbar({
   onSearchChange,
   onUpload,
   uploading,
+  aiSearchMode = false,
+  onAiSearchModeChange,
 }: NavbarProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const t = useTranslation();
@@ -51,15 +56,37 @@ export default function Navbar({
               isSearchFocused ? "max-w-lg" : ""
             }`}
           >
-            <Search className="absolute left-3 h-4 w-4 text-muted" />
+            {/* AI Search Toggle */}
+            {onAiSearchModeChange && (
+              <button
+                type="button"
+                onClick={() => onAiSearchModeChange(!aiSearchMode)}
+                className={`absolute left-2 z-10 flex h-6 items-center gap-1 rounded-md px-1.5 text-[10px] font-medium transition-all ${
+                  aiSearchMode
+                    ? "bg-purple-500/20 text-purple-400"
+                    : "text-muted hover:text-foreground"
+                }`}
+                title={aiSearchMode ? "AI 语义搜索" : "普通搜索"}
+              >
+                <Brain className="h-3 w-3" />
+              </button>
+            )}
+            <Search className={`absolute ${onAiSearchModeChange ? "left-10" : "left-3"} h-4 w-4 text-muted`} />
             <input
               type="text"
-              placeholder={t.navbar.searchPlaceholder}
+              placeholder={aiSearchMode
+                ? (t.navbar?.aiSearchPlaceholder || "用自然语言搜索，如「关于巨人的漫画」")
+                : t.navbar.searchPlaceholder
+              }
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
-              className="h-9 sm:h-10 w-full rounded-xl border border-border/60 bg-card/50 pl-10 pr-4 text-sm text-foreground placeholder:text-muted/60 outline-none transition-all duration-300 focus:border-accent/50 focus:bg-card focus:ring-2 focus:ring-accent/20"
+              className={`h-9 sm:h-10 w-full rounded-xl border bg-card/50 ${onAiSearchModeChange ? "pl-16" : "pl-10"} pr-4 text-sm text-foreground placeholder:text-muted/60 outline-none transition-all duration-300 focus:bg-card focus:ring-2 ${
+                aiSearchMode
+                  ? "border-purple-500/40 focus:border-purple-500/60 focus:ring-purple-500/20"
+                  : "border-border/60 focus:border-accent/50 focus:ring-accent/20"
+              }`}
             />
           </div>
         </div>

@@ -25,6 +25,9 @@ const en: Translations = {
     upload: "Upload",
     uploading: "Uploading...",
     stats: "Reading Stats",
+    aiSearchPlaceholder: "Search naturally, e.g. 'that manga about giants'...",
+    aiSearchTitle: "AI Semantic Search Results",
+    aiSearchNoResults: "No matches found, try a different description",
   },
 
   // Home page

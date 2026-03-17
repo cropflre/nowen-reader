@@ -285,9 +285,15 @@ func SetupRoutes(r *gin.Engine) {
 	// AI Chat (Phase 3)
 	aiGroup.POST("/chat", ai.Chat)
 
+	// AI semantic search (Phase 4)
+	aiGroup.POST("/semantic-search", ai.SemanticSearch)
+
 	// AI chapter summary (Phase 3)
 	comicByIDWrite.POST("/ai-chapter-summary", ai.ChapterSummary)
 	comicByIDWrite.POST("/ai-chapter-summaries", ai.BatchChapterSummaries)
+
+	// AI page translation (Phase 4)
+	comicByIDWrite.POST("/ai-translate-page", ai.TranslatePage)
 
 	// OPDS protocol
 	opds := NewOPDSHandler()

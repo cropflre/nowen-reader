@@ -2,8 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,6 +9,7 @@ import (
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
+
 type AIHandler struct{}
 
 func NewAIHandler() *AIHandler { return &AIHandler{} }
@@ -832,4 +831,164 @@ func stripHTMLTags(s string) string {
 		text = strings.ReplaceAll(text, "  ", " ")
 	}
 	return strings.TrimSpace(text)
+}
+
+// ============================================================
+// Phase 4-1: POST /api/ai/semantic-search — AI 语义搜索
+// ============================================================
+
+func (h *AIHandler) SemanticSearch(c *gin.Context) {
+	var body struct {
+		Query      string `json:"query"`
+		TargetLang string `json:"targetLang"`
+		Limit      int    `json:"limit"` // 候选列表上限
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Query == "" {
+		c.JSON(400, gin.H{"error": "query is required"})
+		return
+	}
+	if body.TargetLang == "" {
+		body.TargetLang = "zh"
+	}
+	if body.Limit <= 0 || body.Limit > 80 {
+		body.Limit = 80
+	}
+
+	cfg := service.LoadAIConfig()
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		c.JSON(400, gin.H{"error": "AI not configured"})
+		return
+	}
+
+	// 获取库中所有作品的基本信息作为候选
+	result, err := store.GetAllComics(store.ComicListOptions{
+		PageSize: body.Limit,
+		Page:     1,
+		SortBy:   "title",
+	})
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to fetch library"})
+		return
+	}
+
+	// 构建候选列表
+	var candidates []map[string]string
+	for _, comic := range result.Comics {
+		c := map[string]string{
+			"id":    comic.ID,
+			"title": comic.Title,
+		}
+		if comic.Author != "" {
+			c["author"] = comic.Author
+		}
+		if comic.Genre != "" {
+			c["genre"] = comic.Genre
+		}
+		if comic.Description != "" {
+			c["description"] = comic.Description
+		}
+		// 收集标签
+		if len(comic.Tags) > 0 {
+			var tagNames []string
+			for _, t := range comic.Tags {
+				tagNames = append(tagNames, t.Name)
+			}
+			c["tags"] = strings.Join(tagNames, ", ")
+		}
+		candidates = append(candidates, c)
+	}
+
+	if len(candidates) == 0 {
+		c.JSON(200, gin.H{
+			"success": true,
+			"results": []interface{}{},
+		})
+		return
+	}
+
+	results, err := service.SemanticSearch(cfg, body.Query, candidates, body.TargetLang)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"success": true,
+		"results": results,
+	})
+}
+
+// ============================================================
+// Phase 4-2: POST /api/comics/:id/ai-translate-page — 漫画页面翻译
+// ============================================================
+
+func (h *AIHandler) TranslatePage(c *gin.Context) {
+	comicID := c.Param("id")
+	if comicID == "" {
+		c.JSON(400, gin.H{"error": "comic id required"})
+		return
+	}
+
+	var body struct {
+		PageIndex  int    `json:"pageIndex"`
+		SourceLang string `json:"sourceLang"` // 原文语言，空则自动检测
+		TargetLang string `json:"targetLang"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request body"})
+		return
+	}
+	if body.TargetLang == "" {
+		body.TargetLang = "zh"
+	}
+
+	cfg := service.LoadAIConfig()
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		c.JSON(400, gin.H{"error": "AI not configured"})
+		return
+	}
+
+	// 检查缓存
+	if cached := service.GetPageTranslationFromCache(comicID, body.PageIndex, body.TargetLang); cached != nil {
+		c.JSON(200, gin.H{
+			"success":     true,
+			"translation": cached,
+			"cached":      true,
+		})
+		return
+	}
+
+	// 验证作品存在
+	comic, err := store.GetComicByID(comicID)
+	if err != nil || comic == nil {
+		c.JSON(404, gin.H{"error": "Comic not found"})
+		return
+	}
+
+	// 获取页面图片数据
+	pageImg, err := service.GetPageImage(comicID, body.PageIndex)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "Page not found: " + err.Error()})
+		return
+	}
+	if pageImg == nil || len(pageImg.Data) == 0 {
+		c.JSON(404, gin.H{"error": "Page image data is empty"})
+		return
+	}
+
+	// 调用 Vision LLM 翻译
+	translation, err := service.TranslatePageImage(cfg, pageImg.Data, body.SourceLang, body.TargetLang)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 写入缓存
+	service.CachePageTranslation(comicID, body.PageIndex, body.TargetLang, translation)
+
+	c.JSON(200, gin.H{
+		"success":     true,
+		"translation": translation,
+		"cached":      false,
+	})
 }

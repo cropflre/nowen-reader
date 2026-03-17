@@ -1731,3 +1731,269 @@ func ClearChapterSummaryCache(comicID string) {
 		}
 	}
 }
+
+// ============================================================
+// Phase 4-1: AI 语义搜索
+// ============================================================
+
+// SemanticSearchResult AI 语义搜索结果
+type SemanticSearchResult struct {
+	ComicID   string   `json:"comicId"`
+	Title     string   `json:"title"`
+	Score     float64  `json:"score"`     // 0-100 相关度
+	Reason    string   `json:"reason"`    // AI 给出的匹配理由
+	MatchedOn []string `json:"matchedOn"` // 匹配维度: title, genre, author, description, tags
+}
+
+// SemanticSearch 使用 AI 理解自然语言搜索意图，在库中查找最相关的作品。
+// query: 用户自然语言查询（如"那个关于巨人的漫画"、"最近看的悬疑类"）
+// candidates: 库中所有作品的基本信息 [{id, title, author, genre, description, tags}]
+func SemanticSearch(cfg AIConfig, query string, candidates []map[string]string, targetLang string) ([]SemanticSearchResult, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return nil, fmt.Errorf("cloud AI not configured")
+	}
+
+	langName := "Chinese (简体中文)"
+	if targetLang == "en" {
+		langName = "English"
+	}
+
+	systemPrompt := fmt.Sprintf(`You are a smart library search assistant. The user is searching their personal comic/novel library using natural language.
+
+Your task:
+1. Understand the user's search intent (they may describe a work by plot, character, theme, mood, genre, author, or partial title)
+2. From the provided candidate list, find the most relevant works
+3. Score each match 0-100 based on relevance
+4. Provide a brief reason for each match in %s
+
+Return ONLY a JSON array of matches, sorted by score descending. Return at most 10 results.
+Each element: {"index": <candidate_index>, "score": <0-100>, "reason": "<brief reason>", "matchedOn": ["title","genre",...]}
+
+If no candidates match, return an empty array: []`, langName)
+
+	// 构建候选列表文本（限制数量避免超出 token）
+	maxCandidates := 80
+	if len(candidates) > maxCandidates {
+		candidates = candidates[:maxCandidates]
+	}
+	var candidateLines []string
+	for i, c := range candidates {
+		parts := []string{fmt.Sprintf("[%d]", i)}
+		if t, ok := c["title"]; ok && t != "" {
+			parts = append(parts, "title:"+t)
+		}
+		if a, ok := c["author"]; ok && a != "" {
+			parts = append(parts, "author:"+a)
+		}
+		if g, ok := c["genre"]; ok && g != "" {
+			parts = append(parts, "genre:"+g)
+		}
+		if d, ok := c["description"]; ok && d != "" {
+			desc := d
+			if len(desc) > 100 {
+				desc = desc[:100] + "..."
+			}
+			parts = append(parts, "desc:"+desc)
+		}
+		if tags, ok := c["tags"]; ok && tags != "" {
+			parts = append(parts, "tags:"+tags)
+		}
+		candidateLines = append(candidateLines, strings.Join(parts, " | "))
+	}
+
+	userPrompt := fmt.Sprintf("User search query: \"%s\"\n\nCandidate works in library:\n%s\n\nFind the most relevant matches. Return a JSON array.",
+		query, strings.Join(candidateLines, "\n"))
+
+	content, err := CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "semantic_search",
+		MaxTokens: 800,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理并解析 JSON
+	content = strings.ReplaceAll(content, "```json", "")
+	content = strings.ReplaceAll(content, "```", "")
+	content = strings.TrimSpace(content)
+
+	start := strings.Index(content, "[")
+	end := strings.LastIndex(content, "]")
+	if start >= 0 && end > start {
+		content = content[start : end+1]
+	}
+
+	var rawResults []struct {
+		Index     int      `json:"index"`
+		Score     float64  `json:"score"`
+		Reason    string   `json:"reason"`
+		MatchedOn []string `json:"matchedOn"`
+	}
+	if err := json.Unmarshal([]byte(content), &rawResults); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	// 映射回候选列表
+	var results []SemanticSearchResult
+	for _, r := range rawResults {
+		if r.Index < 0 || r.Index >= len(candidates) {
+			continue
+		}
+		c := candidates[r.Index]
+		results = append(results, SemanticSearchResult{
+			ComicID:   c["id"],
+			Title:     c["title"],
+			Score:     r.Score,
+			Reason:    r.Reason,
+			MatchedOn: r.MatchedOn,
+		})
+	}
+
+	return results, nil
+}
+
+// ============================================================
+// Phase 4-2: 漫画页面翻译
+// ============================================================
+
+// PageTranslation 漫画页面翻译结果
+type PageTranslation struct {
+	Bubbles []TranslatedBubble `json:"bubbles"` // 识别到的气泡/文字区域及翻译
+	RawText string             `json:"rawText"` // 页面上所有文字的原文
+	Summary string             `json:"summary"` // 整页内容简述
+}
+
+// TranslatedBubble 单个气泡/文字区域的翻译
+type TranslatedBubble struct {
+	Original   string `json:"original"`   // 原文
+	Translated string `json:"translated"` // 译文
+	Position   string `json:"position"`   // 位置描述（如 "top-left", "center", "bottom-right"）
+	Type       string `json:"type"`       // 类型: "dialog", "narration", "sfx", "sign", "thought"
+	Speaker    string `json:"speaker"`    // 说话人（如果能识别）
+}
+
+// TranslatePageImage 使用 Vision LLM 识别漫画页面上的文字并翻译。
+// imageData: 页面图片的原始字节数据
+// sourceLang: 原文语言（如 "ja", "en", "ko"），空则自动检测
+// targetLang: 目标语言（如 "zh", "en"）
+func TranslatePageImage(cfg AIConfig, imageData []byte, sourceLang, targetLang string) (*PageTranslation, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return nil, fmt.Errorf("cloud AI not configured")
+	}
+
+	// 检查 provider 是否支持 Vision
+	if preset, ok := ProviderPresets[cfg.CloudProvider]; ok {
+		if !preset.SupportsVision {
+			return nil, fmt.Errorf("current AI provider does not support vision/image analysis")
+		}
+	}
+
+	targetLangName := "Chinese (简体中文)"
+	if targetLang == "en" {
+		targetLangName = "English"
+	}
+
+	sourceHint := "auto-detect the language"
+	if sourceLang != "" {
+		langMap := map[string]string{"ja": "Japanese", "en": "English", "ko": "Korean", "zh": "Chinese"}
+		if name, ok := langMap[sourceLang]; ok {
+			sourceHint = "the source language is " + name
+		}
+	}
+
+	systemPrompt := fmt.Sprintf(`You are an expert manga/comic translator. Analyze the given comic page image and:
+1. Identify all text regions (dialog bubbles, narration boxes, sound effects, signs, thought bubbles)
+2. Extract the original text from each region
+3. Translate each text to %s
+4. Note the approximate position and type of each text region
+
+Return ONLY a valid JSON object with this structure:
+{
+  "bubbles": [
+    {
+      "original": "original text",
+      "translated": "translated text",
+      "position": "top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right",
+      "type": "dialog|narration|sfx|sign|thought",
+      "speaker": "character name or empty string"
+    }
+  ],
+  "rawText": "all original text concatenated",
+  "summary": "brief description of what's happening on this page in %s"
+}
+
+Rules:
+- %s
+- Preserve the reading order (right-to-left for Japanese manga, left-to-right for Western comics)
+- For sound effects (SFX), provide both transliteration and meaning (e.g. "ドドド → Dododo (rumbling)")
+- Keep character names consistent
+- If no text is found, return empty bubbles array with a summary of the visual content`, targetLangName, targetLangName, sourceHint)
+
+	userPrompt := "Analyze this comic page, extract and translate all text. Return a JSON object."
+
+	// base64 编码图片
+	base64Data := encodeBase64(imageData)
+	mimeType := "image/jpeg"
+	if len(imageData) > 8 && string(imageData[:8]) == "\x89PNG\r\n\x1a\n" {
+		mimeType = "image/png"
+	} else if len(imageData) > 4 && string(imageData[:4]) == "\x89PNG" {
+		mimeType = "image/png"
+	}
+
+	content, err := CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "page_translate",
+		MaxTokens: 1500,
+		Images: []ImageContent{
+			{Base64: base64Data, MimeType: mimeType},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理并解析 JSON
+	content = strings.ReplaceAll(content, "```json", "")
+	content = strings.ReplaceAll(content, "```", "")
+	content = strings.TrimSpace(content)
+
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start >= 0 && end > start {
+		content = content[start : end+1]
+	}
+
+	var result PageTranslation
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		// 如果 JSON 解析失败，将整个响应作为 rawText 返回
+		return &PageTranslation{
+			RawText: content,
+			Summary: "Failed to parse structured response",
+		}, nil
+	}
+
+	return &result, nil
+}
+
+// 页面翻译缓存
+var (
+	pageTranslateCache   = make(map[string]*PageTranslation)
+	pageTranslateCacheMu sync.RWMutex
+)
+
+func pageTranslateCacheKey(comicID string, pageIndex int, targetLang string) string {
+	return fmt.Sprintf("%s:%d:%s", comicID, pageIndex, targetLang)
+}
+
+// GetPageTranslationFromCache 从缓存获取页面翻译
+func GetPageTranslationFromCache(comicID string, pageIndex int, targetLang string) *PageTranslation {
+	pageTranslateCacheMu.RLock()
+	defer pageTranslateCacheMu.RUnlock()
+	return pageTranslateCache[pageTranslateCacheKey(comicID, pageIndex, targetLang)]
+}
+
+// CachePageTranslation 缓存页面翻译结果
+func CachePageTranslation(comicID string, pageIndex int, targetLang string, result *PageTranslation) {
+	pageTranslateCacheMu.Lock()
+	defer pageTranslateCacheMu.Unlock()
+	pageTranslateCache[pageTranslateCacheKey(comicID, pageIndex, targetLang)] = result
+}
