@@ -272,6 +272,8 @@ func getChapterTitles(r archive.Reader, archiveType archive.ArchiveType) []strin
 		return archive.GetTxtChapterTitles(r)
 	case archive.TypeEpub, archive.TypeMobi, archive.TypeAzw3:
 		return archive.GetEpubChapterTitles(r)
+	case archive.TypeHtml:
+		return archive.GetHtmlChapterTitles(r)
 	}
 	return nil
 }
@@ -342,8 +344,8 @@ func GetChapterContent(comicID string, chapterIndex int) (*ChapterContent, error
 	}
 
 	mimeType := "text/plain; charset=utf-8"
-	if archiveType == archive.TypeEpub || archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 {
-		mimeType = "text/html; charset=utf-8" // EPUB returns sanitized HTML for rich rendering
+	if archiveType == archive.TypeEpub || archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 || archiveType == archive.TypeHtml {
+		mimeType = "text/html; charset=utf-8" // EPUB/HTML returns sanitized HTML for rich rendering
 	}
 
 	return &ChapterContent{

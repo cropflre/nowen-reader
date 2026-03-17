@@ -55,7 +55,7 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
 
   // 判断小说文件扩展名
   const isNovel = (filename: string) =>
-    /\.(txt|epub|mobi|azw3)$/i.test(filename || "");
+    /\.(txt|epub|mobi|azw3|html|htm)$/i.test(filename || "");
 
   // 格式化阅读时间
   const formatTime = (dateStr: string) => {

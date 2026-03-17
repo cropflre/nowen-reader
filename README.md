@@ -10,7 +10,7 @@
 ## ✨ 特性
 
 ### 📚 内容管理
-- 📖 **多格式支持** — 漫画：ZIP/CBZ/CBR/RAR/7Z/CB7/PDF；小说：TXT/EPUB/MOBI/AZW3
+- 📖 **多格式支持** — 漫画：ZIP/CBZ/CBR/RAR/7Z/CB7/PDF；小说：TXT/EPUB/MOBI/AZW3/HTML
 - 🔄 **自动扫描** — 文件系统监听 + 定时同步，自动发现新文件
 - 🏷️ **标签 & 分类** — 多标签、多分类管理，标签颜色自定义
 - 📚 **书架系统** — 自定义书架，灵活归类漫画和小说
@@ -224,7 +224,7 @@ make build-full
 | 类型 | 格式 |
 |------|------|
 | 漫画/压缩包 | `.zip` `.cbz` `.cbr` `.rar` `.7z` `.cb7` `.pdf` |
-| 小说/电子书 | `.txt` `.epub` `.mobi` `.azw3` |
+| 小说/电子书 | `.txt` `.epub` `.mobi` `.azw3` `.html` `.htm` |
 | 图片 | `.jpg` `.jpeg` `.png` `.gif` `.webp` `.bmp` `.avif` |
 
 ## 🔄 从 Next.js 版本迁移

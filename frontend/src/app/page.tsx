@@ -315,7 +315,7 @@ export default function Home() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3"
+accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
         className="hidden"
         onChange={handleFileChange}
       />

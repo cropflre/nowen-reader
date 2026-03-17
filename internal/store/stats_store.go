@@ -359,6 +359,8 @@ func GetFileStats() (*FileStats, error) {
 					WHEN "filename" LIKE '%.mobi' THEN 'MOBI'
 					WHEN "filename" LIKE '%.azw3' THEN 'AZW3'
 					WHEN "filename" LIKE '%.txt' THEN 'TXT'
+					WHEN "filename" LIKE '%.html' THEN 'HTML'
+					WHEN "filename" LIKE '%.htm' THEN 'HTML'
 					ELSE 'OTHER'
 				END
 			) as fmt,
@@ -397,6 +399,8 @@ func GetFileStats() (*FileStats, error) {
 					item.Format = "AZW3"
 				case "txt":
 					item.Format = "TXT"
+				case "html":
+					item.Format = "HTML"
 				case "other":
 					item.Format = "OTHER"
 				}

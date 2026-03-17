@@ -57,6 +57,7 @@ const (
 	TypeEpub ArchiveType = "epub"
 	TypeMobi ArchiveType = "mobi"
 	TypeAzw3 ArchiveType = "azw3"
+	TypeHtml ArchiveType = "html"
 )
 
 // DetectType returns the archive type based on file extension.
@@ -79,6 +80,8 @@ func DetectType(filepath string) ArchiveType {
 		return TypeMobi
 	case ".azw3":
 		return TypeAzw3
+	case ".html", ".htm":
+		return TypeHtml
 	default:
 		return ""
 	}
@@ -86,7 +89,7 @@ func DetectType(filepath string) ArchiveType {
 
 // IsNovelType returns true if the archive type is a novel/text format.
 func IsNovelType(t ArchiveType) bool {
-	return t == TypeTxt || t == TypeEpub || t == TypeMobi || t == TypeAzw3
+	return t == TypeTxt || t == TypeEpub || t == TypeMobi || t == TypeAzw3 || t == TypeHtml
 }
 
 // ============================================================
@@ -117,6 +120,8 @@ func NewReader(filepath string) (Reader, error) {
 		return newEpubReader(filepath)
 	case TypeMobi, TypeAzw3:
 		return newMobiReader(filepath)
+	case TypeHtml:
+		return newHtmlReader(filepath)
 	default:
 		return nil, fmt.Errorf("unsupported archive type: %s", filepath)
 	}

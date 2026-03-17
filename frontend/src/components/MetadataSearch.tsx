@@ -19,7 +19,7 @@ interface MetadataResult {
 function isNovelFile(filename?: string): boolean {
   if (!filename) return false;
   const ext = filename.toLowerCase();
-  return ext.endsWith(".txt") || ext.endsWith(".epub") || ext.endsWith(".mobi") || ext.endsWith(".azw3");
+  return ext.endsWith(".txt") || ext.endsWith(".epub") || ext.endsWith(".mobi") || ext.endsWith(".azw3") || ext.endsWith(".html") || ext.endsWith(".htm");
 }
 
 // 漫画数据源
