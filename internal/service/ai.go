@@ -962,3 +962,226 @@ Respond ONLY with a valid JSON object containing the translated fields.`, langNa
 	}
 	return result, nil
 }
+
+// ============================================================
+// Phase 1-1: AI 智能摘要生成
+// ============================================================
+
+// GenerateSummary 根据漫画/小说的元数据信息，让 AI 生成中文简介。
+func GenerateSummary(cfg AIConfig, title, author, genre, seriesName, existingDesc, contentType, targetLang string) (string, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return "", fmt.Errorf("cloud AI not configured")
+	}
+
+	langName := "Chinese (简体中文)"
+	if targetLang == "en" {
+		langName = "English"
+	}
+
+	systemPrompt := fmt.Sprintf(`You are a professional %s reviewer and librarian. Based on the given metadata, write an engaging and informative summary/description in %s.
+
+Requirements:
+- Write 2-4 sentences (80-200 characters for Chinese, 100-300 words for English)
+- Be descriptive and engaging, like a bookstore blurb
+- If the existing description exists, improve and localize it rather than creating from scratch
+- Include genre context and appeal points
+- Do NOT add any prefixes, labels, or markdown — return only the pure summary text`, contentType, langName)
+
+	// 构建元数据上下文
+	var parts []string
+	if title != "" {
+		parts = append(parts, fmt.Sprintf("Title: %s", title))
+	}
+	if author != "" {
+		parts = append(parts, fmt.Sprintf("Author: %s", author))
+	}
+	if genre != "" {
+		parts = append(parts, fmt.Sprintf("Genre: %s", genre))
+	}
+	if seriesName != "" && seriesName != title {
+		parts = append(parts, fmt.Sprintf("Series: %s", seriesName))
+	}
+	if existingDesc != "" {
+		parts = append(parts, fmt.Sprintf("Existing description: %s", existingDesc))
+	}
+	parts = append(parts, fmt.Sprintf("Content type: %s", contentType))
+
+	userPrompt := fmt.Sprintf("Generate a %s summary for this %s based on the following metadata:\n\n%s", langName, contentType, strings.Join(parts, "\n"))
+
+	return CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "summary",
+		MaxTokens: 500,
+	})
+}
+
+// ============================================================
+// Phase 1-2: AI 文件名智能解析
+// ============================================================
+
+// ParsedFilename AI 从文件名解析出的结构化元数据
+type ParsedFilename struct {
+	Title       string `json:"title,omitempty"`
+	Author      string `json:"author,omitempty"`
+	Group       string `json:"group,omitempty"` // 汉化组/扫图组
+	SeriesName  string `json:"seriesName,omitempty"`
+	SeriesIndex *int   `json:"seriesIndex,omitempty"`
+	Language    string `json:"language,omitempty"`
+	Genre       string `json:"genre,omitempty"`
+	Year        *int   `json:"year,omitempty"`
+	Tags        string `json:"tags,omitempty"` // 逗号分隔的额外标签
+}
+
+// AIParseFilename 使用 AI 智能解析复杂文件名，提取结构化元数据。
+func AIParseFilename(cfg AIConfig, filename string) (*ParsedFilename, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return nil, fmt.Errorf("cloud AI not configured")
+	}
+
+	systemPrompt := `You are an expert at parsing manga/comic/novel filenames. These filenames often follow complex conventions like:
+- [Group] Title Vol.01 [Author]
+- (C99) [Author] Title (Language)
+- [汉化组] 作品名 第01卷 [作者]
+- Title_v01_[Author]_(Year)
+
+Extract as much structured metadata as possible from the filename.
+
+Rules:
+- "Group" refers to scan/translation groups (e.g. 汉化组, scanlation group)
+- Remove file extensions before parsing
+- Volume/chapter numbers map to seriesIndex
+- Return ONLY a valid JSON object, no extra text or markdown`
+
+	userPrompt := fmt.Sprintf(`Parse this filename and extract structured metadata:
+
+"%s"
+
+Return a JSON object with these fields (omit empty ones):
+{
+  "title": "the main title/work name",
+  "author": "author/artist name",
+  "group": "scan/translation group name",
+  "seriesName": "series name if different from title",
+  "seriesIndex": 1,
+  "language": "language code like zh, en, ja",
+  "genre": "comma-separated genres if identifiable",
+  "year": 2024,
+  "tags": "comma-separated extra tags"
+}`, filename)
+
+	content, err := CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "parse_filename",
+		MaxTokens: 300,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理 markdown 代码块
+	content = strings.ReplaceAll(content, "```json", "")
+	content = strings.ReplaceAll(content, "```", "")
+	content = strings.TrimSpace(content)
+
+	// 提取 JSON
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start >= 0 && end > start {
+		content = content[start : end+1]
+	}
+
+	var parsed ParsedFilename
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+	return &parsed, nil
+}
+
+// ============================================================
+// Phase 1-3: AI 智能标签建议
+// ============================================================
+
+// SuggestTags 根据漫画/小说的元数据，让 AI 推荐合适的标签。
+func SuggestTags(cfg AIConfig, title, author, genre, description, contentType, targetLang string, existingTags []string) ([]string, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return nil, fmt.Errorf("cloud AI not configured")
+	}
+
+	langName := "Chinese (简体中文)"
+	if targetLang == "en" {
+		langName = "English"
+	}
+
+	systemPrompt := fmt.Sprintf(`You are an expert %s librarian and tagger. Based on the given metadata, suggest relevant tags in %s.
+
+Requirements:
+- Suggest 5-10 tags that would help users discover and categorize this work
+- Tags should be concise (1-4 words each)
+- Include genre tags, theme tags, and mood/style tags
+- If existing tags are provided, suggest NEW tags that complement them (don't repeat existing ones)
+- Return ONLY a JSON array of tag strings, no extra text or markdown
+- Tags should be in %s`, contentType, langName, langName)
+
+	// 构建上下文
+	var parts []string
+	if title != "" {
+		parts = append(parts, fmt.Sprintf("Title: %s", title))
+	}
+	if author != "" {
+		parts = append(parts, fmt.Sprintf("Author: %s", author))
+	}
+	if genre != "" {
+		parts = append(parts, fmt.Sprintf("Genre: %s", genre))
+	}
+	if description != "" {
+		// 截断过长的描述
+		desc := description
+		if len(desc) > 500 {
+			desc = desc[:500] + "..."
+		}
+		parts = append(parts, fmt.Sprintf("Description: %s", desc))
+	}
+	if len(existingTags) > 0 {
+		parts = append(parts, fmt.Sprintf("Existing tags (do NOT repeat): %s", strings.Join(existingTags, ", ")))
+	}
+
+	userPrompt := fmt.Sprintf("Suggest tags for this %s:\n\n%s\n\nReturn a JSON array of tag strings.", contentType, strings.Join(parts, "\n"))
+
+	content, err := CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "suggest_tags",
+		MaxTokens: 300,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理
+	content = strings.ReplaceAll(content, "```json", "")
+	content = strings.ReplaceAll(content, "```", "")
+	content = strings.TrimSpace(content)
+
+	// 提取 JSON 数组
+	start := strings.Index(content, "[")
+	end := strings.LastIndex(content, "]")
+	if start >= 0 && end > start {
+		content = content[start : end+1]
+	}
+
+	var tags []string
+	if err := json.Unmarshal([]byte(content), &tags); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	// 过滤掉已有标签
+	existingSet := make(map[string]bool)
+	for _, t := range existingTags {
+		existingSet[strings.ToLower(strings.TrimSpace(t))] = true
+	}
+	var newTags []string
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t != "" && !existingSet[strings.ToLower(t)] {
+			newTags = append(newTags, t)
+		}
+	}
+
+	return newTags, nil
+}

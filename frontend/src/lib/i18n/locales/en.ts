@@ -125,6 +125,18 @@ const en: Translations = {
     metadataSaved: "Metadata saved",
     metadataSaveFailed: "Save failed",
     noMetadata: "No metadata",
+    aiSummary: "AI Summary",
+    aiSummaryGenerating: "Generating summary...",
+    aiSummarySuccess: "Summary generated and saved",
+    aiSuggestTags: "AI Suggest Tags",
+    aiSuggestTagsLoading: "Analyzing...",
+    aiParseFilename: "AI Parse Filename",
+    aiParseFilenameLoading: "Parsing...",
+    aiParseApply: "Apply Results",
+    aiApplied: "Applied",
+    aiNotConfigured: "Please configure AI in Settings first",
+    aiAddSelected: "Add Selected",
+    aiAddAll: "Add All",
   },
 
   // Stats Page

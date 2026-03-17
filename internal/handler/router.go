@@ -270,6 +270,11 @@ func SetupRoutes(r *gin.Engine) {
 		aiGroup.POST("/test", ai.TestConnection)
 	}
 
+	// AI per-comic features (Phase 1)
+	comicByIDWrite.POST("/ai-summary", ai.GenerateSummary)
+	comicByIDWrite.POST("/ai-parse-filename", ai.ParseFilename)
+	comicByIDWrite.POST("/ai-suggest-tags", ai.SuggestTags)
+
 	// OPDS protocol
 	opds := NewOPDSHandler()
 	opdsGroup := api.Group("/opds")

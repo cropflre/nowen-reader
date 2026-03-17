@@ -123,6 +123,18 @@ const zhCN = {
     metadataSaved: "元数据已保存",
     metadataSaveFailed: "保存失败",
     noMetadata: "暂无元数据",
+    aiSummary: "AI 生成简介",
+    aiSummaryGenerating: "正在生成简介...",
+    aiSummarySuccess: "简介已生成并保存",
+    aiSuggestTags: "AI 建议标签",
+    aiSuggestTagsLoading: "正在分析...",
+    aiParseFilename: "AI 解析文件名",
+    aiParseFilenameLoading: "正在解析...",
+    aiParseApply: "应用解析结果",
+    aiApplied: "已应用",
+    aiNotConfigured: "请先在设置中配置 AI",
+    aiAddSelected: "添加选中标签",
+    aiAddAll: "全部添加",
   },
 
   // Stats Page
@@ -670,6 +682,18 @@ export interface Translations {
     metadataSaved: string;
     metadataSaveFailed: string;
     noMetadata: string;
+    aiSummary: string;
+    aiSummaryGenerating: string;
+    aiSummarySuccess: string;
+    aiSuggestTags: string;
+    aiSuggestTagsLoading: string;
+    aiParseFilename: string;
+    aiParseFilenameLoading: string;
+    aiParseApply: string;
+    aiApplied: string;
+    aiNotConfigured: string;
+    aiAddSelected: string;
+    aiAddAll: string;
   };
   stats: {
     title: string;

@@ -42,6 +42,10 @@ import {
   Pencil,
   Check,
   Save,
+  Brain,
+  Sparkles,
+  FileText,
+  Loader2,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { MetadataSearch } from "@/components/MetadataSearch";
@@ -86,6 +90,14 @@ export default function ComicDetailPage() {
   const [coverKey, setCoverKey] = useState(0); // force re-render cover image
   const coverFileRef = useRef<HTMLInputElement>(null);
   const [metadataTranslating, setMetadataTranslating] = useState(false);
+
+  // AI 功能 state
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiParseLoading, setAiParseLoading] = useState(false);
+  const [aiParsedResult, setAiParsedResult] = useState<Record<string, unknown> | null>(null);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>([]);
+  const [aiSelectedTags, setAiSelectedTags] = useState<Set<string>>(new Set());
 
   // 标题编辑 state
   const [editingTitle, setEditingTitle] = useState(false);
@@ -301,6 +313,99 @@ export default function ComicDetailPage() {
       setCoverLoading(false);
     }
   }, [comic, comicId]);
+
+  // AI 生成简介
+  const handleAiSummary = useCallback(async () => {
+    if (aiSummaryLoading) return;
+    setAiSummaryLoading(true);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/ai-summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLang: locale }),
+      });
+      if (res.ok) {
+        refetch();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  }, [aiSummaryLoading, comicId, locale, refetch]);
+
+  // AI 解析文件名
+  const handleAiParseFilename = useCallback(async () => {
+    if (aiParseLoading) return;
+    setAiParseLoading(true);
+    setAiParsedResult(null);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/ai-parse-filename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: false }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiParsedResult(data.parsed);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAiParseLoading(false);
+    }
+  }, [aiParseLoading, comicId]);
+
+  // AI 解析文件名 - 应用结果
+  const handleAiParseApply = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/comics/${comicId}/ai-parse-filename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: true }),
+      });
+      if (res.ok) {
+        setAiParsedResult(null);
+        refetch();
+      }
+    } catch {
+      // ignore
+    }
+  }, [comicId, refetch]);
+
+  // AI 建议标签
+  const handleAiSuggestTags = useCallback(async () => {
+    if (aiSuggestLoading) return;
+    setAiSuggestLoading(true);
+    setAiSuggestedTags([]);
+    setAiSelectedTags(new Set());
+    try {
+      const res = await fetch(`/api/comics/${comicId}/ai-suggest-tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLang: locale, apply: false }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const tags = data.suggestedTags || [];
+        setAiSuggestedTags(tags);
+        setAiSelectedTags(new Set(tags));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  }, [aiSuggestLoading, comicId, locale]);
+
+  // 添加 AI 建议的标签
+  const handleAddAiTags = useCallback(async (tags: string[]) => {
+    if (tags.length === 0) return;
+    await addComicTags(comicId, tags);
+    setAiSuggestedTags([]);
+    setAiSelectedTags(new Set());
+    refetch();
+  }, [comicId, refetch]);
 
   const handleTranslateMetadata = useCallback(async () => {
     if (metadataTranslating) return;
@@ -683,7 +788,66 @@ export default function ComicDetailPage() {
                 >
                   <Plus className="h-4 w-4" />
                 </button>
+                <button
+                  onClick={handleAiSuggestTags}
+                  disabled={aiSuggestLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-purple-500/15 px-3 py-2 text-xs font-medium text-purple-400 transition-colors hover:bg-purple-500/25 disabled:opacity-50"
+                  title={t.comicDetail.aiSuggestTags || "AI Suggest Tags"}
+                >
+                  {aiSuggestLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+                  <span className="hidden sm:inline">{aiSuggestLoading ? (t.comicDetail.aiSuggestTagsLoading || "Analyzing...") : (t.comicDetail.aiSuggestTags || "AI Tags")}</span>
+                </button>
               </div>
+
+              {/* AI 建议标签展示 */}
+              {aiSuggestedTags.length > 0 && (
+                <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-400">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>{t.comicDetail.aiSuggestTags || "AI Suggested Tags"}</span>
+                  </div>
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {aiSuggestedTags.map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          const next = new Set(aiSelectedTags);
+                          if (next.has(tag)) next.delete(tag); else next.add(tag);
+                          setAiSelectedTags(next);
+                        }}
+                        className={`rounded-md px-2 py-1 text-xs transition-all ${
+                          aiSelectedTags.has(tag)
+                            ? "bg-purple-500/20 text-purple-300 ring-1 ring-purple-500/40"
+                            : "bg-card text-muted hover:text-foreground"
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleAddAiTags(Array.from(aiSelectedTags))}
+                      disabled={aiSelectedTags.size === 0}
+                      className="rounded-md bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-40"
+                    >
+                      {t.comicDetail.aiAddSelected || "Add Selected"} ({aiSelectedTags.size})
+                    </button>
+                    <button
+                      onClick={() => handleAddAiTags(aiSuggestedTags)}
+                      className="rounded-md bg-card px-3 py-1 text-xs text-muted transition-colors hover:text-foreground"
+                    >
+                      {t.comicDetail.aiAddAll || "Add All"}
+                    </button>
+                    <button
+                      onClick={() => { setAiSuggestedTags([]); setAiSelectedTags(new Set()); }}
+                      className="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Categories */}
@@ -769,6 +933,24 @@ export default function ComicDetailPage() {
                     >
                       <Languages className="h-3 w-3" />
                       <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (t.metadata?.translateMetadata || "Translate")}</span>
+                    </button>
+                    <button
+                      onClick={handleAiSummary}
+                      disabled={aiSummaryLoading}
+                      className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
+                      title={t.comicDetail.aiSummary || "AI Summary"}
+                    >
+                      {aiSummaryLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                      <span>{aiSummaryLoading ? (t.comicDetail.aiSummaryGenerating || "Generating...") : (t.comicDetail.aiSummary || "AI Summary")}</span>
+                    </button>
+                    <button
+                      onClick={handleAiParseFilename}
+                      disabled={aiParseLoading}
+                      className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50 disabled:opacity-50 disabled:pointer-events-none"
+                      title={t.comicDetail.aiParseFilename || "AI Parse Filename"}
+                    >
+                      {aiParseLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                      <span>{aiParseLoading ? (t.comicDetail.aiParseFilenameLoading || "Parsing...") : (t.comicDetail.aiParseFilename || "AI Parse")}</span>
                     </button>
                   </>
                 )}
@@ -906,6 +1088,40 @@ export default function ComicDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* AI 解析结果展示 */}
+            {aiParsedResult && (
+              <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium text-purple-400">
+                    <FileText className="h-4 w-4" />
+                    {t.comicDetail.aiParseFilename || "AI Parsed Filename"}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAiParseApply}
+                      className="rounded-md bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/30"
+                    >
+                      {t.comicDetail.aiParseApply || "Apply Results"}
+                    </button>
+                    <button
+                      onClick={() => setAiParsedResult(null)}
+                      className="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-1.5 text-xs">
+                  {Object.entries(aiParsedResult).filter(([, v]) => v != null && v !== "").map(([key, value]) => (
+                    <div key={key} className="flex gap-2">
+                      <span className="w-24 shrink-0 text-muted">{key}:</span>
+                      <span className="text-foreground">{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Metadata Scraping */}
             <div>
