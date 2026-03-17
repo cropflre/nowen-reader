@@ -1,6 +1,7 @@
 # ============================================================
-# NowenReader - Multi-stage Docker Build
+# NowenReader - Multi-stage Docker Build (Multi-platform)
 # Builds the complete application: frontend SPA + Go backend
+# Supports: linux/amd64, linux/arm64
 # Final image: ~30MB (Alpine + static binary + frontend assets)
 # ============================================================
 
@@ -26,7 +27,12 @@ RUN npm run build && \
     (echo "[frontend] ERROR: index.html not found in dist/" && exit 1)
 
 # --- Stage 2: Build Go backend ---
-FROM golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+
+# Multi-platform build args (automatically set by Docker buildx)
+ARG TARGETPLATFORM
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 # Use Aliyun mirror for faster & more reliable access in China
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
@@ -49,13 +55,15 @@ COPY --from=frontend-builder /frontend/dist/ ./web/dist/
 RUN if [ -z "$(ls -A ./web/dist/ 2>/dev/null)" ]; then echo "no frontend" > ./web/dist/.gitkeep; fi
 
 # Build static binary with version info
+# Uses TARGETOS/TARGETARCH for cross-compilation (supports amd64 + arm64)
 ARG VERSION=docker
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
 RUN BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)} && \
     GIT_COMMIT=${GIT_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} && \
-    CGO_ENABLED=0 GOOS=linux go build \
+    echo "[build] Target platform: ${TARGETOS}/${TARGETARCH}" && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
       -X main.Version=${VERSION} \
       -X main.BuildTime=${BUILD_TIME} \

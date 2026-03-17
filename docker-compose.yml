@@ -6,10 +6,19 @@
 #
 # 然后打开浏览器访问: http://localhost:6680
 # 默认端口映射: 宿主机6680 -> 容器3000
+#
+# 多平台支持:
+#   镜像同时支持 linux/amd64 和 linux/arm64
+#   方式1: 使用预构建镜像（推荐）→ 注释 build 块，取消注释 image 行
+#   方式2: 本地构建 → 保持 build 块（Docker 自动匹配当前平台）
+#   方式3: 多平台构建推送 → 运行 ./build-multiplatform.sh
 # ============================================================
 
 services:
   nowen-reader:
+    # --- 方式1: 使用预构建的多平台镜像（自动匹配 amd64/arm64）---
+    image: cropflre/nowen-reader:latest
+    # --- 方式2: 本地构建（自动匹配当前平台）---
     build:
       context: .
       args:
