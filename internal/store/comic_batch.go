@@ -149,9 +149,10 @@ func BulkCreateComics(comics []struct {
 	}
 	defer tx.Rollback()
 
+	now := time.Now().UTC()
 	stmt, err := tx.Prepare(`
-		INSERT INTO "Comic" ("id", "filename", "title", "pageCount", "fileSize", "type")
-		VALUES (?, ?, ?, 0, ?, ?)
+		INSERT INTO "Comic" ("id", "filename", "title", "pageCount", "fileSize", "type", "addedAt", "updatedAt")
+		VALUES (?, ?, ?, 0, ?, ?, ?, ?)
 		ON CONFLICT("id") DO NOTHING
 	`)
 	if err != nil {
@@ -161,7 +162,7 @@ func BulkCreateComics(comics []struct {
 
 	for _, c := range comics {
 		comicType := detectComicType(c.Filename)
-		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, c.FileSize, comicType); err != nil {
+		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, c.FileSize, comicType, now, now); err != nil {
 			return err
 		}
 	}
