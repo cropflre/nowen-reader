@@ -43,6 +43,8 @@ export default function DoublePageView({
 
   // 触摸手势状态
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  // 标记touch事件已处理翻页，防止后续合成click再次触发
+  const touchHandledRef = useRef(false);
 
   // 检测移动端
   useEffect(() => {
@@ -81,6 +83,16 @@ export default function DoublePageView({
     setErrorLeft(false);
     setErrorRight(false);
   }, [spreadIndex]);
+
+  // 检查缓存图片：切换模式后，如果图片已在浏览器缓存中加载完成，onLoad 可能不触发
+  const leftImgRef = useRef<HTMLImageElement>(null);
+  const rightImgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const left = leftImgRef.current;
+    if (left && left.complete && left.naturalWidth > 0) setLoadedLeft(true);
+    const right = rightImgRef.current;
+    if (right && right.complete && right.naturalWidth > 0) setLoadedRight(true);
+  });
 
   // 翻页逻辑
   const goForward = useCallback(() => {
@@ -138,6 +150,10 @@ export default function DoublePageView({
 
     // 轻触
     if (absDx < 10 && absDy < 10 && elapsed < 300) {
+      // 标记touch已处理，防止后续合成click事件重复翻页
+      touchHandledRef.current = true;
+      setTimeout(() => { touchHandledRef.current = false; }, 400);
+
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const ratio = (start.x - rect.left) / rect.width;
       if (ratio > 0.3 && ratio < 0.7) {
@@ -151,6 +167,11 @@ export default function DoublePageView({
   }, [direction, goForward, goBack, onTapCenter]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // 如果touch事件已处理过翻页，跳过合成的click事件，防止翻两页
+    if (touchHandledRef.current) {
+      return;
+    }
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const width = rect.width;
@@ -189,7 +210,8 @@ export default function DoublePageView({
     setLoaded: (v: boolean) => void,
     error: boolean,
     setError: (v: boolean) => void,
-    keyPrefix: string
+    keyPrefix: string,
+    imgRef?: React.RefObject<HTMLImageElement | null>
   ) => {
     if (!pageUrl) return <div className="flex-1" />;
 
@@ -217,6 +239,7 @@ export default function DoublePageView({
         {useRealData ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
+            ref={imgRef}
             key={`${keyPrefix}-${pageIndex}`}
             src={pageUrl}
             alt={`Page ${pageIndex + 1}`}
@@ -253,9 +276,9 @@ export default function DoublePageView({
         className="flex h-full items-center justify-center gap-1 p-4"
         style={containerWidth ? { width: containerWidth, maxWidth: "100%", margin: "0 auto" } : undefined}
       >
-        {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, errorLeft, setErrorLeft, "left")}
+        {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, errorLeft, setErrorLeft, "left", leftImgRef)}
         <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
-        {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right")}
+        {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right", rightImgRef)}
       </div>
 
       {/* 移动端双页模式提示 */}

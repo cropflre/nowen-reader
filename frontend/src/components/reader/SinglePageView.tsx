@@ -49,6 +49,8 @@ export default function SinglePageView({
   // 拖拽平移状态（缩放后单指拖拽）
   const panStartRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const isPanningRef = useRef(false);
+  // 标记touch事件已处理翻页，防止后续合成click再次触发
+  const touchHandledRef = useRef(false);
 
   // Preload next N pages
   useImagePreloader(pages, currentPage, preloadCount);
@@ -61,8 +63,25 @@ export default function SinglePageView({
     setTranslate({ x: 0, y: 0 });
     // 清除翻页动画
     const timer = setTimeout(() => setSlideDirection(null), 300);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // 清理延迟单击定时器，防止翻页后残留触发
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+    };
   }, [currentPage]);
+
+  // 检查缓存图片：组件挂载时或页码变化后，如果图片已在浏览器缓存中加载完成，
+  // onLoad 可能不会触发，需要手动检查 img.complete 来解除 loading 状态
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setImageLoaded(true);
+    }
+  });
 
   // 带动画的翻页
   const goToPage = useCallback((page: number, dir: "left" | "right") => {
@@ -201,6 +220,10 @@ export default function SinglePageView({
 
     // 轻触（非滑动）- 区域翻页或显示工具栏
     if (absDx < 10 && absDy < 10 && elapsed < 300) {
+      // 标记touch已处理，防止后续合成click事件重复翻页
+      touchHandledRef.current = true;
+      setTimeout(() => { touchHandledRef.current = false; }, 400);
+
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const ratio = (start.x - rect.left) / rect.width;
       if (ratio > 0.3 && ratio < 0.7) {
@@ -225,35 +248,50 @@ export default function SinglePageView({
     }
   }, [direction, currentPage, pages.length, goToPage, onTapCenter, scale, onBoundaryReached]);
 
-  // 双击缩放（改进：双击位置为缩放中心）
+  // 双击缩放（改进：双击位置为缩放中心）+ 延迟单击防止双击冲突
   const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // 如果touch事件已处理过翻页，跳过合成的click事件，防止翻两页
+    if (touchHandledRef.current) {
+      return;
+    }
+
     const now = Date.now();
-    if (now - lastTapRef.current.time < 300) {
+    const lastTap = lastTapRef.current;
+
+    // 检测是否为双击（两次点击间隔 < 300ms）
+    if (now - lastTap.time < 300) {
+      // 取消前一次的延迟单击
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      // 执行双击缩放
       if (scale > 1) {
-        // 缩小回原始大小
         setScale(1);
         setTranslate({ x: 0, y: 0 });
       } else {
-        // 放大到 2x
         setScale(2);
-        // 以双击位置为中心偏移
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
         setTranslate({
-          x: (centerX - clickX) * 1, // scale-1 = 1
+          x: (centerX - clickX) * 1,
           y: (centerY - clickY) * 1,
         });
       }
+      lastTapRef.current = { time: 0, x: 0, y: 0 };
       e.preventDefault();
+      return;
     }
-    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
-  }, [scale]);
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // 记录本次点击时间
+    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+
     // 缩放模式下不处理点击翻页
     if (scale > 1.1) return;
 
@@ -262,34 +300,38 @@ export default function SinglePageView({
     const width = rect.width;
     const ratio = x / width;
 
-    if (ratio > 0.3 && ratio < 0.7) {
-      onTapCenter();
-      return;
-    }
+    // 延迟执行单击操作，等待双击判定
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null;
+      if (ratio > 0.3 && ratio < 0.7) {
+        onTapCenter();
+        return;
+      }
 
-    const isLeftTap = ratio <= 0.3;
-    const isRightTap = ratio >= 0.7;
+      const isLeftTap = ratio <= 0.3;
+      const isRightTap = ratio >= 0.7;
 
-    if (direction === "ltr") {
-      if (isLeftTap) {
-        if (currentPage <= 0) onBoundaryReached?.("prev");
-        else goToPage(currentPage - 1, "right");
+      if (direction === "ltr") {
+        if (isLeftTap) {
+          if (currentPage <= 0) onBoundaryReached?.("prev");
+          else goToPage(currentPage - 1, "right");
+        }
+        if (isRightTap) {
+          if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
+          else goToPage(currentPage + 1, "left");
+        }
+      } else {
+        if (isLeftTap) {
+          if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
+          else goToPage(currentPage + 1, "left");
+        }
+        if (isRightTap) {
+          if (currentPage <= 0) onBoundaryReached?.("prev");
+          else goToPage(currentPage - 1, "right");
+        }
       }
-      if (isRightTap) {
-        if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-        else goToPage(currentPage + 1, "left");
-      }
-    } else {
-      if (isLeftTap) {
-        if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-        else goToPage(currentPage + 1, "left");
-      }
-      if (isRightTap) {
-        if (currentPage <= 0) onBoundaryReached?.("prev");
-        else goToPage(currentPage - 1, "right");
-      }
-    }
-  };
+    }, 250);
+  }, [scale, direction, currentPage, pages.length, goToPage, onTapCenter, onBoundaryReached]);
 
   // 根据 fitMode 计算图片样式
   const getImageClass = () => {
@@ -318,7 +360,6 @@ export default function SinglePageView({
         readerTheme === "day" ? "bg-gray-100" : "bg-black"
       }`}
       onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -362,6 +403,7 @@ export default function SinglePageView({
         {useRealData ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
+            ref={imgRef}
             key={currentPage}
             src={pages[currentPage]}
             alt={`Page ${currentPage + 1}`}

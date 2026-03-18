@@ -39,6 +39,8 @@ export default function PdfView({
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef<number>(1);
   const lastTapRef = useRef<number>(0);
+  // 标记touch事件已处理翻页，防止后续合成click再次触发
+  const touchHandledRef = useRef(false);
 
   // 加载 PDF 文档
   useEffect(() => {
@@ -233,6 +235,10 @@ export default function PdfView({
 
     // 轻触
     if (absDx < 10 && absDy < 10 && elapsed < 300) {
+      // 标记touch已处理，防止后续合成click事件重复翻页
+      touchHandledRef.current = true;
+      setTimeout(() => { touchHandledRef.current = false; }, 400);
+
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const ratio = (start.x - rect.left) / rect.width;
       if (ratio < 0.3) onPageChange(Math.max(0, currentPage - 1));
@@ -241,32 +247,54 @@ export default function PdfView({
     }
   }, [currentPage, totalPages, onPageChange, onTapCenter, scale]);
 
-  // 双击缩放
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      setScale((prev) => (prev > 1 ? 1 : 2));
-      e.preventDefault();
-    }
-    lastTapRef.current = now;
-  }, []);
+  // 双击缩放 + 延迟单击防止双击冲突
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 点击导航（三区域：左翻页 / 中间呼出菜单 / 右翻页）
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      // 如果touch事件已处理过翻页，跳过合成的click事件，防止翻两页
+      if (touchHandledRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+
+      // 检测是否为双击（两次点击间隔 < 300ms）
+      if (now - lastTapRef.current < 300) {
+        // 取消前一次的延迟单击
+        if (clickTimerRef.current) {
+          clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null;
+        }
+        // 执行双击缩放
+        setScale((prev) => (prev > 1 ? 1 : 2));
+        lastTapRef.current = 0;
+        e.preventDefault();
+        return;
+      }
+
+      // 记录本次点击时间
+      lastTapRef.current = now;
+
+      // 缩放模式下不处理点击翻页
       if (scale > 1.1) return;
+
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const x = e.clientX - rect.left;
       const width = rect.width;
       const zone = x / width;
 
-      if (zone < 0.3) {
-        onPageChange(Math.max(0, currentPage - 1));
-      } else if (zone > 0.7) {
-        onPageChange(Math.min(totalPages - 1, currentPage + 1));
-      } else {
-        onTapCenter();
-      }
+      // 延迟执行单击操作，等待双击判定
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        if (zone < 0.3) {
+          onPageChange(Math.max(0, currentPage - 1));
+        } else if (zone > 0.7) {
+          onPageChange(Math.min(totalPages - 1, currentPage + 1));
+        } else {
+          onTapCenter();
+        }
+      }, 250);
     },
     [currentPage, totalPages, onPageChange, onTapCenter, scale]
   );
@@ -341,7 +369,6 @@ export default function PdfView({
       ref={containerRef}
       className="relative h-full w-full flex items-center justify-center overflow-auto cursor-pointer select-none"
       onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
       onWheel={handleWheel}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
