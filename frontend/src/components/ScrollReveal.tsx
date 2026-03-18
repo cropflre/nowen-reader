@@ -25,13 +25,13 @@ export default function ScrollReveal({
   const [ref, isInView] = useInView<HTMLDivElement>({ threshold: 0.05, once: true });
 
   if (disabled) {
-    return <div className={className}>{children}</div>;
+    return <div className={`min-w-0 overflow-hidden ${className}`}>{children}</div>;
   }
 
   return (
     <div
       ref={ref}
-      className={`${className} ${isInView ? "animate-scroll-in" : "scroll-reveal"}`}
+      className={`min-w-0 overflow-hidden ${className} ${isInView ? "animate-scroll-in" : "scroll-reveal"}`}
       style={delay > 0 ? { animationDelay: `${delay}ms` } : undefined}
     >
       {children}

@@ -144,7 +144,7 @@ const ComicCard = memo(function ComicCard({
   if (viewMode === "list") {
     return (
       <div
-        className={`group relative block ${isDragOver ? "drag-over-target" : ""} ${isDragging ? "drag-active" : ""} ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
+        className={`group relative block overflow-hidden ${isDragOver ? "drag-over-target" : ""} ${isDragging ? "drag-active" : ""} ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
         style={animationIndex !== undefined ? { animationDelay: `${animationIndex * 40}ms` } : undefined}
         draggable={draggable}
         onContextMenu={handleContextMenu}

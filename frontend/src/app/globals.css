@@ -40,6 +40,11 @@ html.light {
   --theme-elevated: #ffffff;
 }
 
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
 body {
   background: var(--color-background);
   color: var(--color-foreground);

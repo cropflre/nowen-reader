@@ -31,7 +31,7 @@ import GroupDetail from "@/app/group/[id]/page";
 function AnimatedRoutes() {
   const location = useLocation();
   return (
-    <div key={location.pathname} className="animate-page-enter">
+    <div key={location.pathname} className="animate-page-enter overflow-x-hidden">
       <Routes location={location}>
         <Route path="/" element={<Home />} />
         <Route path="/comic/:id" element={<ComicDetail />} />

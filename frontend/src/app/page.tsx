@@ -652,7 +652,7 @@ export default function Home() {
   }, [dragId, dragOverId, sortedComics, refetch]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       {/* Hidden file input for upload */}
       <input
         ref={fileInputRef}
