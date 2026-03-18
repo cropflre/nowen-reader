@@ -80,8 +80,8 @@ export default function ReaderToolbar({
   }, [currentPage, onInteracting]);
 
   // 拖动中：只更新预览值，节流触发页面跳转
-  const handleSliderInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
+  const handleSliderInput = useCallback((e: React.FormEvent<HTMLInputElement>) => {
+    const val = Number((e.target as HTMLInputElement).value);
     setDragValue(val);
     // 使用 rAF 节流，拖动中也实时跳转但不会堆积
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
