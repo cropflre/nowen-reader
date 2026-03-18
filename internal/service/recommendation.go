@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -25,13 +26,20 @@ type ScoredComic struct {
 }
 
 // GetRecommendations returns personalized comic recommendations.
-func GetRecommendations(limit int, excludeRead bool, contentType string) ([]ScoredComic, error) {
+// seed > 0 时会在评分上添加随机扰动，使每次刷新结果不同。
+func GetRecommendations(limit int, excludeRead bool, contentType string, seed int64) ([]ScoredComic, error) {
 	allComics, err := store.GetAllComicsForRecommendation()
 	if err != nil || len(allComics) == 0 {
 		return []ScoredComic{}, nil
 	}
 
 	profile := buildUserProfile(allComics)
+
+	// 根据 seed 创建随机源（seed==0 时不添加随机扰动）
+	var rng *rand.Rand
+	if seed > 0 {
+		rng = rand.New(rand.NewSource(seed))
+	}
 
 	var scored []ScoredComic
 	for _, comic := range allComics {
@@ -51,6 +59,12 @@ func GetRecommendations(limit int, excludeRead bool, contentType string) ([]Scor
 		}
 
 		score, reasons := calculateRecommendationScore(comic, profile)
+
+		// 添加随机扰动（±20%），使刷新结果有变化
+		if rng != nil && score > 0 {
+			jitter := 0.8 + rng.Float64()*0.4 // 0.8 ~ 1.2
+			score *= jitter
+		}
 
 		scored = append(scored, ScoredComic{
 			ID:       comic.ID,

@@ -42,15 +42,15 @@ const DEFAULT_COMIC_SOURCES = COMIC_SOURCES.map((s) => s.id);
 const DEFAULT_NOVEL_SOURCES = NOVEL_SOURCES.map((s) => s.id);
 
 const SOURCE_COLORS: Record<string, string> = {
-  anilist: "bg-blue-500/15 text-blue-400",
-  anilist_novel: "bg-blue-500/15 text-blue-400",
-  bangumi: "bg-pink-500/15 text-pink-400",
-  bangumi_novel: "bg-pink-500/15 text-pink-400",
-  mangadex: "bg-orange-500/15 text-orange-400",
-  mangaupdates: "bg-purple-500/15 text-purple-400",
-  kitsu: "bg-amber-500/15 text-amber-400",
-  googlebooks: "bg-emerald-500/15 text-emerald-400",
-  comicinfo: "bg-gray-500/15 text-gray-400",
+  anilist: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  anilist_novel: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  bangumi: "bg-pink-500/15 text-pink-600 dark:text-pink-400",
+  bangumi_novel: "bg-pink-500/15 text-pink-600 dark:text-pink-400",
+  mangadex: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
+  mangaupdates: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
+  kitsu: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  googlebooks: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  comicinfo: "bg-gray-500/15 text-gray-600 dark:text-gray-400",
 };
 
 interface Props {
@@ -165,52 +165,54 @@ export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Pro
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+      <div className="flex flex-wrap gap-2">
+        <div className="flex-1 min-w-0 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder={t.metadata?.searchPlaceholder || "Search metadata..."}
-            className="w-full pl-9 pr-3 py-2 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
+            className="w-full pl-9 pr-3 py-2 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted focus:outline-none focus:border-accent"
           />
         </div>
-        <button
-          onClick={handleSearch}
-          disabled={searching || !query.trim() || enabledSources.length === 0}
-          className="px-3 py-2 bg-[var(--accent-primary)] text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
-        >
-          {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-          {t.metadata?.search || "Search"}
-        </button>
-        <button
-          onClick={() => setShowSourceFilter(!showSourceFilter)}
-          className={`px-2 py-2 rounded-lg text-sm flex items-center transition-colors ${
-            showSourceFilter
-              ? "bg-[var(--accent-primary)] text-white"
-              : "bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
-          }`}
-          title={t.metadata?.selectSources || "Select sources"}
-        >
-          <Filter className="w-4 h-4" />
-        </button>
-        <button
-          onClick={handleScanArchive}
-          disabled={scanning}
-          className="px-3 py-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] rounded-lg text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50 flex items-center gap-1.5"
-          title={isNovel
-            ? (t.metadata?.scanNovel || "Scan novel metadata (EPUB OPF + online)")
-            : (t.metadata?.scanArchive || "Scan archive for ComicInfo.xml")}
-        >
-          {scanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
-        </button>
+        <div className="flex gap-1.5 shrink-0">
+          <button
+            onClick={handleSearch}
+            disabled={searching || !query.trim() || enabledSources.length === 0}
+            className="px-2.5 sm:px-3 py-2 bg-accent text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            <span className="hidden sm:inline">{t.metadata?.search || "Search"}</span>
+          </button>
+          <button
+            onClick={() => setShowSourceFilter(!showSourceFilter)}
+            className={`px-2 py-2 rounded-lg text-sm flex items-center transition-colors ${
+              showSourceFilter
+                ? "bg-accent text-white"
+                : "bg-card-hover text-foreground/70 hover:bg-surface"
+            }`}
+            title={t.metadata?.selectSources || "Select sources"}
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleScanArchive}
+            disabled={scanning}
+            className="px-2.5 sm:px-3 py-2 bg-card-hover text-foreground/70 rounded-lg text-sm hover:bg-surface disabled:opacity-50 flex items-center gap-1.5"
+            title={isNovel
+              ? (t.metadata?.scanNovel || "Scan novel metadata (EPUB OPF + online)")
+              : (t.metadata?.scanArchive || "Scan archive for ComicInfo.xml")}
+          >
+            {scanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
       {/* Source filter panel */}
       {showSourceFilter && (
-        <div className="flex flex-wrap gap-1.5 p-2 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg">
+        <div className="flex flex-wrap gap-1.5 p-2 bg-card border border-border rounded-lg">
           {availableSources.map((src) => (
             <button
               key={src.id}
@@ -218,7 +220,7 @@ export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Pro
               className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${
                 enabledSources.includes(src.id)
                   ? SOURCE_COLORS[src.id] || "bg-accent/20 text-accent"
-                  : "bg-[var(--bg-hover)] text-[var(--text-muted)] opacity-50"
+                  : "bg-card-hover text-muted opacity-50"
               }`}
             >
               <span>{src.icon}</span>
@@ -244,47 +246,47 @@ export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Pro
           {results.map((result, i) => (
             <div
               key={i}
-              className="p-3 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg"
+              className="p-3 bg-card border border-border rounded-lg"
             >
               <div className="flex items-start justify-between gap-2">
                 {result.coverUrl && (
                   <img
                     src={result.coverUrl}
                     alt={result.title || "cover"}
-                    className="w-12 h-16 object-cover rounded flex-shrink-0 bg-[var(--bg-hover)]"
+                    className="w-12 h-16 object-cover rounded flex-shrink-0 bg-card-hover"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <BookOpen className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0" />
-                    <span className="font-medium text-sm text-[var(--text-primary)] truncate">
+                    <BookOpen className="w-4 h-4 text-accent flex-shrink-0" />
+                    <span className="font-medium text-sm text-foreground truncate">
                       {result.title || "Unknown"}
                     </span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[result.source] || "bg-[var(--bg-hover)] text-[var(--text-muted)]"}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[result.source] || "bg-card-hover text-muted"}`}>
                       {getSourceName(result.source)}
                     </span>
                   </div>
                   {result.author && (
-                    <div className="text-xs text-[var(--text-secondary)]">
+                    <div className="text-xs text-foreground/70">
                       {t.metadata?.author || "Author"}: {result.author}
                     </div>
                   )}
                   {result.year && (
-                    <div className="text-xs text-[var(--text-muted)]">
+                    <div className="text-xs text-muted">
                       {result.year}
                       {result.publisher && ` · ${result.publisher}`}
                     </div>
                   )}
                   {result.description && (
-                    <div className="text-xs text-[var(--text-muted)] mt-1 line-clamp-2">
+                    <div className="text-xs text-muted mt-1 line-clamp-2">
                       {result.description}
                     </div>
                   )}
                   {result.genre && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {result.genre.split(",").slice(0, 5).map((g) => (
-                        <span key={g} className="text-xs px-1.5 py-0.5 bg-[var(--bg-hover)] rounded text-[var(--text-muted)]">
+                        <span key={g} className="text-xs px-1.5 py-0.5 bg-card-hover rounded text-muted">
                           {g.trim()}
                         </span>
                       ))}
@@ -297,7 +299,7 @@ export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Pro
                   className={`flex-shrink-0 px-2 py-1.5 rounded text-xs flex items-center gap-1 ${
                     applied === i
                       ? "bg-green-500/20 text-green-400"
-                      : "bg-[var(--accent-primary)] text-white hover:opacity-90"
+                      : "bg-accent text-white hover:opacity-90"
                   } disabled:opacity-50`}
                 >
                   {applying === i ? (

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { BookMarked, Settings } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { BookMarked, Settings, BarChart3 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth-context";
 
 /**
  * 移动端底部导航栏
@@ -12,7 +13,9 @@ import { useTranslation } from "@/lib/i18n";
  */
 export default function MobileBottomNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useTranslation();
+  const { user } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -22,9 +25,12 @@ export default function MobileBottomNav() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // 在阅读器页面不显示底部导航
+  // 在阅读器页面、漫画详情页以及未登录时不显示底部导航
   const isReaderPage = pathname?.startsWith("/reader/") || pathname?.startsWith("/novel/");
-  if (!isMobile || isReaderPage) return null;
+  const isComicDetailPage = pathname?.startsWith("/comic/");
+  if (!isMobile || isReaderPage || isComicDetailPage || !user) return null;
+
+  const currentTab = searchParams.get("tab");
 
   const navItems = [
     {
@@ -34,10 +40,16 @@ export default function MobileBottomNav() {
       active: pathname === "/",
     },
     {
+      href: "/settings?tab=stats",
+      icon: BarChart3,
+      label: t.mobileNav?.stats || "统计",
+      active: pathname === "/settings" && currentTab === "stats",
+    },
+    {
       href: "/settings",
       icon: Settings,
       label: t.settings?.title || "设置",
-      active: pathname === "/settings",
+      active: pathname === "/settings" && !currentTab,
     },
   ];
 

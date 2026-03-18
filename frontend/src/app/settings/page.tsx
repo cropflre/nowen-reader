@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Info,
@@ -10,7 +10,6 @@ import {
   BookOpen,
   BarChart3,
   AlertTriangle,
-  Settings,
   Sparkles,
   Github,
   Heart,
@@ -44,16 +43,6 @@ const AISettingsPanel = dynamic(
   { loading: LoadingSkeleton }
 );
 
-const EHentaiSettingsPanel = dynamic(
-  () => import("@/components/EHentaiSettingsPanel").then((mod) => mod.EHentaiSettingsPanel),
-  { loading: LoadingSkeleton }
-);
-
-const EHentaiBrowserPanel = dynamic(
-  () => import("@/components/EHentaiBrowserPanel"),
-  { loading: LoadingSkeleton }
-);
-
 const StatsPanel = dynamic(
   () => import("@/components/StatsPanel"),
   { loading: LoadingSkeleton }
@@ -73,8 +62,6 @@ const FileStatsPanel = dynamic(
 type SettingsTab =
   | "site"
   | "ai"
-  | "ehentai-config"
-  | "ehentai-browser"
   | "stats"
   | "file-stats"
   | "logs"
@@ -95,8 +82,13 @@ interface TabGroup {
 /* ── 主页面 ── */
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("site");
+  const validTabs: SettingsTab[] = ["site", "ai", "stats", "file-stats", "logs", "about"];
+  const tabFromUrl = searchParams.get("tab") as SettingsTab | null;
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "site"
+  );
   const mobileTabsRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -136,13 +128,6 @@ export default function SettingsPage() {
       ],
     },
     {
-      title: "E-Hentai",
-      tabs: [
-        { id: "ehentai-config", label: tAny.ehentaiSettings?.title || "连接配置", icon: <Settings className="h-[18px] w-[18px]" />, desc: "Cookie 认证" },
-        { id: "ehentai-browser", label: t.ehentai?.title || "资源浏览", icon: <BookOpen className="h-[18px] w-[18px]" />, desc: "搜索与下载" },
-      ],
-    },
-    {
       title: t.settings?.groupData || "数据",
       tabs: [
         { id: "stats", label: t.stats?.title || "阅读统计", icon: <BarChart3 className="h-[18px] w-[18px]" />, desc: "时长、趋势、目标" },
@@ -155,7 +140,7 @@ export default function SettingsPage() {
 
   const allTabs = groups.flatMap((g) => g.tabs);
   const currentTab = allTabs.find((tab) => tab.id === activeTab);
-  const isFullWidthTab = ["ehentai-browser", "stats", "file-stats", "logs"].includes(activeTab);
+  const isFullWidthTab = ["stats", "file-stats", "logs"].includes(activeTab);
 
   return (
     <div className="min-h-screen bg-background pb-20 sm:pb-0">
@@ -271,8 +256,6 @@ export default function SettingsPage() {
           <div className={`p-4 sm:p-8 ${isFullWidthTab ? "" : "max-w-3xl"}`}>
             {activeTab === "site" && <SiteSettingsPanel />}
             {activeTab === "ai" && <AISettingsPanel />}
-            {activeTab === "ehentai-config" && <EHentaiSettingsPanel />}
-            {activeTab === "ehentai-browser" && <EHentaiBrowserPanel />}
             {activeTab === "stats" && <StatsPanel />}
             {activeTab === "file-stats" && <FileStatsPanel />}
             {activeTab === "logs" && <LogsPanel />}

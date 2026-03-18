@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState, useEffect } from "react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import type { FitMode } from "@/types/reader";
 import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface DoublePageViewProps {
@@ -13,6 +14,9 @@ interface DoublePageViewProps {
   direction: "ltr" | "rtl";
   useRealData?: boolean;
   readerTheme?: ReaderTheme;
+  fitMode?: FitMode;
+  containerWidth?: string;
+  preloadCount?: number;
 }
 
 export default function DoublePageView({
@@ -23,14 +27,17 @@ export default function DoublePageView({
   direction,
   useRealData,
   readerTheme = "night",
+  fitMode = "container",
+  containerWidth,
+  preloadCount = 4,
 }: DoublePageViewProps) {
   const [loadedLeft, setLoadedLeft] = useState(false);
   const [loadedRight, setLoadedRight] = useState(false);
   const [errorLeft, setErrorLeft] = useState(false);
   const [errorRight, setErrorRight] = useState(false);
 
-  // Preload next 4 pages (2 spreads ahead)
-  useImagePreloader(pages, currentPage, 4);
+  // Preload next pages
+  useImagePreloader(pages, currentPage, preloadCount);
 
   const spreadIndex = useMemo(() => {
     return currentPage % 2 === 0 ? currentPage : currentPage - 1;
@@ -67,6 +74,20 @@ export default function DoublePageView({
     }
     if (goBack) {
       onPageChange(Math.max(0, spreadIndex - 2));
+    }
+  };
+
+  // 根据 fitMode 计算图片类名
+  const getImageClass = (loaded: boolean) => {
+    const base = `object-contain transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"}`;
+    switch (fitMode) {
+      case "width":
+        return `w-full h-auto ${base}`;
+      case "height":
+        return `h-full w-auto ${base}`;
+      case "container":
+      default:
+        return `max-h-full max-w-full ${base}`;
     }
   };
 
@@ -108,9 +129,7 @@ export default function DoublePageView({
             key={`${keyPrefix}-${pageIndex}`}
             src={pageUrl}
             alt={`Page ${pageIndex + 1}`}
-            className={`max-h-full max-w-full object-contain transition-opacity duration-200 ${
-              loaded ? "opacity-100" : "opacity-0"
-            }`}
+            className={`${getImageClass(loaded)}`}
             onLoad={() => setLoaded(true)}
             onError={() => setError(true)}
           />
@@ -120,9 +139,7 @@ export default function DoublePageView({
             src={pageUrl}
             alt={`Page ${pageIndex + 1}`}
             fill
-            className={`object-contain transition-opacity duration-200 ${
-              loaded ? "opacity-100" : "opacity-0"
-            }`}
+            className={`${getImageClass(loaded)}`}
             onLoad={() => setLoaded(true)}
             onError={() => setError(true)}
             sizes="50vw"
@@ -139,7 +156,10 @@ export default function DoublePageView({
       }`}
       onClick={handleClick}
     >
-      <div className="flex h-full items-center justify-center gap-1 p-4">
+      <div
+        className="flex h-full items-center justify-center gap-1 p-4"
+        style={containerWidth ? { width: containerWidth, maxWidth: "100%", margin: "0 auto" } : undefined}
+      >
         {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, errorLeft, setErrorLeft, "left")}
         <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
         {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right")}

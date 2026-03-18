@@ -29,7 +29,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "8", excludeRead: "false" });
+      const params = new URLSearchParams({ limit: "8", excludeRead: "false", shuffle: "true" });
       if (contentType) params.set("contentType", contentType);
       const res = await fetch(`/api/recommendations?${params.toString()}`);
       if (res.ok) {

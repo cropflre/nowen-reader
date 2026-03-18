@@ -13,6 +13,7 @@ import {
   Info,
   Sun,
   Moon,
+  Settings,
 } from "lucide-react";
 import { ComicReadingMode, ReadingDirection } from "@/types/reader";
 import { useTranslation } from "@/lib/i18n";
@@ -35,6 +36,7 @@ interface ReaderToolbarProps {
   onToggleFullscreen: () => void;
   onToggleTheme: () => void;
   onShowInfo?: () => void;
+  onShowSettings?: () => void;
 }
 
 export default function ReaderToolbar({
@@ -53,6 +55,7 @@ export default function ReaderToolbar({
   onToggleFullscreen,
   onToggleTheme,
   onShowInfo,
+  onShowSettings,
 }: ReaderToolbarProps) {
   const t = useTranslation();
 
@@ -94,6 +97,15 @@ export default function ReaderToolbar({
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <Info className="h-4 w-4" />
+              </button>
+            )}
+            {onShowSettings && (
+              <button
+                onClick={onShowSettings}
+                className="hidden sm:flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                title={t.readerToolbar.settings}
+              >
+                <Settings className="h-4 w-4" />
               </button>
             )}
             <button

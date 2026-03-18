@@ -46,7 +46,6 @@ func isLongRunningPath(path string) bool {
 	longRunningPrefixes := []string{
 		"/api/upload",
 		"/api/opds/download",
-		"/api/ehentai/download",
 		"/api/export",
 		"/api/sync",
 		"/api/comics/batch",

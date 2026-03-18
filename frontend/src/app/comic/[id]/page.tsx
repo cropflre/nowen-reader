@@ -504,7 +504,7 @@ export default function ComicDetailPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="sticky top-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-5xl items-center gap-4 px-6">
+        <div className="mx-auto flex h-14 sm:h-16 max-w-5xl items-center gap-3 sm:gap-4 px-3 sm:px-6">
           <button
             onClick={() => router.back()}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-muted transition-colors hover:text-foreground"
@@ -515,10 +515,10 @@ export default function ComicDetailPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="grid gap-8 md:grid-cols-[280px_1fr]">
+      <main className="mx-auto max-w-5xl px-3 sm:px-6 py-4 sm:py-8 pb-20 sm:pb-8">
+        <div className="grid gap-5 sm:gap-8 md:grid-cols-[280px_1fr]">
           {/* Cover */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4 mx-auto w-full max-w-[240px] md:max-w-none">
             <div className="group relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card shadow-2xl">
               <Image
                 src={`/api/comics/${comic.id}/thumbnail?v=${coverKey}`}
@@ -649,7 +649,7 @@ export default function ComicDetailPage() {
           {/* Info */}
           <div className="space-y-6">
             {/* Title & Favorite */}
-            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start justify-between gap-2 sm:gap-4">
               <div className="flex-1 min-w-0">
                 {editingTitle ? (
                   <div className="flex items-center gap-2">
@@ -680,7 +680,7 @@ export default function ComicDetailPage() {
                   </div>
                 ) : (
                   <div className="group/title flex items-center gap-2">
-                    <h2 className="text-2xl font-bold text-foreground truncate">{comic.title}</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold text-foreground truncate">{comic.title}</h2>
                     <button
                       onClick={startEditTitle}
                       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted/40 opacity-0 transition-all hover:text-foreground group-hover/title:opacity-100"
@@ -727,51 +727,51 @@ export default function ComicDetailPage() {
             </div>
 
             {/* Meta Info Grid */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-muted">
-                  <BookOpen className="h-4 w-4" />
-                  <span className="text-xs">{t.comicDetail.pages}</span>
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 sm:grid-cols-3">
+              <div className="rounded-xl bg-card p-3 sm:p-4">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
+                  <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="text-[11px] sm:text-xs">{t.comicDetail.pages}</span>
                 </div>
-                <p className="mt-1 text-lg font-semibold text-foreground">{comic.pageCount}</p>
+                <p className="mt-1 text-base sm:text-lg font-semibold text-foreground">{comic.pageCount}</p>
               </div>
 
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-muted">
-                  <HardDrive className="h-4 w-4" />
-                  <span className="text-xs">{t.comicDetail.fileSize}</span>
+              <div className="rounded-xl bg-card p-3 sm:p-4">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
+                  <HardDrive className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="text-[11px] sm:text-xs">{t.comicDetail.fileSize}</span>
                 </div>
-                <p className="mt-1 text-lg font-semibold text-foreground">
+                <p className="mt-1 text-base sm:text-lg font-semibold text-foreground">
                   {formatFileSize(comic.fileSize)}
                 </p>
               </div>
 
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-muted">
-                  <Calendar className="h-4 w-4" />
-                  <span className="text-xs">{t.comicDetail.addedAt}</span>
+              <div className="rounded-xl bg-card p-3 sm:p-4">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
+                  <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="text-[11px] sm:text-xs">{t.comicDetail.addedAt}</span>
                 </div>
-                <p className="mt-1 text-sm font-semibold text-foreground">
+                <p className="mt-1 text-xs sm:text-sm font-semibold text-foreground">
                   {new Date(comic.addedAt).toLocaleDateString(locale)}
                 </p>
               </div>
 
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-muted">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-xs">{t.comicDetail.readTime}</span>
+              <div className="rounded-xl bg-card p-3 sm:p-4">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="text-[11px] sm:text-xs">{t.comicDetail.readTime}</span>
                 </div>
-                <p className="mt-1 text-sm font-semibold text-foreground">
+                <p className="mt-1 text-xs sm:text-sm font-semibold text-foreground">
                   {formatDuration(comic.totalReadTime || 0)}
                 </p>
               </div>
 
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-muted">
-                  <BookOpen className="h-4 w-4" />
-                  <span className="text-xs">{t.comicDetail.readProgress}</span>
+              <div className="rounded-xl bg-card p-3 sm:p-4">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
+                  <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="text-[11px] sm:text-xs">{t.comicDetail.readProgress}</span>
                 </div>
-                <p className="mt-1 text-lg font-semibold text-foreground">{progress}%</p>
+                <p className="mt-1 text-base sm:text-lg font-semibold text-foreground">{progress}%</p>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted/20">
                   <div
                     className="h-full rounded-full bg-accent transition-all"
@@ -781,12 +781,12 @@ export default function ComicDetailPage() {
               </div>
 
               {comic.lastReadAt && (
-                <div className="rounded-xl bg-card p-4">
-                  <div className="flex items-center gap-2 text-muted">
-                    <Clock className="h-4 w-4" />
-                    <span className="text-xs">{t.comicDetail.lastRead}</span>
+                <div className="rounded-xl bg-card p-3 sm:p-4">
+                  <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
+                    <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="text-[11px] sm:text-xs">{t.comicDetail.lastRead}</span>
                   </div>
-                  <p className="mt-1 text-sm font-semibold text-foreground">
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-foreground">
                     {new Date(comic.lastReadAt).toLocaleString(locale)}
                   </p>
                 </div>
@@ -957,7 +957,7 @@ export default function ComicDetailPage() {
 
             {/* Metadata Info */}
             <div>
-              <div className="mb-3 flex items-center gap-2">
+                  <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
                   {t.metadata?.metadataSource || "Metadata"}
                 </h3>
@@ -1291,7 +1291,7 @@ export default function ComicDetailPage() {
       {showDeleteConfirm && (
         <>
           <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-zinc-900 p-6 shadow-2xl">
+          <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-zinc-900 p-5 sm:p-6 shadow-2xl">
             <h3 className="text-lg font-semibold text-foreground">{t.comicDetail.confirmDelete}</h3>
             <p className="mt-2 text-sm text-muted">
               {t.comicDetail.confirmDeleteMsg.replace("{title}", comic.title)}

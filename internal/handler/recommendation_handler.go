@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/service"
@@ -27,7 +28,20 @@ func (h *RecommendationHandler) GetRecommendations(c *gin.Context) {
 
 	contentType := c.Query("contentType")
 
-	recommendations, err := service.GetRecommendations(limit, excludeRead, contentType)
+	// 支持 shuffle 参数，为推荐结果引入随机性
+	seed := int64(0)
+	if s := c.Query("seed"); s != "" {
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			seed = n
+		}
+	}
+	if c.Query("shuffle") == "true" || c.Query("shuffle") == "1" {
+		if seed == 0 {
+			seed = time.Now().UnixNano()
+		}
+	}
+
+	recommendations, err := service.GetRecommendations(limit, excludeRead, contentType, seed)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to get recommendations"})
 		return

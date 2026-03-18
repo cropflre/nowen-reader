@@ -12,6 +12,8 @@ interface WebtoonViewProps {
   onTapCenter: () => void;
   useRealData?: boolean;
   readerTheme?: ReaderTheme;
+  containerWidth?: string;
+  preloadCount?: number;
 }
 
 /** Estimated page height for skeleton placeholders */
@@ -26,6 +28,8 @@ export default function WebtoonView({
   onTapCenter,
   useRealData,
   readerTheme = "night",
+  containerWidth,
+  preloadCount = 5,
 }: WebtoonViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -43,7 +47,7 @@ export default function WebtoonView({
   const [errorPages, setErrorPages] = useState<Set<number>>(new Set());
 
   // Preload images ahead of current page
-  useImagePreloader(pages, currentPage, 5);
+  useImagePreloader(pages, currentPage, preloadCount);
 
   // Update render range based on scroll position
   const updateRenderRange = useCallback(() => {
@@ -141,7 +145,7 @@ export default function WebtoonView({
       onScroll={handleScroll}
       onClick={handleClick}
     >
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto" style={containerWidth ? { width: containerWidth, maxWidth: "100%" } : { maxWidth: "48rem" }}>
         {pages.map((pageUrl, index) => {
           const isInRange = index >= renderRange.start && index <= renderRange.end;
           const estimatedHeight = pageHeights.get(index) ?? ESTIMATED_PAGE_HEIGHT;

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import ComicCard from "@/components/ComicCard";
+import SeriesCard from "@/components/SeriesCard";
 import TagFilter from "@/components/TagFilter";
 import StatsBar from "@/components/StatsBar";
 import CategoryFilter from "@/components/CategoryFilter";
@@ -19,10 +21,11 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation, useLocale } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download, BookMarked, Image, BookOpen, Brain, Loader2 } from "lucide-react";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Download, BookMarked, Image, BookOpen, Brain, Loader2, Layers } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 import { useToast } from "@/components/Toast";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { useSeriesList } from "@/hooks/useSeries";
 
 const DEFAULT_PAGE_SIZE = 24;
 
@@ -62,13 +65,21 @@ function apiToComic(api: ApiComic): Comic {
 
 export default function Home() {
   const t = useTranslation();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { locale: rawLocale } = useLocale();
   const locale = rawLocale === "zh-CN" ? "zh" : "en";
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("viewMode");
+      if (saved === "grid" || saved === "list") return saved;
+    }
+    return "grid";
+  });
   const [uploading, setUploading] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [sortBy, setSortBy] = useState<string>("title");
@@ -91,7 +102,7 @@ export default function Home() {
   const [showDuplicates, setShowDuplicates] = useState(false);
 
   // 内容类型 Tab
-  const [contentType, setContentType] = useState<"" | "comic" | "novel">("");
+  const [contentType, setContentType] = useState<"" | "comic" | "novel" | "series">("");
 
   // AI 语义搜索 handler
   const handleAiSearch = useCallback(async (query: string) => {
@@ -128,9 +139,35 @@ export default function Home() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination — 从 URL 初始化页码
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search).get("page");
+      if (p) {
+        const n = parseInt(p, 10);
+        if (n > 0) return n;
+      }
+    }
+    return 1;
+  });
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  // viewMode 持久化
+  useEffect(() => {
+    localStorage.setItem("viewMode", viewMode);
+  }, [viewMode]);
+
+  // 分页变化时同步 URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentPage > 1) {
+      params.set("page", String(currentPage));
+    } else {
+      params.delete("page");
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [currentPage]);
 
   // Load pageSize from site settings
   useEffect(() => {
@@ -152,10 +189,20 @@ export default function Home() {
     sortBy: sortBy || undefined,
     sortOrder: sortOrder || undefined,
     category: selectedCategory || undefined,
-    contentType: contentType || undefined,
+    contentType: (contentType && contentType !== "series") ? contentType : undefined,
 
   });
   const { categories, refetch: refetchCategories, initCategories } = useCategories();
+
+  // 系列列表
+  const { series: seriesList, loading: seriesLoading, total: seriesTotal, totalPages: seriesTotalPages } = useSeriesList({
+    search: contentType === "series" ? debouncedSearch || undefined : undefined,
+    page: contentType === "series" ? currentPage : undefined,
+    pageSize: contentType === "series" ? pageSize : undefined,
+  });
+
+  // 根据当前 contentType 决定分页总页数
+  const effectiveTotalPages = contentType === "series" ? seriesTotalPages : totalPages;
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -368,7 +415,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
       />
 
       {/* Main Content */}
-      <main className={`mx-auto max-w-[1800px] px-3 sm:px-6 pt-20 sm:pt-24 ${batchMode ? "pb-32" : "pb-12"}`}>
+      <main className={`mx-auto max-w-[1800px] px-3 sm:px-6 pt-20 sm:pt-24 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
         {/* Data Source Indicator — 空库提示 */}
         {!loading && displayComics.length === 0 && apiTotal === 0 && !debouncedSearch && selectedTags.length === 0 && !favoritesOnly && !selectedCategory && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
@@ -399,28 +446,53 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
 
         {!loading && (
           <>
-            {/* 内容类型 Tab: 全部 / 漫画 / 小说 */}
-            <div className="flex items-center gap-1.5 mb-4">
-              {([
-                { key: "", label: t.contentTab.all, icon: BookMarked },
-                { key: "comic", label: t.contentTab.comic, icon: Image },
-                { key: "novel", label: t.contentTab.novel, icon: BookOpen },
-              ] as const).map((tab) => (
+            {/* 内容类型 Tab + 视图切换 */}
+            <div className="flex items-center justify-between gap-1.5 mb-4">
+              <div className="flex items-center gap-1.5">
+                {([
+                  { key: "", label: t.contentTab.all, icon: BookMarked },
+                  { key: "comic", label: t.contentTab.comic, icon: Image },
+                  { key: "novel", label: t.contentTab.novel, icon: BookOpen },
+                  { key: "series", label: t.series.title, icon: Layers },
+                ] as const).map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setContentType(tab.key)}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+                      contentType === tab.key
+                        ? "bg-accent text-white shadow-sm shadow-accent/25"
+                        : "bg-card text-muted hover:text-foreground hover:bg-card-hover"
+                    }`}
+                  >
+                    <tab.icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* View Toggle — 在此处始终可见 */}
+              <div className="flex items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
                 <button
-                  key={tab.key}
-                  onClick={() => setContentType(tab.key)}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
-                    contentType === tab.key
-                      ? "bg-accent text-white shadow-sm shadow-accent/25"
-                      : "bg-card text-muted hover:text-foreground hover:bg-card-hover"
+                  onClick={() => setViewMode("grid")}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
+                    viewMode === "grid"
+                      ? "bg-accent text-white shadow-sm"
+                      : "text-muted hover:text-foreground"
                   }`}
                 >
-                  <tab.icon className="h-3.5 w-3.5" />
-                  {tab.label}
+                  <LayoutGrid className="h-3.5 w-3.5" />
                 </button>
-              ))}
-
-
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
+                    viewMode === "list"
+                      ? "bg-accent text-white shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  <List className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* 继续阅读横条 */}
@@ -553,32 +625,6 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 >
                   {sortOrder === "asc" ? "↑" : "↓"}
                 </button>
-
-                <div className="h-5 w-px bg-border/40" />
-
-                {/* View Toggle */}
-                <div className="flex items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
-                  <button
-                    onClick={() => setViewMode("grid")}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
-                      viewMode === "grid"
-                        ? "bg-accent text-white shadow-sm"
-                        : "text-muted hover:text-foreground"
-                    }`}
-                  >
-                    <LayoutGrid className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setViewMode("list")}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
-                      viewMode === "list"
-                        ? "bg-accent text-white shadow-sm"
-                        : "text-muted hover:text-foreground"
-                    }`}
-                  >
-                    <List className="h-3.5 w-3.5" />
-                  </button>
-                </div>
                 </div>
               </div>
             </div>
@@ -656,6 +702,37 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
               </div>
             )}
 
+            {/* Series View */}
+            {contentType === "series" ? (
+              <div className={`transition-opacity duration-200 ${seriesLoading ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+                {seriesList.length > 0 ? (
+                  <div
+                    className={
+                      viewMode === "grid"
+                        ? "grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                        : "grid grid-cols-1 gap-2 sm:gap-3"
+                    }
+                  >
+                    {seriesList.map((s) => (
+                      <SeriesCard key={s.seriesName} series={s} viewMode={viewMode} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center">
+                    <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-card">
+                      <Layers className="h-10 w-10 text-muted/30" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-medium text-foreground/80">
+                      {t.series.noSeries}
+                    </h3>
+                    <p className="max-w-sm text-sm text-muted">
+                      {t.series.noSeriesHint}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             {/* Comics Grid */}
             <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
             {sortedComics.length > 0 ? (
@@ -737,9 +814,11 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
               </div>
             )}
             </div>
+            </>
+            )}
 
             {/* Pagination */}
-            {totalPages > 1 && (
+            {(contentType === "series" ? seriesTotalPages : totalPages) > 1 && (
               <div className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
                 <button
                   onClick={() => setCurrentPage(1)}
@@ -761,16 +840,16 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 {(() => {
                   const pages: (number | string)[] = [];
                   const maxVisible = typeof window !== "undefined" && window.innerWidth < 640 ? 5 : 7;
-                  if (totalPages <= maxVisible) {
-                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                  if (effectiveTotalPages <= maxVisible) {
+                    for (let i = 1; i <= effectiveTotalPages; i++) pages.push(i);
                   } else {
                     pages.push(1);
                     if (currentPage > 3) pages.push("...");
                     const start = Math.max(2, currentPage - 1);
-                    const end = Math.min(totalPages - 1, currentPage + 1);
+                    const end = Math.min(effectiveTotalPages - 1, currentPage + 1);
                     for (let i = start; i <= end; i++) pages.push(i);
-                    if (currentPage < totalPages - 2) pages.push("...");
-                    pages.push(totalPages);
+                    if (currentPage < effectiveTotalPages - 2) pages.push("...");
+                    pages.push(effectiveTotalPages);
                   }
                   return pages.map((p, idx) =>
                     typeof p === "string" ? (
@@ -794,16 +873,16 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 })()}
 
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(effectiveTotalPages, p + 1))}
+                  disabled={currentPage === effectiveTotalPages}
                   className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                   title={t.home.nextPage}
                 >
                   ›
                 </button>
                 <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(effectiveTotalPages)}
+                  disabled={currentPage === effectiveTotalPages}
                   className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
                   title={t.home.lastPage}
                 >
@@ -811,7 +890,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 </button>
 
                 <span className="ml-2 sm:ml-3 text-xs text-muted">
-                  {currentPage} / {totalPages}
+                  {currentPage} / {effectiveTotalPages}
                 </span>
 
                 <div className="hidden sm:flex ml-4 items-center gap-1.5">

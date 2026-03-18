@@ -204,6 +204,39 @@ const zhCN = {
     ltr: "左→右",
     dayMode: "日间",
     nightMode: "夜间",
+    settings: "设置",
+  },
+
+  // 阅读器选项面板
+  readerOptions: {
+    title: "阅读器选项",
+    autoSaveHint: "这些选项会自动保存 -- 点击查看效果!",
+    fitMode: "适应显示",
+    fitContainer: "容器",
+    fitWidth: "宽度",
+    fitHeight: "高度",
+    containerWidth: "容器宽度(像素或百分比)",
+    containerWidthPlaceholder: "默认值为1200像素,或双页模式下为90%。",
+    apply: "应用",
+    pageRendering: "页面渲染",
+    singlePage: "单页",
+    doublePage: "双页",
+    readingDirection: "阅读方向",
+    ltr: "从左到右",
+    rtl: "从右到左",
+    preloadCount: "预加载图片数量",
+    header: "头",
+    headerVisible: "可见",
+    headerHidden: "隐藏",
+    defaultOverlay: "默认显示档案覆盖层",
+    defaultOverlayDesc: "每次打开新的阅读器页面时,这将显示带有缩略图的覆盖层。",
+    enable: "启用",
+    disable: "禁用",
+    progressTracking: "进度跟踪",
+    progressTrackingDesc: "禁用进度跟踪的话,每次打开阅读器时从第一页重新开始阅读。",
+    infiniteScroll: "无极滚动",
+    infiniteScrollDesc: "在同一页面中以垂直视图显示所有图片。",
+    autoPageInterval: "自动翻页间隔(秒)",
   },
 
   // Duration formatting
@@ -473,51 +506,6 @@ const zhCN = {
     selectToKeep: "点击选择要保留的项",
   },
 
-  // E-Hentai
-  ehentai: {
-    title: "E-Hentai 浏览",
-    search: "搜索",
-    searchPlaceholder: "搜索画廊标题、标签...",
-    searching: "搜索中...",
-    noResults: "未找到结果",
-    emptyHint: "输入关键词搜索 E-Hentai 画廊",
-    resultsCount: "共 {count} 个结果",
-    prevPage: "上一页",
-    nextPage: "下一页",
-    pageNum: "第 {page} 页",
-    pages: "页",
-    uploader: "上传者",
-    fileCount: "文件数",
-    tags: "标签",
-    preview: "预览",
-    downloadToLibrary: "下载到本地库",
-    downloading: "下载中",
-    downloadStarting: "准备下载...",
-    downloadFetchingInfo: "获取画廊信息...",
-    downloadPackaging: "打包 CBZ 中...",
-    downloadCompleted: "下载完成",
-    downloadError: "下载失败",
-    galleryId: "画廊",
-    notConfigured: "未配置 E-Hentai",
-    notConfiguredDesc: "请在设置中配置 E-Hentai Cookie 以启用此功能。点击右上角用户菜单 → 设置 → E-Hentai。",
-  },
-
-  // E-Hentai Settings
-  ehentaiSettings: {
-    title: "E-Hentai 配置",
-    statusConfigured: "已配置",
-    statusNotConfigured: "未配置",
-    currentConfig: "当前配置",
-    description: "从 E-Hentai 登录后的浏览器 Cookie 中获取以下值。打开浏览器开发者工具 → Application → Cookies 查找。",
-    keepCurrent: "留空保持当前值",
-    optional: "可选，用于 ExHentai",
-    save: "保存",
-    test: "测试",
-    clear: "清除",
-    testSuccess: "连接测试成功",
-    testFailed: "连接失败，请检查 Cookie 值",
-  },
-
   // 继续阅读
   continueReading: {
     title: "继续阅读",
@@ -528,13 +516,14 @@ const zhCN = {
     chapter: "第",
     chapterUnit: "章",
     pageUnit: "页",
+    collapse: "收起",
+    expand: "展开",
   },
 
   // 移动端导航
   mobileNav: {
     library: "书库",
     stats: "统计",
-    explore: "发现",
   },
 
   // 增强统计
@@ -586,6 +575,27 @@ const zhCN = {
     achieved: "目标已达成！",
     editGoal: "编辑",
     deleteGoal: "删除",
+  },
+
+  // 系列
+  series: {
+    title: "系列",
+    viewMode: "系列视图",
+    volumeCount: "{count} 卷",
+    totalPages: "共 {count} 页",
+    volumes: "卷列表",
+    continueReading: "继续阅读",
+    readFromStart: "从头开始",
+    noSeries: "暂无系列",
+    noSeriesHint: "系统会自动检测同名漫画的系列信息，也可在漫画详情中手动设置",
+    progress: "总进度",
+    author: "作者",
+    currentVolume: "当前卷",
+    nextVolume: "下一卷",
+    prevVolume: "上一卷",
+    seriesComplete: "系列阅读完成",
+    volumeFinished: "本卷已读完，即将进入下一卷",
+    searchPlaceholder: "搜索系列名...",
   },
 } satisfies Translations;
 
@@ -773,6 +783,37 @@ export interface Translations {
     ltr: string;
     dayMode: string;
     nightMode: string;
+    settings: string;
+  };
+  readerOptions: {
+    title: string;
+    autoSaveHint: string;
+    fitMode: string;
+    fitContainer: string;
+    fitWidth: string;
+    fitHeight: string;
+    containerWidth: string;
+    containerWidthPlaceholder: string;
+    apply: string;
+    pageRendering: string;
+    singlePage: string;
+    doublePage: string;
+    readingDirection: string;
+    ltr: string;
+    rtl: string;
+    preloadCount: string;
+    header: string;
+    headerVisible: string;
+    headerHidden: string;
+    defaultOverlay: string;
+    defaultOverlayDesc: string;
+    enable: string;
+    disable: string;
+    progressTracking: string;
+    progressTrackingDesc: string;
+    infiniteScroll: string;
+    infiniteScrollDesc: string;
+    autoPageInterval: string;
   };
   duration: {
     seconds: string;
@@ -1022,47 +1063,6 @@ export interface Translations {
     deletedCount: string;
     selectToKeep: string;
   };
-  ehentai: {
-    title: string;
-    search: string;
-    searchPlaceholder: string;
-    searching: string;
-    noResults: string;
-    emptyHint: string;
-    resultsCount: string;
-    prevPage: string;
-    nextPage: string;
-    pageNum: string;
-    pages: string;
-    uploader: string;
-    fileCount: string;
-    tags: string;
-    preview: string;
-    downloadToLibrary: string;
-    downloading: string;
-    downloadStarting: string;
-    downloadFetchingInfo: string;
-    downloadPackaging: string;
-    downloadCompleted: string;
-    downloadError: string;
-    galleryId: string;
-    notConfigured: string;
-    notConfiguredDesc: string;
-  };
-  ehentaiSettings: {
-    title: string;
-    statusConfigured: string;
-    statusNotConfigured: string;
-    currentConfig: string;
-    description: string;
-    keepCurrent: string;
-    optional: string;
-    save: string;
-    test: string;
-    clear: string;
-    testSuccess: string;
-    testFailed: string;
-  };
   continueReading: {
     title: string;
     justNow: string;
@@ -1072,11 +1072,12 @@ export interface Translations {
     chapter: string;
     chapterUnit: string;
     pageUnit: string;
+    collapse: string;
+    expand: string;
   };
   mobileNav: {
     library: string;
     stats: string;
-    explore: string;
   };
   statsEnhanced: {
     streak: string;
@@ -1120,5 +1121,24 @@ export interface Translations {
     achieved: string;
     editGoal: string;
     deleteGoal: string;
+  };
+  series: {
+    title: string;
+    viewMode: string;
+    volumeCount: string;
+    totalPages: string;
+    volumes: string;
+    continueReading: string;
+    readFromStart: string;
+    noSeries: string;
+    noSeriesHint: string;
+    progress: string;
+    author: string;
+    currentVolume: string;
+    nextVolume: string;
+    prevVolume: string;
+    seriesComplete: string;
+    volumeFinished: string;
+    searchPlaceholder: string;
   };
 }

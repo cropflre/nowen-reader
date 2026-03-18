@@ -37,6 +37,96 @@ export default function AIChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 拖拽状态
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 检测移动端
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // 拖拽处理 - 鼠标
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isMobile) return;
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      posX: position.x,
+      posY: position.y,
+    };
+  }, [position, isMobile]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPosition({
+        x: dragStartRef.current.posX + dx,
+        y: dragStartRef.current.posY + dy,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // 拖拽处理 - 触摸
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (isMobile) return; // 移动端用全屏模式，不需要拖拽
+    const touch = e.touches[0];
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      posX: position.x,
+      posY: position.y,
+    };
+  }, [position, isMobile]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragStartRef.current.x;
+      const dy = touch.clientY - dragStartRef.current.y;
+      setPosition({
+        x: dragStartRef.current.posX + dx,
+        y: dragStartRef.current.posY + dy,
+      });
+    };
+
+    const handleTouchEnd = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove);
+    window.addEventListener("touchend", handleTouchEnd);
+    return () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [isDragging]);
+
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -191,17 +281,32 @@ export default function AIChatPanel({
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-50 flex h-[500px] w-[360px] flex-col overflow-hidden rounded-2xl shadow-2xl backdrop-blur-xl transition-all ${
+      ref={panelRef}
+      className={`fixed z-50 flex flex-col overflow-hidden shadow-2xl backdrop-blur-xl transition-colors ${
+        isMobile
+          ? "inset-0 rounded-none"
+          : "bottom-4 right-4 h-[500px] w-[360px] rounded-2xl"
+      } ${
         isDark
           ? "border border-white/10 bg-zinc-900/95 text-white"
           : "border border-gray-200 bg-white/95 text-gray-900"
       }`}
+      style={
+        !isMobile
+          ? {
+              transform: `translate(${position.x}px, ${position.y}px)`,
+              transition: isDragging ? "none" : undefined,
+            }
+          : undefined
+      }
     >
-      {/* Header */}
+      {/* Header - 可拖拽区域 */}
       <div
         className={`flex items-center justify-between border-b px-4 py-3 ${
           isDark ? "border-white/10" : "border-gray-200"
-        }`}
+        } ${!isMobile ? "cursor-move select-none" : ""}`}
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
       >
         <div className="flex items-center gap-2">
           <Brain className="h-4 w-4 text-purple-400" />

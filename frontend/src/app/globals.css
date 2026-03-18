@@ -205,3 +205,23 @@ html.light ::-webkit-scrollbar-thumb:hover {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* Mobile specific improvements */
+@media (max-width: 640px) {
+  /* Ensure modals respect small screens */
+  .fixed[class*="w-80"],
+  .fixed[class*="w-96"] {
+    max-width: calc(100% - 2rem);
+  }
+
+  /* Smooth tap highlight removal */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Better touch scrolling */
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}

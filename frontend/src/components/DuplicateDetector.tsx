@@ -173,9 +173,9 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
       <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-4 z-[70] mx-auto my-auto flex max-h-[85vh] max-w-3xl flex-col rounded-2xl bg-background border border-border/40 shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2">
+      <div className="fixed inset-2 sm:inset-4 z-[70] mx-auto my-auto flex max-h-[90vh] sm:max-h-[85vh] max-w-3xl flex-col rounded-2xl bg-background border border-border/40 shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/30 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border/30 px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2">
             <Copy className="h-5 w-5 text-accent" />
             <h2 className="text-lg font-semibold text-foreground">{t.duplicates.title}</h2>
@@ -189,7 +189,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-3 sm:py-4">
           {/* Initial state: show detect button */}
           {!loading && groups === null && (
             <div className="flex flex-col items-center justify-center py-16">
@@ -260,7 +260,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
                         return (
                           <div
                             key={comic.id}
-                            className={`flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors ${
+                            className={`flex cursor-pointer items-center gap-2.5 sm:gap-4 px-3 sm:px-4 py-2.5 sm:py-3 transition-colors ${
                               isKept
                                 ? "bg-emerald-500/5 hover:bg-emerald-500/10"
                                 : "hover:bg-card/80"
@@ -294,13 +294,13 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
                               <p className={`truncate text-sm font-medium ${isKept ? "text-foreground" : "text-foreground/60"}`}>
                                 {comic.title}
                               </p>
-                              <p className="mt-0.5 truncate text-xs text-muted">
+                              <p className="mt-0.5 truncate text-xs text-muted hidden sm:block">
                                 {comic.filename}
                               </p>
-                              <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted/70">
-                                <span>{t.duplicates.fileSize}: {formatFileSize(comic.fileSize)}</span>
-                                <span>{t.duplicates.pageCount}: {comic.pageCount}</span>
-                                <span>{t.duplicates.addedAt}: {formatDate(comic.addedAt)}</span>
+                              <div className="mt-1 flex flex-wrap gap-2 sm:gap-3 text-[10px] sm:text-xs text-muted/70">
+                                <span>{formatFileSize(comic.fileSize)}</span>
+                                <span>{comic.pageCount}p</span>
+                                <span className="hidden sm:inline">{t.duplicates.addedAt}: {formatDate(comic.addedAt)}</span>
                               </div>
                             </div>
 
@@ -335,7 +335,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border/30 px-6 py-3">
+        <div className="border-t border-border/30 px-3 sm:px-6 py-2.5 sm:py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {groups !== null && groups.length > 0 && (

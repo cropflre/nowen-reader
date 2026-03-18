@@ -114,6 +114,20 @@ func SetupRoutes(r *gin.Engine) {
 	}
 
 	// ============================================================
+	// Series (系列分组)
+	// ============================================================
+	series := NewSeriesHandler()
+	api.GET("/series", series.ListSeries)
+	api.GET("/series/:name", series.GetSeriesComics)
+
+	seriesWrite := api.Group("")
+	seriesWrite.Use(middleware.AuthRequired())
+	{
+		seriesWrite.PUT("/series/assign", series.AssignSeries)
+		seriesWrite.DELETE("/series/remove", series.RemoveSeries)
+	}
+
+	// ============================================================
 	// Tags (Phase 2)
 	// ============================================================
 	tag := NewTagHandler()
@@ -312,22 +326,6 @@ func SetupRoutes(r *gin.Engine) {
 	api.GET("/recommendations", rec.GetRecommendations)
 	api.GET("/recommendations/similar/:id", rec.GetSimilar)
 	api.POST("/recommendations/ai-reasons", ai.GenerateRecommendationReasons)
-
-	// E-Hentai integration
-	eh := NewEHentaiHandler()
-	ehGroup := api.Group("/ehentai")
-	{
-		ehGroup.GET("/status", eh.Status)
-		ehGroup.GET("/settings", eh.GetSettings)
-		ehGroup.PUT("/settings", eh.UpdateSettings)
-		ehGroup.DELETE("/settings", eh.DeleteSettings)
-		ehGroup.GET("/search", eh.Search)
-		ehGroup.GET("/gallery/:gid/:token", eh.GalleryDetail)
-		ehGroup.POST("/gallery/:gid/:token", eh.ResolvePageImages)
-		ehGroup.GET("/proxy", eh.Proxy)
-		ehGroup.GET("/download", eh.Download)
-		ehGroup.POST("/download", eh.Download)
-	}
 
 	// Tag translation
 	tagTranslate := NewTagTranslateHandler()

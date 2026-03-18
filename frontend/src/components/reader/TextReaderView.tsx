@@ -403,7 +403,7 @@ export default function TextReaderView({
             onClick={() => setShowSettings(false)}
           />
           <div
-            className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl p-6 shadow-2xl ${
+            className={`fixed bottom-0 left-0 right-0 z-50 max-h-[60vh] overflow-y-auto rounded-t-2xl p-4 sm:p-6 shadow-2xl ${
               isDark ? "bg-zinc-800" : "bg-white"
             }`}
           >
@@ -540,7 +540,7 @@ export default function TextReaderView({
             onClick={() => setShowTOC(false)}
           />
           <div
-            className={`fixed top-0 left-0 z-50 h-full w-72 overflow-y-auto shadow-2xl ${
+            className={`fixed top-0 left-0 z-50 h-full w-64 sm:w-72 overflow-y-auto shadow-2xl ${
               isDark ? "bg-zinc-900" : "bg-white"
             }`}
           >

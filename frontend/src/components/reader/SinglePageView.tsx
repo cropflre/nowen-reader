@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import type { FitMode } from "@/types/reader";
 import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface SinglePageViewProps {
@@ -13,6 +14,9 @@ interface SinglePageViewProps {
   direction: "ltr" | "rtl";
   useRealData?: boolean;
   readerTheme?: ReaderTheme;
+  fitMode?: FitMode;
+  containerWidth?: string;
+  preloadCount?: number;
 }
 
 export default function SinglePageView({
@@ -23,6 +27,9 @@ export default function SinglePageView({
   direction,
   useRealData,
   readerTheme = "night",
+  fitMode = "container",
+  containerWidth,
+  preloadCount = 3,
 }: SinglePageViewProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -33,8 +40,8 @@ export default function SinglePageView({
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef<number>(1);
 
-  // Preload next 3 pages
-  useImagePreloader(pages, currentPage, 3);
+  // Preload next N pages
+  useImagePreloader(pages, currentPage, preloadCount);
 
   // Reset loaded state and scale when page changes
   useEffect(() => {
@@ -163,6 +170,19 @@ export default function SinglePageView({
     }
   };
 
+  // 根据 fitMode 计算图片样式
+  const getImageClass = () => {
+    switch (fitMode) {
+      case "width":
+        return "w-full h-auto object-contain";
+      case "height":
+        return "h-full w-auto object-contain";
+      case "container":
+      default:
+        return "max-h-full max-w-full object-contain";
+    }
+  };
+
   return (
     <div
       className={`relative flex h-screen w-full cursor-pointer items-center justify-center select-none transition-colors duration-300 overflow-hidden ${
@@ -175,8 +195,13 @@ export default function SinglePageView({
       onTouchEnd={handleTouchEnd}
     >
       <div
-        className="relative h-full w-full flex items-center justify-center transition-transform duration-200"
-        style={{ transform: `scale(${scale})` }}
+        className="relative h-full flex items-center justify-center transition-transform duration-200"
+        style={{
+          transform: `scale(${scale})`,
+          width: containerWidth || "100%",
+          maxWidth: "100%",
+          margin: "0 auto",
+        }}
       >
         {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -210,7 +235,7 @@ export default function SinglePageView({
             key={currentPage}
             src={pages[currentPage]}
             alt={`Page ${currentPage + 1}`}
-            className={`max-h-full max-w-full object-contain transition-opacity duration-200 ${
+            className={`${getImageClass()} transition-opacity duration-200 ${
               imageLoaded ? "opacity-100" : "opacity-0"
             }`}
             onLoad={() => setImageLoaded(true)}

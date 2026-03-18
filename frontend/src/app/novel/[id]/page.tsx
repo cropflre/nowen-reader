@@ -373,7 +373,7 @@ export default function NovelReaderPage() {
           />
 
           {/* Panel */}
-          <div className="fixed top-0 right-0 z-50 h-full w-80 overflow-y-auto bg-zinc-900/95 p-6 shadow-2xl backdrop-blur-xl">
+          <div className="fixed top-0 right-0 z-50 h-full w-full sm:w-80 overflow-y-auto bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-xl">
             {/* Close */}
             <button
               onClick={() => setShowInfoPanel(false)}
@@ -382,12 +382,12 @@ export default function NovelReaderPage() {
               <X className="h-5 w-5" />
             </button>
 
-            <h2 className="mb-6 pr-8 text-lg font-semibold text-white">
+            <h2 className="mb-4 sm:mb-6 pr-8 text-lg font-semibold text-white">
               {title}
             </h2>
 
             {/* Favorite */}
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <button
                 onClick={handleToggleFavorite}
                 className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -404,7 +404,7 @@ export default function NovelReaderPage() {
             </div>
 
             {/* Rating */}
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-white/40">
                 {t.reader.rating}
               </h3>
@@ -428,7 +428,7 @@ export default function NovelReaderPage() {
             </div>
 
             {/* Tags */}
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-white/40">
                 {t.reader.tagsLabel}
               </h3>
@@ -475,7 +475,7 @@ export default function NovelReaderPage() {
             </div>
 
             {/* Reading Info */}
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-white/40">
                 {t.reader.readingInfo}
               </h3>

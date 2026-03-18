@@ -40,8 +40,6 @@
 ### 🔗 协议 & 同步
 - 📡 **OPDS 协议** — 支持 KOReader / Moon+ Reader 等阅读器
 - 🔄 **WebDAV 云同步** — 跨设备阅读进度同步
-- 🔗 **E-Hentai 集成** — 搜索、预览、下载
-
 ### 🛠️ 部署 & 架构
 - 🚀 **Go 单二进制** — 无需 Node.js / npm，开箱即用
 - 📦 **前端嵌入** — Vite SPA 前端编译进二进制，一个文件部署
@@ -75,7 +73,6 @@ nowen-reader/
 │   │   ├── shelf_handler.go # 书架系统 (创建/更新/删除/漫画归属)
 │   │   ├── goal_handler.go  # 阅读目标 (设定/进度/删除)
 │   │   ├── export_handler.go # 数据导出 (JSON/CSV)
-│   │   ├── ehentai_handler.go # E-Hentai 集成
 │   │   ├── opds_handler.go  # OPDS 协议
 │   │   ├── browse.go        # 文件夹浏览 (服务器目录选择)
 │   │   ├── log_handler.go   # 错误日志 (查看/统计/导出/清理)
@@ -85,7 +82,7 @@ nowen-reader/
 │   │   └── ...              # 其他 (标签/分类/统计/上传/缓存/同步/设置)
 │   ├── middleware/           # 中间件 (CORS/Auth/Gzip/Logger/RateLimit/Security)
 │   ├── model/               # 数据模型 (User/Comic/Tag/Category/ReadingSession)
-│   ├── service/             # 业务逻辑 (AI/元数据/推荐/扫描/OPDS/E-Hentai/标签翻译)
+│   ├── service/             # 业务逻辑 (AI/元数据/推荐/扫描/OPDS/标签翻译)
 │   └── store/               # 数据库 CRUD + 迁移 (SQLite)
 │       ├── db.go            # 数据库连接与初始化
 │       ├── migrate.go       # Schema 迁移
@@ -110,9 +107,7 @@ nowen-reader/
 │           ├── stats/              # 阅读统计
 │           ├── recommendations/    # 推荐页
 │           ├── logs/               # 错误日志页 (管理员)
-│           └── ehentai/            # E-Hentai 页
-├── Dockerfile               # 多阶段构建
-├── docker-compose.yml       # 一键部署 (源码构建)
+├── Dockerfile├── docker-compose.yml       # 一键部署 (源码构建)
 ├── docker-compose.prod.yml  # 生产部署 (Docker Hub 镜像)
 ├── docker-compose.nas.yml   # NAS 部署 (群晖/威联通)
 ├── docker-entrypoint.sh     # Docker 启动脚本
@@ -426,19 +421,6 @@ make fmt
 | GET | `/api/opds/favorites` | 收藏列表 |
 | GET | `/api/opds/search` | OPDS 搜索 |
 | GET | `/api/opds/download/:id` | 下载原始文件 |
-
-### E-Hentai
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/ehentai/status` | 连接状态 |
-| GET | `/api/ehentai/settings` | 获取设置 |
-| PUT | `/api/ehentai/settings` | 更新设置 |
-| DELETE | `/api/ehentai/settings` | 删除设置 |
-| GET | `/api/ehentai/search` | 搜索 |
-| GET | `/api/ehentai/gallery/:gid/:token` | 画廊详情 |
-| POST | `/api/ehentai/gallery/:gid/:token` | 解析页面图片 |
-| GET | `/api/ehentai/proxy` | 图片代理 |
-| GET/POST | `/api/ehentai/download` | 下载 |
 
 ### 其他
 | 方法 | 路径 | 说明 |

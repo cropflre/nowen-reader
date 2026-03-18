@@ -41,16 +41,16 @@ export default function BatchToolbar({
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 px-6 py-3 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1800px] items-center justify-between">
-          <div className="flex items-center gap-3">
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 px-3 sm:px-6 py-2 sm:py-3 backdrop-blur-xl safe-bottom">
+        <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             <CheckSquare className="h-4 w-4 text-accent" />
             <span className="text-sm font-medium text-foreground">
               {t.batch.selected} <span className="text-accent">{selectedCount}</span> {t.batch.items}
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {/* Favorite */}
             <button
               onClick={onFavorite}

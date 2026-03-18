@@ -206,6 +206,39 @@ const en: Translations = {
     ltr: "L→R",
     dayMode: "Day",
     nightMode: "Night",
+    settings: "Settings",
+  },
+
+  // Reader Options Panel
+  readerOptions: {
+    title: "Reader Options",
+    autoSaveHint: "These options auto-save -- click to see effects!",
+    fitMode: "Fit Display",
+    fitContainer: "Container",
+    fitWidth: "Width",
+    fitHeight: "Height",
+    containerWidth: "Container Width (px or %)",
+    containerWidthPlaceholder: "Default: 1200px, or 90% for double page.",
+    apply: "Apply",
+    pageRendering: "Page Rendering",
+    singlePage: "Single Page",
+    doublePage: "Double Page",
+    readingDirection: "Reading Direction",
+    ltr: "Left to Right",
+    rtl: "Right to Left",
+    preloadCount: "Preload Image Count",
+    header: "Header",
+    headerVisible: "Visible",
+    headerHidden: "Hidden",
+    defaultOverlay: "Default Archive Overlay",
+    defaultOverlayDesc: "Show overlay with thumbnails each time a new reader page opens.",
+    enable: "Enable",
+    disable: "Disable",
+    progressTracking: "Progress Tracking",
+    progressTrackingDesc: "If disabled, reading starts from page 1 each time.",
+    infiniteScroll: "Infinite Scroll",
+    infiniteScrollDesc: "Display all images in a vertical view on the same page.",
+    autoPageInterval: "Auto Page Interval (sec)",
   },
 
   // Duration formatting
@@ -475,51 +508,6 @@ const en: Translations = {
     selectToKeep: "Click to select the item to keep",
   },
 
-  // E-Hentai
-  ehentai: {
-    title: "E-Hentai Browser",
-    search: "Search",
-    searchPlaceholder: "Search gallery title, tags...",
-    searching: "Searching...",
-    noResults: "No results found",
-    emptyHint: "Enter keywords to search E-Hentai galleries",
-    resultsCount: "{count} results",
-    prevPage: "Previous",
-    nextPage: "Next",
-    pageNum: "Page {page}",
-    pages: "pages",
-    uploader: "Uploader",
-    fileCount: "Files",
-    tags: "Tags",
-    preview: "Preview",
-    downloadToLibrary: "Download to Library",
-    downloading: "Downloading",
-    downloadStarting: "Preparing...",
-    downloadFetchingInfo: "Fetching gallery info...",
-    downloadPackaging: "Packaging CBZ...",
-    downloadCompleted: "Download Complete",
-    downloadError: "Download Failed",
-    galleryId: "Gallery",
-    notConfigured: "E-Hentai Not Configured",
-    notConfiguredDesc: "Configure E-Hentai cookies in Settings to enable this feature. Click user menu → Settings → E-Hentai.",
-  },
-
-  // E-Hentai Settings
-  ehentaiSettings: {
-    title: "E-Hentai Config",
-    statusConfigured: "Configured",
-    statusNotConfigured: "Not Configured",
-    currentConfig: "Current Config",
-    description: "Get these values from your browser cookies after logging into E-Hentai. Open DevTools → Application → Cookies.",
-    keepCurrent: "Leave empty to keep current",
-    optional: "Optional, for ExHentai",
-    save: "Save",
-    test: "Test",
-    clear: "Clear",
-    testSuccess: "Connection test passed",
-    testFailed: "Connection failed, check cookie values",
-  },
-
   // Continue Reading
   continueReading: {
     title: "Continue Reading",
@@ -530,13 +518,14 @@ const en: Translations = {
     chapter: "Ch.",
     chapterUnit: "",
     pageUnit: "p",
+    collapse: "Collapse",
+    expand: "Expand",
   },
 
   // Mobile Navigation
   mobileNav: {
     library: "Library",
     stats: "Stats",
-    explore: "Explore",
   },
 
   // Enhanced Stats
@@ -588,6 +577,27 @@ const en: Translations = {
     achieved: "Goal Achieved!",
     editGoal: "Edit",
     deleteGoal: "Delete",
+  },
+
+  // Series
+  series: {
+    title: "Series",
+    viewMode: "Series View",
+    volumeCount: "{count} vols",
+    totalPages: "{count} pages total",
+    volumes: "Volumes",
+    continueReading: "Continue Reading",
+    readFromStart: "Read from Start",
+    noSeries: "No Series Found",
+    noSeriesHint: "The system auto-detects series from filenames. You can also manually set series in comic detail page.",
+    progress: "Progress",
+    author: "Author",
+    currentVolume: "Current Volume",
+    nextVolume: "Next Volume",
+    prevVolume: "Previous Volume",
+    seriesComplete: "Series Complete",
+    volumeFinished: "Volume finished. Loading next volume...",
+    searchPlaceholder: "Search series...",
   },
 };
 
