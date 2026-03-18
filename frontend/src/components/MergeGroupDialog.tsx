@@ -20,8 +20,8 @@ export default function MergeGroupDialog({
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] bg-black/60" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 z-[60] w-[90vw] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-2xl">
+      <div className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 z-[60] w-[90vw] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-2xl animate-modal-in">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <FolderPlus className="h-5 w-5 text-accent" />

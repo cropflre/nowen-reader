@@ -163,13 +163,15 @@ export default function NovelToolbar({
           </div>
 
           {/* Theme toggle */}
+          {/* 功能按钮区 + 主题色卡 - 移动端自适应布局 */}
           <div className="flex items-center justify-between border-t border-white/10 py-2 sm:py-3">
-            <div className="flex items-center gap-1">
+            {/* 左侧功能按钮：移动端只显示核心按钮 */}
+            <div className="flex items-center gap-0.5 sm:gap-1 min-w-0 overflow-x-auto">
               {/* TOC 按钮 */}
               {onShowTOC && (
                 <button
                   onClick={onShowTOC}
-                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10"
+                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10 shrink-0"
                 >
                   <List className="h-4 w-4" />
                   <span className="hidden sm:inline">{t.reader?.toc || "目录"}</span>
@@ -180,7 +182,7 @@ export default function NovelToolbar({
               {onShowSettings && (
                 <button
                   onClick={onShowSettings}
-                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10"
+                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10 shrink-0"
                 >
                   <Type className="h-4 w-4" />
                   <span className="hidden sm:inline">{t.reader?.typesetting || "排版"}</span>
@@ -191,7 +193,7 @@ export default function NovelToolbar({
               {onShowBookmarks && (
                 <button
                   onClick={onShowBookmarks}
-                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10"
+                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10 shrink-0"
                 >
                   <Bookmark className="h-4 w-4" />
                   <span className="hidden sm:inline">书签</span>
@@ -202,18 +204,18 @@ export default function NovelToolbar({
               {onShowSearch && (
                 <button
                   onClick={onShowSearch}
-                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10"
+                  className="flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-1.5 text-xs font-medium text-white/60 transition-all duration-200 hover:text-white hover:bg-white/10 shrink-0"
                 >
                   <Search className="h-4 w-4" />
                   <span className="hidden sm:inline">搜索</span>
                 </button>
               )}
 
-              {/* TTS 听书按钮 */}
+              {/* TTS 听书按钮 - 移动端隐藏 */}
               {onToggleTTS && (
                 <button
                   onClick={onToggleTTS}
-                  className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  className={`hidden sm:flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 shrink-0 ${
                     isTTSPlaying
                       ? "text-accent bg-accent/10"
                       : "text-white/60 hover:text-white hover:bg-white/10"
@@ -224,11 +226,11 @@ export default function NovelToolbar({
                 </button>
               )}
 
-              {/* 自动翻页按钮 */}
+              {/* 自动翻页按钮 - 移动端隐藏 */}
               {onToggleAutoScroll && (
                 <button
                   onClick={onToggleAutoScroll}
-                  className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  className={`hidden sm:flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 shrink-0 ${
                     isAutoScrolling
                       ? "text-green-400 bg-green-500/10"
                       : "text-white/60 hover:text-white hover:bg-white/10"
@@ -240,13 +242,13 @@ export default function NovelToolbar({
               )}
             </div>
 
-            {/* 主题色卡选择 */}
-            <div className="flex items-center gap-1.5">
+            {/* 右侧主题色卡选择 */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-2">
               {themeOptions.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => onThemeChange(opt.value)}
-                  className={`relative h-6 w-6 rounded-full border-2 transition-all ${
+                  className={`relative h-5 w-5 sm:h-6 sm:w-6 rounded-full border-2 transition-all ${
                     readerTheme === opt.value
                       ? "border-accent scale-110 shadow-md shadow-accent/30"
                       : "border-white/20 hover:border-white/40"

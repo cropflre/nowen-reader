@@ -94,6 +94,8 @@ html.light ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
   outline: none;
   cursor: pointer;
+  /* 避免触摸时产生延迟 */
+  touch-action: none;
 }
 
 .reader-slider::-webkit-slider-thumb {
@@ -111,6 +113,12 @@ html.light ::-webkit-scrollbar-thumb:hover {
 .reader-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
   box-shadow: 0 0 12px rgba(99, 102, 241, 0.7);
+}
+
+/* 拖动中的活跃态 */
+.reader-slider::-webkit-slider-thumb:active {
+  transform: scale(1.3);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.9);
 }
 
 .reader-slider::-moz-range-thumb {
@@ -182,6 +190,43 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
+/* 翻页过渡动画 */
+@keyframes slide-page-left {
+  from { opacity: 0.7; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slide-page-right {
+  from { opacity: 0.7; transform: translateX(-30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-slide-page-left {
+  animation: slide-page-left 0.2s ease-out;
+}
+
+.animate-slide-page-right {
+  animation: slide-page-right 0.2s ease-out;
+}
+
+/* 横屏模式优化 */
+@media (max-height: 480px) and (orientation: landscape) {
+  /* 横屏时图片优先适应高度 */
+  .h-screen {
+    height: 100dvh;
+  }
+
+  /* 工具栏紧凑化 */
+  .reader-slider::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+  }
+
+  .reader-slider {
+    height: 4px;
+  }
+}
+
 /* Scrollbar hide utility (for mobile horizontal scroll areas) */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
@@ -223,5 +268,180 @@ html.light ::-webkit-scrollbar-thumb:hover {
   .overflow-y-auto,
   .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ===================================================================
+   P0 交互优化动画
+   =================================================================== */
+
+/* --- 1. 路由页面过渡 fade-in --- */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-page-enter {
+  animation: page-fade-in 0.28s ease-out both;
+}
+
+/* --- 2. 骨架屏 shimmer 光泽动画 --- */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--theme-card) 25%,
+    var(--theme-card-hover) 37%,
+    var(--theme-card) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* --- 3. 弹窗 backdrop + 内容进入/退出 --- */
+@keyframes backdrop-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-enter {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-backdrop-in {
+  animation: backdrop-fade-in 0.2s ease-out both;
+}
+
+.animate-modal-in {
+  animation: modal-enter 0.25s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* --- 4. Toast 从右滑入 --- */
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-toast-in {
+  animation: toast-slide-in 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+
+/* --- 5. 卡片交错入场 --- */
+@keyframes card-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-card-in {
+  animation: card-fade-up 0.35s ease-out both;
+}
+
+/* ===================================================================
+   P1 交互优化动画
+   =================================================================== */
+
+/* --- 6. 批量操作栏从底部弹入 --- */
+@keyframes toolbar-slide-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-toolbar-in {
+  animation: toolbar-slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* --- 7. 底部导航指示器滑动 --- */
+.nav-indicator {
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), width 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* --- 8. 按钮按压微动效 --- */
+.btn-press {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* ===================================================================
+   P2 交互优化动画
+   =================================================================== */
+
+/* --- 9. 列表项删除收缩动画 --- */
+@keyframes item-remove {
+  0%   { opacity: 1; transform: scale(1); max-height: 400px; }
+  50%  { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 0; transform: scale(0.9); max-height: 0; padding: 0; margin: 0; overflow: hidden; }
+}
+
+.animate-item-remove {
+  animation: item-remove 0.4s ease-out forwards;
+  pointer-events: none;
+}
+
+/* --- 10. 滚动渐入 --- */
+@keyframes scroll-fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-scroll-in {
+  animation: scroll-fade-up 0.5s ease-out both;
+}
+
+/* 未进入视口时保持不可见 */
+.scroll-reveal {
+  opacity: 0;
+}
+
+.scroll-reveal.is-visible {
+  animation: scroll-fade-up 0.5s ease-out both;
+}
+
+/* --- 11. 拖拽增强 --- */
+.drag-active {
+  transform: scale(1.03) rotate(1.5deg);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(99, 102, 241, 0.5);
+  z-index: 50;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.drag-over-target {
+  transform: scale(0.97);
+  border: 2px dashed rgba(99, 102, 241, 0.5);
+  border-radius: 12px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+/* --- 12. 进度条发光效果 --- */
+@keyframes progress-glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(99, 102, 241, 0.5); }
+  50%      { box-shadow: 0 0 12px rgba(99, 102, 241, 0.8); }
+}
+
+/* --- 关闭动画偏好的用户 --- */
+@media (prefers-reduced-motion: reduce) {
+  .animate-page-enter,
+  .animate-backdrop-in,
+  .animate-modal-in,
+  .animate-toast-in,
+  .animate-card-in,
+  .animate-toolbar-in,
+  .animate-item-remove,
+  .animate-scroll-in,
+  .scroll-reveal,
+  .drag-active,
+  .drag-over-target,
+  .nav-indicator,
+  .btn-press {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

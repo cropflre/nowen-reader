@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, BookOpenCheck, Bookmark, BookmarkPlus, Trash2, Search, X, Copy, MessageSquare, Highlighter, Volume2, Pause, Play, Timer, Square } from "lucide-react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, useTranslation } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { idbSave, idbLoad } from "@/lib/idb-backup";
 
 // ============ 主题色卡配置 ============
 interface ThemeColors {
@@ -106,26 +107,26 @@ const themeColorMap: Record<string, ThemeColors> = {
 };
 
 // 主题色卡预览色（用于设置面板选择器）
-const themePreviewColors: Record<string, { bg: string; label: string }> = {
-  night: { bg: "#18181b", label: "深色" },
-  day: { bg: "#fffbeb", label: "米黄" },
-  green: { bg: "#C7EDCC", label: "豆沙绿" },
-  gray: { bg: "#E0E0E0", label: "浅灰" },
-  white: { bg: "#ffffff", label: "纯白" },
+const themePreviewColorKeys: Record<string, { bg: string; labelKey: string }> = {
+  night: { bg: "#18181b", labelKey: "themeNight" },
+  day: { bg: "#fffbeb", labelKey: "themeDay" },
+  green: { bg: "#C7EDCC", labelKey: "themeGreen" },
+  gray: { bg: "#E0E0E0", labelKey: "themeGray" },
+  white: { bg: "#ffffff", labelKey: "themeWhite" },
 };
 
 // 页边距档位
 const paddingOptions = [
-  { value: "compact", label: "紧凑", class: "px-2 sm:px-4 md:px-8" },
-  { value: "standard", label: "标准", class: "px-4 sm:px-8 md:px-16 lg:px-32" },
-  { value: "wide", label: "宽松", class: "px-8 sm:px-16 md:px-24 lg:px-40" },
+  { value: "compact", labelKey: "marginCompact" as const, class: "px-2 sm:px-4 md:px-8" },
+  { value: "standard", labelKey: "marginStandard" as const, class: "px-4 sm:px-8 md:px-16 lg:px-32" },
+  { value: "wide", labelKey: "marginWide" as const, class: "px-8 sm:px-16 md:px-24 lg:px-40" },
 ];
 
 // 翻页模式
 type PageMode = "scroll" | "swipe";
 const pageModeOptions = [
-  { value: "scroll" as PageMode, label: "上下滚动" },
-  { value: "swipe" as PageMode, label: "左右翻页" },
+  { value: "scroll" as PageMode, labelKey: "pageModeScroll" as const },
+  { value: "swipe" as PageMode, labelKey: "pageModeSwipe" as const },
 ];
 
 // 书签类型
@@ -186,6 +187,7 @@ export default function TextReaderView({
   comicId,
 }: TextReaderViewProps) {
   const { locale } = useLocale();
+  const t = useTranslation();
   const { aiConfigured } = useAIStatus();
   const [content, setContent] = useState("");
   const [chapterTitle, setChapterTitle] = useState("");
@@ -254,11 +256,20 @@ export default function TextReaderView({
   const [bookmarks, setBookmarks] = useState<NovelBookmark[]>(() => {
     if (typeof window !== "undefined" && comicId) {
       try {
-        return JSON.parse(localStorage.getItem(`novel-bookmarks-${comicId}`) || "[]");
-      } catch { return []; }
+        const stored = localStorage.getItem(`novel-bookmarks-${comicId}`);
+        if (stored) return JSON.parse(stored);
+      } catch { /* fallback below */ }
     }
     return [];
   });
+
+  // 从 IndexedDB 恢复书签（localStorage 为空时的降级方案）
+  useEffect(() => {
+    if (!comicId || bookmarks.length > 0) return;
+    idbLoad<NovelBookmark[]>(`novel-bookmarks-${comicId}`, []).then((data) => {
+      if (data.length > 0) setBookmarks(data);
+    });
+  }, [comicId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 目录面板的当前Tab: 'toc' | 'bookmark'
   const [tocTab, setTocTab] = useState<'toc' | 'bookmark'>('toc');
   // 当前时间（用于底部状态条）
@@ -274,11 +285,20 @@ export default function TextReaderView({
   const [highlights, setHighlights] = useState<TextHighlight[]>(() => {
     if (typeof window !== "undefined" && comicId) {
       try {
-        return JSON.parse(localStorage.getItem(`novel-highlights-${comicId}`) || "[]");
-      } catch { return []; }
+        const stored = localStorage.getItem(`novel-highlights-${comicId}`);
+        if (stored) return JSON.parse(stored);
+      } catch { /* fallback below */ }
     }
     return [];
   });
+
+  // 从 IndexedDB 恢复划线（localStorage 为空时的降级方案）
+  useEffect(() => {
+    if (!comicId || highlights.length > 0) return;
+    idbLoad<TextHighlight[]>(`novel-highlights-${comicId}`, []).then((data) => {
+      if (data.length > 0) setHighlights(data);
+    });
+  }, [comicId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 选词弹出菜单
   const [selectionMenu, setSelectionMenu] = useState<{
     x: number; y: number; text: string;
@@ -293,6 +313,8 @@ export default function TextReaderView({
   const searchInputRef = useRef<HTMLInputElement>(null);
   // 左右滑动翻页触摸状态
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // 用于区分「点击」和「滑动后抬起」，防止滚动后误触工具栏
+  const scrollTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   // TTS 听书状态
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [ttsPaused, setTtsPaused] = useState(false);
@@ -315,6 +337,13 @@ export default function TextReaderView({
   });
   const autoScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // swipe 模式章内分页
+  const [swipePage, setSwipePage] = useState(0);
+  const [swipeTotalPages, setSwipeTotalPages] = useState(1);
+  const swipeInnerRef = useRef<HTMLDivElement>(null);
+  // 搜索取消/进度
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const [searchProgress, setSearchProgress] = useState(0);
 
   // Load chapter content
   useEffect(() => {
@@ -336,7 +365,7 @@ export default function TextReaderView({
         setIsHTML(mime.includes("html"));
       })
       .catch(() => {
-        setContent("加载失败，请重试");
+        setContent(t.reader.loadError);
         setIsHTML(false);
       })
       .finally(() => {
@@ -344,12 +373,44 @@ export default function TextReaderView({
       });
   }, [currentPage, chapters]);
 
-  // Scroll to top on chapter change
+  // Scroll to top on chapter change + reset swipe page
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
+    setSwipePage(0);
   }, [currentPage]);
+
+  // swipe 模式下计算章内总页数
+  useEffect(() => {
+    if (pageMode !== 'swipe' || loading) {
+      setSwipeTotalPages(1);
+      return;
+    }
+    // 延迟计算，等渲染完成
+    const timer = setTimeout(() => {
+      const container = contentRef.current;
+      const inner = swipeInnerRef.current;
+      if (!container || !inner) { setSwipeTotalPages(1); return; }
+      const viewH = container.clientHeight;
+      const contentH = inner.scrollHeight;
+      if (viewH <= 0) { setSwipeTotalPages(1); return; }
+      setSwipeTotalPages(Math.max(1, Math.ceil(contentH / viewH)));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [pageMode, loading, content, fontSize, lineHeight, fontFamily, currentPage]);
+
+  // 字体/行高等变化时重置 swipePage
+  useEffect(() => {
+    setSwipePage(0);
+  }, [fontSize, lineHeight, fontFamily, paddingLevel]);
+
+  // swipePage 设置为 Infinity 时 clamp 到实际最后一页
+  useEffect(() => {
+    if (swipePage >= swipeTotalPages && swipeTotalPages > 0) {
+      setSwipePage(swipeTotalPages - 1);
+    }
+  }, [swipePage, swipeTotalPages]);
 
   // Persist font settings
   useEffect(() => {
@@ -369,10 +430,11 @@ export default function TextReaderView({
     localStorage.setItem("textReaderPadding", paddingLevel);
   }, [paddingLevel]);
 
-  // 保存书签
+  // 保存书签（localStorage + IndexedDB 双写）
   useEffect(() => {
     if (comicId) {
       localStorage.setItem(`novel-bookmarks-${comicId}`, JSON.stringify(bookmarks));
+      idbSave(`novel-bookmarks-${comicId}`, bookmarks);
     }
   }, [bookmarks, comicId]);
 
@@ -381,36 +443,39 @@ export default function TextReaderView({
     localStorage.setItem("textReaderPageMode", pageMode);
   }, [pageMode]);
 
-  // 保存划线标注
+  // 保存划线标注（localStorage + IndexedDB 双写）
   useEffect(() => {
     if (comicId) {
       localStorage.setItem(`novel-highlights-${comicId}`, JSON.stringify(highlights));
+      idbSave(`novel-highlights-${comicId}`, highlights);
     }
   }, [highlights, comicId]);
 
-  // 选词事件监听
+  // 选词事件监听（使用 pointerup 兼容鼠标和触摸）
   useEffect(() => {
-    const handleMouseUp = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-        // 延迟关闭，避免点击菜单时立刻消失
-        setTimeout(() => setSelectionMenu(null), 200);
-        return;
-      }
-      const text = selection.toString().trim();
-      if (text.length < 2) return;
+    const handlePointerUp = () => {
+      // 延迟检测选区，等待触摸选词完成
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+          setTimeout(() => setSelectionMenu(null), 200);
+          return;
+        }
+        const text = selection.toString().trim();
+        if (text.length < 2) return;
 
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      setSelectionMenu({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10,
-        text,
-      });
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        setSelectionMenu({
+          x: rect.left + rect.width / 2,
+          y: rect.top - 10,
+          text,
+        });
+      }, 10);
     };
 
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointerup', handlePointerUp);
+    return () => document.removeEventListener('pointerup', handlePointerUp);
   }, []);
 
   // 添加划线标注
@@ -442,19 +507,37 @@ export default function TextReaderView({
     window.getSelection()?.removeAllRanges();
   }, []);
 
-  // 全书搜索
+  // 全书搜索（带防抖、进度、取消支持）
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim() || !comicId) return;
+
+    // 取消上次搜索
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    searchAbortRef.current = abortController;
+
     setSearchLoading(true);
     setSearchResults([]);
+    setSearchProgress(0);
 
     const results: SearchResult[] = [];
     const lowerQuery = query.toLowerCase();
 
     // 逐章获取内容并搜索
     for (let i = 0; i < chapters.length; i++) {
+      // 检查是否已取消
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      setSearchProgress(Math.round(((i + 1) / chapters.length) * 100));
+
       try {
-        const res = await fetch(`/api/comics/${comicId}/chapter/${i}`);
+        const res = await fetch(`/api/comics/${comicId}/chapter/${i}`, {
+          signal: abortController.signal,
+        });
         if (!res.ok) continue;
         const data = await res.json();
         const text = (data.content || '').replace(/<[^>]*>/g, ' ');
@@ -479,18 +562,26 @@ export default function TextReaderView({
         if (matchCount > 0) {
           results.push({
             chapterIndex: i,
-            chapterTitle: data.title || chapters[i]?.title || chapters[i]?.name || `第 ${i + 1} 章`,
+            chapterTitle: data.title || chapters[i]?.title || chapters[i]?.name || t.reader.chapterN.replace('{n}', String(i + 1)),
             matchText: firstMatchText,
             matchCount,
           });
+          // 实时更新结果，让用户边搜边看
+          setSearchResults([...results]);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return; // 被取消，静默退出
+        }
         // skip failed chapters
       }
     }
 
-    setSearchResults(results);
-    setSearchLoading(false);
+    if (!abortController.signal.aborted) {
+      setSearchResults(results);
+      setSearchLoading(false);
+      setSearchProgress(0);
+    }
   }, [comicId, chapters]);
 
   // 更新时间
@@ -748,11 +839,11 @@ export default function TextReaderView({
   };
 
   const fontFamilyLabels: Record<string, string> = {
-    system: "系统默认",
-    serif: "宋体/衬线",
-    sans: "黑体/无衬线",
-    kai: "楷体",
-    mono: "等宽字体",
+    system: t.reader.fontSystem,
+    serif: t.reader.fontSerif,
+    sans: t.reader.fontSans,
+    kai: t.reader.fontKai,
+    mono: t.reader.fontMono,
   };
 
   // Keyboard shortcuts for chapter navigation
@@ -762,10 +853,27 @@ export default function TextReaderView({
 
       if (e.key === "ArrowLeft" || e.key === "a") {
         e.preventDefault();
-        if (currentPage > 0) onPageChange(currentPage - 1);
+        if (pageMode === 'swipe') {
+          if (swipePage > 0) {
+            setSwipePage(p => p - 1);
+          } else if (currentPage > 0) {
+            onPageChange(currentPage - 1);
+            setTimeout(() => setSwipePage(Infinity), 200);
+          }
+        } else {
+          if (currentPage > 0) onPageChange(currentPage - 1);
+        }
       } else if (e.key === "ArrowRight" || e.key === "d") {
         e.preventDefault();
-        if (currentPage < chapters.length - 1) onPageChange(currentPage + 1);
+        if (pageMode === 'swipe') {
+          if (swipePage < swipeTotalPages - 1) {
+            setSwipePage(p => p + 1);
+          } else if (currentPage < chapters.length - 1) {
+            onPageChange(currentPage + 1);
+          }
+        } else {
+          if (currentPage < chapters.length - 1) onPageChange(currentPage + 1);
+        }
       } else if (e.key === "s" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         setShowSearch(true);
@@ -789,7 +897,7 @@ export default function TextReaderView({
         toggleAutoScroll();
       }
     },
-    [currentPage, chapters.length, onPageChange, showTOC, showSettings, showSearch, isCurrentBookmarked, removeBookmark, addBookmark, ttsPlaying, stopTTS, startTTS, toggleAutoScroll]
+    [currentPage, chapters.length, onPageChange, showTOC, showSettings, showSearch, isCurrentBookmarked, removeBookmark, addBookmark, ttsPlaying, stopTTS, startTTS, toggleAutoScroll, pageMode, swipePage, swipeTotalPages]
   );
 
   useEffect(() => {
@@ -880,17 +988,50 @@ export default function TextReaderView({
           className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${theme.headerText} ${theme.hoverBg}`}
         >
           <List className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">目录</span>
+          <span className="hidden sm:inline">{t.reader.tocLabel}</span>
         </button>
 
         <span
           className={`mx-4 truncate text-xs font-medium ${theme.headerText}`}
         >
-          {chapterTitle || `第 ${currentPage + 1} 章`}
+          {chapterTitle || t.reader.chapterN.replace('{n}', String(currentPage + 1))}
         </span>
 
-        <div className="flex items-center gap-1">
-          {/* TTS 听书按钮 */}
+        {/* 移动端仅显示核心按钮，避免小屏溢出 */}
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          {/* 搜索按钮 */}
+          <button
+            onClick={() => {
+              setShowSearch(true);
+              setTimeout(() => searchInputRef.current?.focus(), 100);
+            }}
+            className={`flex items-center rounded-lg p-1.5 sm:px-2 sm:py-1 text-xs transition-colors ${theme.headerText} ${theme.hoverBg}`}
+            title={t.reader.search + " (S)"}
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+          {/* 书签按钮 */}
+          <button
+            onClick={() => isCurrentBookmarked ? removeBookmark(currentPage) : addBookmark()}
+            className={`flex items-center rounded-lg p-1.5 sm:px-2 sm:py-1 text-xs transition-colors ${
+              isCurrentBookmarked
+                ? "text-amber-500"
+                : `${theme.headerText} ${theme.hoverBg}`
+            }`}
+            title={isCurrentBookmarked ? t.reader.removeBookmark : t.reader.bookmarkLabel}
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${isCurrentBookmarked ? "fill-amber-500" : ""}`} />
+          </button>
+          {/* 排版设置按钮 */}
+          <button
+            onClick={() => setShowSettings((v) => !v)}
+            className={`flex items-center rounded-lg p-1.5 sm:px-2 sm:py-1 text-xs transition-colors ${theme.headerText} ${theme.hoverBg}`}
+            title={t.reader.settingsTitle}
+          >
+            <Type className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline ml-1">{t.reader.typesetting}</span>
+          </button>
+          {/* TTS 和自动翻页在桌面端显示 */}
           {ttsSupported && (
             <button
               onClick={() => {
@@ -901,7 +1042,7 @@ export default function TextReaderView({
                   setShowTtsPanel(true);
                 }
               }}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+              className={`hidden sm:flex items-center rounded-lg p-1.5 sm:px-2 sm:py-1 text-xs transition-colors ${
                 ttsPlaying
                   ? "text-accent bg-accent/10"
                   : `${theme.headerText} ${theme.hoverBg}`
@@ -911,10 +1052,9 @@ export default function TextReaderView({
               <Volume2 className={`h-3.5 w-3.5 ${ttsPlaying ? "animate-pulse" : ""}`} />
             </button>
           )}
-          {/* 自动翻页按钮 */}
           <button
             onClick={toggleAutoScroll}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+            className={`hidden sm:flex items-center rounded-lg p-1.5 sm:px-2 sm:py-1 text-xs transition-colors ${
               autoScrollActive
                 ? "text-green-500 bg-green-500/10"
                 : `${theme.headerText} ${theme.hoverBg}`
@@ -923,47 +1063,26 @@ export default function TextReaderView({
           >
             <Timer className={`h-3.5 w-3.5 ${autoScrollActive ? "animate-spin" : ""}`} />
           </button>
-          {/* 搜索按钮 */}
-          <button
-            onClick={() => {
-              setShowSearch(true);
-              setTimeout(() => searchInputRef.current?.focus(), 100);
-            }}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${theme.headerText} ${theme.hoverBg}`}
-            title="全书搜索 (S)"
-          >
-            <Search className="h-3.5 w-3.5" />
-          </button>
-          {/* 书签按钮 */}
-          <button
-            onClick={() => isCurrentBookmarked ? removeBookmark(currentPage) : addBookmark()}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
-              isCurrentBookmarked
-                ? "text-amber-500"
-                : `${theme.headerText} ${theme.hoverBg}`
-            }`}
-            title={isCurrentBookmarked ? "移除书签" : "添加书签"}
-          >
-            <Bookmark className={`h-3.5 w-3.5 ${isCurrentBookmarked ? "fill-amber-500" : ""}`} />
-          </button>
-          <button
-            onClick={() => setShowSettings((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${theme.headerText} ${theme.hoverBg}`}
-          >
-            <Type className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">排版</span>
-          </button>
         </div>
       </div>
 
       {/* Main content area */}
       <div
         ref={contentRef}
-        className={`flex-1 overflow-y-auto py-6 ${currentPadding.class} ${
-          pageMode === "swipe" ? "overflow-y-hidden" : ""
+        className={`flex-1 pb-8 pt-6 ${currentPadding.class} ${
+          pageMode === "swipe" ? "overflow-hidden" : "overflow-y-auto"
         }`}
         onClick={(e) => {
-          // 点击内容区域
+          // 如果有选中文本，不处理点击
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed) return;
+
+          // 检查是否是滑动后的抬起（防止滚动误触工具栏）
+          if (scrollTouchStartRef.current) {
+            // 已经在 onTouchEnd 中处理了，不再重复触发
+            return;
+          }
+
           const rect = e.currentTarget.getBoundingClientRect();
           const x = e.clientX - rect.left;
           const y = e.clientY - rect.top;
@@ -971,11 +1090,23 @@ export default function TextReaderView({
           const height = rect.height;
 
           if (pageMode === "swipe") {
-            // 左右翻页模式：左1/3上一章，右1/3下一章，中间1/3呼出菜单
+            // 左右翻页模式：左1/3上一页，右1/3下一页，中间1/3呼出菜单
             if (x / width < 0.33) {
-              if (currentPage > 0) onPageChange(currentPage - 1);
+              // 上一页
+              if (swipePage > 0) {
+                setSwipePage(p => p - 1);
+              } else if (currentPage > 0) {
+                onPageChange(currentPage - 1);
+                // 跳到上一章最后一页 — 在 useEffect 中通过 swipeTotalPages 处理
+                setTimeout(() => setSwipePage(Infinity), 200);
+              }
             } else if (x / width > 0.67) {
-              if (currentPage < chapters.length - 1) onPageChange(currentPage + 1);
+              // 下一页
+              if (swipePage < swipeTotalPages - 1) {
+                setSwipePage(p => p + 1);
+              } else if (currentPage < chapters.length - 1) {
+                onPageChange(currentPage + 1);
+              }
             } else {
               onTapCenter();
             }
@@ -987,32 +1118,67 @@ export default function TextReaderView({
           }
         }}
         onTouchStart={(e) => {
+          // 始终记录触摸起点，用于区分点击和滑动
+          scrollTouchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           if (pageMode === "swipe") {
             touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           }
         }}
         onTouchEnd={(e) => {
+          const start = scrollTouchStartRef.current;
+          if (start) {
+            const dx = e.changedTouches[0].clientX - start.x;
+            const dy = e.changedTouches[0].clientY - start.y;
+            const moved = Math.abs(dx) > 10 || Math.abs(dy) > 10;
+
+            if (moved) {
+              // 有明显滑动，阻止后续 onClick 触发
+              // scrollTouchStartRef 保持非 null，onClick 会检查并 return
+              // 延迟清除，确保 onClick 能读到
+              setTimeout(() => { scrollTouchStartRef.current = null; }, 50);
+            } else {
+              // 纯点击，清空 ref，让 onClick 正常处理
+              scrollTouchStartRef.current = null;
+            }
+          }
+
+          // swipe 模式的滑动翻页（章内分页）
           if (pageMode === "swipe" && touchStartRef.current) {
             const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
             const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
             touchStartRef.current = null;
-            // 水平滑动距离 > 50px 且大于垂直距离
             if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-              if (dx < 0 && currentPage < chapters.length - 1) {
-                onPageChange(currentPage + 1); // 左滑下一章
-              } else if (dx > 0 && currentPage > 0) {
-                onPageChange(currentPage - 1); // 右滑上一章
+              if (dx < 0) {
+                // 左滑 — 下一页
+                if (swipePage < swipeTotalPages - 1) {
+                  setSwipePage(p => p + 1);
+                } else if (currentPage < chapters.length - 1) {
+                  onPageChange(currentPage + 1);
+                }
+              } else {
+                // 右滑 — 上一页
+                if (swipePage > 0) {
+                  setSwipePage(p => p - 1);
+                } else if (currentPage > 0) {
+                  onPageChange(currentPage - 1);
+                  setTimeout(() => setSwipePage(Infinity), 200);
+                }
               }
             }
           }
         }}
       >
         <div
+          ref={swipeInnerRef}
           className="mx-auto max-w-2xl"
           style={{
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
             fontFamily: fontFamilyMap[fontFamily] || fontFamilyMap.system,
+            ...(pageMode === 'swipe' ? {
+              transform: `translateY(-${swipePage * (contentRef.current?.clientHeight || 0)}px)`,
+              transition: 'transform 0.3s ease-out',
+            } : {}),
           }}
         >
           {loading ? (
@@ -1196,7 +1362,7 @@ export default function TextReaderView({
                   }`}
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  上一章
+                  {t.reader.prevChapter}
                 </button>
 
                 <span
@@ -1217,7 +1383,7 @@ export default function TextReaderView({
                       : `${theme.navBtnBg} ${theme.navBtnText} ${theme.navBtnHoverBg}`
                   }`}
                 >
-                  下一章
+                  {t.reader.nextChapter}
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
@@ -1231,8 +1397,11 @@ export default function TextReaderView({
         <div
           className={`absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-1 text-[10px] backdrop-blur-sm ${theme.statusBarBg} ${theme.statusBarText}`}
         >
-          <span>{chapterTitle || `第 ${currentPage + 1} 章`}</span>
+          <span>{chapterTitle || t.reader.chapterN.replace('{n}', String(currentPage + 1))}</span>
           <div className="flex items-center gap-3">
+            {pageMode === 'swipe' && swipeTotalPages > 1 && (
+              <span>{swipePage + 1}/{swipeTotalPages}</span>
+            )}
             <span>{Math.round(((currentPage + 1) / chapters.length) * 100)}%</span>
             <span>{currentTime}</span>
           </div>
@@ -1247,12 +1416,12 @@ export default function TextReaderView({
             onClick={() => setShowSettings(false)}
           />
           <div
-            className={`fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl p-4 sm:p-6 shadow-2xl ${theme.settingsBg}`}
+            className={`fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl p-4 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl ${theme.settingsBg}`}
           >
             <h3
               className={`mb-4 text-sm font-semibold ${theme.settingsText}`}
             >
-              排版设置
+              {t.reader.settingsTitle}
             </h3>
 
             {/* 主题色卡 */}
@@ -1260,10 +1429,10 @@ export default function TextReaderView({
               <label
                 className={`mb-2 block text-xs ${theme.settingsLabel}`}
               >
-                背景主题
+                {t.reader.bgTheme}
               </label>
               <div className="flex items-center gap-3">
-                {Object.entries(themePreviewColors).map(([key, { bg, label }]) => (
+                {Object.entries(themePreviewColorKeys).map(([key, { bg, labelKey }]) => (
                   <button
                     key={key}
                     onClick={() => {
@@ -1287,7 +1456,7 @@ export default function TextReaderView({
                     <span className={`text-[10px] ${
                       readerTheme === key ? "font-semibold" : ""
                     } ${theme.settingsLabel}`}>
-                      {label}
+                      {t.reader[labelKey as keyof typeof t.reader] || labelKey}
                     </span>
                   </button>
                 ))}
@@ -1299,7 +1468,7 @@ export default function TextReaderView({
               <label
                 className={`mb-2 block text-xs ${theme.settingsLabel}`}
               >
-                字体大小: {fontSize}px
+                {t.reader.fontSize}: {fontSize}px
               </label>
               <div className="flex items-center gap-3">
                 <button
@@ -1330,7 +1499,7 @@ export default function TextReaderView({
               <label
                 className={`mb-2 block text-xs ${theme.settingsLabel}`}
               >
-                行间距: {lineHeight.toFixed(1)}
+                {t.reader.lineSpacing}: {lineHeight.toFixed(1)}
               </label>
               <div className="flex items-center gap-3">
                 <button
@@ -1362,7 +1531,7 @@ export default function TextReaderView({
               <label
                 className={`mb-2 block text-xs ${theme.settingsLabel}`}
               >
-                页边距
+                {t.reader.margin}
               </label>
               <div className="flex flex-wrap gap-2">
                 {paddingOptions.map((opt) => (
@@ -1375,7 +1544,7 @@ export default function TextReaderView({
                         : `${theme.settingsBtnBg} ${theme.settingsBtnText} ${theme.settingsBtnHoverBg}`
                     }`}
                   >
-                    {opt.label}
+                    {t.reader[opt.labelKey]}
                   </button>
                 ))}
               </div>
@@ -1386,7 +1555,7 @@ export default function TextReaderView({
               <label
                 className={`mb-2 block text-xs ${theme.settingsLabel}`}
               >
-                翻页方式
+                {t.reader.pageMode}
               </label>
               <div className="flex flex-wrap gap-2">
                 {pageModeOptions.map((opt) => (
@@ -1399,7 +1568,7 @@ export default function TextReaderView({
                         : `${theme.settingsBtnBg} ${theme.settingsBtnText} ${theme.settingsBtnHoverBg}`
                     }`}
                   >
-                    {opt.label}
+                    {t.reader[opt.labelKey]}
                   </button>
                 ))}
               </div>
@@ -1411,13 +1580,13 @@ export default function TextReaderView({
                 className={`mb-2 flex items-center gap-1.5 text-xs ${theme.settingsLabel}`}
               >
                 <Timer className="h-3 w-3" />
-                自动翻页速度
+                {t.reader.autoScrollSpeed}
               </label>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { value: 1, label: "慢速" },
-                  { value: 2, label: "中速" },
-                  { value: 3, label: "快速" },
+                  { value: 1, label: t.reader.speedSlow },
+                  { value: 2, label: t.reader.speedMedium },
+                  { value: 3, label: t.reader.speedFast },
                 ].map((opt) => (
                   <button
                     key={opt.value}
@@ -1433,7 +1602,7 @@ export default function TextReaderView({
                 ))}
               </div>
               <p className={`mt-1.5 text-[10px] ${theme.statusBarText}`}>
-                快捷键 G 开启/关闭自动翻页
+                {t.reader.autoScrollHint}
               </p>
             </div>
 
@@ -1442,7 +1611,7 @@ export default function TextReaderView({
               <label
                 className={`mb-2 block text-xs ${theme.settingsLabel}`}
               >
-                字体
+                {t.reader.font}
               </label>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(fontFamilyLabels).map(([key, label]) => (
@@ -1473,7 +1642,7 @@ export default function TextReaderView({
             onClick={() => setShowTOC(false)}
           />
           <div
-            className={`fixed top-0 left-0 z-50 h-full w-64 sm:w-72 overflow-y-auto shadow-2xl ${theme.tocBg}`}
+            className={`fixed top-0 left-0 z-50 h-full w-[85vw] max-w-80 sm:w-72 overflow-y-auto shadow-2xl ${theme.tocBg}`}
           >
             {/* Tab 切换头部 */}
             <div className="sticky top-0 z-10">
@@ -1487,7 +1656,7 @@ export default function TextReaderView({
                         : `${theme.tocText} ${theme.tocHoverBg}`
                     }`}
                   >
-                    目录 ({chapters.length})
+                    {t.reader.tocLabel} ({chapters.length})
                   </button>
                   <button
                     onClick={() => setTocTab('bookmark')}
@@ -1498,7 +1667,7 @@ export default function TextReaderView({
                     }`}
                   >
                     <Bookmark className="h-3 w-3" />
-                    书签 ({bookmarks.length})
+                    {t.reader.bookmarkLabel} ({bookmarks.length})
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1524,7 +1693,7 @@ export default function TextReaderView({
                           ? "text-amber-500"
                           : `${theme.tocText}`
                       }`}
-                      title={isCurrentBookmarked ? "移除当前书签" : "添加当前章节书签"}
+                      title={isCurrentBookmarked ? t.reader.removeBookmark : t.reader.addBookmarkHint}
                     >
                       <BookmarkPlus className="h-3 w-3" />
                     </button>
@@ -1620,8 +1789,8 @@ export default function TextReaderView({
                 {bookmarks.length === 0 ? (
                   <div className={`flex flex-col items-center justify-center py-12 ${theme.tocText}`}>
                     <Bookmark className="h-8 w-8 opacity-30 mb-2" />
-                    <p className="text-xs opacity-50">暂无书签</p>
-                    <p className="text-[10px] opacity-30 mt-1">点击标题栏的书签图标添加</p>
+                    <p className="text-xs opacity-50">{t.reader.noBookmarks}</p>
+                    <p className="text-[10px] opacity-30 mt-1">{t.reader.addBookmarkHint}</p>
                   </div>
                 ) : (
                   bookmarks
@@ -1647,13 +1816,13 @@ export default function TextReaderView({
                             <span className="truncate">{bm.chapterTitle}</span>
                           </div>
                           <span className="mt-0.5 block text-[10px] opacity-40">
-                            第 {bm.chapterIndex + 1} 章 · {new Date(bm.timestamp).toLocaleDateString()}
+                            {t.reader.chapterN.replace('{n}', String(bm.chapterIndex + 1))} · {new Date(bm.timestamp).toLocaleDateString()}
                           </span>
                         </button>
                         <button
                           onClick={() => removeBookmark(bm.chapterIndex)}
                           className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10 text-red-400"
-                          title="删除书签"
+                          title={t.reader.removeBookmark}
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -1684,7 +1853,7 @@ export default function TextReaderView({
             }`}
           >
             <Copy className="h-3 w-3" />
-            复制
+            {t.reader.copy}
           </button>
           <button
             onClick={() => addHighlight(selectionMenu.text)}
@@ -1693,7 +1862,7 @@ export default function TextReaderView({
             }`}
           >
             <Highlighter className="h-3 w-3" />
-            划线
+            {t.reader.highlight}
           </button>
           <button
             onClick={() => setShowNoteInput(true)}
@@ -1702,7 +1871,7 @@ export default function TextReaderView({
             }`}
           >
             <MessageSquare className="h-3 w-3" />
-            笔记
+            {t.reader.note}
           </button>
           <button
             onClick={() => {
@@ -1728,14 +1897,14 @@ export default function TextReaderView({
           <div
             className={`fixed left-1/2 top-1/2 z-[70] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl p-4 shadow-2xl ${theme.settingsBg}`}
           >
-            <h4 className={`mb-2 text-sm font-medium ${theme.settingsText}`}>添加笔记</h4>
+            <h4 className={`mb-2 text-sm font-medium ${theme.settingsText}`}>{t.reader.addNote}</h4>
             <p className={`mb-3 rounded-lg p-2 text-xs ${isDark ? "bg-zinc-700/50 text-zinc-300" : "bg-zinc-100 text-zinc-600"}`}>
               "{selectionMenu.text.length > 60 ? selectionMenu.text.slice(0, 60) + '...' : selectionMenu.text}"
             </p>
             <textarea
               value={highlightNote}
               onChange={(e) => setHighlightNote(e.target.value)}
-              placeholder="写下你的想法..."
+              placeholder={t.reader.writeThoughts}
               className={`w-full rounded-lg p-2.5 text-xs outline-none resize-none h-20 ${
                 isDark ? "bg-zinc-700 text-zinc-200 placeholder-zinc-500" : "bg-zinc-100 text-zinc-700 placeholder-zinc-400"
               }`}
@@ -1746,13 +1915,13 @@ export default function TextReaderView({
                 onClick={() => { setShowNoteInput(false); setHighlightNote(''); }}
                 className={`rounded-lg px-3 py-1.5 text-xs ${theme.settingsBtnBg} ${theme.settingsBtnText}`}
               >
-                取消
+                {t.reader.cancel}
               </button>
               <button
                 onClick={() => addHighlight(selectionMenu.text, highlightNote || undefined)}
                 className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white"
               >
-                保存
+                {t.reader.save}
               </button>
             </div>
           </div>
@@ -1772,7 +1941,7 @@ export default function TextReaderView({
             className={`rounded-full p-2 transition-colors ${
               isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
             }`}
-            title={ttsPaused ? "继续" : "暂停"}
+            title={ttsPaused ? t.reader.ttsPause : t.reader.ttsResume}
           >
             {ttsPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
           </button>
@@ -1783,18 +1952,18 @@ export default function TextReaderView({
             className={`rounded-full p-2 transition-colors ${
               isDark ? "hover:bg-zinc-700 text-red-400" : "hover:bg-zinc-100 text-red-500"
             }`}
-            title="停止"
+            title={t.reader.ttsStop}
           >
             <Square className="h-3.5 w-3.5" />
           </button>
 
           {/* 分隔线 */}
-          <div className={`h-6 w-px mx-0.5 ${isDark ? "bg-zinc-700" : "bg-zinc-200"}`} />
+          <div className={`h-6 w-px mx-0.5 shrink-0 ${isDark ? "bg-zinc-700" : "bg-zinc-200"}`} />
 
-          {/* 语速调节 */}
-          <div className="flex items-center gap-1.5">
-            <span className={`text-[10px] ${isDark ? "text-zinc-500" : "text-zinc-400"}`}>语速</span>
-            {[0.5, 0.8, 1.0, 1.2, 1.5, 2.0].map((rate) => (
+          {/* 语速调节 - 移动端自适应 */}
+          <div className="flex items-center gap-1 overflow-x-auto">
+            <span className={`text-[10px] shrink-0 ${isDark ? "text-zinc-500" : "text-zinc-400"}`}>{t.reader.ttsSpeed}</span>
+            {[0.5, 0.8, 1.0, 1.5, 2.0].map((rate) => (
               <button
                 key={rate}
                 onClick={() => {
@@ -1805,7 +1974,7 @@ export default function TextReaderView({
                     setTimeout(() => startTTS(), 100);
                   }
                 }}
-                className={`rounded-lg px-1.5 py-0.5 text-[10px] transition-colors ${
+                className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[10px] transition-colors ${
                   ttsRate === rate
                     ? "bg-accent/20 text-accent font-bold"
                     : isDark ? "text-zinc-400 hover:bg-zinc-700" : "text-zinc-500 hover:bg-zinc-100"
@@ -1819,7 +1988,7 @@ export default function TextReaderView({
           {/* 关闭面板按钮 */}
           <button
             onClick={() => setShowTtsPanel(false)}
-            className={`ml-1 rounded-full p-1 transition-colors ${
+            className={`ml-1 shrink-0 rounded-full p-1 transition-colors ${
               isDark ? "text-zinc-500 hover:text-zinc-300" : "text-zinc-400 hover:text-zinc-600"
             }`}
           >
@@ -1835,7 +2004,7 @@ export default function TextReaderView({
           className="fixed bottom-16 right-4 z-[55] flex items-center gap-1.5 rounded-full bg-accent/90 px-3 py-1.5 text-[11px] text-white shadow-lg backdrop-blur-sm transition-all hover:bg-accent"
         >
           <Volume2 className="h-3 w-3 animate-pulse" />
-          {ttsPaused ? "已暂停" : "朗读中..."}
+          {ttsPaused ? t.reader.ttsPaused : t.reader.ttsReading}
         </button>
       )}
 
@@ -1848,7 +2017,7 @@ export default function TextReaderView({
         >
           <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
           <span className={`text-[10px] ${isDark ? "text-green-400" : "text-green-600"}`}>
-            自动翻页中 · {autoScrollSpeed === 1 ? "慢速" : autoScrollSpeed === 2 ? "中速" : "快速"}
+            {t.reader.autoScrolling} · {autoScrollSpeed === 1 ? t.reader.speedSlow : autoScrollSpeed === 2 ? t.reader.speedMedium : t.reader.speedFast}
           </span>
           <button
             onClick={() => setAutoScrollActive(false)}
@@ -1887,7 +2056,7 @@ export default function TextReaderView({
                       if (e.key === 'Enter') handleSearch(searchQuery);
                       if (e.key === 'Escape') setShowSearch(false);
                     }}
-                    placeholder="搜索全书内容..."
+                    placeholder={t.reader.searchPlaceholder}
                     className={`flex-1 bg-transparent text-sm outline-none ${theme.settingsText} placeholder:${theme.statusBarText}`}
                     autoFocus
                   />
@@ -1901,11 +2070,25 @@ export default function TextReaderView({
                   )}
                 </div>
                 <button
-                  onClick={() => handleSearch(searchQuery)}
-                  disabled={!searchQuery.trim() || searchLoading}
-                  className="shrink-0 rounded-xl bg-accent px-3 py-2 text-xs text-white disabled:opacity-40"
+                  onClick={() => {
+                    if (searchLoading) {
+                      // 取消搜索
+                      if (searchAbortRef.current) {
+                        searchAbortRef.current.abort();
+                        searchAbortRef.current = null;
+                      }
+                      setSearchLoading(false);
+                      setSearchProgress(0);
+                    } else {
+                      handleSearch(searchQuery);
+                    }
+                  }}
+                  disabled={!searchQuery.trim() && !searchLoading}
+                  className={`shrink-0 rounded-xl px-3 py-2 text-xs text-white disabled:opacity-40 ${
+                    searchLoading ? "bg-red-500 hover:bg-red-600" : "bg-accent"
+                  }`}
                 >
-                  搜索
+                  {searchLoading ? t.reader.searchCancel : t.reader.search}
                 </button>
                 <button
                   onClick={() => setShowSearch(false)}
@@ -1921,23 +2104,28 @@ export default function TextReaderView({
               {searchLoading && (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className={`h-6 w-6 animate-spin ${isDark ? "text-accent" : "text-accent"}`} />
-                  <p className={`text-xs ${theme.statusBarText}`}>正在搜索全书内容...</p>
-                  <p className={`text-[10px] ${theme.statusBarText}`}>共 {chapters.length} 章，请稍候</p>
+                  <p className={`text-xs ${theme.statusBarText}`}>{t.reader.searchingAll} {searchProgress}%</p>
+                  <div className="w-48 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-accent transition-all duration-300"
+                      style={{ width: `${searchProgress}%` }}
+                    />
+                  </div>
+                  <p className={`text-[10px] ${theme.statusBarText}`}>{t.reader.searchChapterCount.replace('{n}', String(chapters.length))}</p>
                 </div>
               )}
 
               {!searchLoading && searchResults.length === 0 && searchQuery && (
                 <div className={`flex flex-col items-center justify-center py-12 ${theme.tocText}`}>
                   <Search className="h-8 w-8 opacity-30 mb-2" />
-                  <p className="text-xs opacity-50">未找到匹配结果</p>
+                  <p className="text-xs opacity-50">{t.reader.noSearchResults}</p>
                 </div>
               )}
 
               {!searchLoading && searchResults.length > 0 && (
                 <>
                   <div className={`px-2 py-1.5 text-[10px] ${theme.statusBarText}`}>
-                    找到 {searchResults.reduce((sum, r) => sum + r.matchCount, 0)} 处匹配，
-                    分布在 {searchResults.length} 个章节
+                    {t.reader.searchFoundMatches.replace('{count}', String(searchResults.reduce((sum, r) => sum + r.matchCount, 0))).replace('{chapters}', String(searchResults.length))}
                   </div>
                   {searchResults.map((result) => (
                     <button
@@ -1958,10 +2146,9 @@ export default function TextReaderView({
                         </span>
                         <span className={`shrink-0 ml-2 text-[10px] rounded-full px-1.5 py-0.5 ${
                           isDark ? "bg-accent/20 text-accent" : "bg-accent/10 text-accent"
-                        }`}>
-                          {result.matchCount} 处
-                        </span>
-                      </div>
+                        }>`}>
+                          {t.reader.searchMatches.replace('{n}', String(result.matchCount))}
+                        </span>                      </div>
                       <p className={`text-[11px] leading-relaxed opacity-60 line-clamp-2`}>
                         {result.matchText}
                       </p>
@@ -1973,8 +2160,8 @@ export default function TextReaderView({
               {!searchLoading && !searchQuery && (
                 <div className={`flex flex-col items-center justify-center py-12 ${theme.tocText}`}>
                   <Search className="h-8 w-8 opacity-20 mb-2" />
-                  <p className="text-xs opacity-40">输入关键词搜索全书内容</p>
-                  <p className="text-[10px] opacity-30 mt-1">快捷键: S</p>
+                  <p className="text-xs opacity-40">{t.reader.searchHint}</p>
+                  <p className="text-[10px] opacity-30 mt-1">{t.reader.searchShortcut}</p>
                 </div>
               )}
             </div>

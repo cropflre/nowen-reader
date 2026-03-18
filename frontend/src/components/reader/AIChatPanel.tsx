@@ -271,7 +271,7 @@ export default function AIChatPanel({
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/80 shadow-lg backdrop-blur-sm transition-all hover:bg-purple-500 hover:scale-110"
+        className="fixed bottom-20 right-4 z-30 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-purple-500/80 shadow-lg backdrop-blur-sm transition-all hover:bg-purple-500 hover:scale-110"
         title="AI 阅读助手"
       >
         <Brain className="h-5 w-5 text-white" />

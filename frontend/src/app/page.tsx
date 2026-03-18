@@ -28,6 +28,7 @@ import AutoDetectPanel from "@/components/AutoDetectPanel";
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
 import GroupContextMenu from "@/components/GroupContextMenu";
+import ScrollReveal from "@/components/ScrollReveal";
 import { useToast } from "@/components/Toast";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import type { ComicGroup } from "@/hooks/useComicTypes";
@@ -187,6 +188,10 @@ export default function Home() {
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // 删除动画状态
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [removingGroupIds, setRemovingGroupIds] = useState<Set<number>>(new Set());
 
   // Pagination — 从 URL 初始化页码
   const [currentPage, setCurrentPage] = useState(() => {
@@ -407,24 +412,35 @@ export default function Home() {
   // 分组批量删除
   const handleBatchDeleteGroups = useCallback(async () => {
     const ids = Array.from(selectedGroupIds);
-    let deleted = 0;
-    for (const id of ids) {
-      const ok = await deleteGroup(id);
-      if (ok) deleted++;
-    }
-    if (deleted > 0) {
-      await loadGroups();
-      await refetch();
-      toast.success((t.comicGroup?.deleteSuccess || "分组已删除") + ` (${deleted})`);
-    }
-    setSelectedGroupIds(new Set());
+    // 先播放删除动画
+    setRemovingGroupIds(new Set(ids));
+    setTimeout(async () => {
+      let deleted = 0;
+      for (const id of ids) {
+        const ok = await deleteGroup(id);
+        if (ok) deleted++;
+      }
+      setRemovingGroupIds(new Set());
+      if (deleted > 0) {
+        await loadGroups();
+        await refetch();
+        toast.success((t.comicGroup?.deleteSuccess || "分组已删除") + ` (${deleted})`);
+      }
+      setSelectedGroupIds(new Set());
+    }, 400);
   }, [selectedGroupIds, loadGroups, refetch, toast, t]);
 
   const handleBatchDelete = useCallback(async () => {
     const ids = Array.from(selectedIds);
-    await batchOperation("delete", ids);
-    exitBatchMode();
-    await refetch();
+    // 先播放删除动画
+    setRemovingIds(new Set(ids));
+    // 等动画播完后再真正删除
+    setTimeout(async () => {
+      await batchOperation("delete", ids);
+      setRemovingIds(new Set());
+      exitBatchMode();
+      await refetch();
+    }, 400);
   }, [selectedIds, exitBatchMode, refetch]);
 
   const handleBatchFavorite = useCallback(async () => {
@@ -679,18 +695,38 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
           </div>
         )}
 
-        {/* Loading */}
+        {/* Loading — 骨架屏 */}
         {loading && (
-          <div className="flex items-center justify-center py-32">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-accent" />
+          <div className="space-y-6">
+            {/* 骨架：Tab 栏 */}
+            <div className="flex items-center gap-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="skeleton-shimmer h-8 w-16 rounded-lg" />
+              ))}
+            </div>
+            {/* 骨架：漫画网格 */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="overflow-hidden rounded-xl bg-card">
+                  <div className="skeleton-shimmer aspect-[5/7] w-full" />
+                  <div className="space-y-2 p-3">
+                    <div className="skeleton-shimmer h-4 w-3/4 rounded" />
+                    <div className="flex gap-1.5">
+                      <div className="skeleton-shimmer h-4 w-12 rounded-md" />
+                      <div className="skeleton-shimmer h-4 w-10 rounded-md" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {!loading && (
           <>
             {/* 内容类型 Tab + 视图切换 */}
-            <div className="flex items-center justify-between gap-1.5 mb-4">
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between gap-1 sm:gap-1.5 mb-4">
+              <div className="flex items-center gap-1 sm:gap-1.5">
                 {([
                   { key: "", label: t.contentTab.all, icon: BookMarked },
                   { key: "comic", label: t.contentTab.comic, icon: Image },
@@ -699,7 +735,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                   <button
                     key={tab.key}
                     onClick={() => setContentType(tab.key)}
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+                    className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all duration-200 ${
                       contentType === tab.key
                         ? "bg-accent text-white shadow-sm shadow-accent/25"
                         : "bg-card text-muted hover:text-foreground hover:bg-card-hover"
@@ -950,18 +986,21 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                       : "grid grid-cols-1 gap-2 sm:gap-3"
                   }
                 >
-                  {pagedGroups.map((group) => (
+                  {pagedGroups.map((group, index) => (
+                    <ScrollReveal key={`group-${group.id}`} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
                     <GroupCard
-                      key={`group-${group.id}`}
                       group={group}
                       viewMode={viewMode}
                       batchMode={batchMode}
                       isSelected={selectedGroupIds.has(group.id)}
                       onSelect={toggleGroupSelect}
+                      animationIndex={index < 20 ? index : undefined}
+                      isRemoving={removingGroupIds.has(group.id)}
                       onContextMenu={(e, g) => {
                         setGroupContextMenu({ x: e.clientX, y: e.clientY, group: g });
                       }}
                     />
+                    </ScrollReveal>
                   ))}
                 </div>
               ) : (
@@ -987,7 +1026,8 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
               >
                 {/* 漫画卡片 */}
                 {sortedComics
-                  .map((comic) => (
+                  .map((comic, index) => (
+                    <ScrollReveal key={comic.id} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
                     <ComicCard
                       key={comic.id}
                       comic={comic}
@@ -1001,11 +1041,15 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                       onDragOver={handleDragOver}
                       onDragEnd={handleDragEnd}
                       isDragOver={dragOverId === comic.id}
+                      isDragging={dragId === comic.id}
                       tagData={comic.tagData}
+                      animationIndex={index < 20 ? index : undefined}
+                      isRemoving={removingIds.has(comic.id)}
                       onContextMenu={(e, c) => {
                         setContextMenu({ x: e.clientX, y: e.clientY, comic: c });
                       }}
                     />
+                    </ScrollReveal>
                 ))}
               </div>
             ) : (
@@ -1276,21 +1320,26 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             setRenameValue(currentName);
           }}
           onDelete={async (id) => {
-            const ok = await deleteGroup(id);
-            if (ok) {
-              await loadGroups();
-              toast.success(t.comicGroup?.deleteSuccess || "分组已删除");
-              await refetch();
-            }
+            // 先播放删除动画
+            setRemovingGroupIds(new Set([id]));
+            setTimeout(async () => {
+              const ok = await deleteGroup(id);
+              setRemovingGroupIds(new Set());
+              if (ok) {
+                await loadGroups();
+                toast.success(t.comicGroup?.deleteSuccess || "分组已删除");
+                await refetch();
+              }
+            }, 400);
           }}
         />
       )}
 
       {/* 分组重命名对话框 */}
       {renameGroup && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setRenameGroup(null)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-backdrop-in" onClick={() => setRenameGroup(null)}>
           <div
-            className="w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+            className="w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 shadow-2xl animate-modal-in"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-4 text-lg font-semibold text-foreground">
@@ -1368,9 +1417,14 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             setContextAddToGroupIds([id]);
           }}
           onDelete={async (id) => {
-            await deleteComicById(id);
-            await refetch();
-            toast.success(t.comicDetail?.deleteSuccess || "已删除");
+            // 先播放删除动画
+            setRemovingIds(new Set([id]));
+            setTimeout(async () => {
+              await deleteComicById(id);
+              setRemovingIds(new Set());
+              await refetch();
+              toast.success(t.comicDetail?.deleteSuccess || "已删除");
+            }, 400);
           }}
         />
       )}

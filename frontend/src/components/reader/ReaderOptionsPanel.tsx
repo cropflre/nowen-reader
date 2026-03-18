@@ -84,19 +84,20 @@ export default function ReaderOptionsPanel({
   return (
     <>
       {/* 背景遮罩 */}
-      <div className="fixed inset-0 z-[60] bg-black/80" onClick={onClose} />
+      <div className="fixed inset-0 z-[60] bg-black/80 animate-backdrop-in" onClick={onClose} />
 
       {/* 面板 */}
-      <div className="fixed top-0 right-0 z-[61] h-full w-full sm:w-96 max-w-[90vw] overflow-y-auto bg-zinc-900 border-l border-white/10 shadow-2xl">
+      <div className="fixed top-0 right-0 z-[61] h-full w-full sm:w-96 max-w-[90vw] overflow-y-auto bg-zinc-900 border-l border-white/10 shadow-2xl animate-modal-in">
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 rounded-lg p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition-colors z-10"
+          style={{ top: "calc(1rem + env(safe-area-inset-top, 0px))" }}
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
+        <div className="p-4 sm:p-6 space-y-5 sm:space-y-6" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top, 0px))", paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}>
           {/* 标题 */}
           <div className="text-center pr-8">
             <h2 className="text-lg font-bold text-white">{ro.title}</h2>

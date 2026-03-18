@@ -568,10 +568,10 @@ export default function GroupDetailPage() {
       {deleteConfirm && (
         <>
           <div
-            className="fixed inset-0 z-[60] bg-black/60"
+            className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in"
             onClick={() => setDeleteConfirm(false)}
           />
-          <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-2xl">
+          <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-2xl animate-modal-in">
             <h3 className="text-lg font-semibold text-foreground">
               {t.comicGroup?.confirmDelete || "确认删除分组"}
             </h3>
@@ -602,14 +602,14 @@ export default function GroupDetailPage() {
       {showAddComics && (
         <>
           <div
-            className="fixed inset-0 z-[60] bg-black/60"
+            className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in"
             onClick={() => {
               setShowAddComics(false);
               setAddSearchQuery("");
               setAddSearchResults([]);
             }}
           />
-          <div className="fixed left-1/2 top-1/2 z-[60] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card shadow-2xl">
+          <div className="fixed left-1/2 top-1/2 z-[60] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card shadow-2xl animate-modal-in">
             <div className="flex items-center justify-between border-b border-border/30 px-5 py-3">
               <div className="flex items-center gap-2">
                 <Plus className="h-5 w-5 text-accent" />

@@ -67,10 +67,16 @@ interface ComicCardProps {
   onDragOver?: (id: string) => void;
   onDragEnd?: () => void;
   isDragOver?: boolean;
+  /** 标记此卡片是否正在被拖拽 */
+  isDragging?: boolean;
   /** 带颜色的原始标签数据 */
   tagData?: ApiComicTag[];
   /** 右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent, comic: Comic) => void;
+  /** 交错入场动画索引，不传则不启用 */
+  animationIndex?: number;
+  /** 删除动画：设为 true 时播放收缩消失动画 */
+  isRemoving?: boolean;
 }
 
 /** 渲染标签chip */
@@ -101,8 +107,11 @@ const ComicCard = memo(function ComicCard({
   onDragOver,
   onDragEnd,
   isDragOver,
+  isDragging,
   tagData,
   onContextMenu,
+  animationIndex,
+  isRemoving,
 }: ComicCardProps) {
 
   // 构建 tag name → ApiComicTag 的映射
@@ -135,7 +144,8 @@ const ComicCard = memo(function ComicCard({
   if (viewMode === "list") {
     return (
       <div
-        className={`group relative block ${isDragOver ? "ring-2 ring-accent rounded-xl" : ""}`}
+        className={`group relative block ${isDragOver ? "drag-over-target" : ""} ${isDragging ? "drag-active" : ""} ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
+        style={animationIndex !== undefined ? { animationDelay: `${animationIndex * 40}ms` } : undefined}
         draggable={draggable}
         onContextMenu={handleContextMenu}
         onDragStart={(e) => {
@@ -154,7 +164,7 @@ const ComicCard = memo(function ComicCard({
         {batchMode ? (
           <div
             onClick={handleClick}
-            className={`flex cursor-pointer items-center gap-4 rounded-xl p-3 transition-all duration-200 ${
+            className={`flex cursor-pointer items-center gap-3 sm:gap-4 rounded-xl p-2.5 sm:p-3 transition-all duration-200 ${
               isSelected
                 ? "bg-accent/15 ring-1 ring-accent/50"
                 : "bg-card hover:bg-card-hover"
@@ -176,8 +186,8 @@ const ComicCard = memo(function ComicCard({
             </div>
 
             {/* Thumbnail */}
-            <div className="relative h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-              <Image src={comic.coverUrl} alt={comic.title} fill unoptimized={isReal} className="object-cover" sizes="48px" />
+            <div className="relative h-20 w-14 sm:h-16 sm:w-12 flex-shrink-0 overflow-hidden rounded-lg">
+              <Image src={comic.coverUrl} alt={comic.title} fill unoptimized={isReal} className="object-cover" sizes="56px" />
             </div>
 
             {/* Info */}
@@ -206,14 +216,20 @@ const ComicCard = memo(function ComicCard({
             )}
             <Link
               href={getReaderUrl(comic)}
-              className="flex flex-1 items-center gap-4 rounded-xl bg-card p-3 transition-all duration-200 group-hover:bg-card-hover group-hover:shadow-lg group-hover:shadow-accent/5"
+              className="flex flex-1 items-center gap-3 sm:gap-4 rounded-xl bg-card p-2.5 sm:p-3 transition-all duration-200 group-hover:bg-card-hover group-hover:shadow-lg group-hover:shadow-accent/5"
             >
               {/* Thumbnail */}
-              <div className="relative h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-                <Image src={comic.coverUrl} alt={comic.title} fill unoptimized={isReal} className="object-cover" sizes="48px" />
+              <div className="relative h-20 w-14 sm:h-16 sm:w-12 flex-shrink-0 overflow-hidden rounded-lg">
+                <Image src={comic.coverUrl} alt={comic.title} fill unoptimized={isReal} className="object-cover" sizes="56px" />
                 {comic.isFavorite && (
                   <div className="absolute top-0.5 right-0.5 z-10">
                     <Heart className="h-3 w-3 fill-rose-500 text-rose-500" />
+                  </div>
+                )}
+                {/* 阅读进度条（移动端） */}
+                {comic.progress !== undefined && comic.progress > 0 && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 sm:hidden">
+                    <div className="h-full bg-accent" style={{ width: `${comic.progress}%` }} />
                   </div>
                 )}
               </div>
@@ -221,6 +237,10 @@ const ComicCard = memo(function ComicCard({
               {/* Info */}
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-sm font-medium text-foreground/90 group-hover:text-foreground">{comic.title}</h3>
+                {/* 作者（如果有） */}
+                {comic.author && (
+                  <p className="mt-0.5 truncate text-[11px] text-muted/60 sm:hidden">{comic.author}</p>
+                )}
                 <div className="mt-1 flex items-center gap-2">
                   {comic.rating && comic.rating > 0 && (
                     <div className="flex items-center gap-0.5">
@@ -229,26 +249,37 @@ const ComicCard = memo(function ComicCard({
                     </div>
                   )}
                   <div className="flex flex-wrap gap-1">
-                    {(comic.tags || []).slice(0, 3).map((tag) => (
+                    {(comic.tags || []).slice(0, 2).map((tag) => (
                       <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                     ))}
+                    {(comic.tags || []).length > 2 && (
+                      <span className="inline-block rounded-md bg-muted/10 px-1.5 py-0.5 text-[10px] text-muted sm:hidden">
+                        +{(comic.tags || []).length - 2}
+                      </span>
+                    )}
+                    {/* 桌面端多显示一个标签 */}
+                    {(comic.tags || []).length > 2 && (
+                      <span className="hidden sm:inline-block">
+                        <TagChip tag={(comic.tags || [])[2]} tagObj={tagMap.get((comic.tags || [])[2])} />
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Progress */}
+              {/* Progress (桌面端数字显示) */}
               {comic.progress !== undefined && comic.progress > 0 && (
-                <div className="flex-shrink-0 text-xs text-muted">{Math.round(comic.progress)}%</div>
+                <div className="hidden sm:block flex-shrink-0 text-xs text-muted">{Math.round(comic.progress)}%</div>
               )}
 
-              <BookOpen className="h-4 w-4 flex-shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+              <BookOpen className="h-4 w-4 flex-shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100 hidden sm:block" />
             </Link>
 
-            {/* Detail link */}
+            {/* Detail link — 移动端始终显示 */}
             {isReal && (
               <Link
                 href={`/comic/${comic.id}`}
-                className="flex-shrink-0 rounded-lg p-2 text-muted/40 transition-colors hover:bg-card hover:text-muted"
+                className="flex-shrink-0 rounded-lg p-2 text-muted/60 sm:text-muted/40 transition-colors hover:bg-card hover:text-muted"
                 title={t.comicCard.detail}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -264,7 +295,8 @@ const ComicCard = memo(function ComicCard({
   // Grid view
   return (
     <div
-      className={`group relative ${isDragOver ? "ring-2 ring-accent rounded-xl" : ""}`}
+      className={`group relative ${isDragOver ? "drag-over-target" : ""} ${isDragging ? "drag-active" : ""} ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
+      style={animationIndex !== undefined ? { animationDelay: `${animationIndex * 40}ms` } : undefined}
       draggable={draggable}
       onContextMenu={handleContextMenu}
       onDragStart={(e) => {

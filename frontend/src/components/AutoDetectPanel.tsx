@@ -195,10 +195,10 @@ export default function AutoDetectPanel({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
+      <div className="fixed inset-0 z-[70] bg-black/60 animate-backdrop-in" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-2 sm:inset-4 z-[70] mx-auto my-auto flex max-h-[90vh] sm:max-h-[85vh] max-w-3xl flex-col rounded-2xl bg-background border border-border/40 shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2">
+      <div className="fixed inset-2 sm:inset-4 z-[70] mx-auto my-auto flex max-h-[90vh] sm:max-h-[85vh] max-w-3xl flex-col rounded-2xl bg-background border border-border/40 shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2 animate-modal-in">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/30 px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2">

@@ -34,6 +34,12 @@ export default function PdfView({
   const [scale, setScale] = useState(1);
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
 
+  // 触摸手势状态
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef<number>(1);
+  const lastTapRef = useRef<number>(0);
+
   // 加载 PDF 文档
   useEffect(() => {
     let cancelled = false;
@@ -161,26 +167,108 @@ export default function PdfView({
     return () => window.removeEventListener("resize", handleResize);
   }, [currentPage, renderPage]);
 
+  // 触摸事件处理
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDistRef.current = Math.hypot(dx, dy);
+      pinchStartScaleRef.current = scale;
+    } else if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now(),
+      };
+    }
+  }, [scale]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const newScale = Math.min(3, Math.max(0.5, pinchStartScaleRef.current * (dist / pinchStartDistRef.current)));
+      setScale(newScale);
+      e.preventDefault();
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (pinchStartDistRef.current !== null) {
+      pinchStartDistRef.current = null;
+      if (Math.abs(scale - 1) < 0.15) setScale(1);
+      return;
+    }
+
+    if (!touchStartRef.current || e.changedTouches.length === 0) return;
+    const start = touchStartRef.current;
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const dx = endX - start.x;
+    const dy = endY - start.y;
+    const elapsed = Date.now() - start.time;
+    touchStartRef.current = null;
+
+    if (scale > 1.1) return;
+
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const minSwipe = 50;
+    const maxTime = 800;
+
+    // 水平滑动翻页
+    if (absDx > absDy && absDx > minSwipe && elapsed < maxTime) {
+      if (dx < 0) onPageChange(Math.min(totalPages - 1, currentPage + 1));
+      else onPageChange(Math.max(0, currentPage - 1));
+      return;
+    }
+
+    // 竖向滑动翻页
+    if (absDy > absDx && absDy > minSwipe && elapsed < maxTime) {
+      if (dy < 0) onPageChange(Math.min(totalPages - 1, currentPage + 1));
+      else onPageChange(Math.max(0, currentPage - 1));
+      return;
+    }
+
+    // 轻触
+    if (absDx < 10 && absDy < 10 && elapsed < 300) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const ratio = (start.x - rect.left) / rect.width;
+      if (ratio < 0.3) onPageChange(Math.max(0, currentPage - 1));
+      else if (ratio > 0.7) onPageChange(Math.min(totalPages - 1, currentPage + 1));
+      else onTapCenter();
+    }
+  }, [currentPage, totalPages, onPageChange, onTapCenter, scale]);
+
+  // 双击缩放
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      setScale((prev) => (prev > 1 ? 1 : 2));
+      e.preventDefault();
+    }
+    lastTapRef.current = now;
+  }, []);
+
   // 点击导航（三区域：左翻页 / 中间呼出菜单 / 右翻页）
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (scale > 1.1) return;
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const x = e.clientX - rect.left;
       const width = rect.width;
       const zone = x / width;
 
       if (zone < 0.3) {
-        // 左区域 → 上一页
         onPageChange(Math.max(0, currentPage - 1));
       } else if (zone > 0.7) {
-        // 右区域 → 下一页
         onPageChange(Math.min(totalPages - 1, currentPage + 1));
       } else {
-        // 中间区域 → 呼出/隐藏工具栏
         onTapCenter();
       }
     },
-    [currentPage, totalPages, onPageChange, onTapCenter]
+    [currentPage, totalPages, onPageChange, onTapCenter, scale]
   );
 
   // 鼠标滚轮缩放
@@ -251,9 +339,13 @@ export default function PdfView({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full flex items-center justify-center overflow-auto cursor-pointer"
+      className="relative h-full w-full flex items-center justify-center overflow-auto cursor-pointer select-none"
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* 渲染中的半透明指示器 */}
       {rendering && (

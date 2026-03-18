@@ -54,6 +54,12 @@ self.addEventListener("fetch", (event) => {
       return;
     }
 
+    // Cache novel chapter content for offline reading (network-first, 7 days)
+    if (url.pathname.match(/\/api\/comics\/[^/]+\/chapter\/\d+/)) {
+      event.respondWith(networkFirstStrategy(request, API_CACHE, 7 * 24 * 60 * 60));
+      return;
+    }
+
     // Cache comic list API briefly
     if (url.pathname === "/api/comics" && !url.search) {
       event.respondWith(networkFirstStrategy(request, API_CACHE, 60));

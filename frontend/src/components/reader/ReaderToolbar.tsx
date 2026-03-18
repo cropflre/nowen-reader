@@ -15,6 +15,7 @@ import {
   Moon,
   Settings,
 } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
 import { ComicReadingMode, ReadingDirection } from "@/types/reader";
 import { useTranslation } from "@/lib/i18n";
 
@@ -37,6 +38,8 @@ interface ReaderToolbarProps {
   onToggleTheme: () => void;
   onShowInfo?: () => void;
   onShowSettings?: () => void;
+  /** 通知父组件工具栏正在被交互，不要自动隐藏 */
+  onInteracting?: (interacting: boolean) => void;
 }
 
 export default function ReaderToolbar({
@@ -56,8 +59,54 @@ export default function ReaderToolbar({
   onToggleTheme,
   onShowInfo,
   onShowSettings,
+  onInteracting,
 }: ReaderToolbarProps) {
   const t = useTranslation();
+  const [showPageInput, setShowPageInput] = useState(false);
+  const [pageInputValue, setPageInputValue] = useState("");
+  // 进度条拖动状态：拖动中只更新预览值，松手后才真正跳转
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(currentPage);
+  const rafRef = useRef<number>(0);
+
+  // 拖动中的页码显示值
+  const displayPage = isDragging ? dragValue : currentPage;
+
+  // 开始拖动
+  const handleSliderStart = useCallback(() => {
+    setIsDragging(true);
+    setDragValue(currentPage);
+    onInteracting?.(true);
+  }, [currentPage, onInteracting]);
+
+  // 拖动中：只更新预览值，节流触发页面跳转
+  const handleSliderInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setDragValue(val);
+    // 使用 rAF 节流，拖动中也实时跳转但不会堆积
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      onPageChange(val);
+    });
+  }, [onPageChange]);
+
+  // 松手：确保最终值准确
+  const handleSliderEnd = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    onPageChange(dragValue);
+    setIsDragging(false);
+    onInteracting?.(false);
+  }, [dragValue, onPageChange, onInteracting]);
+
+  // 页码跳转
+  const handlePageInputSubmit = () => {
+    const num = parseInt(pageInputValue, 10);
+    if (!isNaN(num) && num >= 1 && num <= totalPages) {
+      onPageChange(num - 1);
+    }
+    setShowPageInput(false);
+    setPageInputValue("");
+  };
 
   const modeOptions: { value: ComicReadingMode; icon: React.ReactNode; label: string }[] = [
     { value: "single", icon: <BookOpen className="h-4 w-4" />, label: t.readerToolbar.single },
@@ -146,8 +195,13 @@ export default function ReaderToolbar({
                 type="range"
                 min={0}
                 max={totalPages - 1}
-                value={currentPage}
-                onChange={(e) => onPageChange(Number(e.target.value))}
+                value={displayPage}
+                onInput={handleSliderInput}
+                onChange={handleSliderInput}
+                onTouchStart={handleSliderStart}
+                onTouchEnd={handleSliderEnd}
+                onMouseDown={handleSliderStart}
+                onMouseUp={handleSliderEnd}
                 className="reader-slider w-full"
               />
             </div>
@@ -160,10 +214,41 @@ export default function ReaderToolbar({
               <ChevronRight className="h-5 w-5" />
             </button>
 
-            <span className="shrink-0 min-w-[60px] text-center text-xs font-mono text-white/70">
-              {currentPage + 1} / {totalPages}
+            <span
+              className="shrink-0 min-w-[60px] text-center text-xs font-mono text-white/70 cursor-pointer hover:text-white active:text-accent transition-colors"
+              onClick={() => {
+                setPageInputValue(String(displayPage + 1));
+                setShowPageInput(true);
+              }}
+            >
+              {displayPage + 1} / {totalPages}
             </span>
           </div>
+
+          {/* 页码跳转弹窗 */}
+          {showPageInput && (
+            <div className="flex items-center gap-2 px-4 pb-2">
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={pageInputValue}
+                onChange={(e) => setPageInputValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handlePageInputSubmit()}
+                placeholder={`1-${totalPages}`}
+                autoFocus
+                className="w-20 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-white text-center font-mono placeholder:text-white/30 outline-none focus:ring-1 focus:ring-accent/50"
+                onFocus={() => onInteracting?.(true)}
+                onBlur={() => { onInteracting?.(false); setTimeout(() => setShowPageInput(false), 200); }}
+              />
+              <button
+                onClick={handlePageInputSubmit}
+                className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
+              >
+                跳转
+              </button>
+            </div>
+          )}
 
           {/* Mode & Settings */}
           <div className="flex items-center justify-between border-t border-white/10 py-2 sm:py-3">

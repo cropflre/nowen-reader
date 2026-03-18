@@ -97,9 +97,9 @@ function FolderBrowser({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-backdrop-in" onClick={onClose}>
       <div
-        className="relative w-full max-w-md mx-4 max-h-[70vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl"
+        className="relative w-full max-w-md mx-4 max-h-[70vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl animate-modal-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}

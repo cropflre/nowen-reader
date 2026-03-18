@@ -37,11 +37,18 @@ export default function SinglePageView({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [scale, setScale] = useState(1);
+  // 拖拽平移偏移量（缩放后拖拽查看）
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  // 翻页动画方向
+  const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
 
   // 触摸手势状态
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef<number>(1);
+  // 拖拽平移状态（缩放后单指拖拽）
+  const panStartRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const isPanningRef = useRef(false);
 
   // Preload next N pages
   useImagePreloader(pages, currentPage, preloadCount);
@@ -51,7 +58,20 @@ export default function SinglePageView({
     setImageLoaded(false);
     setImageError(false);
     setScale(1);
+    setTranslate({ x: 0, y: 0 });
+    // 清除翻页动画
+    const timer = setTimeout(() => setSlideDirection(null), 300);
+    return () => clearTimeout(timer);
   }, [currentPage]);
+
+  // 带动画的翻页
+  const goToPage = useCallback((page: number, dir: "left" | "right") => {
+    setSlideDirection(dir);
+    // 短暂延迟让动画开始后再切页
+    requestAnimationFrame(() => {
+      onPageChange(page);
+    });
+  }, [onPageChange]);
 
   // 触摸事件处理
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -67,8 +87,18 @@ export default function SinglePageView({
         y: e.touches[0].clientY,
         time: Date.now(),
       };
+      // 缩放状态下准备拖拽
+      if (scale > 1.1) {
+        panStartRef.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+          tx: translate.x,
+          ty: translate.y,
+        };
+        isPanningRef.current = false;
+      }
     }
-  }, [scale]);
+  }, [scale, translate]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
@@ -79,17 +109,41 @@ export default function SinglePageView({
       const newScale = Math.min(3, Math.max(0.5, pinchStartScaleRef.current * (dist / pinchStartDistRef.current)));
       setScale(newScale);
       e.preventDefault();
+    } else if (e.touches.length === 1 && panStartRef.current && scale > 1.1) {
+      // 缩放后单指拖拽平移
+      const dx = e.touches[0].clientX - panStartRef.current.x;
+      const dy = e.touches[0].clientY - panStartRef.current.y;
+      // 移动超过 5px 判定为拖拽
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        isPanningRef.current = true;
+      }
+      setTranslate({
+        x: panStartRef.current.tx + dx,
+        y: panStartRef.current.ty + dy,
+      });
+      e.preventDefault();
     }
-  }, []);
+  }, [scale]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     // 捏合缩放结束
     if (pinchStartDistRef.current !== null) {
       pinchStartDistRef.current = null;
       // 双指松开时如果缩放接近1则重置
-      if (Math.abs(scale - 1) < 0.15) setScale(1);
+      if (Math.abs(scale - 1) < 0.15) {
+        setScale(1);
+        setTranslate({ x: 0, y: 0 });
+      }
       return;
     }
+
+    // 如果正在拖拽平移，不触发翻页
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      panStartRef.current = null;
+      return;
+    }
+    panStartRef.current = null;
 
     // 滑动翻页检测
     if (!touchStartRef.current || e.changedTouches.length === 0) return;
@@ -107,65 +161,97 @@ export default function SinglePageView({
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
     const minSwipe = 50;
-    const maxTime = 500;
+    const maxTime = 800; // 放宽时间限制，适合单手操作
 
-    // 水平滑动距离 > 垂直距离，且超过最小阈值
+    // 水平滑动翻页
     if (absDx > absDy && absDx > minSwipe && elapsed < maxTime) {
       const swipeLeft = dx < 0;
       if (direction === "ltr") {
         if (swipeLeft) {
           if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-          else onPageChange(currentPage + 1);
+          else goToPage(currentPage + 1, "left");
         } else {
           if (currentPage <= 0) onBoundaryReached?.("prev");
-          else onPageChange(currentPage - 1);
+          else goToPage(currentPage - 1, "right");
         }
       } else {
         if (swipeLeft) {
           if (currentPage <= 0) onBoundaryReached?.("prev");
-          else onPageChange(currentPage - 1);
+          else goToPage(currentPage - 1, "left");
         } else {
           if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-          else onPageChange(currentPage + 1);
+          else goToPage(currentPage + 1, "right");
         }
       }
-    } else if (absDx < 10 && absDy < 10 && elapsed < 300) {
-      // 轻触（非滑动）- 区域翻页或显示工具栏
+      return;
+    }
+
+    // 竖向滑动翻页（上滑=下一页，下滑=上一页）
+    if (absDy > absDx && absDy > minSwipe && elapsed < maxTime) {
+      const swipeUp = dy < 0;
+      if (swipeUp) {
+        if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
+        else goToPage(currentPage + 1, "left");
+      } else {
+        if (currentPage <= 0) onBoundaryReached?.("prev");
+        else goToPage(currentPage - 1, "right");
+      }
+      return;
+    }
+
+    // 轻触（非滑动）- 区域翻页或显示工具栏
+    if (absDx < 10 && absDy < 10 && elapsed < 300) {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const ratio = (start.x - rect.left) / rect.width;
-      if (ratio > 0.35 && ratio < 0.65) {
+      if (ratio > 0.3 && ratio < 0.7) {
         onTapCenter();
-      } else if (ratio <= 0.35) {
+      } else if (ratio <= 0.3) {
         if (direction === "ltr") {
           if (currentPage <= 0) onBoundaryReached?.("prev");
-          else onPageChange(currentPage - 1);
+          else goToPage(currentPage - 1, "right");
         } else {
           if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-          else onPageChange(currentPage + 1);
+          else goToPage(currentPage + 1, "left");
         }
       } else {
         if (direction === "ltr") {
           if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-          else onPageChange(currentPage + 1);
+          else goToPage(currentPage + 1, "left");
         } else {
           if (currentPage <= 0) onBoundaryReached?.("prev");
-          else onPageChange(currentPage - 1);
+          else goToPage(currentPage - 1, "right");
         }
       }
     }
-  }, [direction, currentPage, pages.length, onPageChange, onTapCenter, scale]);
+  }, [direction, currentPage, pages.length, goToPage, onTapCenter, scale, onBoundaryReached]);
 
-  // 双击缩放
-  const lastTapRef = useRef<number>(0);
+  // 双击缩放（改进：双击位置为缩放中心）
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      // 双击切换缩放
-      setScale(prev => prev > 1 ? 1 : 2);
+    if (now - lastTapRef.current.time < 300) {
+      if (scale > 1) {
+        // 缩小回原始大小
+        setScale(1);
+        setTranslate({ x: 0, y: 0 });
+      } else {
+        // 放大到 2x
+        setScale(2);
+        // 以双击位置为中心偏移
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        setTranslate({
+          x: (centerX - clickX) * 1, // scale-1 = 1
+          y: (centerY - clickY) * 1,
+        });
+      }
       e.preventDefault();
     }
-    lastTapRef.current = now;
-  }, []);
+    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+  }, [scale]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // 缩放模式下不处理点击翻页
@@ -176,31 +262,31 @@ export default function SinglePageView({
     const width = rect.width;
     const ratio = x / width;
 
-    if (ratio > 0.35 && ratio < 0.65) {
+    if (ratio > 0.3 && ratio < 0.7) {
       onTapCenter();
       return;
     }
 
-    const isLeftTap = ratio <= 0.35;
-    const isRightTap = ratio >= 0.65;
+    const isLeftTap = ratio <= 0.3;
+    const isRightTap = ratio >= 0.7;
 
     if (direction === "ltr") {
       if (isLeftTap) {
         if (currentPage <= 0) onBoundaryReached?.("prev");
-        else onPageChange(currentPage - 1);
+        else goToPage(currentPage - 1, "right");
       }
       if (isRightTap) {
         if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-        else onPageChange(currentPage + 1);
+        else goToPage(currentPage + 1, "left");
       }
     } else {
       if (isLeftTap) {
         if (currentPage >= pages.length - 1) onBoundaryReached?.("next");
-        else onPageChange(currentPage + 1);
+        else goToPage(currentPage + 1, "left");
       }
       if (isRightTap) {
         if (currentPage <= 0) onBoundaryReached?.("prev");
-        else onPageChange(currentPage - 1);
+        else goToPage(currentPage - 1, "right");
       }
     }
   };
@@ -218,6 +304,14 @@ export default function SinglePageView({
     }
   };
 
+  // 翻页动画 class
+  const getSlideAnimClass = () => {
+    if (!slideDirection) return "";
+    return slideDirection === "left"
+      ? "animate-slide-page-left"
+      : "animate-slide-page-right";
+  };
+
   return (
     <div
       className={`relative flex h-screen w-full cursor-pointer items-center justify-center select-none transition-colors duration-300 overflow-hidden ${
@@ -230,9 +324,10 @@ export default function SinglePageView({
       onTouchEnd={handleTouchEnd}
     >
       <div
-        className="relative h-full flex items-center justify-center transition-transform duration-200"
+        className={`relative h-full flex items-center justify-center ${getSlideAnimClass()}`}
         style={{
-          transform: `scale(${scale})`,
+          transform: `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`,
+          transition: isPanningRef.current ? "none" : "transform 0.2s ease-out",
           width: containerWidth || "100%",
           maxWidth: "100%",
           margin: "0 auto",
@@ -293,10 +388,19 @@ export default function SinglePageView({
         )}
       </div>
 
+      {/* 缩放指示器 */}
+      {scale !== 1 && (
+        <div className={`absolute top-4 left-4 z-10 rounded-full px-2.5 py-1 text-xs backdrop-blur-sm ${
+          readerTheme === "day" ? "bg-white/70 text-gray-500 shadow" : "bg-black/50 text-white/50"
+        }`}>
+          {Math.round(scale * 100)}%
+        </div>
+      )}
+
       <div className="pointer-events-none absolute inset-0 flex">
-        <div className="w-[35%]" />
         <div className="w-[30%]" />
-        <div className="w-[35%]" />
+        <div className="w-[40%]" />
+        <div className="w-[30%]" />
       </div>
     </div>
   );

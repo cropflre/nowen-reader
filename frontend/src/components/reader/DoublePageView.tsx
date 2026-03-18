@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import type { FitMode } from "@/types/reader";
 import { useImagePreloader } from "@/hooks/useImagePreloader";
@@ -38,6 +38,30 @@ export default function DoublePageView({
   const [loadedRight, setLoadedRight] = useState(false);
   const [errorLeft, setErrorLeft] = useState(false);
   const [errorRight, setErrorRight] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileHint, setShowMobileHint] = useState(false);
+
+  // 触摸手势状态
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  // 检测移动端
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setShowMobileHint(true);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // 移动端提示 3 秒后消失
+  useEffect(() => {
+    if (!showMobileHint) return;
+    const timer = setTimeout(() => setShowMobileHint(false), 3000);
+    return () => clearTimeout(timer);
+  }, [showMobileHint]);
 
   // Preload next pages
   useImagePreloader(pages, currentPage, preloadCount);
@@ -58,6 +82,74 @@ export default function DoublePageView({
     setErrorRight(false);
   }, [spreadIndex]);
 
+  // 翻页逻辑
+  const goForward = useCallback(() => {
+    if (spreadIndex + 2 >= pages.length) onBoundaryReached?.("next");
+    else onPageChange(Math.min(pages.length - 1, spreadIndex + 2));
+  }, [spreadIndex, pages.length, onPageChange, onBoundaryReached]);
+
+  const goBack = useCallback(() => {
+    if (spreadIndex <= 0) onBoundaryReached?.("prev");
+    else onPageChange(Math.max(0, spreadIndex - 2));
+  }, [spreadIndex, onPageChange, onBoundaryReached]);
+
+  // 触摸事件处理
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now(),
+      };
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current || e.changedTouches.length === 0) return;
+    const start = touchStartRef.current;
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const dx = endX - start.x;
+    const dy = endY - start.y;
+    const elapsed = Date.now() - start.time;
+    touchStartRef.current = null;
+
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const minSwipe = 50;
+    const maxTime = 800;
+
+    // 水平滑动翻页
+    if (absDx > absDy && absDx > minSwipe && elapsed < maxTime) {
+      const swipeLeft = dx < 0;
+      if (direction === "ltr") {
+        swipeLeft ? goForward() : goBack();
+      } else {
+        swipeLeft ? goBack() : goForward();
+      }
+      return;
+    }
+
+    // 竖向滑动翻页
+    if (absDy > absDx && absDy > minSwipe && elapsed < maxTime) {
+      dy < 0 ? goForward() : goBack();
+      return;
+    }
+
+    // 轻触
+    if (absDx < 10 && absDy < 10 && elapsed < 300) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const ratio = (start.x - rect.left) / rect.width;
+      if (ratio > 0.3 && ratio < 0.7) {
+        onTapCenter();
+      } else if (ratio <= 0.3) {
+        direction === "ltr" ? goBack() : goForward();
+      } else {
+        direction === "ltr" ? goForward() : goBack();
+      }
+    }
+  }, [direction, goForward, goBack, onTapCenter]);
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -69,17 +161,11 @@ export default function DoublePageView({
       return;
     }
 
-    const goForward = direction === "ltr" ? ratio >= 0.7 : ratio <= 0.3;
-    const goBack = direction === "ltr" ? ratio <= 0.3 : ratio >= 0.7;
+    const isForward = direction === "ltr" ? ratio >= 0.7 : ratio <= 0.3;
+    const isBack = direction === "ltr" ? ratio <= 0.3 : ratio >= 0.7;
 
-    if (goForward) {
-      if (spreadIndex + 2 >= pages.length) onBoundaryReached?.("next");
-      else onPageChange(Math.min(pages.length - 1, spreadIndex + 2));
-    }
-    if (goBack) {
-      if (spreadIndex <= 0) onBoundaryReached?.("prev");
-      else onPageChange(Math.max(0, spreadIndex - 2));
-    }
+    if (isForward) goForward();
+    if (isBack) goBack();
   };
 
   // 根据 fitMode 计算图片类名
@@ -160,6 +246,8 @@ export default function DoublePageView({
         readerTheme === "day" ? "bg-gray-100" : "bg-black"
       }`}
       onClick={handleClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
       <div
         className="flex h-full items-center justify-center gap-1 p-4"
@@ -169,6 +257,19 @@ export default function DoublePageView({
         <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
         {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right")}
       </div>
+
+      {/* 移动端双页模式提示 */}
+      {isMobile && showMobileHint && (
+        <div className="fixed top-16 left-1/2 z-50 -translate-x-1/2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className={`rounded-xl px-4 py-2.5 text-xs font-medium shadow-lg backdrop-blur-sm ${
+            readerTheme === "day"
+              ? "bg-amber-50 text-amber-700 border border-amber-200"
+              : "bg-amber-500/15 text-amber-300 border border-amber-500/20"
+          }`}>
+            ⚠️ 双页模式在小屏幕上体验不佳，建议切换为单页模式
+          </div>
+        </div>
+      )}
     </div>
   );
 }

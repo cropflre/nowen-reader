@@ -57,7 +57,7 @@ export default function BatchToolbar({
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 px-3 sm:px-6 py-2 sm:py-3 backdrop-blur-xl safe-bottom">
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 px-3 sm:px-6 py-2 sm:py-3 backdrop-blur-xl safe-bottom animate-toolbar-in">
         <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
             <CheckSquare className="h-4 w-4 text-accent" />
@@ -70,7 +70,7 @@ export default function BatchToolbar({
             {/* Favorite */}
             <button
               onClick={onFavorite}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-500/20"
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-500/20 btn-press"
               title={t.batch.favorite}
             >
               <Heart className="h-3.5 w-3.5" />
@@ -80,8 +80,7 @@ export default function BatchToolbar({
             {/* Unfavorite */}
             <button
               onClick={onUnfavorite}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-muted transition-colors hover:bg-card-hover"
-              title={t.batch.unfavorite}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-muted transition-colors hover:bg-card-hover btn-press"
             >
               <HeartOff className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t.batch.unfavorite}</span>
@@ -195,7 +194,7 @@ export default function BatchToolbar({
             {/* Delete */}
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 btn-press"
               title={t.common.delete}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -272,8 +271,8 @@ export default function BatchToolbar({
       {/* Delete Confirm Modal */}
       {showDeleteConfirm && (
         <>
-          <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl">
+          <div className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal-in">
             <h3 className="text-lg font-semibold text-foreground">{t.batch.confirmDelete}</h3>
             <p className="mt-2 text-sm text-muted">
               {t.batch.confirmDeleteMsg.replace("{count}", String(selectedCount))}

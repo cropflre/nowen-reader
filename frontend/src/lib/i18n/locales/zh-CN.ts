@@ -220,6 +220,67 @@ const zhCN = {
     retry: "重试",
     toc: "目录",
     typesetting: "排版",
+    // 小说阅读器
+    prevChapter: "上一章",
+    nextChapter: "下一章",
+    chapterN: "第 {n} 章",
+    settingsTitle: "排版设置",
+    bgTheme: "背景主题",
+    fontSize: "字体大小",
+    lineSpacing: "行间距",
+    margin: "页边距",
+    marginCompact: "紧凑",
+    marginStandard: "标准",
+    marginWide: "宽松",
+    pageMode: "翻页方式",
+    pageModeScroll: "上下滚动",
+    pageModeSwipe: "左右翻页",
+    autoScrollSpeed: "自动翻页速度",
+    speedSlow: "慢速",
+    speedMedium: "中速",
+    speedFast: "快速",
+    autoScrollHint: "快捷键 G 开启/关闭自动翻页",
+    font: "字体",
+    fontSystem: "系统默认",
+    fontSerif: "宋体/衬线",
+    fontSans: "黑体/无衬线",
+    fontKai: "楷体",
+    fontMono: "等宽字体",
+    themeNight: "深色",
+    themeDay: "米黄",
+    themeGreen: "豆沙绿",
+    themeGray: "浅灰",
+    themeWhite: "纯白",
+    tocLabel: "目录",
+    bookmarkLabel: "书签",
+    noBookmarks: "暂无书签",
+    addBookmarkHint: "点击标题栏的书签图标添加",
+    removeBookmark: "删除书签",
+    copy: "复制",
+    highlight: "划线",
+    note: "笔记",
+    addNote: "添加笔记",
+    writeThoughts: "写下你的想法...",
+    save: "保存",
+    cancel: "取消",
+    ttsPause: "继续",
+    ttsResume: "暂停",
+    ttsStop: "停止",
+    ttsSpeed: "语速",
+    ttsPaused: "已暂停",
+    ttsReading: "朗读中...",
+    autoScrolling: "自动翻页中",
+    searchPlaceholder: "搜索全书内容...",
+    search: "搜索",
+    searchCancel: "取消",
+    searchingAll: "正在搜索全书内容...",
+    searchChapterCount: "共 {n} 章，点击「取消」可中断",
+    noSearchResults: "未找到匹配结果",
+    searchFoundMatches: "找到 {count} 处匹配，分布在 {chapters} 个章节",
+    searchMatches: "{n} 处",
+    searchHint: "输入关键词搜索全书内容",
+    searchShortcut: "快捷键: S",
+    copied: "已复制",
   },
 
   // Reader Toolbar
@@ -859,6 +920,67 @@ export interface Translations {
     retry: string;
     toc: string;
     typesetting: string;
+    // Novel reader
+    prevChapter: string;
+    nextChapter: string;
+    chapterN: string;
+    settingsTitle: string;
+    bgTheme: string;
+    fontSize: string;
+    lineSpacing: string;
+    margin: string;
+    marginCompact: string;
+    marginStandard: string;
+    marginWide: string;
+    pageMode: string;
+    pageModeScroll: string;
+    pageModeSwipe: string;
+    autoScrollSpeed: string;
+    speedSlow: string;
+    speedMedium: string;
+    speedFast: string;
+    autoScrollHint: string;
+    font: string;
+    fontSystem: string;
+    fontSerif: string;
+    fontSans: string;
+    fontKai: string;
+    fontMono: string;
+    themeNight: string;
+    themeDay: string;
+    themeGreen: string;
+    themeGray: string;
+    themeWhite: string;
+    tocLabel: string;
+    bookmarkLabel: string;
+    noBookmarks: string;
+    addBookmarkHint: string;
+    removeBookmark: string;
+    copy: string;
+    highlight: string;
+    note: string;
+    addNote: string;
+    writeThoughts: string;
+    save: string;
+    cancel: string;
+    ttsPause: string;
+    ttsResume: string;
+    ttsStop: string;
+    ttsSpeed: string;
+    ttsPaused: string;
+    ttsReading: string;
+    autoScrolling: string;
+    searchPlaceholder: string;
+    search: string;
+    searchCancel: string;
+    searchingAll: string;
+    searchChapterCount: string;
+    noSearchResults: string;
+    searchFoundMatches: string;
+    searchMatches: string;
+    searchHint: string;
+    searchShortcut: string;
+    copied: string;
   };
   readerToolbar: {
     single: string;

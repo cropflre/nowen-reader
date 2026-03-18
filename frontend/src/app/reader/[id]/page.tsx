@@ -102,6 +102,10 @@ export default function ReaderPage() {
   // 无感跳转过渡提示
   const [volumeTransitionHint, setVolumeTransitionHint] = useState<string | null>(null);
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 工具栏交互状态（正在拖进度条/输入页码时不自动隐藏）
+  const [toolbarInteracting, setToolbarInteracting] = useState(false);
+  // 首次使用手势引导
+  const [showGestureGuide, setShowGestureGuide] = useState(false);
 
   // 从选项同步模式、方向
   useEffect(() => {
@@ -223,12 +227,24 @@ export default function ReaderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-hide toolbar (不在选项面板打开时隐藏)
+  // 首次使用手势引导
   useEffect(() => {
-    if (!toolbarVisible || showOptionsPanel) return;
+    try {
+      const key = "nowen-reader-gesture-guide-shown";
+      if (!localStorage.getItem(key)) {
+        setShowGestureGuide(true);
+        localStorage.setItem(key, "1");
+        setTimeout(() => setShowGestureGuide(false), 5000);
+      }
+    } catch {}
+  }, []);
+
+  // Auto-hide toolbar (不在选项面板打开 / 正在交互时隐藏)
+  useEffect(() => {
+    if (!toolbarVisible || showOptionsPanel || toolbarInteracting) return;
     const timer = setTimeout(() => setToolbarVisible(false), 4000);
     return () => clearTimeout(timer);
-  }, [toolbarVisible, currentPage, showOptionsPanel]);
+  }, [toolbarVisible, currentPage, showOptionsPanel, toolbarInteracting]);
 
   // 系列导航辅助函数
   const currentVolumeIdx = seriesVolumes.findIndex(v => v.comicId === comicId);
@@ -597,6 +613,7 @@ export default function ReaderPage() {
         onToggleTheme={handleToggleTheme}
         onShowInfo={useRealData ? () => setShowInfoPanel(true) : undefined}
         onShowSettings={() => setShowOptionsPanel(true)}
+        onInteracting={setToolbarInteracting}
       />
 
       {/* Page number indicator (头部可见性控制) */}
@@ -612,7 +629,7 @@ export default function ReaderPage() {
         </div>
       )}
 
-      {/* AI Chat Panel */}
+      {/* AI Chat Panel - 移动端调整按钮位置避免与翻译按钮重叠 */}
       {aiConfigured && (
         <AIChatPanel
           comicId={comicId}
@@ -633,6 +650,29 @@ export default function ReaderPage() {
         />
       )}
 
+      {/* 手势引导提示（首次使用时显示） */}
+      {showGestureGuide && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-backdrop-in"
+          onClick={() => setShowGestureGuide(false)}
+        >
+          <div className="mx-4 max-w-sm rounded-2xl bg-zinc-900/95 p-6 text-center shadow-2xl border border-white/10 animate-modal-in">
+            <div className="text-3xl mb-3">👆</div>
+            <h3 className="text-sm font-bold text-white mb-3">阅读手势指南</h3>
+            <div className="space-y-2 text-xs text-white/60 text-left">
+              <p>👈 <span className="text-white/80">点击左侧</span> — 上一页</p>
+              <p>👉 <span className="text-white/80">点击右侧</span> — 下一页</p>
+              <p>👆 <span className="text-white/80">点击中间</span> — 显示/隐藏菜单</p>
+              <p>↔️ <span className="text-white/80">左右滑动</span> — 翻页</p>
+              <p>↕️ <span className="text-white/80">上下滑动</span> — 翻页</p>
+              <p>🔍 <span className="text-white/80">双指捏合</span> — 缩放</p>
+              <p>👆👆 <span className="text-white/80">双击</span> — 快速放大/缩小</p>
+            </div>
+            <p className="mt-4 text-[10px] text-white/30">点击任意处关闭</p>
+          </div>
+        </div>
+      )}
+
       {/* Reader Options Panel */}
       {showOptionsPanel && (
         <ReaderOptionsPanel
@@ -646,7 +686,7 @@ export default function ReaderPage() {
       {showChapterDrawer && seriesVolumes.length > 1 && (
         <>
           <div
-            className="fixed inset-0 z-[58] bg-black/50"
+            className="fixed inset-0 z-[58] bg-black/50 animate-backdrop-in"
             onClick={() => setShowChapterDrawer(false)}
           />
           <div className="fixed top-0 right-0 z-[59] h-full w-[85vw] max-w-80 overflow-y-auto bg-zinc-900/95 shadow-2xl backdrop-blur-xl animate-in slide-in-from-right duration-200">
@@ -734,8 +774,8 @@ export default function ReaderPage() {
       {/* Archive Overlay (档案覆盖层) */}
       {showOverlay && (
         <>
-          <div className="fixed inset-0 z-[55] bg-black/70" onClick={() => setShowOverlay(false)} />
-          <div className="fixed inset-4 z-[56] overflow-y-auto rounded-xl bg-zinc-900/95 backdrop-blur-xl p-6">
+          <div className="fixed inset-0 z-[55] bg-black/70 animate-backdrop-in" onClick={() => setShowOverlay(false)} />
+          <div className="fixed inset-4 z-[56] overflow-y-auto rounded-xl bg-zinc-900/95 backdrop-blur-xl p-6 animate-modal-in">
             <button
               onClick={() => setShowOverlay(false)}
               className="absolute top-4 right-4 rounded-lg p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition-colors z-10"
@@ -769,12 +809,12 @@ export default function ReaderPage() {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-40 bg-black/50"
+            className="fixed inset-0 z-40 bg-black/50 animate-backdrop-in"
             onClick={() => setShowInfoPanel(false)}
           />
 
           {/* Panel */}
-          <div className="fixed top-0 right-0 z-50 h-full w-[85vw] max-w-80 overflow-y-auto bg-zinc-900/95 p-6 shadow-2xl backdrop-blur-xl">
+          <div className="fixed top-0 right-0 z-50 h-full w-[85vw] max-w-80 overflow-y-auto bg-zinc-900/95 p-6 shadow-2xl backdrop-blur-xl animate-modal-in">
             {/* Close */}
             <button
               onClick={() => setShowInfoPanel(false)}

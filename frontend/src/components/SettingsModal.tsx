@@ -69,10 +69,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 animate-backdrop-in" onClick={onClose} />
 
       {/* Modal — mobile: full-screen, desktop: centered card */}
-      <div className="relative w-full h-full sm:w-[600px] sm:max-w-[90vw] sm:h-auto sm:max-h-[85vh] overflow-hidden sm:rounded-2xl bg-card border-0 sm:border sm:border-border shadow-2xl">
+      <div className="relative w-full h-full sm:w-[600px] sm:max-w-[90vw] sm:h-auto sm:max-h-[85vh] overflow-hidden sm:rounded-2xl bg-card border-0 sm:border sm:border-border shadow-2xl animate-modal-in">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/50 px-4 sm:px-6 py-3 sm:py-4">
           <h2 className="text-base sm:text-lg font-semibold text-foreground">

@@ -24,6 +24,10 @@ interface WebtoonViewProps {
 const ESTIMATED_PAGE_HEIGHT = 1200;
 /** Number of pages to render outside viewport (buffer) */
 const RENDER_BUFFER = 5;
+/** 超出此范围的页面不创建 DOM 节点（用累加高度占位） */
+const DOM_BUFFER = 15;
+/** 滚动事件报告页码变化的节流间隔 (ms) */
+const SCROLL_REPORT_THROTTLE = 100;
 
 export default function WebtoonView({
   pages,
@@ -41,10 +45,13 @@ export default function WebtoonView({
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const isScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // 记录上一次由滚动事件报告的页码，用于区分"外部跳转"和"滚动同步"
+  // 记录上一次由滚动事件报告的页码，用于区分“外部跳转”和“滚动同步”
   const lastScrollReportedPage = useRef(currentPage);
+  // 外部跳转的防抖 RAF id
+  const jumpRafRef = useRef<number>(0);
+  // 滚动报告节流时间戳
+  const lastScrollReportTime = useRef(0);
   const t = useTranslation();
-
   // Track which pages are "in range" to render
   const [renderRange, setRenderRange] = useState({ start: 0, end: Math.min(RENDER_BUFFER * 2, pages.length - 1) });
 
@@ -99,33 +106,31 @@ export default function WebtoonView({
     // 只有当页码不是由滚动事件报告的（即来自进度条等外部变更）时才滚动
     if (currentPage === lastScrollReportedPage.current) return;
 
+    // 取消上一次未执行的跳转，避免堆积
+    if (jumpRafRef.current) cancelAnimationFrame(jumpRafRef.current);
+
     // 先确保目标页面在渲染范围内
     const newStart = Math.max(0, currentPage - RENDER_BUFFER);
     const newEnd = Math.min(pages.length - 1, currentPage + RENDER_BUFFER);
     setRenderRange({ start: newStart, end: newEnd });
 
-    // 使用 requestAnimationFrame 等待渲染完成后再滚动
-    requestAnimationFrame(() => {
-      const el = pageRefs.current[currentPage];
-      if (el) {
-        // 使用 instant 立即跳转，避免 smooth 导致的"飞跃"效果
-        el.scrollIntoView({ behavior: "instant", block: "start" });
-      } else {
-        // 如果目标元素还没渲染，通过累加高度计算位置直接跳转
-        const container = containerRef.current;
-        if (container) {
-          let targetTop = 0;
-          for (let i = 0; i < currentPage; i++) {
-            targetTop += pageHeights.get(i) ?? ESTIMATED_PAGE_HEIGHT;
-          }
-          container.scrollTop = targetTop;
-        }
+    // 使用 rAF 等待渲染完成后再滚动，并通过取消机制避免堆积
+    jumpRafRef.current = requestAnimationFrame(() => {
+      jumpRafRef.current = 0;
+      const container = containerRef.current;
+      if (!container) return;
+
+      // 计算目标位置（始终用累加高度计算，避免 scrollIntoView 对未渲染元素的依赖）
+      let targetTop = 0;
+      for (let i = 0; i < currentPage; i++) {
+        targetTop += pageHeights.get(i) ?? ESTIMATED_PAGE_HEIGHT;
       }
+      container.scrollTop = targetTop;
+
       // 更新滚动报告页码，防止滚动事件再次触发 onPageChange
       lastScrollReportedPage.current = currentPage;
     });
   }, [currentPage, pages.length, pageHeights]);
-
   const handleScroll = useCallback(() => {
     isScrollingRef.current = true;
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
@@ -135,7 +140,10 @@ export default function WebtoonView({
 
     const centerPage = updateRenderRange();
 
-    if (centerPage !== undefined && centerPage !== currentPage) {
+    // 节流页码报告：避免高频触发父组件状态更新
+    const now = Date.now();
+    if (centerPage !== undefined && centerPage !== currentPage && now - lastScrollReportTime.current >= SCROLL_REPORT_THROTTLE) {
+      lastScrollReportTime.current = now;
       lastScrollReportedPage.current = centerPage;
       onPageChange(centerPage);
     }
@@ -179,7 +187,23 @@ export default function WebtoonView({
       onClick={handleClick}
     >
       <div className="mx-auto" style={containerWidth ? { width: containerWidth, maxWidth: "100%" } : { maxWidth: "48rem" }}>
+        {/* 顶部不在 DOM 范围内的页面用一个合并占位元素 */}
+        {(() => {
+          const domStart = Math.max(0, renderRange.start - DOM_BUFFER);
+          if (domStart > 0) {
+            let h = 0;
+            for (let i = 0; i < domStart; i++) h += pageHeights.get(i) ?? ESTIMATED_PAGE_HEIGHT;
+            return <div style={{ height: h }} />;
+          }
+          return null;
+        })()}
+
         {pages.map((pageUrl, index) => {
+          const domStart = Math.max(0, renderRange.start - DOM_BUFFER);
+          const domEnd = Math.min(pages.length - 1, renderRange.end + DOM_BUFFER);
+          // 超出 DOM 缓冲区的页面不创建节点
+          if (index < domStart || index > domEnd) return null;
+
           const isInRange = index >= renderRange.start && index <= renderRange.end;
           const estimatedHeight = pageHeights.get(index) ?? ESTIMATED_PAGE_HEIGHT;
 
@@ -242,6 +266,17 @@ export default function WebtoonView({
             </div>
           );
         })}
+
+        {/* 底部不在 DOM 范围内的页面用一个合并占位元素 */}
+        {(() => {
+          const domEnd = Math.min(pages.length - 1, renderRange.end + DOM_BUFFER);
+          if (domEnd < pages.length - 1) {
+            let h = 0;
+            for (let i = domEnd + 1; i < pages.length; i++) h += pageHeights.get(i) ?? ESTIMATED_PAGE_HEIGHT;
+            return <div style={{ height: h }} />;
+          }
+          return null;
+        })()}
 
         <div className="flex items-center justify-center py-16">
           <div className="text-center">

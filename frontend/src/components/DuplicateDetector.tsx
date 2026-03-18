@@ -261,10 +261,10 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
+      <div className="fixed inset-0 z-[70] bg-black/60 animate-backdrop-in" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-2 sm:inset-4 z-[70] mx-auto my-auto flex max-h-[90vh] sm:max-h-[85vh] max-w-3xl flex-col rounded-2xl bg-background border border-border/40 shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2">
+      <div className="fixed inset-2 sm:inset-4 z-[70] mx-auto my-auto flex max-h-[90vh] sm:max-h-[85vh] max-w-3xl flex-col rounded-2xl bg-background border border-border/40 shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2 animate-modal-in">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/30 px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2">
@@ -583,8 +583,8 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
       {/* Delete Single Confirm Modal */}
       {deleteConfirm && (
         <>
-          <div className="fixed inset-0 z-[80] bg-black/60" onClick={() => setDeleteConfirm(null)} />
-          <div className="fixed left-1/2 top-1/2 z-[80] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-background border border-border/40 p-6 shadow-2xl">
+          <div className="fixed inset-0 z-[80] bg-black/60 animate-backdrop-in" onClick={() => setDeleteConfirm(null)} />
+          <div className="fixed left-1/2 top-1/2 z-[80] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-background border border-border/40 p-6 shadow-2xl animate-modal-in">
             <h3 className="text-lg font-semibold text-foreground">{t.duplicates.confirmDelete}</h3>
             <p className="mt-2 text-sm text-muted">
               {t.duplicates.confirmDeleteMsg.replace("{title}", deleteConfirm.title)}
@@ -611,8 +611,8 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
       {/* Batch Delete Confirm Modal */}
       {batchDeleteConfirm && (
         <>
-          <div className="fixed inset-0 z-[80] bg-black/60" onClick={() => !batchDeleting && setBatchDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-[80] w-96 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-background border border-border/40 p-6 shadow-2xl">
+          <div className="fixed inset-0 z-[80] bg-black/60 animate-backdrop-in" onClick={() => !batchDeleting && setBatchDeleteConfirm(false)} />
+          <div className="fixed left-1/2 top-1/2 z-[80] w-96 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-background border border-border/40 p-6 shadow-2xl animate-modal-in">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/10">
               <AlertTriangle className="h-6 w-6 text-red-400" />
             </div>

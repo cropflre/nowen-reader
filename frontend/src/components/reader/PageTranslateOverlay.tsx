@@ -84,7 +84,7 @@ export default function PageTranslateOverlay({
       <button
         onClick={handleTranslate}
         disabled={loading}
-        className={`fixed bottom-20 right-20 z-30 flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-110 disabled:opacity-50 ${
+        className={`fixed bottom-20 right-20 sm:right-20 z-30 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-110 disabled:opacity-50 ${
           showPanel
             ? "bg-blue-500/80 hover:bg-blue-500"
             : "bg-blue-500/60 hover:bg-blue-500/80"
@@ -101,11 +101,11 @@ export default function PageTranslateOverlay({
       {/* 翻译结果面板 */}
       {showPanel && (
         <div
-          className={`fixed bottom-4 left-4 z-50 flex max-h-[70vh] w-[340px] flex-col overflow-hidden rounded-2xl shadow-2xl backdrop-blur-xl transition-all ${
+          className={`fixed z-50 flex max-h-[70vh] sm:max-h-[70vh] flex-col overflow-hidden rounded-2xl shadow-2xl backdrop-blur-xl transition-all ${
             isDark
               ? "border border-white/10 bg-zinc-900/95 text-white"
               : "border border-gray-200 bg-white/95 text-gray-900"
-          }`}
+          } bottom-4 left-2 right-2 sm:left-4 sm:right-auto sm:w-[340px]`}
         >
           {/* Header */}
           <div

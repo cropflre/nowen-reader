@@ -66,8 +66,8 @@ export default function AddToGroupDialog({
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] bg-black/60" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 z-[60] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card shadow-2xl">
+      <div className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 z-[60] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card shadow-2xl animate-modal-in">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/30 px-5 py-3">
           <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import LazyImage from "@/components/LazyImage";
 import Link from "next/link";
 import {
   useComicDetail,
@@ -523,8 +524,62 @@ export default function ComicDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-accent" />
+      <div className="min-h-screen bg-background">
+        {/* Header skeleton */}
+        <div className="sticky top-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl">
+          <div className="mx-auto flex h-14 sm:h-16 max-w-5xl items-center gap-3 sm:gap-4 px-3 sm:px-6">
+            <div className="skeleton-shimmer h-9 w-9 rounded-lg" />
+            <div className="skeleton-shimmer h-5 w-48 rounded-md" />
+          </div>
+        </div>
+        <main className="mx-auto max-w-5xl px-3 sm:px-6 py-4 sm:py-8">
+          <div className="grid gap-5 sm:gap-8 md:grid-cols-[280px_1fr]">
+            {/* Cover skeleton */}
+            <div className="space-y-3 sm:space-y-4 mx-auto w-full max-w-[240px] md:max-w-none">
+              <div className="skeleton-shimmer aspect-[5/7] w-full rounded-xl" />
+              <div className="skeleton-shimmer h-12 w-full rounded-xl" />
+              <div className="skeleton-shimmer h-10 w-full rounded-xl" />
+            </div>
+            {/* Info skeleton */}
+            <div className="space-y-6">
+              {/* Title */}
+              <div className="space-y-2">
+                <div className="skeleton-shimmer h-7 w-3/4 rounded-md" />
+                <div className="skeleton-shimmer h-4 w-1/2 rounded-md" />
+              </div>
+              {/* Rating */}
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="skeleton-shimmer h-7 w-7 rounded-md" />
+                ))}
+              </div>
+              {/* Meta Info Grid */}
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-4 sm:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="rounded-xl bg-card p-3 sm:p-4 space-y-2">
+                    <div className="skeleton-shimmer h-3 w-16 rounded" />
+                    <div className="skeleton-shimmer h-5 w-12 rounded" />
+                  </div>
+                ))}
+              </div>
+              {/* Tags */}
+              <div className="space-y-2">
+                <div className="skeleton-shimmer h-3 w-12 rounded" />
+                <div className="flex gap-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="skeleton-shimmer h-7 w-16 rounded-lg" />
+                  ))}
+                </div>
+              </div>
+              {/* Metadata */}
+              <div className="space-y-2 rounded-xl bg-card p-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="skeleton-shimmer h-4 w-full rounded" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -564,13 +619,12 @@ export default function ComicDetailPage() {
           {/* Cover */}
           <div className="space-y-3 sm:space-y-4 mx-auto w-full max-w-[240px] md:max-w-none">
             <div className="group relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card shadow-2xl">
-              <Image
+              <LazyImage
                 src={`/api/comics/${comic.id}/thumbnail?v=${coverKey}`}
                 alt={comic.title}
-                fill
-                unoptimized
-                className="object-cover"
-                sizes="280px"
+                wrapperClassName="absolute inset-0"
+                className="h-full w-full object-cover"
+                blurEffect={true}
               />
               {/* Cover overlay buttons */}
               <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
@@ -674,7 +728,7 @@ export default function ComicDetailPage() {
             {/* Read Button */}
             <Link
               href={isNovelFile(comic.filename) ? `/novel/${comic.id}` : `/reader/${comic.id}`}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-medium text-white transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/25"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-medium text-white transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/25 btn-press"
             >
               <Play className="h-4 w-4" />
               {comic.lastReadPage > 0 ? t.comicDetail.continueReading.replace("{page}", String(comic.lastReadPage + 1)) : t.comicDetail.startReading}
@@ -683,7 +737,7 @@ export default function ComicDetailPage() {
             {/* Delete */}
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2.5 text-sm text-red-400 transition-all hover:bg-red-500/10"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2.5 text-sm text-red-400 transition-all hover:bg-red-500/10 btn-press"
             >
               <Trash2 className="h-4 w-4" />
               {t.comicDetail.deleteComic}
@@ -1338,8 +1392,8 @@ export default function ComicDetailPage() {
       {/* Delete Confirm Modal */}
       {showDeleteConfirm && (
         <>
-          <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-zinc-900 p-5 sm:p-6 shadow-2xl">
+          <div className="fixed inset-0 z-50 bg-black/60 animate-backdrop-in" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-zinc-900 p-5 sm:p-6 shadow-2xl animate-modal-in">
             <h3 className="text-lg font-semibold text-foreground">{t.comicDetail.confirmDelete}</h3>
             <p className="mt-2 text-sm text-muted">
               {t.comicDetail.confirmDeleteMsg.replace("{title}", comic.title)}

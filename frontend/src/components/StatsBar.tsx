@@ -13,23 +13,23 @@ export default function StatsBar({ totalComics, filteredCount }: StatsBarProps) 
 
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2 text-muted">
+      <div className="flex items-center gap-3 sm:gap-6">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
           <Library className="h-4 w-4" />
-          <span className="text-sm">
+          <span className="text-xs sm:text-sm">
             {t.statsBar.total} <span className="font-medium text-foreground">{totalComics}</span> {t.statsBar.unit}
           </span>
         </div>
         {filteredCount !== totalComics && (
-          <div className="flex items-center gap-2 text-muted">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
             <BookOpen className="h-4 w-4" />
-            <span className="text-sm">
+            <span className="text-xs sm:text-sm">
               {t.statsBar.filtered} <span className="font-medium text-accent">{filteredCount}</span> {t.statsBar.unit}
             </span>
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2 text-muted">
+      <div className="hidden sm:flex items-center gap-2 text-muted">
         <Clock className="h-3.5 w-3.5" />
         <span className="text-xs">{t.statsBar.recentUpdate}</span>
       </div>

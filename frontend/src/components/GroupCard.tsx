@@ -15,6 +15,10 @@ interface GroupCardProps {
   onSelect?: (id: number) => void;
   /** 右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent, group: ComicGroup) => void;
+  /** 交错入场动画索引 */
+  animationIndex?: number;
+  /** 删除动画 */
+  isRemoving?: boolean;
 }
 
 const GroupCard = memo(function GroupCard({
@@ -24,6 +28,8 @@ const GroupCard = memo(function GroupCard({
   isSelected,
   onSelect,
   onContextMenu,
+  animationIndex,
+  isRemoving,
 }: GroupCardProps) {
   const t = useTranslation();
   const [coverLoaded, setCoverLoaded] = useState(false);
@@ -47,17 +53,21 @@ const GroupCard = memo(function GroupCard({
   // 列表模式
   if (viewMode === "list") {
     return (
-      <div className="group relative block" onContextMenu={handleContextMenu}>
+      <div
+        className={`group relative block ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
+        style={animationIndex !== undefined ? { animationDelay: `${animationIndex * 40}ms` } : undefined}
+        onContextMenu={handleContextMenu}
+      >
         {batchMode ? (
           <div
             onClick={handleClick}
-            className={`flex cursor-pointer items-center gap-4 rounded-xl p-3 transition-all duration-200 ${
+            className={`flex cursor-pointer items-center gap-3 sm:gap-4 rounded-xl p-2.5 sm:p-3 transition-all duration-200 ${
               isSelected
                 ? "bg-accent/15 ring-1 ring-accent/50"
                 : "bg-card hover:bg-card-hover"
             }`}
           >
-            <div className="relative h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg">
+            <div className="relative h-20 w-14 sm:h-16 sm:w-12 flex-shrink-0 overflow-hidden rounded-lg">
               {group.coverUrl ? (
                 <Image
                   src={group.coverUrl}
@@ -65,7 +75,7 @@ const GroupCard = memo(function GroupCard({
                   fill
                   unoptimized
                   className="object-cover"
-                  sizes="48px"
+                  sizes="56px"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-accent/10">
@@ -91,9 +101,9 @@ const GroupCard = memo(function GroupCard({
         ) : (
           <Link
             href={`/group/${group.id}`}
-            className="flex flex-1 items-center gap-4 rounded-xl bg-card p-3 transition-all duration-200 group-hover:bg-card-hover group-hover:shadow-lg group-hover:shadow-accent/5"
+            className="flex flex-1 items-center gap-3 sm:gap-4 rounded-xl bg-card p-2.5 sm:p-3 transition-all duration-200 group-hover:bg-card-hover group-hover:shadow-lg group-hover:shadow-accent/5"
           >
-            <div className="relative h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg">
+            <div className="relative h-20 w-14 sm:h-16 sm:w-12 flex-shrink-0 overflow-hidden rounded-lg">
               {group.coverUrl ? (
                 <Image
                   src={group.coverUrl}
@@ -101,7 +111,7 @@ const GroupCard = memo(function GroupCard({
                   fill
                   unoptimized
                   className="object-cover"
-                  sizes="48px"
+                  sizes="56px"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-accent/10">
@@ -122,7 +132,7 @@ const GroupCard = memo(function GroupCard({
                 </span>
               </div>
             </div>
-            <BookOpen className="h-4 w-4 flex-shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+            <BookOpen className="h-4 w-4 flex-shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100 hidden sm:block" />
           </Link>
         )}
       </div>
@@ -131,7 +141,11 @@ const GroupCard = memo(function GroupCard({
 
   // 网格模式
   return (
-    <div className="group relative" onContextMenu={handleContextMenu}>
+    <div
+      className={`group relative ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
+      style={animationIndex !== undefined ? { animationDelay: `${animationIndex * 40}ms` } : undefined}
+      onContextMenu={handleContextMenu}
+    >
       {batchMode ? (
         <div onClick={handleClick} className="cursor-pointer">
           <div

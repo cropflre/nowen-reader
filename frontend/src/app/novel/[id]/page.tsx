@@ -212,12 +212,14 @@ export default function NovelReaderPage() {
     };
   }, []);
 
-  // Auto-hide toolbar
+  // Auto-hide toolbar（面板打开时不隐藏，避免操作中途工具栏消失）
   useEffect(() => {
     if (!toolbarVisible) return;
+    // 如果有面板处于打开状态，不自动隐藏工具栏
+    if (showTOC || showSettingsPanel || showInfoPanel) return;
     const timer = setTimeout(() => setToolbarVisible(false), 4000);
     return () => clearTimeout(timer);
-  }, [toolbarVisible, currentPage]);
+  }, [toolbarVisible, currentPage, showTOC, showSettingsPanel, showInfoPanel]);
 
   // Keyboard navigation (Escape, F, I)
   const handleKeyDown = useCallback(
@@ -262,6 +264,29 @@ export default function NovelReaderPage() {
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
+
+  // 移动端手势返回支持：push 一个虚拟 history state，popstate 时导航回书库
+  useEffect(() => {
+    // 仅在没有自定义 state 时 push
+    if (!window.history.state?.novelReader) {
+      window.history.pushState({ novelReader: true }, "");
+    }
+    const handlePopState = (e: PopStateEvent) => {
+      // 如果有面板打开，先关闭面板而不是返回
+      if (showTOC || showSettingsPanel || showInfoPanel) {
+        // 重新 push state 以保持历史栈
+        window.history.pushState({ novelReader: true }, "");
+        setShowTOC(false);
+        setShowSettingsPanel(false);
+        setShowInfoPanel(false);
+        return;
+      }
+      // 否则返回上一页
+      router.back();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [router, showTOC, showSettingsPanel, showInfoPanel]);
 
   const handleTapCenter = useCallback(() => {
     setToolbarVisible((v) => !v);
@@ -425,12 +450,12 @@ export default function NovelReaderPage() {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-40 bg-black/50"
+            className="fixed inset-0 z-40 bg-black/50 animate-backdrop-in"
             onClick={() => setShowInfoPanel(false)}
           />
 
           {/* Panel */}
-          <div className="fixed top-0 right-0 z-50 h-full w-full sm:w-80 overflow-y-auto bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-xl">
+          <div className="fixed top-0 right-0 z-50 h-full w-full sm:w-80 overflow-y-auto bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-xl animate-modal-in">
             {/* Close */}
             <button
               onClick={() => setShowInfoPanel(false)}
@@ -569,8 +594,8 @@ export default function NovelReaderPage() {
               </div>
             </div>
 
-            {/* Keyboard Shortcuts */}
-            <div>
+            {/* Keyboard Shortcuts - 仅桌面端显示 */}
+            <div className="hidden sm:block">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-white/40">
                 {t.reader.shortcuts}
               </h3>

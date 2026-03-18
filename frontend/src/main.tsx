@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import "@/app/globals.css";
 
 import { ThemeProvider } from "@/lib/theme-context";
@@ -13,6 +13,7 @@ import { PWARegister } from "@/app/pwa-register";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/Toast";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import PageProgressBar from "@/components/PageProgressBar";
 
 // Pages — imported directly from original Next.js pages
 // The "use client" directive is harmless in Vite
@@ -26,6 +27,26 @@ import Logs from "@/app/logs/page";
 import Settings from "@/app/settings/page";
 import GroupDetail from "@/app/group/[id]/page";
 
+/** 路由过渡动画包装器 —— 每次 pathname 变化时触发 fade-in */
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="animate-page-enter">
+      <Routes location={location}>
+        <Route path="/" element={<Home />} />
+        <Route path="/comic/:id" element={<ComicDetail />} />
+        <Route path="/reader/:id" element={<Reader />} />
+        <Route path="/novel/:id" element={<NovelReader />} />
+        <Route path="/recommendations" element={<Recommendations />} />
+        <Route path="/stats" element={<Stats />} />
+        <Route path="/logs" element={<Logs />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/group/:id" element={<GroupDetail />} />
+      </Routes>
+    </div>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -35,17 +56,8 @@ function App() {
             <AuthProvider>
               <ToastProvider>
                 <AuthGuard>
-                  <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/comic/:id" element={<ComicDetail />} />
-                    <Route path="/reader/:id" element={<Reader />} />
-                    <Route path="/novel/:id" element={<NovelReader />} />
-                    <Route path="/recommendations" element={<Recommendations />} />
-                    <Route path="/stats" element={<Stats />} />
-                    <Route path="/logs" element={<Logs />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/group/:id" element={<GroupDetail />} />
-                  </Routes>
+                  <PageProgressBar />
+                  <AnimatedRoutes />
                 </AuthGuard>
                 <MobileBottomNav />
               </ToastProvider>
