@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/config"
@@ -364,6 +365,9 @@ func (h *MetadataHandler) Batch(c *gin.Context) {
 			failed++
 			continue
 		}
+
+		// 批量在线搜索限流：每次请求之间间隔 1.5 秒，避免触发外部 API 的 429
+		time.Sleep(1500 * time.Millisecond)
 
 		// 根据文件名自动判断内容类型
 		batchContentType := "comic"
