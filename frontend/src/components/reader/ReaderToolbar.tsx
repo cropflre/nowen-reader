@@ -281,24 +281,24 @@ export default function ReaderToolbar({
               ))}
             </div>
 
-            {/* Direction Toggle */}
+            {/* Direction Toggle — 长条模式下隐藏（长条模式固定为从上到下，无需切换方向） */}
             <div className="flex items-center gap-1 sm:gap-2">
+              {mode !== "webtoon" && (
               <button
                 onClick={() => {
-                  const next = direction === "ltr" ? "rtl" : direction === "rtl" ? "ttb" : "ltr";
+                  const next = direction === "ltr" ? "rtl" : "ltr";
                   onDirectionChange(next);
                 }}
                 className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   direction === "rtl"
                     ? "bg-amber-500/20 text-amber-400"
-                    : direction === "ttb"
-                    ? "bg-emerald-500/20 text-emerald-400"
                     : "text-white/60 hover:text-white hover:bg-white/10"
                 }`}
               >
                 <ArrowLeftRight className="h-4 w-4" />
-                <span className="hidden sm:inline">{direction === "rtl" ? t.readerToolbar.rtl : direction === "ttb" ? t.readerToolbar.ttb : t.readerToolbar.ltr}</span>
+                <span className="hidden sm:inline">{direction === "rtl" ? t.readerToolbar.rtl : t.readerToolbar.ltr}</span>
               </button>
+              )}
 
               {/* 自动翻页按钮 */}
               {onToggleAutoPage && autoPageInterval != null && autoPageInterval > 0 && mode !== "webtoon" && (

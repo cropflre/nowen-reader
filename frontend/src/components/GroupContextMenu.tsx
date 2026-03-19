@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   FolderOpen,
   Pencil,
@@ -32,21 +33,8 @@ export default function GroupContextMenu({
   const t = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  // 调整位置，确保菜单不超出视口
-  const adjustPosition = useCallback(() => {
-    if (!menuRef.current) return { left: x, top: y };
-    const rect = menuRef.current.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let left = x;
-    let top = y;
-    if (left + rect.width > vw - 8) left = vw - rect.width - 8;
-    if (top + rect.height > vh - 8) top = vh - rect.height - 8;
-    if (left < 8) left = 8;
-    if (top < 8) top = 8;
-    return { left, top };
-  }, [x, y]);
+  // 使用 state 管理最终位置，初始隐藏避免闪烁
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   // 点击外部关闭
   useEffect(() => {
@@ -70,13 +58,20 @@ export default function GroupContextMenu({
     };
   }, [onClose]);
 
-  // 调整菜单位置
+  // 挂载后测量菜单尺寸，计算最终位置
   useEffect(() => {
     if (!menuRef.current) return;
-    const { left, top } = adjustPosition();
-    menuRef.current.style.left = `${left}px`;
-    menuRef.current.style.top = `${top}px`;
-  }, [adjustPosition]);
+    const rect = menuRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = x;
+    let top = y;
+    if (left + rect.width > vw - 8) left = vw - rect.width - 8;
+    if (top + rect.height > vh - 8) top = vh - rect.height - 8;
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+    setPos({ left, top });
+  }, [x, y]);
 
   const menuItems = [
     {
@@ -120,11 +115,15 @@ export default function GroupContextMenu({
     }
   };
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       className="fixed z-[100] min-w-[180px] rounded-xl border border-border/60 bg-card/95 py-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
-      style={{ left: x, top: y }}
+      style={{
+        left: pos ? pos.left : x,
+        top: pos ? pos.top : y,
+        visibility: pos ? "visible" : "hidden",
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       {/* 标题 */}
@@ -154,6 +153,7 @@ export default function GroupContextMenu({
           </button>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }
