@@ -19,14 +19,15 @@ func NewSettingsHandler() *SettingsHandler {
 
 // SiteConfigResponse is the full settings response.
 type SiteConfigResponse struct {
-	SiteName        string   `json:"siteName"`
-	ComicsDir       string   `json:"comicsDir"`
-	ExtraComicsDirs []string `json:"extraComicsDirs"`
-	ThumbnailWidth  int      `json:"thumbnailWidth"`
-	ThumbnailHeight int      `json:"thumbnailHeight"`
-	PageSize        int      `json:"pageSize"`
-	Language        string   `json:"language"`
-	Theme           string   `json:"theme"`
+	SiteName         string   `json:"siteName"`
+	ComicsDir        string   `json:"comicsDir"`
+	ExtraComicsDirs  []string `json:"extraComicsDirs"`
+	ThumbnailWidth   int      `json:"thumbnailWidth"`
+	ThumbnailHeight  int      `json:"thumbnailHeight"`
+	PageSize         int      `json:"pageSize"`
+	Language         string   `json:"language"`
+	Theme            string   `json:"theme"`
+	RegistrationMode string   `json:"registrationMode"`
 }
 
 // GET /api/site-settings — Get site settings
@@ -50,14 +51,15 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 	}
 
 	resp := SiteConfigResponse{
-		SiteName:        config.GetSiteName(),
-		ComicsDir:       comicsDir,
-		ExtraComicsDirs: extraDirs,
-		ThumbnailWidth:  config.GetThumbnailWidth(),
-		ThumbnailHeight: config.GetThumbnailHeight(),
-		PageSize:        config.GetPageSize(),
-		Language:        cfg.Language,
-		Theme:           cfg.Theme,
+		SiteName:         config.GetSiteName(),
+		ComicsDir:        comicsDir,
+		ExtraComicsDirs:  extraDirs,
+		ThumbnailWidth:   config.GetThumbnailWidth(),
+		ThumbnailHeight:  config.GetThumbnailHeight(),
+		PageSize:         config.GetPageSize(),
+		Language:         cfg.Language,
+		Theme:            cfg.Theme,
+		RegistrationMode: config.GetRegistrationMode(),
 	}
 
 	if resp.Language == "" {
@@ -73,14 +75,15 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 // PUT /api/site-settings — Update site settings
 func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	var body struct {
-		SiteName        *string  `json:"siteName"`
-		ComicsDir       *string  `json:"comicsDir"`
-		ExtraComicsDirs []string `json:"extraComicsDirs"`
-		ThumbnailWidth  *int     `json:"thumbnailWidth"`
-		ThumbnailHeight *int     `json:"thumbnailHeight"`
-		PageSize        *int     `json:"pageSize"`
-		Language        *string  `json:"language"`
-		Theme           *string  `json:"theme"`
+		SiteName         *string  `json:"siteName"`
+		ComicsDir        *string  `json:"comicsDir"`
+		ExtraComicsDirs  []string `json:"extraComicsDirs"`
+		ThumbnailWidth   *int     `json:"thumbnailWidth"`
+		ThumbnailHeight  *int     `json:"thumbnailHeight"`
+		PageSize         *int     `json:"pageSize"`
+		Language         *string  `json:"language"`
+		Theme            *string  `json:"theme"`
+		RegistrationMode *string  `json:"registrationMode"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -113,6 +116,12 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 	if body.Theme != nil {
 		current.Theme = *body.Theme
+	}
+	if body.RegistrationMode != nil {
+		mode := *body.RegistrationMode
+		if mode == "open" || mode == "invite" || mode == "closed" {
+			current.RegistrationMode = mode
+		}
 	}
 
 	if err := config.SaveSiteConfig(&current); err != nil {

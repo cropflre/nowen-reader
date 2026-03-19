@@ -21,7 +21,7 @@ func NewGroupHandler() *GroupHandler {
 // ============================================================
 
 func (h *GroupHandler) ListGroups(c *gin.Context) {
-	groups, err := store.GetAllGroups()
+	groups, err := store.GetAllGroups(getUserID(c))
 	if err != nil {
 		log.Printf("[API] ListGroups error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取分组列表失败"})
@@ -67,7 +67,7 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	id, err := store.CreateGroup(body.Name)
+	id, err := store.CreateGroup(body.Name, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建分组失败"})
 		return

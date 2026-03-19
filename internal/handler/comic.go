@@ -98,7 +98,8 @@ func (h *ComicHandler) GetComic(c *gin.Context) {
 
 func (h *ComicHandler) ToggleFavorite(c *gin.Context) {
 	id := c.Param("id")
-	newState, err := store.ToggleFavorite(id)
+	uid := getUserID(c)
+	newState, err := store.ToggleFavorite(id, uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to toggle favorite"})
 		return
@@ -126,7 +127,7 @@ func (h *ComicHandler) UpdateRating(c *gin.Context) {
 		return
 	}
 
-	if err := store.UpdateRating(id, body.Rating); err != nil {
+	if err := store.UpdateRating(id, body.Rating, getUserID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update rating"})
 		return
 	}
@@ -147,7 +148,7 @@ func (h *ComicHandler) UpdateProgress(c *gin.Context) {
 		return
 	}
 
-	if err := store.UpdateReadingProgress(id, body.Page); err != nil {
+	if err := store.UpdateReadingProgress(id, body.Page, getUserID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update progress"})
 		return
 	}

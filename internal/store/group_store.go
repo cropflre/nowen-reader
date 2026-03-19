@@ -50,16 +50,24 @@ type GroupComicItem struct {
 }
 
 // GetAllGroups 获取所有分组（带漫画数量）。
-func GetAllGroups() ([]ComicGroupWithCount, error) {
+// 如果提供了 userID，只返回该用户的分组。
+func GetAllGroups(userID ...string) ([]ComicGroupWithCount, error) {
+	var filterSQL string
+	var args []interface{}
+	if len(userID) > 0 && userID[0] != "" {
+		filterSQL = ` WHERE g."userId" = ?`
+		args = append(args, userID[0])
+	}
 	rows, err := db.Query(`
 		SELECT g."id", g."name", g."coverUrl", g."sortOrder",
 		       g."createdAt", g."updatedAt",
 		       COUNT(gi."comicId") as comicCount
 		FROM "ComicGroup" g
 		LEFT JOIN "ComicGroupItem" gi ON gi."groupId" = g."id"
+	`+filterSQL+`
 		GROUP BY g."id"
 		ORDER BY g."sortOrder" ASC, g."name" ASC
-	`)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -154,12 +162,16 @@ func GetGroupByID(groupID int) (*ComicGroupDetail, error) {
 }
 
 // CreateGroup 创建一个新分组。
-func CreateGroup(name string) (int64, error) {
+func CreateGroup(name string, userID ...string) (int64, error) {
 	now := time.Now().UTC()
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
 	res, err := db.Exec(`
-		INSERT INTO "ComicGroup" ("name", "createdAt", "updatedAt")
-		VALUES (?, ?, ?)
-	`, name, now, now)
+		INSERT INTO "ComicGroup" ("name", "userId", "createdAt", "updatedAt")
+		VALUES (?, ?, ?, ?)
+	`, name, uid, now, now)
 	if err != nil {
 		return 0, err
 	}

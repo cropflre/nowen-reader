@@ -17,7 +17,8 @@ func NewGoalHandler() *GoalHandler {
 
 // GetGoalProgress 获取所有阅读目标的进度。
 func (h *GoalHandler) GetGoalProgress(c *gin.Context) {
-	progress, err := store.GetAllGoalProgress()
+	uid := getUserID(c)
+	progress, err := store.GetAllGoalProgress(uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -46,7 +47,7 @@ func (h *GoalHandler) SetGoal(c *gin.Context) {
 		return
 	}
 
-	goal, err := store.SetReadingGoal(req.GoalType, req.TargetMins, req.TargetBooks)
+	goal, err := store.SetReadingGoal(req.GoalType, req.TargetMins, req.TargetBooks, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -62,7 +63,7 @@ func (h *GoalHandler) DeleteGoal(c *gin.Context) {
 		return
 	}
 
-	if err := store.DeleteReadingGoal(goalType); err != nil {
+	if err := store.DeleteReadingGoal(goalType, getUserID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -31,34 +31,90 @@ func FilenameToTitle(filename string) string {
 // ============================================================
 
 // UpdateReadingProgress 更新最后阅读页码和时间戳。
-func UpdateReadingProgress(comicID string, page int) error {
+// 如果 userID 不为空，同时更新 UserComicState。
+func UpdateReadingProgress(comicID string, page int, userID ...string) error {
+	now := time.Now().UTC()
+	// 始终更新 Comic 表（全局默认值 / 向后兼容）
 	_, err := db.Exec(`
 		UPDATE "Comic" SET "lastReadPage" = ?, "lastReadAt" = ?, "updatedAt" = ?
 		WHERE "id" = ?
-	`, page, time.Now().UTC(), time.Now().UTC(), comicID)
+	`, page, now, now, comicID)
+	if err != nil {
+		return err
+	}
+	// 更新 UserComicState
+	if len(userID) > 0 && userID[0] != "" {
+		_, err = db.Exec(`
+			INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt")
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadPage" = ?, "lastReadAt" = ?
+		`, userID[0], comicID, page, now, page, now)
+	}
 	return err
 }
 
 // ToggleFavorite 切换收藏状态，返回新状态。
-func ToggleFavorite(comicID string) (bool, error) {
-	var current int
-	err := db.QueryRow(`SELECT "isFavorite" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&current)
-	if err != nil {
-		return false, err
+func ToggleFavorite(comicID string, userID ...string) (bool, error) {
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
 	}
+
+	// 如果有 userID，从 UserComicState 读取当前状态
+	var current int
+	if uid != "" {
+		err := db.QueryRow(`SELECT COALESCE("isFavorite", 0) FROM "UserComicState" WHERE "userId" = ? AND "comicId" = ?`, uid, comicID).Scan(&current)
+		if err != nil {
+			current = 0 // 不存在则默认未收藏
+		}
+	} else {
+		err := db.QueryRow(`SELECT "isFavorite" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&current)
+		if err != nil {
+			return false, err
+		}
+	}
+
 	newVal := 0
 	if current == 0 {
 		newVal = 1
 	}
-	_, err = db.Exec(`UPDATE "Comic" SET "isFavorite" = ?, "updatedAt" = ? WHERE "id" = ?`,
+
+	// 始终更新 Comic 表
+	_, err := db.Exec(`UPDATE "Comic" SET "isFavorite" = ?, "updatedAt" = ? WHERE "id" = ?`,
 		newVal, time.Now().UTC(), comicID)
-	return newVal == 1, err
+	if err != nil {
+		return false, err
+	}
+
+	// 更新 UserComicState
+	if uid != "" {
+		_, err = db.Exec(`
+			INSERT INTO "UserComicState" ("userId", "comicId", "isFavorite")
+			VALUES (?, ?, ?)
+			ON CONFLICT("userId", "comicId") DO UPDATE SET "isFavorite" = ?
+		`, uid, comicID, newVal, newVal)
+		if err != nil {
+			return newVal == 1, err
+		}
+	}
+
+	return newVal == 1, nil
 }
 
 // UpdateRating 设置评分 (1-5 或 nil 清除)。
-func UpdateRating(comicID string, rating *int) error {
+func UpdateRating(comicID string, rating *int, userID ...string) error {
 	_, err := db.Exec(`UPDATE "Comic" SET "rating" = ?, "updatedAt" = ? WHERE "id" = ?`,
 		rating, time.Now().UTC(), comicID)
+	if err != nil {
+		return err
+	}
+	if len(userID) > 0 && userID[0] != "" {
+		_, err = db.Exec(`
+			INSERT INTO "UserComicState" ("userId", "comicId", "rating")
+			VALUES (?, ?, ?)
+			ON CONFLICT("userId", "comicId") DO UPDATE SET "rating" = ?
+		`, userID[0], comicID, rating, rating)
+	}
 	return err
 }
 

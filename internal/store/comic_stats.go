@@ -15,11 +15,15 @@ import (
 // ============================================================
 
 // StartReadingSession 创建一个新的阅读会话。
-func StartReadingSession(comicID string, startPage int) (int64, error) {
+func StartReadingSession(comicID string, startPage int, userID ...string) (int64, error) {
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
 	res, err := db.Exec(`
-		INSERT INTO "ReadingSession" ("comicId", "startPage", "startedAt")
-		VALUES (?, ?, ?)
-	`, comicID, startPage, time.Now().UTC())
+		INSERT INTO "ReadingSession" ("comicId", "userId", "startPage", "startedAt")
+		VALUES (?, ?, ?, ?)
+	`, comicID, uid, startPage, time.Now().UTC())
 	if err != nil {
 		return 0, err
 	}
@@ -27,7 +31,7 @@ func StartReadingSession(comicID string, startPage int) (int64, error) {
 }
 
 // EndReadingSession 完成一个阅读会话并更新漫画的总阅读时间。
-func EndReadingSession(sessionID int, endPage int, duration int) error {
+func EndReadingSession(sessionID int, endPage int, duration int, userID ...string) error {
 	// Get the comicId from the session
 	var comicID string
 	err := db.QueryRow(`SELECT "comicId" FROM "ReadingSession" WHERE "id" = ?`, sessionID).Scan(&comicID)
@@ -48,6 +52,18 @@ func EndReadingSession(sessionID int, endPage int, duration int) error {
 	_, err = db.Exec(`
 		UPDATE "Comic" SET "totalReadTime" = "totalReadTime" + ? WHERE "id" = ?
 	`, duration, comicID)
+	if err != nil {
+		return err
+	}
+
+	// 更新 UserComicState 的总阅读时间
+	if len(userID) > 0 && userID[0] != "" {
+		_, err = db.Exec(`
+			INSERT INTO "UserComicState" ("userId", "comicId", "totalReadTime")
+			VALUES (?, ?, ?)
+			ON CONFLICT("userId", "comicId") DO UPDATE SET "totalReadTime" = "totalReadTime" + ?
+		`, userID[0], comicID, duration, duration)
+	}
 	return err
 }
 
@@ -81,11 +97,18 @@ type DailyStatItem struct {
 	Sessions int    `json:"sessions"`
 }
 
-// GetReadingStats 返回聚合的阅读统计数据。
-func GetReadingStats() (*ReadingStatsResult, error) {
+// GetReadingStats 返回聚合的阅读统计数据（可按 userId 过滤）。
+func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 	result := &ReadingStatsResult{
 		RecentSessions: []RecentSessionItem{},
 		DailyStats:     []DailyStatItem{},
+	}
+
+	uidFilter := ""
+	var args []interface{}
+	if len(userID) > 0 && userID[0] != "" {
+		uidFilter = ` AND rs."userId" = ?`
+		args = append(args, userID[0])
 	}
 
 	// Recent 50 sessions
@@ -94,9 +117,10 @@ func GetReadingStats() (*ReadingStatsResult, error) {
 		       rs."duration", rs."startPage", rs."endPage"
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
+		WHERE 1=1`+uidFilter+`
 		ORDER BY rs."startedAt" DESC
 		LIMIT 50
-	`)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -118,21 +142,33 @@ func GetReadingStats() (*ReadingStatsResult, error) {
 	}
 
 	// Aggregates
-	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession"`).
+	aggArgs := []interface{}{}
+	aggFilter := ""
+	if len(userID) > 0 && userID[0] != "" {
+		aggFilter = ` WHERE "userId" = ?`
+		aggArgs = append(aggArgs, userID[0])
+	}
+	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession"`+aggFilter, aggArgs...).
 		Scan(&result.TotalReadTime, &result.TotalSessions)
 
-	db.QueryRow(`SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"`).
+	db.QueryRow(`SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"`+aggFilter, aggArgs...).
 		Scan(&result.TotalComicsRead)
 
 	// Daily stats (last 30 days)
 	thirtyDaysAgo := time.Now().AddDate(0, 0, -30).UTC().Format(time.RFC3339)
+	dailyArgs := []interface{}{thirtyDaysAgo}
+	dailyFilter := ""
+	if len(userID) > 0 && userID[0] != "" {
+		dailyFilter = ` AND rs."userId" = ?`
+		dailyArgs = append(dailyArgs, userID[0])
+	}
 	dailyRows, err := db.Query(`
 		SELECT DATE(rs."startedAt") as d, SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ?
+		WHERE rs."startedAt" >= ?`+dailyFilter+`
 		GROUP BY d
 		ORDER BY d ASC
-	`, thirtyDaysAgo)
+	`, dailyArgs...)
 	if err == nil {
 		defer dailyRows.Close()
 		for dailyRows.Next() {

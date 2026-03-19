@@ -19,7 +19,8 @@ func NewStatsHandler() *StatsHandler {
 
 // GET /api/stats — Get reading statistics
 func (h *StatsHandler) GetStats(c *gin.Context) {
-	stats, err := store.GetReadingStats()
+	uid := getUserID(c)
+	stats, err := store.GetReadingStats(uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get stats"})
 		return
@@ -59,7 +60,7 @@ func (h *StatsHandler) StartSession(c *gin.Context) {
 		return
 	}
 
-	sessionID, err := store.StartReadingSession(body.ComicID, body.StartPage)
+	sessionID, err := store.StartReadingSession(body.ComicID, body.StartPage, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start session"})
 		return
@@ -83,7 +84,7 @@ func (h *StatsHandler) EndSession(c *gin.Context) {
 		return
 	}
 
-	if err := store.EndReadingSession(body.SessionID, body.EndPage, body.Duration); err != nil {
+	if err := store.EndReadingSession(body.SessionID, body.EndPage, body.Duration, getUserID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to end session"})
 		return
 	}

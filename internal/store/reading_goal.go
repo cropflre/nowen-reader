@@ -31,15 +31,19 @@ type ReadingGoalProgress struct {
 	Achieved        bool        `json:"achieved"`        // 是否已达成
 }
 
-// GetReadingGoal 获取当前阅读目标（只保留一个目标 per goalType）。
-func GetReadingGoal(goalType string) (*ReadingGoal, error) {
+// GetReadingGoal 获取当前阅读目标（只保留一个目标 per goalType per userId）。
+func GetReadingGoal(goalType string, userID ...string) (*ReadingGoal, error) {
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
 	var goal ReadingGoal
 	err := db.QueryRow(`
 		SELECT "id", "goalType", "targetMins", "targetBooks", "createdAt", "updatedAt"
 		FROM "ReadingGoal"
-		WHERE "goalType" = ?
+		WHERE "goalType" = ? AND "userId" = ?
 		LIMIT 1
-	`, goalType).Scan(&goal.ID, &goal.GoalType, &goal.TargetMins, &goal.TargetBooks, &goal.CreatedAt, &goal.UpdatedAt)
+	`, goalType, uid).Scan(&goal.ID, &goal.GoalType, &goal.TargetMins, &goal.TargetBooks, &goal.CreatedAt, &goal.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -51,31 +55,43 @@ func GetReadingGoal(goalType string) (*ReadingGoal, error) {
 }
 
 // SetReadingGoal 创建或更新阅读目标（upsert）。
-func SetReadingGoal(goalType string, targetMins int, targetBooks int) (*ReadingGoal, error) {
+func SetReadingGoal(goalType string, targetMins int, targetBooks int, userID ...string) (*ReadingGoal, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
 
 	_, err := db.Exec(`
-		INSERT INTO "ReadingGoal" ("goalType", "targetMins", "targetBooks", "createdAt", "updatedAt")
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT("goalType") DO UPDATE SET
+		INSERT INTO "ReadingGoal" ("goalType", "userId", "targetMins", "targetBooks", "createdAt", "updatedAt")
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT("userId", "goalType") DO UPDATE SET
 			"targetMins" = ?, "targetBooks" = ?, "updatedAt" = ?
-	`, goalType, targetMins, targetBooks, now, now, targetMins, targetBooks, now)
+	`, goalType, uid, targetMins, targetBooks, now, now, targetMins, targetBooks, now)
 	if err != nil {
 		return nil, err
 	}
 
-	return GetReadingGoal(goalType)
+	return GetReadingGoal(goalType, uid)
 }
 
 // DeleteReadingGoal 删除指定类型的阅读目标。
-func DeleteReadingGoal(goalType string) error {
-	_, err := db.Exec(`DELETE FROM "ReadingGoal" WHERE "goalType" = ?`, goalType)
+func DeleteReadingGoal(goalType string, userID ...string) error {
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
+	_, err := db.Exec(`DELETE FROM "ReadingGoal" WHERE "goalType" = ? AND "userId" = ?`, goalType, uid)
 	return err
 }
 
 // GetReadingGoalProgress 获取阅读目标及其当前进度。
-func GetReadingGoalProgress(goalType string) (*ReadingGoalProgress, error) {
-	goal, err := GetReadingGoal(goalType)
+func GetReadingGoalProgress(goalType string, userID ...string) (*ReadingGoalProgress, error) {
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
+	goal, err := GetReadingGoal(goalType, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -102,24 +118,38 @@ func GetReadingGoalProgress(goalType string) (*ReadingGoalProgress, error) {
 		return nil, nil
 	}
 
+	pStart := periodStart.Format("2006-01-02 15:04:05")
+	pEnd := periodEnd.Format("2006-01-02 15:04:05")
+
 	// 查询当前周期内的阅读时长
 	var totalDuration int
-	err = db.QueryRow(`
-		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ? AND "startedAt" < ?
-	`, periodStart.Format("2006-01-02 15:04:05"), periodEnd.Format("2006-01-02 15:04:05")).Scan(&totalDuration)
+	if uid != "" {
+		err = db.QueryRow(`
+			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
+			WHERE "startedAt" >= ? AND "startedAt" < ? AND "userId" = ?
+		`, pStart, pEnd, uid).Scan(&totalDuration)
+	} else {
+		err = db.QueryRow(`
+			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
+			WHERE "startedAt" >= ? AND "startedAt" < ?
+		`, pStart, pEnd).Scan(&totalDuration)
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	// 查询当前周期内的阅读本数
 	var bookCount int
-	err = db.QueryRow(`
-		SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
-		WHERE "startedAt" >= ? AND "startedAt" < ?
-	`, periodStart.Format("2006-01-02 15:04:05"), periodEnd.Format("2006-01-02 15:04:05")).Scan(&bookCount)
-	if err != nil {
-		return nil, err
+	if uid != "" {
+		err = db.QueryRow(`
+			SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
+			WHERE "startedAt" >= ? AND "startedAt" < ? AND "userId" = ?
+		`, pStart, pEnd, uid).Scan(&bookCount)
+	} else {
+		err = db.QueryRow(`
+			SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
+			WHERE "startedAt" >= ? AND "startedAt" < ?
+		`, pStart, pEnd).Scan(&bookCount)
 	}
 
 	currentMins := totalDuration / 60
@@ -162,11 +192,11 @@ func GetReadingGoalProgress(goalType string) (*ReadingGoalProgress, error) {
 }
 
 // GetAllGoalProgress 获取所有类型的目标进度。
-func GetAllGoalProgress() ([]ReadingGoalProgress, error) {
+func GetAllGoalProgress(userID ...string) ([]ReadingGoalProgress, error) {
 	var results []ReadingGoalProgress
 
 	for _, goalType := range []string{"daily", "weekly"} {
-		progress, err := GetReadingGoalProgress(goalType)
+		progress, err := GetReadingGoalProgress(goalType, userID...)
 		if err != nil {
 			continue
 		}

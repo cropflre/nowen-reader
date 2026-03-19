@@ -1729,7 +1729,7 @@ func (h *AIHandler) RecommendGoal(c *gin.Context) {
 	}
 
 	// 收集当前目标
-	goalProgress, _ := store.GetAllGoalProgress()
+	goalProgress, _ := store.GetAllGoalProgress(getUserID(c))
 	var currentGoals []map[string]interface{}
 	for _, gp := range goalProgress {
 		currentGoals = append(currentGoals, map[string]interface{}{
