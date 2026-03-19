@@ -63,9 +63,14 @@ export default function ReaderPage() {
   const { comic: comicDetail, refetch: refetchDetail } =
     useComicDetail(comicId);
 
+  // 检测微信浏览器 — 微信 WebView 不支持 PDF.js，需降级为后端图片渲染模式
+  const isWeChatBrowser = typeof navigator !== "undefined" && /micromessenger|wechat/i.test(navigator.userAgent);
+  // 在微信浏览器中 PDF 使用后端图片渲染，不走 PdfView
+  const usePdfView = isPdf && !isWeChatBrowser;
+
   // Determine data source
   const [pdfTotalPages, setPdfTotalPages] = useState<number | null>(null);
-  const pages = pdfTotalPages && isPdf
+  const pages = pdfTotalPages && usePdfView
     ? Array.from({ length: pdfTotalPages }, (_, i) => `/api/comics/${comicId}/page/${i}`)
     : apiPages;
   const title = apiTitle || t.reader.unknownComic;
@@ -515,7 +520,7 @@ export default function ReaderPage() {
       readerTheme === "day" ? "bg-gray-100" : "bg-black"
     }`}>
       {/* Reading View */}
-      {isPdf ? (
+      {usePdfView ? (
         <PdfView
           comicId={comicId}
           totalPages={pages.length}
