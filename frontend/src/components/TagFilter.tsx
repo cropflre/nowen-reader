@@ -26,16 +26,16 @@ const tagColorMap: Record<string, string> = {
 };
 
 const tagActiveColorMap: Record<string, string> = {
-  Action: "bg-red-500/20 border-red-500/50 text-red-300",
-  Romance: "bg-pink-500/20 border-pink-500/50 text-pink-300",
-  Comedy: "bg-amber-500/20 border-amber-500/50 text-amber-300",
-  Fantasy: "bg-indigo-500/20 border-indigo-500/50 text-indigo-300",
-  Horror: "bg-purple-500/20 border-purple-500/50 text-purple-300",
-  "Sci-Fi": "bg-cyan-500/20 border-cyan-500/50 text-cyan-300",
-  Drama: "bg-green-500/20 border-green-500/50 text-green-300",
-  "Slice of Life": "bg-orange-500/20 border-orange-500/50 text-orange-300",
-  Adventure: "bg-blue-500/20 border-blue-500/50 text-blue-300",
-  Mystery: "bg-rose-500/20 border-rose-500/50 text-rose-300",
+  Action: "bg-red-500/20 border-red-500/50 text-red-600 dark:text-red-300",
+  Romance: "bg-pink-500/20 border-pink-500/50 text-pink-600 dark:text-pink-300",
+  Comedy: "bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-300",
+  Fantasy: "bg-indigo-500/20 border-indigo-500/50 text-indigo-600 dark:text-indigo-300",
+  Horror: "bg-purple-500/20 border-purple-500/50 text-purple-600 dark:text-purple-300",
+  "Sci-Fi": "bg-cyan-500/20 border-cyan-500/50 text-cyan-600 dark:text-cyan-300",
+  Drama: "bg-green-500/20 border-green-500/50 text-green-600 dark:text-green-300",
+  "Slice of Life": "bg-orange-500/20 border-orange-500/50 text-orange-600 dark:text-orange-300",
+  Adventure: "bg-blue-500/20 border-blue-500/50 text-blue-600 dark:text-blue-300",
+  Mystery: "bg-rose-500/20 border-rose-500/50 text-rose-600 dark:text-rose-300",
 };
 
 export default function TagFilter({
@@ -159,7 +159,7 @@ export default function TagFilter({
                   key={tag}
                   onClick={() => onTagToggle(tag)}
                   className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
-                    tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
+                    tagActiveColorMap[tag] || "bg-accent/15 border-accent/40 text-accent"
                   }`}
                 >
                   {tag} ×
@@ -194,8 +194,8 @@ export default function TagFilter({
                   onClick={() => onTagToggle(tag)}
                   className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
                     isActive
-                      ? tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
-                      : tagColorMap[tag] || "border-border/60 text-muted hover:text-foreground"
+                      ? tagActiveColorMap[tag] || "bg-accent/15 border-accent/40 text-accent"
+                      : tagColorMap[tag] || "border-border/60 text-muted hover:text-foreground hover:border-border"
                   }`}
                 >
                   {tag}
@@ -252,7 +252,7 @@ export default function TagFilter({
                     onClick={() => onTagToggle(tag)}
                     className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
                       isActive
-                        ? tagActiveColorMap[tag] || "bg-zinc-500/20 border-zinc-500/50 text-zinc-300"
+                        ? tagActiveColorMap[tag] || "bg-accent/15 border-accent/40 text-accent"
                         : tagColorMap[tag] || "border-border/60 text-muted hover:text-foreground"
                     }`}
                   >

@@ -339,6 +339,8 @@ func (h *ImageHandler) GetPdfFile(c *gin.Context) {
 	// 设置响应头
 	c.Header("Content-Type", "application/pdf")
 	c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
+	c.Header("Content-Disposition", "inline") // 防止微信浏览器触发下载
+	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Cache-Control", "public, max-age=86400")
 	c.Header("Accept-Ranges", "bytes")
 

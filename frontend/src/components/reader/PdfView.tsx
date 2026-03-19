@@ -34,6 +34,13 @@ export default function PdfView({
   const [scale, setScale] = useState(1);
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
 
+  // 检测微信浏览器
+  const isWeChatBrowser = useCallback(() => {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent.toLowerCase();
+    return ua.includes("micromessenger") || ua.includes("wechat");
+  }, []);
+
   // 触摸手势状态
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const pinchStartDistRef = useRef<number | null>(null);
@@ -54,16 +61,40 @@ export default function PdfView({
         // 动态导入 pdfjs-dist
         const pdfjsLib = await import("pdfjs-dist");
 
-        // 设置 worker — 优先使用本地文件，回退到 CDN
+        // 设置 worker — 优先使用本地文件，回退到 CDN，最终降级到无 Worker 模式
+        // 微信浏览器等不支持 ESM Worker 的环境会走降级路径
+        let workerReady = false;
         try {
           const workerModule = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
           pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+          workerReady = true;
         } catch {
-          // 回退到 CDN
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+          // 本地 worker 加载失败，尝试 CDN
+          try {
+            const cdnUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+            // 先测试 CDN 是否可达（微信浏览器中可能被拦截）
+            const resp = await fetch(cdnUrl, { method: "HEAD", mode: "no-cors" }).catch(() => null);
+            if (resp) {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = cdnUrl;
+              workerReady = true;
+            }
+          } catch {
+            // CDN 也不可用
+          }
         }
 
-        const loadingTask = pdfjsLib.getDocument(`/api/comics/${comicId}/pdf`);
+        // 最终降级：禁用 Worker，在主线程运行（兼容微信浏览器等受限环境）
+        if (!workerReady) {
+          console.warn("[PdfView] Worker 不可用，降级为主线程模式（兼容微信浏览器）");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+        }
+
+        const loadingTask = pdfjsLib.getDocument({
+          url: `/api/comics/${comicId}/pdf`,
+          // 部分 WebView 不支持 Range 请求，允许禁用
+          disableRange: isWeChatBrowser(),
+          disableStream: isWeChatBrowser(),
+        });
         const doc = await loadingTask.promise;
 
         if (!cancelled) {
@@ -335,6 +366,7 @@ export default function PdfView({
 
   // 错误
   if (error) {
+    const isWeChat = isWeChatBrowser();
     return (
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-center px-4">
@@ -351,14 +383,37 @@ export default function PdfView({
               readerTheme === "day" ? "text-gray-400" : "text-white/40"
             }`}
           >
-            {error}
+            {isWeChat
+              ? "微信浏览器对 PDF 的支持有限，建议在外部浏览器中打开"
+              : error}
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-1 rounded-lg bg-accent/20 px-4 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
-          >
-            重试
-          </button>
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-accent/20 px-4 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
+            >
+              重试
+            </button>
+            {isWeChat && (
+              <button
+                onClick={() => {
+                  // 微信内引导用户复制链接到外部浏览器
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(window.location.href).then(() => {
+                      alert("链接已复制，请在浏览器中粘贴打开");
+                    }).catch(() => {
+                      prompt("请复制以下链接到浏览器中打开：", window.location.href);
+                    });
+                  } else {
+                    prompt("请复制以下链接到浏览器中打开：", window.location.href);
+                  }
+                }}
+                className="rounded-lg bg-green-600/20 px-4 py-1.5 text-xs text-green-400 hover:bg-green-600/30 transition-colors"
+              >
+                复制链接
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

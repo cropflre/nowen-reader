@@ -4,7 +4,7 @@ export type ComicReadingMode = "single" | "double" | "webtoon";
 // Legacy alias — kept for backward compatibility
 export type ReadingMode = ComicReadingMode | "text";
 
-export type ReadingDirection = "ltr" | "rtl"; // left-to-right or right-to-left (manga style)
+export type ReadingDirection = "ltr" | "rtl" | "ttb"; // left-to-right, right-to-left (manga), top-to-bottom (webtoon scroll)
 
 // 适应显示模式
 export type FitMode = "container" | "width" | "height";
@@ -31,6 +31,10 @@ export interface ReaderOptions {
   infiniteScroll: boolean;
   // 自动翻页间隔（秒），0 表示禁用
   autoPageInterval: number;
+  // 显示页面翻译按钮
+  showTranslate: boolean;
+  // 显示 AI 助手按钮
+  showAIChat: boolean;
 }
 
 export const defaultReaderOptions: ReaderOptions = {
@@ -44,6 +48,8 @@ export const defaultReaderOptions: ReaderOptions = {
   progressTracking: true,
   infiniteScroll: false,
   autoPageInterval: 10,
+  showTranslate: true,
+  showAIChat: true,
 };
 
 export interface ReaderSettings {

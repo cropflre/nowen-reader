@@ -1124,7 +1124,7 @@ func (h *AIHandler) EnhanceGroupDetect(c *gin.Context) {
 		return
 	}
 
-	// ── 第一阶段：先跑自带智能检测 ──
+	// ── 第一阶段：先跑自带智能分组 ──
 	localSuggestions, err := store.AutoDetectGroups()
 	if err != nil {
 		localSuggestions = []store.AutoDetectGroup{}

@@ -79,9 +79,23 @@ export default function Home() {
   const { locale: rawLocale } = useLocale();
   const locale = rawLocale === "zh-CN" ? "zh" : "en";
   const toast = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
+  // 会话筛选条件保持（sessionStorage）
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("homeFilter:search") || "";
+    }
+    return "";
+  });
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("homeFilter:tags");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("viewMode");
@@ -90,10 +104,30 @@ export default function Home() {
     return "grid";
   });
   const [uploading, setUploading] = useState(false);
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<string>("title");
-  const [sortOrder, setSortOrder] = useState<string>("asc");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [favoritesOnly, setFavoritesOnly] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("homeFilter:favorites") === "true";
+    }
+    return false;
+  });
+  const [sortBy, setSortBy] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("homeFilter:sortBy") || "title";
+    }
+    return "title";
+  });
+  const [sortOrder, setSortOrder] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("homeFilter:sortOrder") || "asc";
+    }
+    return "asc";
+  });
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("homeFilter:category") || null;
+    }
+    return null;
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
 
@@ -152,7 +186,36 @@ export default function Home() {
   const [renameValue, setRenameValue] = useState("");
 
   // 内容类型 Tab
-  const [contentType, setContentType] = useState<"" | "comic" | "novel">("");
+  const [contentType, setContentType] = useState<"" | "comic" | "novel">(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("homeFilter:contentType");
+      if (saved === "comic" || saved === "novel") return saved;
+    }
+    return "";
+  });
+
+  // 筛选条件变更时同步到 sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:search", searchQuery);
+  }, [searchQuery]);
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:tags", JSON.stringify(selectedTags));
+  }, [selectedTags]);
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:favorites", String(favoritesOnly));
+  }, [favoritesOnly]);
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:sortBy", sortBy);
+  }, [sortBy]);
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:sortOrder", sortOrder);
+  }, [sortOrder]);
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:category", selectedCategory || "");
+  }, [selectedCategory]);
+  useEffect(() => {
+    sessionStorage.setItem("homeFilter:contentType", contentType);
+  }, [contentType]);
 
   // AI 语义搜索 handler
   const handleAiSearch = useCallback(async (query: string) => {
@@ -820,10 +883,10 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 <button
                   onClick={() => setShowAutoDetect(true)}
                   className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-2.5 sm:px-3 text-xs font-medium text-muted transition-all hover:text-foreground"
-                  title={t.comicGroup?.autoDetect || "智能检测"}
+                  title={t.comicGroup?.autoDetect || "智能分组"}
                 >
                   <Brain className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t.comicGroup?.autoDetect || "智能检测"}</span>
+                  <span className="hidden sm:inline">{t.comicGroup?.autoDetect || "智能分组"}</span>
                 </button>
 
                 {/* Batch Mode Toggle */}
@@ -1012,7 +1075,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                     {t.comicGroup?.noGroups || "还没有分组"}
                   </h3>
                   <p className="max-w-sm text-sm text-muted mb-5">
-                    {t.comicGroup?.noGroupsHint || "可以通过智能检测或批量选择漫画来创建分组"}
+                    {t.comicGroup?.noGroupsHint || "可以通过智能分组或批量选择漫画来创建分组"}
                   </p>
                 </div>
               )

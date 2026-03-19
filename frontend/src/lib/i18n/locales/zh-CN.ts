@@ -293,15 +293,21 @@ const zhCN = {
     text: "文本",
     rtl: "右→左",
     ltr: "左→右",
+    ttb: "上→下",
     dayMode: "日间",
     nightMode: "夜间",
     settings: "设置",
+    autoPage: "自动翻页",
+    autoPageStop: "停止翻页",
   },
 
   // 阅读器选项面板
   readerOptions: {
     title: "阅读器选项",
-    autoSaveHint: "这些选项会自动保存 -- 点击查看效果!",
+    autoSaveHint: "选项自动保存",
+    groupDisplay: "显示",
+    groupAdvanced: "高级",
+    groupBehavior: "行为",
     fitMode: "适应显示",
     fitContainer: "容器",
     fitWidth: "宽度",
@@ -315,8 +321,9 @@ const zhCN = {
     readingDirection: "阅读方向",
     ltr: "从左到右",
     rtl: "从右到左",
+    ttb: "从上到下",
     preloadCount: "预加载图片数量",
-    header: "头",
+    header: "页码指示器",
     headerVisible: "可见",
     headerHidden: "隐藏",
     defaultOverlay: "默认显示档案覆盖层",
@@ -325,9 +332,13 @@ const zhCN = {
     disable: "禁用",
     progressTracking: "进度跟踪",
     progressTrackingDesc: "禁用进度跟踪的话,每次打开阅读器时从第一页重新开始阅读。",
-    infiniteScroll: "无极滚动",
-    infiniteScrollDesc: "在同一页面中以垂直视图显示所有图片。",
+
     autoPageInterval: "自动翻页间隔(秒)",
+    autoPageIntervalDesc: "设为0则禁用，设置后可在工具栏启停",
+    showTranslate: "页面翻译",
+    showTranslateDesc: "显示页面翻译按钮，支持 AI 实时翻译漫画内容",
+    showAIChat: "AI 助手",
+    showAIChatDesc: "显示 AI 助手按钮，可以智能问答漫画内容",
   },
 
   // Duration formatting
@@ -515,6 +526,11 @@ const zhCN = {
     themeDark: "深色",
     themeLight: "浅色",
     themeSystem: "跟随系统",
+    defaultReadingMode: "默认阅读模式",
+    defaultReadingModeDesc: "进入漫画阅读器时默认使用的翻页模式",
+    modeSingle: "单页模式",
+    modeDouble: "双页模式",
+    modeWebtoon: "长条滚动",
     saved: "已保存",
     restartHint: "部分设置需要重启后生效",
   },
@@ -687,7 +703,7 @@ const zhCN = {
     volumes: "卷",
     totalPages: "总页数",
     totalReadTime: "总阅读时长",
-    autoDetect: "智能检测",
+autoDetect: "智能分组",
     autoDetecting: "正在检测...",
     autoDetectDesc: "自动识别可合并的同系列漫画",
     foundSuggestions: "发现 {count} 个可合并的系列",
@@ -705,7 +721,7 @@ const zhCN = {
     volumeIndex: "第 {index} 卷",
     dragToReorder: "拖拽排序",
     noGroups: "还没有分组",
-    noGroupsHint: "可以选中多本漫画后合并为分组，或使用智能检测自动发现同系列漫画",
+    noGroupsHint: "可以选中多本漫画后合并为分组，或使用智能分组自动发现同系列漫画",
     aiEnhanceDetect: "智能 + AI 检测",
     aiDetecting: "AI 深度分析中...",
     searchComicHint: "输入关键词搜索漫画",
@@ -993,13 +1009,19 @@ export interface Translations {
     text: string;
     rtl: string;
     ltr: string;
+    ttb: string;
     dayMode: string;
     nightMode: string;
     settings: string;
+    autoPage: string;
+    autoPageStop: string;
   };
   readerOptions: {
     title: string;
     autoSaveHint: string;
+    groupDisplay: string;
+    groupAdvanced: string;
+    groupBehavior: string;
     fitMode: string;
     fitContainer: string;
     fitWidth: string;
@@ -1023,9 +1045,13 @@ export interface Translations {
     disable: string;
     progressTracking: string;
     progressTrackingDesc: string;
-    infiniteScroll: string;
-    infiniteScrollDesc: string;
+    ttb: string;
     autoPageInterval: string;
+    autoPageIntervalDesc: string;
+    showTranslate: string;
+    showTranslateDesc: string;
+    showAIChat: string;
+    showAIChatDesc: string;
   };
   duration: {
     seconds: string;
@@ -1199,6 +1225,11 @@ export interface Translations {
     themeDark: string;
     themeLight: string;
     themeSystem: string;
+    defaultReadingMode: string;
+    defaultReadingModeDesc: string;
+    modeSingle: string;
+    modeDouble: string;
+    modeWebtoon: string;
     saved: string;
     restartHint: string;
   };

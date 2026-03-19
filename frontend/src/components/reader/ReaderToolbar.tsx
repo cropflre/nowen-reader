@@ -14,6 +14,8 @@ import {
   Sun,
   Moon,
   Settings,
+  Play,
+  Square,
 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { ComicReadingMode, ReadingDirection } from "@/types/reader";
@@ -38,6 +40,12 @@ interface ReaderToolbarProps {
   onToggleTheme: () => void;
   onShowInfo?: () => void;
   onShowSettings?: () => void;
+  /** 自动翻页是否激活 */
+  autoPageActive?: boolean;
+  /** 自动翻页间隔（秒），为 0 或未设置时不显示按钮 */
+  autoPageInterval?: number;
+  /** 切换自动翻页 */
+  onToggleAutoPage?: () => void;
   /** 通知父组件工具栏正在被交互，不要自动隐藏 */
   onInteracting?: (interacting: boolean) => void;
 }
@@ -59,6 +67,9 @@ export default function ReaderToolbar({
   onToggleTheme,
   onShowInfo,
   onShowSettings,
+  autoPageActive,
+  autoPageInterval,
+  onToggleAutoPage,
   onInteracting,
 }: ReaderToolbarProps) {
   const t = useTranslation();
@@ -273,18 +284,41 @@ export default function ReaderToolbar({
             {/* Direction Toggle */}
             <div className="flex items-center gap-1 sm:gap-2">
               <button
-                onClick={() =>
-                  onDirectionChange(direction === "ltr" ? "rtl" : "ltr")
-                }
+                onClick={() => {
+                  const next = direction === "ltr" ? "rtl" : direction === "rtl" ? "ttb" : "ltr";
+                  onDirectionChange(next);
+                }}
                 className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   direction === "rtl"
                     ? "bg-amber-500/20 text-amber-400"
+                    : direction === "ttb"
+                    ? "bg-emerald-500/20 text-emerald-400"
                     : "text-white/60 hover:text-white hover:bg-white/10"
                 }`}
               >
                 <ArrowLeftRight className="h-4 w-4" />
-                <span className="hidden sm:inline">{direction === "rtl" ? t.readerToolbar.rtl : t.readerToolbar.ltr}</span>
+                <span className="hidden sm:inline">{direction === "rtl" ? t.readerToolbar.rtl : direction === "ttb" ? t.readerToolbar.ttb : t.readerToolbar.ltr}</span>
               </button>
+
+              {/* 自动翻页按钮 */}
+              {onToggleAutoPage && autoPageInterval != null && autoPageInterval > 0 && mode !== "webtoon" && (
+                <button
+                  onClick={onToggleAutoPage}
+                  className={`flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                    autoPageActive
+                      ? "bg-green-500/20 text-green-400 animate-pulse"
+                      : "text-white/60 hover:text-white hover:bg-white/10"
+                  }`}
+                  title={autoPageActive ? t.readerToolbar.autoPageStop : t.readerToolbar.autoPage}
+                >
+                  {autoPageActive ? (
+                    <Square className="h-3.5 w-3.5 fill-current" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5 fill-current" />
+                  )}
+                  <span className="hidden sm:inline">{autoPageActive ? t.readerToolbar.autoPageStop : t.readerToolbar.autoPage}</span>
+                </button>
+              )}
 
               <button
                 onClick={onToggleTheme}

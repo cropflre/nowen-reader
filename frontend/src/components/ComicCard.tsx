@@ -86,7 +86,7 @@ function TagChip({ tag, tagObj }: { tag: string; tagObj?: ApiComicTag }) {
   const name = typeof source === "string" ? source : source.name;
   return (
     <span
-      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-medium ${className || ""}`}
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] leading-normal font-medium ${className || ""}`}
       style={style}
     >
       {name}
@@ -248,12 +248,12 @@ const ComicCard = memo(function ComicCard({
                       <span className="text-[10px] text-amber-400">{comic.rating}</span>
                     </div>
                   )}
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     {(comic.tags || []).slice(0, 2).map((tag) => (
                       <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                     ))}
                     {(comic.tags || []).length > 2 && (
-                      <span className="inline-block rounded-md bg-muted/10 px-1.5 py-0.5 text-[10px] text-muted sm:hidden">
+                      <span className="inline-flex items-center rounded-md bg-muted/10 px-1.5 py-0.5 text-[10px] leading-normal text-muted sm:hidden">
                         +{(comic.tags || []).length - 2}
                       </span>
                     )}
@@ -347,7 +347,7 @@ const ComicCard = memo(function ComicCard({
             </div>
             <div className="p-3">
               <h3 className="mb-2 truncate text-sm font-medium text-foreground/90">{comic.title}</h3>
-              <div className="flex flex-wrap gap-1.5">
+<div className="flex flex-wrap items-center gap-1.5">
                 {(comic.tags || []).slice(0, 3).map((tag) => (
                   <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                 ))}
@@ -419,7 +419,7 @@ const ComicCard = memo(function ComicCard({
 
               <div className="p-3">
                 <h3 className="mb-2 truncate text-sm font-medium text-foreground/90 group-hover:text-foreground">{comic.title}</h3>
-                <div className="flex flex-wrap gap-1.5">
+<div className="flex flex-wrap items-center gap-1.5">
                   {(comic.tags || []).slice(0, 3).map((tag) => (
                     <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
                   ))}

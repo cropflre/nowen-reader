@@ -77,7 +77,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
   background: #a0a0a0;
 }
 
-/* Tag color palette */
+/* Tag color palette — 暗色主题 */
 .tag-action { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 .tag-romance { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
 .tag-comedy { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
@@ -89,6 +89,19 @@ html.light ::-webkit-scrollbar-thumb:hover {
 .tag-adventure { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
 .tag-mystery { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
 .tag-default { background: rgba(161, 161, 170, 0.15); color: #a1a1aa; }
+
+/* Tag color palette — 亮色主题（更深的颜色以提高对比度） */
+html.light .tag-action { background: rgba(220, 38, 38, 0.12); color: #dc2626; }
+html.light .tag-romance { background: rgba(219, 39, 119, 0.12); color: #db2777; }
+html.light .tag-comedy { background: rgba(217, 119, 6, 0.12); color: #d97706; }
+html.light .tag-fantasy { background: rgba(79, 70, 229, 0.12); color: #4f46e5; }
+html.light .tag-horror { background: rgba(147, 51, 234, 0.12); color: #9333ea; }
+html.light .tag-sci-fi { background: rgba(8, 145, 178, 0.12); color: #0891b2; }
+html.light .tag-drama { background: rgba(22, 163, 74, 0.12); color: #16a34a; }
+html.light .tag-slice-of-life { background: rgba(234, 88, 12, 0.12); color: #ea580c; }
+html.light .tag-adventure { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+html.light .tag-mystery { background: rgba(225, 29, 72, 0.12); color: #e11d48; }
+html.light .tag-default { background: rgba(113, 113, 122, 0.1); color: #52525b; }
 
 /* Reader Slider */
 .reader-slider {

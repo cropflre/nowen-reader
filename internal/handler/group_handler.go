@@ -205,7 +205,7 @@ func (h *GroupHandler) ReorderComics(c *gin.Context) {
 }
 
 // ============================================================
-// POST /api/groups/auto-detect — 智能检测可合并的系列
+// POST /api/groups/auto-detect — 智能分组可合并的系列
 // ============================================================
 
 func (h *GroupHandler) AutoDetect(c *gin.Context) {

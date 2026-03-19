@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Globe, Save, FolderOpen, Image, Languages,
+  Globe, Save, FolderOpen, Image, Languages, BookOpen,
   CheckCircle, Trash2, RefreshCw, Plus, X, Search, Sparkles,
   ImagePlus, AlertCircle, ChevronRight, ChevronUp, Folder,
 } from "lucide-react";
@@ -211,6 +211,54 @@ function FolderBrowser({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// 默认阅读模式选择组件
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function DefaultReadingModeSelect({ siteT }: { siteT: any }) {
+  const [mode, setMode] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem("reader-options");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.infiniteScroll) return "webtoon";
+        return parsed.mode || "single";
+      }
+    } catch {}
+    return "single";
+  });
+
+  const handleChange = (newMode: string) => {
+    setMode(newMode);
+    try {
+      const stored = localStorage.getItem("reader-options");
+      const opts = stored ? JSON.parse(stored) : {};
+      opts.mode = newMode === "webtoon" ? "single" : newMode;
+      opts.infiniteScroll = newMode === "webtoon";
+      localStorage.setItem("reader-options", JSON.stringify(opts));
+    } catch {}
+  };
+
+  return (
+    <div className="space-y-3 rounded-xl bg-background p-4">
+      <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+        <BookOpen className="h-3.5 w-3.5 text-accent" />
+        {siteT?.defaultReadingMode || "Default Reading Mode"}
+      </div>
+      <select
+        value={mode}
+        onChange={(e) => handleChange(e.target.value)}
+        className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
+      >
+        <option value="single">{siteT?.modeSingle || "Single Page"}</option>
+        <option value="double">{siteT?.modeDouble || "Double Page"}</option>
+        <option value="webtoon">{siteT?.modeWebtoon || "Webtoon Scroll"}</option>
+      </select>
+      <p className="text-[11px] text-muted">
+        {siteT?.defaultReadingModeDesc || "Default page turning mode when entering the comic reader"}
+      </p>
     </div>
   );
 }
@@ -947,6 +995,9 @@ export function SiteSettingsPanel() {
           </div>
         )}
       </div>
+
+      {/* Default Reading Mode */}
+      <DefaultReadingModeSelect siteT={siteT} />
 
       {/* Language */}
       <div className="space-y-3 rounded-xl bg-background p-4">

@@ -110,7 +110,7 @@ export default function ReaderPage() {
   // 从选项同步模式、方向
   useEffect(() => {
     if (!optsLoaded) return;
-    setMode(readerOpts.infiniteScroll ? "webtoon" : readerOpts.mode);
+    setMode(readerOpts.infiniteScroll || readerOpts.direction === "ttb" ? "webtoon" : readerOpts.mode);
     setDirection(readerOpts.direction);
     // 默认显示档案覆盖层
     if (readerOpts.defaultOverlay) {
@@ -380,7 +380,16 @@ export default function ReaderPage() {
     updateReaderOpts(partial);
     // 同步到当前阅读器状态
     if (partial.mode !== undefined) setMode(partial.mode);
-    if (partial.direction !== undefined) setDirection(partial.direction);
+    if (partial.direction !== undefined) {
+      setDirection(partial.direction);
+      // “从上到下”自动启用无极滚动/webtoon模式
+      if (partial.direction === "ttb") {
+        setMode("webtoon");
+      } else if (readerOpts.direction === "ttb") {
+        // 从 ttb 切回水平方向，恢复单页模式
+        setMode(readerOpts.mode === "webtoon" ? "single" : readerOpts.mode);
+      }
+    }
     if (partial.infiniteScroll !== undefined) {
       setMode(partial.infiniteScroll ? "webtoon" : (readerOpts.mode === "webtoon" ? "single" : readerOpts.mode));
     }
@@ -389,13 +398,22 @@ export default function ReaderPage() {
   // 工具栏 mode/direction 变更也同步到选项
   const handleModeChange = useCallback((m: ComicReadingMode) => {
     setMode(m);
-    updateReaderOpts({ mode: m, infiniteScroll: m === "webtoon" });
+    updateReaderOpts({ mode: m, infiniteScroll: m === "webtoon", direction: m === "webtoon" ? "ttb" as ReadingDirection : (readerOpts.direction === "ttb" ? "ltr" : readerOpts.direction) });
   }, [updateReaderOpts]);
 
   const handleDirectionChange = useCallback((d: ReadingDirection) => {
     setDirection(d);
-    updateReaderOpts({ direction: d });
-  }, [updateReaderOpts]);
+    if (d === "ttb") {
+      // 从上到下 = 无极滚动 webtoon 模式
+      setMode("webtoon");
+      updateReaderOpts({ direction: d, infiniteScroll: true, mode: "webtoon" });
+    } else {
+      // 水平方向：如果之前是 ttb/webtoon，恢复单页
+      const newMode = mode === "webtoon" ? "single" : mode;
+      setMode(newMode);
+      updateReaderOpts({ direction: d, infiniteScroll: false, mode: newMode });
+    }
+  }, [updateReaderOpts, mode]);
 
   // 计算容器宽度样式
   const containerWidthStyle = readerOpts.containerWidth
@@ -613,10 +631,13 @@ export default function ReaderPage() {
         onToggleTheme={handleToggleTheme}
         onShowInfo={useRealData ? () => setShowInfoPanel(true) : undefined}
         onShowSettings={() => setShowOptionsPanel(true)}
+        autoPageActive={autoPageActive}
+        autoPageInterval={readerOpts.autoPageInterval}
+        onToggleAutoPage={() => setAutoPageActive((v) => !v)}
         onInteracting={setToolbarInteracting}
       />
 
-      {/* Page number indicator (头部可见性控制) */}
+      {/* Page number indicator (页码指示器可见性控制) */}
       {readerOpts.headerVisible && mode !== "webtoon" && !toolbarVisible && (
         <div className={`pointer-events-none fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 backdrop-blur-sm ${
           readerTheme === "day" ? "bg-white/70 shadow" : "bg-black/50"
@@ -630,7 +651,7 @@ export default function ReaderPage() {
       )}
 
       {/* AI Chat Panel - 移动端调整按钮位置避免与翻译按钮重叠 */}
-      {aiConfigured && (
+      {aiConfigured && readerOpts.showAIChat && (
         <AIChatPanel
           comicId={comicId}
           locale={locale}
@@ -641,7 +662,7 @@ export default function ReaderPage() {
       )}
 
       {/* Page Translation Overlay (Phase 4) */}
-      {aiConfigured && !isNovel && !isPdf && (
+      {aiConfigured && !isNovel && !isPdf && readerOpts.showTranslate && (
         <PageTranslateOverlay
           comicId={comicId}
           pageIndex={currentPage}

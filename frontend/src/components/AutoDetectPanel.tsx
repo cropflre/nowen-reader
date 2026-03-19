@@ -204,7 +204,7 @@ export default function AutoDetectPanel({
           <div className="flex items-center gap-2">
             <Wand2 className="h-5 w-5 text-accent" />
             <h2 className="text-lg font-semibold text-foreground">
-              {t.comicGroup?.autoDetect || "智能检测"}
+              {t.comicGroup?.autoDetect || "智能分组"}
             </h2>
           </div>
           <button
@@ -224,7 +224,7 @@ export default function AutoDetectPanel({
                 <Wand2 className="h-8 w-8 text-accent" />
               </div>
               <p className="mb-2 text-sm font-medium text-foreground">
-                {t.comicGroup?.autoDetect || "智能检测"}
+                {t.comicGroup?.autoDetect || "智能分组"}
               </p>
               <p className="mb-6 text-xs text-muted text-center max-w-xs">
                 {t.comicGroup?.autoDetectDesc || "自动识别可合并的同系列漫画"}
