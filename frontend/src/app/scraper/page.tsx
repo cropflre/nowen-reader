@@ -40,6 +40,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { useScraperStore } from "@/hooks/useScraperStore";
 import { MetadataSearch } from "@/components/MetadataSearch";
+import { updateComicMetadata, removeComicTag } from "@/api/comics";
 import {
   loadStats,
   startBatch,
@@ -77,6 +78,44 @@ function DetailPanel({
   onClose: () => void;
   onRefresh: () => void;
 }) {
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState(item.title);
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [removingTag, setRemovingTag] = useState<string | null>(null);
+
+  // 保存标题
+  const handleSaveTitle = async () => {
+    const trimmed = titleInput.trim();
+    if (!trimmed || trimmed === item.title) {
+      setEditingTitle(false);
+      setTitleInput(item.title);
+      return;
+    }
+    setTitleSaving(true);
+    try {
+      const ok = await updateComicMetadata(item.id, { title: trimmed });
+      if (ok) {
+        onRefresh();
+        loadLibrary();
+      }
+    } finally {
+      setTitleSaving(false);
+      setEditingTitle(false);
+    }
+  };
+
+  // 删除标签
+  const handleRemoveTag = async (tagName: string) => {
+    setRemovingTag(tagName);
+    try {
+      await removeComicTag(item.id, tagName);
+      onRefresh();
+      loadLibrary();
+    } finally {
+      setRemovingTag(null);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* 头部 */}
@@ -106,7 +145,57 @@ function DetailPanel({
             />
           </div>
           <div className="flex-1 min-w-0 space-y-2">
-            <h4 className="text-base font-bold text-foreground leading-tight line-clamp-2">{item.title}</h4>
+            {/* 可编辑标题 */}
+            {editingTitle ? (
+              <div className="space-y-1.5">
+                <input
+                  type="text"
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveTitle();
+                    if (e.key === "Escape") { setEditingTitle(false); setTitleInput(item.title); }
+                  }}
+                  autoFocus
+                  disabled={titleSaving}
+                  className="w-full rounded-lg bg-card-hover/60 px-2.5 py-1.5 text-sm font-bold text-foreground outline-none border border-accent/40 focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
+                />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleSaveTitle}
+                    disabled={titleSaving}
+                    className="flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {titleSaving ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <CheckCircle className="h-2.5 w-2.5" />}
+                    {scraperT.saveTitle || "保存"}
+                  </button>
+                  <button
+                    onClick={() => { setEditingTitle(false); setTitleInput(item.title); }}
+                    disabled={titleSaving}
+                    className="flex items-center gap-1 rounded-md bg-card-hover px-2 py-0.5 text-[10px] font-medium text-muted transition-colors hover:text-foreground disabled:opacity-50"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                    {scraperT.cancelEdit || "取消"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`group flex items-start gap-1 ${isAdmin ? "cursor-pointer" : ""}`}
+                onClick={() => { if (isAdmin) { setTitleInput(item.title); setEditingTitle(true); } }}
+                title={isAdmin ? (scraperT.editTitleHint || "点击编辑书名") : undefined}
+              >
+                <h4 className="text-base font-bold text-foreground leading-tight line-clamp-2 flex-1">{item.title}</h4>
+                {isAdmin && (
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 flex-shrink-0">
+                    <svg className="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </span>
+                )}
+              </div>
+            )}
             {item.filename !== item.title && (
               <p className="text-xs text-muted/60 truncate" title={item.filename}>{item.filename}</p>
             )}
@@ -179,10 +268,24 @@ function DetailPanel({
                   {item.tags.map((t) => (
                     <span
                       key={t.name}
-                      className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                      className="group/tag inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium transition-all"
                       style={{ backgroundColor: t.color ? `${t.color}20` : undefined, color: t.color || undefined }}
                     >
                       {t.name}
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleRemoveTag(t.name)}
+                          disabled={removingTag === t.name}
+                          className="ml-0.5 opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400 disabled:opacity-50"
+                          title={scraperT.deleteTag || "删除标签"}
+                        >
+                          {removingTag === t.name ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <X className="h-2.5 w-2.5" />
+                          )}
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>

@@ -808,6 +808,10 @@ autoDetect: "智能分组",
     paginationLast: "末页",
     paginationGoto: "跳至",
     paginationPage: "页",
+    editTitleHint: "点击编辑书名",
+    saveTitle: "保存",
+    cancelEdit: "取消",
+    deleteTag: "删除标签",
   },
 } satisfies Translations;
 
@@ -1557,5 +1561,9 @@ export interface Translations {
     paginationLast: string;
     paginationGoto: string;
     paginationPage: string;
+    editTitleHint: string;
+    saveTitle: string;
+    cancelEdit: string;
+    deleteTag: string;
   };
 }

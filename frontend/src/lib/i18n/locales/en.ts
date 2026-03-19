@@ -809,6 +809,10 @@ const en: Translations = {
     paginationLast: "Last",
     paginationGoto: "Go to",
     paginationPage: "page",
+    editTitleHint: "Click to edit title",
+    saveTitle: "Save",
+    cancelEdit: "Cancel",
+    deleteTag: "Delete tag",
   },
 };
 
