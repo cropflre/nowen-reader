@@ -21,7 +21,10 @@ func NewGroupHandler() *GroupHandler {
 // ============================================================
 
 func (h *GroupHandler) ListGroups(c *gin.Context) {
-	groups, err := store.GetAllGroups(getUserID(c))
+	groups, err := store.GetAllGroupsWithOptions(store.GroupListOptions{
+		UserID:      getUserID(c),
+		ContentType: c.Query("contentType"),
+	})
 	if err != nil {
 		log.Printf("[API] ListGroups error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取分组列表失败"})
@@ -209,7 +212,13 @@ func (h *GroupHandler) ReorderComics(c *gin.Context) {
 // ============================================================
 
 func (h *GroupHandler) AutoDetect(c *gin.Context) {
-	suggestions, err := store.AutoDetectGroups()
+	// 支持通过请求体传入 contentType 过滤
+	var body struct {
+		ContentType string `json:"contentType"`
+	}
+	c.ShouldBindJSON(&body)
+
+	suggestions, err := store.AutoDetectGroups(body.ContentType)
 	if err != nil {
 		log.Printf("[API] AutoDetect error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "自动检测失败"})

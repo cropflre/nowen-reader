@@ -8,10 +8,13 @@ import type { ComicGroup, ComicGroupDetail, AutoDetectGroup } from "@/hooks/useC
 // 分组 CRUD
 // ============================================================
 
-/** 获取所有分组 */
-export async function fetchGroups(): Promise<ComicGroup[]> {
+/** 获取所有分组（支持按内容类型过滤） */
+export async function fetchGroups(contentType?: string): Promise<ComicGroup[]> {
   try {
-    const res = await fetch("/api/groups");
+    const params = new URLSearchParams();
+    if (contentType) params.set("contentType", contentType);
+    const url = params.toString() ? `/api/groups?${params}` : "/api/groups";
+    const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
     return data.groups || [];
@@ -119,10 +122,14 @@ export async function reorderGroupComics(groupId: number, comicIds: string[]): P
 // 智能分组
 // ============================================================
 
-/** 自动检测可合并的漫画系列 */
-export async function autoDetectGroups(): Promise<AutoDetectGroup[]> {
+/** 自动检测可合并的漫画系列（支持按内容类型过滤） */
+export async function autoDetectGroups(contentType?: string): Promise<AutoDetectGroup[]> {
   try {
-    const res = await fetch("/api/groups/auto-detect", { method: "POST" });
+    const res = await fetch("/api/groups/auto-detect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentType: contentType || "" }),
+    });
     if (!res.ok) return [];
     const data = await res.json();
     return data.suggestions || [];

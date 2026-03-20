@@ -20,7 +20,7 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation, useLocale } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, BookMarked, Image, BookOpen, Brain, Loader2, Layers, Trash2, X } from "lucide-react";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpen, Brain, Loader2, Layers, Trash2, X } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 import GroupCard from "@/components/GroupCard";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
@@ -189,12 +189,12 @@ export default function Home() {
   const [renameValue, setRenameValue] = useState("");
 
   // 内容类型 Tab
-  const [contentType, setContentType] = useState<"" | "comic" | "novel">(() => {
+  const [contentType, setContentType] = useState<"comic" | "novel">(() => {
     if (typeof window !== "undefined") {
       const saved = sessionStorage.getItem("homeFilter:contentType");
       if (saved === "comic" || saved === "novel") return saved;
     }
-    return "";
+    return "comic";
   });
 
   // 筛选条件变更时同步到 sessionStorage
@@ -289,12 +289,12 @@ export default function Home() {
     localStorage.setItem("showGroupView", String(showGroupView));
   }, [showGroupView]);
 
-  // 加载分组数据
+  // 加载分组数据（按 contentType 过滤）
   const loadGroups = useCallback(async () => {
-    const [grps, gmap] = await Promise.all([fetchGroups(), fetchGroupedComicMap()]);
+    const [grps, gmap] = await Promise.all([fetchGroups(contentType || undefined), fetchGroupedComicMap()]);
     setGroups(grps);
     setGroupedComicMap(gmap);
-  }, []);
+  }, [contentType]);
 
   // 分组视图分页计算
   const groupTotalPages = Math.max(1, Math.ceil(groups.length / GROUP_PAGE_SIZE));
@@ -809,7 +809,6 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             <div className="flex items-center justify-between gap-1 sm:gap-1.5 mb-4">
               <div className="flex items-center gap-1 sm:gap-1.5">
                 {([
-                  { key: "", label: t.contentTab.all, icon: BookMarked },
                   { key: "comic", label: t.contentTab.comic, icon: Image },
                   { key: "novel", label: t.contentTab.novel, icon: BookOpen },
                 ] as const).map((tab) => (
@@ -1175,7 +1174,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                         setSelectedTags([]);
                         setFavoritesOnly(false);
                         setSelectedCategory(null);
-                        setContentType("");
+                        setContentType("comic");
                       }}
                       className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                     >
@@ -1428,6 +1427,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
           loadGroups();
           setShowGroupView(true);
         }}
+        contentType={contentType}
       />
 
       {/* 分组右键菜单 */}

@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+// firstString 从可变参数中安全取第一个字符串值。
+func firstString(s []string) string {
+	if len(s) > 0 {
+		return s[0]
+	}
+	return ""
+}
+
 // ============================================================
 // ComicGroup CRUD
 // ============================================================
@@ -49,22 +57,51 @@ type GroupComicItem struct {
 	LastReadAt    *string `json:"lastReadAt"`
 }
 
+// GroupListOptions 分组列表查询选项。
+type GroupListOptions struct {
+	UserID      string // 用户ID过滤
+	ContentType string // 内容类型过滤: "comic" | "novel" | "" (全部)
+}
+
 // GetAllGroups 获取所有分组（带漫画数量）。
 // 如果提供了 userID，只返回该用户的分组。
+// 如果提供了 contentType，只返回包含该类型漫画的分组。
 func GetAllGroups(userID ...string) ([]ComicGroupWithCount, error) {
-	var filterSQL string
+	return GetAllGroupsWithOptions(GroupListOptions{
+		UserID: firstString(userID),
+	})
+}
+
+// GetAllGroupsWithOptions 获取所有分组（带漫画数量），支持更多过滤选项。
+func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, error) {
+	var conditions []string
 	var args []interface{}
-	if len(userID) > 0 && userID[0] != "" {
-		filterSQL = ` WHERE g."userId" = ?`
-		args = append(args, userID[0])
+	if opts.UserID != "" {
+		conditions = append(conditions, `g."userId" = ?`)
+		args = append(args, opts.UserID)
 	}
+	// contentType 过滤：只返回至少包含一本指定类型漫画的分组
+	if opts.ContentType == "comic" || opts.ContentType == "novel" {
+		conditions = append(conditions, `g."id" IN (
+			SELECT DISTINCT gi2."groupId" FROM "ComicGroupItem" gi2
+			JOIN "Comic" c2 ON c2."id" = gi2."comicId"
+			WHERE c2."type" = ?
+		)`)
+		args = append(args, opts.ContentType)
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
 	rows, err := db.Query(`
 		SELECT g."id", g."name", g."coverUrl", g."sortOrder",
 		       g."createdAt", g."updatedAt",
 		       COUNT(gi."comicId") as comicCount
 		FROM "ComicGroup" g
 		LEFT JOIN "ComicGroupItem" gi ON gi."groupId" = g."id"
-	`+filterSQL+`
+	`+whereClause+`
 		GROUP BY g."id"
 		ORDER BY g."sortOrder" ASC, g."name" ASC
 	`, args...)
@@ -302,14 +339,24 @@ type AutoDetectGroup struct {
 // AutoDetectGroups 使用 normalizeTitle 自动检测可合并的漫画。
 // 排除已经在分组中的漫画。
 // 增强版：精确匹配 + 编辑距离模糊匹配。
-func AutoDetectGroups() ([]AutoDetectGroup, error) {
+// contentType 可选参数：传入 "comic" 或 "novel" 只检测对应类型的漫画。
+func AutoDetectGroups(contentType ...string) ([]AutoDetectGroup, error) {
 	// 获取已分组的漫画ID
 	grouped, err := GetGroupedComicIDs()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := db.Query(`SELECT "id", "title" FROM "Comic" ORDER BY "title" ASC`)
+	// 构建查询：可按 contentType 过滤
+	querySQL := `SELECT "id", "title" FROM "Comic"`
+	var queryArgs []interface{}
+	if len(contentType) > 0 && (contentType[0] == "comic" || contentType[0] == "novel") {
+		querySQL += ` WHERE "type" = ?`
+		queryArgs = append(queryArgs, contentType[0])
+	}
+	querySQL += ` ORDER BY "title" ASC`
+
+	rows, err := db.Query(querySQL, queryArgs...)
 	if err != nil {
 		return nil, err
 	}

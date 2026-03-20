@@ -25,12 +25,14 @@ interface AutoDetectPanelProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  contentType?: string; // "comic" | "novel" | ""
 }
 
 export default function AutoDetectPanel({
   open,
   onClose,
   onCreated,
+  contentType,
 }: AutoDetectPanelProps) {
   const t = useTranslation();
   const { locale } = useLocale();
@@ -68,7 +70,7 @@ export default function AutoDetectPanel({
     setExpandedIndices(new Set());
     setCreatedCount(0);
     try {
-      const results = await autoDetectGroups();
+      const results = await autoDetectGroups(contentType || undefined);
       setSuggestions(results);
       // 默认全选
       setSelectedIndices(new Set(results.map((_, i) => i)));
@@ -90,7 +92,7 @@ export default function AutoDetectPanel({
       const res = await fetch("/api/ai/enhance-group-detect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetLang: locale === "en" ? "en" : "zh" }),
+        body: JSON.stringify({ targetLang: locale === "en" ? "en" : "zh", contentType: contentType || "" }),
       });
       if (!res.ok) {
         const err = await res.json();
