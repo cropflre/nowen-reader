@@ -1175,11 +1175,12 @@ export const GUIDE_STEPS: GuideStep[] = [
 export function startGuide() {
   state.guideActive = true;
   state.guideCurrentStep = 0;
-  // 关闭可能打开的面板
+  // 关闭所有可能干扰遮罩层的面板
   state.aiChatOpen = false;
   state.focusedItemId = null;
   state.batchEditMode = false;
   state.helpPanelOpen = false;
+  state.collectionPanelOpen = false;
   notify();
 }
 
@@ -1263,6 +1264,12 @@ export function checkAutoStartGuide() {
     // 有书但从未看过引导 → 自动启动
     state.guideActive = true;
     state.guideCurrentStep = 0;
+    // 确保关闭所有面板，避免干扰遮罩层
+    state.aiChatOpen = false;
+    state.focusedItemId = null;
+    state.batchEditMode = false;
+    state.helpPanelOpen = false;
+    state.collectionPanelOpen = false;
     notify();
   }
 }

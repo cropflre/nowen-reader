@@ -63,10 +63,10 @@ export default function ReaderPage() {
   const { comic: comicDetail, refetch: refetchDetail } =
     useComicDetail(comicId);
 
-  // 检测微信浏览器 — 微信 WebView 不支持 PDF.js，需降级为后端图片渲染模式
-  const isWeChatBrowser = typeof navigator !== "undefined" && /micromessenger|wechat/i.test(navigator.userAgent);
-  // 在微信浏览器中 PDF 使用后端图片渲染，不走 PdfView
-  const usePdfView = isPdf && !isWeChatBrowser;
+  // 检测受限浏览器 — 微信/夸克/UC/百度等 WebView 不支持 PDF.js，需降级为后端图片渲染模式
+  const isRestrictedBrowser = typeof navigator !== "undefined" && /micromessenger|wechat|quark|ucbrowser|baiduboxapp/i.test(navigator.userAgent);
+  // 在受限浏览器中 PDF 使用后端图片渲染，不走 PdfView
+  const usePdfView = isPdf && !isRestrictedBrowser;
 
   // Determine data source
   const [pdfTotalPages, setPdfTotalPages] = useState<number | null>(null);
@@ -542,6 +542,7 @@ export default function ReaderPage() {
           fitMode={readerOpts.fitMode}
           containerWidth={containerWidthStyle}
           preloadCount={readerOpts.preloadCount}
+          comicId={comicId}
           onBoundaryReached={handleBoundaryReached}
         />
       ) : mode === "double" ? (
@@ -556,6 +557,7 @@ export default function ReaderPage() {
           fitMode={readerOpts.fitMode}
           containerWidth={containerWidthStyle}
           preloadCount={readerOpts.preloadCount}
+          comicId={comicId}
           onBoundaryReached={handleBoundaryReached}
         />
       ) : (
@@ -568,6 +570,7 @@ export default function ReaderPage() {
           readerTheme={readerTheme}
           containerWidth={containerWidthStyle}
           preloadCount={readerOpts.preloadCount}
+          comicId={comicId}
           onBoundaryReached={handleBoundaryReached}
           nextVolumeTitle={nextVolume?.title}
         />

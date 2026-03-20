@@ -43,6 +43,10 @@ var (
 	// 防抖：文件变更后延迟触发同步
 	fsDebounceTicker *time.Timer
 	fsDebounceMu     sync.Mutex
+
+	// 阅读时暂停扫描：当有活跃阅读会话时，暂停后台扫描以减少 IO 竞争
+	activeReaders   int
+	activeReadersMu sync.Mutex
 )
 
 // 从配置文件读取可配置参数
@@ -52,6 +56,29 @@ func getScannerCooldown() time.Duration {
 		return time.Duration(cfg.ScannerConfig.SyncCooldownSec) * time.Second
 	}
 	return 30 * time.Second
+}
+
+// AcquireReadingLock 在开始阅读时调用，暂停后台扫描以减少 IO 竞争。
+func AcquireReadingLock() {
+	activeReadersMu.Lock()
+	activeReaders++
+	activeReadersMu.Unlock()
+}
+
+// ReleaseReadingLock 在结束阅读时调用，恢复后台扫描。
+func ReleaseReadingLock() {
+	activeReadersMu.Lock()
+	if activeReaders > 0 {
+		activeReaders--
+	}
+	activeReadersMu.Unlock()
+}
+
+// isReadingActive 判断是否有活跃的阅读会话。
+func isReadingActive() bool {
+	activeReadersMu.Lock()
+	defer activeReadersMu.Unlock()
+	return activeReaders > 0
 }
 
 func getFSDebounceDelay() time.Duration {
@@ -377,7 +404,21 @@ func fullSync() {
 // MD5 Sync: 为缺少 MD5 哈希的漫画计算文件 MD5
 // ============================================================
 
+func getMD5Workers() int {
+	cfg := config.GetSiteConfig()
+	if cfg.ScannerConfig != nil && cfg.ScannerConfig.MD5Workers > 0 {
+		return cfg.ScannerConfig.MD5Workers
+	}
+	return 2 // 默认 2 个并发，对网盘映射更友好
+}
+
 func md5Sync() {
+	// 有活跃阅读会话时跳过 MD5 计算，避免 IO 竞争
+	if isReadingActive() {
+		log.Println("[md5-sync] Skipped: active reading session")
+		return
+	}
+
 	comics, err := store.GetComicsNeedingMD5(getFullSyncBatchSize())
 	if err != nil || len(comics) == 0 {
 		return
@@ -385,7 +426,7 @@ func md5Sync() {
 
 	allDirs := config.GetAllComicsDirs()
 
-	const numWorkers = 4
+	numWorkers := getMD5Workers()
 	type workItem struct {
 		ID       string
 		Filename string
@@ -402,6 +443,11 @@ func md5Sync() {
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
+				// 如果阅读开始了，立即停止 MD5 计算
+				if isReadingActive() {
+					log.Println("[md5-sync] Paused: active reading session detected")
+					return
+				}
 				f, err := os.Open(item.Path)
 				if err != nil {
 					log.Printf("[md5-sync] Failed to open %s: %v", item.Filename, err)
@@ -636,6 +682,11 @@ func StartBackgroundSync() {
 		ticker := time.NewTicker(getFullSyncInterval())
 		defer ticker.Stop()
 		for range ticker.C {
+			// 有活跃阅读会话时跳过 fullSync，避免 IO 竞争
+			if isReadingActive() {
+				log.Println("[bg-sync] Skipped full sync: active reading session")
+				continue
+			}
 			fullSync()
 			md5Sync() // 在 full sync 之后计算 MD5
 		}

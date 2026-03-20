@@ -213,6 +213,10 @@ func SetupRoutes(r *gin.Engine) {
 	// EPUB resource (images, etc.): /api/comics/:id/epub-resource/*resourcePath
 	api.GET("/comics/:id/epub-resource/*resourcePath", img.GetEpubResource)
 
+	// 页面预热 API（减少阅读时冷启动延迟）
+	api.POST("/comics/:id/warmup", img.WarmupPages)
+	api.POST("/comics/:id/warmup-done", img.WarmupDone)
+
 	// ============================================================
 	// Cache management (Phase 3) — requires admin
 	// ============================================================

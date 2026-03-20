@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -508,6 +509,133 @@ func GetComicThumbnail(comicID string) ([]byte, error) {
 		return nil, err
 	}
 	return archive.GenerateThumbnail(fp, comicID)
+}
+
+// ============================================================
+// Warmup: 批量预提取页面到磁盘缓存（方案 B）
+// ============================================================
+
+// WarmupPages 后台异步预提取指定漫画的 N 页到磁盘缓存。
+// startPage: 起始页码（0-based），count: 预提取页数。
+// 该函数立即返回，实际解压在后台 goroutine 中执行。
+func WarmupPages(comicID string, startPage, count int) {
+	go func() {
+		fp, _, err := FindComicFilePath(comicID)
+		if err != nil {
+			return
+		}
+
+		archiveType := archive.DetectType(fp)
+		// 仅对漫画格式预热（小说和PDF不需要）
+		if archive.IsNovelType(archiveType) || archiveType == archive.TypePdf {
+			return
+		}
+
+		reader, err := getPooledReader(fp)
+		if err != nil {
+			return
+		}
+
+		images := archive.GetImageEntries(reader)
+		if len(images) == 0 {
+			return
+		}
+
+		cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
+
+		// 计算需要预热的页面范围
+		end := startPage + count
+		if end > len(images) {
+			end = len(images)
+		}
+		if startPage < 0 {
+			startPage = 0
+		}
+
+		// 检查是否为 RAR 格式，RAR 使用批量解压优化
+		isRar := archiveType == archive.TypeRar
+
+		if isRar {
+			// 方案 C: RAR 批量解压优化
+			// RAR 每次 ExtractEntry 都要从头扫描，所以一次性批量解压多页
+			warmupRarBatch(fp, comicID, images, startPage, end, cacheDir)
+		} else {
+			// ZIP/7z 等格式逐页解压（支持随机访问，性能好）
+			warmupNormal(reader, comicID, images, startPage, end, cacheDir)
+		}
+	}()
+}
+
+// warmupNormal 对 ZIP/7z 等支持随机访问的格式逐页预热。
+func warmupNormal(reader archive.Reader, comicID string, images []string, start, end int, cacheDir string) {
+	warmed := 0
+	for i := start; i < end; i++ {
+		// 检查磁盘缓存是否已存在
+		if pageExistsInCache(cacheDir, i) {
+			continue
+		}
+
+		entryName := images[i]
+		data, err := reader.ExtractEntry(entryName)
+		if err != nil {
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(entryName))
+		if err := os.MkdirAll(cacheDir, 0755); err != nil {
+			return
+		}
+		cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", i, ext))
+		_ = os.WriteFile(cachePath, data, 0644)
+		warmed++
+	}
+	if warmed > 0 {
+		log.Printf("[warmup] Pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, start, end-1)
+	}
+}
+
+// warmupRarBatch 对 RAR 格式使用流式批量解压，避免每页都从头扫描。
+func warmupRarBatch(fp, comicID string, images []string, start, end int, cacheDir string) {
+	// 构建需要提取的 entry 名称集合
+	needExtract := make(map[string]int) // entryName -> pageIndex
+	for i := start; i < end; i++ {
+		if !pageExistsInCache(cacheDir, i) {
+			needExtract[images[i]] = i
+		}
+	}
+	if len(needExtract) == 0 {
+		return
+	}
+
+	// 确保缓存目录存在
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return
+	}
+
+	// 一次性流式扫描 RAR，遇到需要的 entry 就提取
+	warmed, err := archive.BatchExtractRarEntries(fp, needExtract, cacheDir)
+	if err != nil {
+		log.Printf("[warmup] RAR batch extract failed for %s: %v", comicID, err)
+		return
+	}
+	if warmed > 0 {
+		log.Printf("[warmup] RAR batch pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, start, end-1)
+	}
+}
+
+// pageExistsInCache 检查某页是否已在磁盘缓存中。
+func pageExistsInCache(cacheDir string, pageIndex int) bool {
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return false
+	}
+	prefix := fmt.Sprintf("%d.", pageIndex)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // ============================================================

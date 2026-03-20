@@ -17,6 +17,8 @@ interface SinglePageViewProps {
   fitMode?: FitMode;
   containerWidth?: string;
   preloadCount?: number;
+  /** 漫画 ID，用于触发后端预热 */
+  comicId?: string;
   /** 翻页超出边界时触发："next" 表示翻过最后一页，"prev" 表示翻到第一页之前 */
   onBoundaryReached?: (direction: "next" | "prev") => void;
 }
@@ -32,6 +34,7 @@ export default function SinglePageView({
   fitMode = "container",
   containerWidth,
   preloadCount = 3,
+  comicId,
   onBoundaryReached,
 }: SinglePageViewProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -53,7 +56,7 @@ export default function SinglePageView({
   const touchHandledRef = useRef(false);
 
   // Preload next N pages
-  useImagePreloader(pages, currentPage, preloadCount);
+  useImagePreloader(pages, currentPage, preloadCount, comicId);
 
   // Reset loaded state and scale when page changes
   useEffect(() => {

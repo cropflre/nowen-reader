@@ -17,6 +17,8 @@ interface DoublePageViewProps {
   fitMode?: FitMode;
   containerWidth?: string;
   preloadCount?: number;
+  /** 漫画 ID，用于触发后端预热 */
+  comicId?: string;
   /** 翻页超出边界时触发 */
   onBoundaryReached?: (direction: "next" | "prev") => void;
 }
@@ -32,6 +34,7 @@ export default function DoublePageView({
   fitMode = "container",
   containerWidth,
   preloadCount = 4,
+  comicId,
   onBoundaryReached,
 }: DoublePageViewProps) {
   const [loadedLeft, setLoadedLeft] = useState(false);
@@ -66,7 +69,7 @@ export default function DoublePageView({
   }, [showMobileHint]);
 
   // Preload next pages
-  useImagePreloader(pages, currentPage, preloadCount);
+  useImagePreloader(pages, currentPage, preloadCount, comicId);
 
   const spreadIndex = useMemo(() => {
     return currentPage % 2 === 0 ? currentPage : currentPage - 1;

@@ -432,3 +432,57 @@ func (h *ImageHandler) GetEpubResource(c *gin.Context) {
 	c.Header("ETag", etag)
 	c.Data(http.StatusOK, result.MimeType, result.Data)
 }
+
+// ============================================================
+// POST /api/comics/:id/warmup — 预热页面缓存（减少阅读时的冷启动延迟）
+// ============================================================
+
+func (h *ImageHandler) WarmupPages(c *gin.Context) {
+	id := c.Param("id")
+
+	// Verify comic exists
+	comic, err := store.GetComicByID(id)
+	if err != nil || comic == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
+		return
+	}
+
+	var body struct {
+		StartPage int `json:"startPage"` // 起始页码（0-based）
+		Count     int `json:"count"`     // 预热页数
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		// 默认值：从第 0 页开始预热 10 页
+		body.StartPage = 0
+		body.Count = 10
+	}
+	if body.Count <= 0 {
+		body.Count = 10
+	}
+	if body.Count > 30 {
+		body.Count = 30 // 限制最大预热页数
+	}
+
+	// 标记开始阅读，暂停后台扫描
+	service.AcquireReadingLock()
+
+	// 异步预热（不阻塞响应）
+	service.WarmupPages(id, body.StartPage, body.Count)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":   true,
+		"comicId":   id,
+		"startPage": body.StartPage,
+		"count":     body.Count,
+		"message":   "Warmup started in background",
+	})
+}
+
+// ============================================================
+// POST /api/comics/:id/warmup-done — 阅读结束，释放阅读锁
+// ============================================================
+
+func (h *ImageHandler) WarmupDone(c *gin.Context) {
+	service.ReleaseReadingLock()
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

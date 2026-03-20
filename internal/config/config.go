@@ -30,6 +30,7 @@ type ScannerConfig struct {
 	FullSyncBatchSize    int `json:"fullSyncBatchSize,omitempty"`
 	QuickSyncIntervalSec int `json:"quickSyncIntervalSec,omitempty"`
 	FullSyncIntervalSec  int `json:"fullSyncIntervalSec,omitempty"`
+	MD5Workers           int `json:"md5Workers,omitempty"` // MD5 计算并发数，网盘场景建议设为 1-2
 }
 
 var (

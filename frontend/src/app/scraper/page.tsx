@@ -140,21 +140,66 @@ function GuideOverlay({
   const step = GUIDE_STEPS[currentStep];
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const totalSteps = GUIDE_STEPS.length;
+  const maskId = useRef(`guide-mask-${Math.random().toString(36).slice(2, 8)}`).current;
 
+  // 计算目标元素位置的函数
+  const updateTargetRect = useCallback(() => {
+    if (!step) { setTargetRect(null); return; }
+    const el = document.querySelector(step.targetSelector);
+    if (el) {
+      // 检查元素是否实际可见（排除 display:none / visibility:hidden / 零尺寸）
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setTargetRect(rect);
+      } else {
+        setTargetRect(null);
+      }
+    } else {
+      setTargetRect(null);
+    }
+  }, [step]);
+
+  // 当步骤切换时：滚动到目标元素并计算位置
   useEffect(() => {
     if (!step) return;
     const el = document.querySelector(step.targetSelector);
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      // 延迟计算位置（等待scroll完成）
-      const timer = setTimeout(() => {
-        setTargetRect(el.getBoundingClientRect());
-      }, 300);
+      const rect = el.getBoundingClientRect();
+      // 仅在目标元素不在视口内时才滚动
+      const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
+      if (!inView) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+      // 延迟计算位置（等待 scroll 完成）
+      const timer = setTimeout(updateTargetRect, 350);
       return () => clearTimeout(timer);
     } else {
+      // 目标元素不存在 → 自动跳过该步骤
       setTargetRect(null);
+      const skipTimer = setTimeout(() => {
+        if (currentStep < totalSteps - 1) {
+          nextGuideStep();
+        } else {
+          finishGuide();
+        }
+      }, 100);
+      return () => clearTimeout(skipTimer);
     }
-  }, [currentStep, step]);
+  }, [currentStep, step, totalSteps, updateTargetRect]);
+
+  // 监听窗口 resize 和 scroll 以实时刷新遮罩位置
+  useEffect(() => {
+    if (!step) return;
+
+    const handleUpdate = () => { updateTargetRect(); };
+    window.addEventListener("resize", handleUpdate);
+    window.addEventListener("scroll", handleUpdate, true); // true 捕获阶段，兼容内部滚动容器
+
+    return () => {
+      window.removeEventListener("resize", handleUpdate);
+      window.removeEventListener("scroll", handleUpdate, true);
+    };
+  }, [step, updateTargetRect]);
 
   if (!step) return null;
 
@@ -162,40 +207,71 @@ function GuideOverlay({
     .replace("{current}", String(currentStep + 1))
     .replace("{total}", String(totalSteps));
 
-  // 计算弹窗位置
+  // 计算弹窗位置（增加视口边界安全检测）
   const getTooltipStyle = (): React.CSSProperties => {
-    if (!targetRect) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+    if (!targetRect) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)", position: "fixed", zIndex: 10002 };
 
     const gap = 16;
+    const tooltipW = 360;
+    const tooltipH = 260; // 预估高度
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     const style: React.CSSProperties = { position: "fixed", zIndex: 10002 };
 
     switch (step.placement) {
-      case "bottom":
-        style.top = targetRect.bottom + gap;
-        style.left = Math.max(16, Math.min(targetRect.left, window.innerWidth - 380));
+      case "bottom": {
+        const top = targetRect.bottom + gap;
+        style.top = top + tooltipH > vh ? Math.max(16, targetRect.top - tooltipH - gap) : top;
+        style.left = Math.max(16, Math.min(targetRect.left, vw - tooltipW - 16));
         break;
-      case "top":
-        style.bottom = window.innerHeight - targetRect.top + gap;
-        style.left = Math.max(16, Math.min(targetRect.left, window.innerWidth - 380));
+      }
+      case "top": {
+        const bottom = vh - targetRect.top + gap;
+        if (targetRect.top - gap - tooltipH < 0) {
+          // 上方空间不足，改到下方
+          style.top = targetRect.bottom + gap;
+        } else {
+          style.bottom = bottom;
+        }
+        style.left = Math.max(16, Math.min(targetRect.left, vw - tooltipW - 16));
         break;
-      case "left":
-        style.top = Math.max(16, targetRect.top);
-        style.right = window.innerWidth - targetRect.left + gap;
+      }
+      case "left": {
+        style.top = Math.max(16, Math.min(targetRect.top, vh - tooltipH - 16));
+        const right = vw - targetRect.left + gap;
+        if (targetRect.left - gap - tooltipW < 0) {
+          // 左侧空间不足，改到右侧
+          style.left = targetRect.right + gap;
+        } else {
+          style.right = right;
+        }
         break;
-      case "right":
-        style.top = Math.max(16, targetRect.top);
-        style.left = targetRect.right + gap;
+      }
+      case "right": {
+        style.top = Math.max(16, Math.min(targetRect.top, vh - tooltipH - 16));
+        const left = targetRect.right + gap;
+        if (left + tooltipW > vw) {
+          // 右侧空间不足，改到左侧
+          style.right = vw - targetRect.left + gap;
+        } else {
+          style.left = left;
+        }
         break;
+      }
     }
     return style;
   };
 
   return (
-    <div className="fixed inset-0 z-[10000]">
-      {/* 暗色遮罩（排除高亮区域） */}
-      <svg className="absolute inset-0 w-full h-full" style={{ zIndex: 10000 }}>
+    <div className="fixed inset-0 z-[10000]" style={{ pointerEvents: "auto" }}>
+      {/* 暗色遮罩（排除高亮区域）— 点击遮罩区域不做任何操作 */}
+      <svg
+        className="absolute inset-0 w-full h-full"
+        style={{ zIndex: 10000, pointerEvents: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <defs>
-          <mask id="guide-mask">
+          <mask id={maskId}>
             <rect width="100%" height="100%" fill="white" />
             {targetRect && (
               <rect
@@ -213,14 +289,29 @@ function GuideOverlay({
           width="100%"
           height="100%"
           fill="rgba(0,0,0,0.6)"
-          mask="url(#guide-mask)"
+          mask={`url(#${maskId})`}
         />
       </svg>
+
+      {/* 高亮区域的透明交互层 — 允许用户点击高亮区域 */}
+      {targetRect && (
+        <div
+          className="fixed"
+          style={{
+            zIndex: 10001,
+            top: targetRect.top - 6,
+            left: targetRect.left - 6,
+            width: targetRect.width + 12,
+            height: targetRect.height + 12,
+            pointerEvents: "auto",
+          }}
+        />
+      )}
 
       {/* 高亮边框 */}
       {targetRect && (
         <div
-          className="fixed border-2 border-accent rounded-xl pointer-events-none animate-pulse"
+          className="fixed border-2 border-accent rounded-xl pointer-events-none"
           style={{
             zIndex: 10001,
             top: targetRect.top - 6,
@@ -228,6 +319,7 @@ function GuideOverlay({
             width: targetRect.width + 12,
             height: targetRect.height + 12,
             boxShadow: "0 0 0 4px rgba(var(--accent-rgb, 99 102 241) / 0.3), 0 0 20px rgba(var(--accent-rgb, 99 102 241) / 0.2)",
+            animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
           }}
         />
       )}

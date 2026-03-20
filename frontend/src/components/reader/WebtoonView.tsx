@@ -14,6 +14,8 @@ interface WebtoonViewProps {
   readerTheme?: ReaderTheme;
   containerWidth?: string;
   preloadCount?: number;
+  /** 漫画 ID，用于触发后端预热 */
+  comicId?: string;
   /** 滚动超出边界时触发 */
   onBoundaryReached?: (direction: "next" | "prev") => void;
   /** 下一卷信息（用于底部提示） */
@@ -38,6 +40,7 @@ export default function WebtoonView({
   readerTheme = "night",
   containerWidth,
   preloadCount = 5,
+  comicId,
   onBoundaryReached,
   nextVolumeTitle,
 }: WebtoonViewProps) {
@@ -62,7 +65,7 @@ export default function WebtoonView({
   const [errorPages, setErrorPages] = useState<Set<number>>(new Set());
 
   // Preload images ahead of current page
-  useImagePreloader(pages, currentPage, preloadCount);
+  useImagePreloader(pages, currentPage, preloadCount, comicId);
 
   // Update render range based on scroll position
   const updateRenderRange = useCallback(() => {

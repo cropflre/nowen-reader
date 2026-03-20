@@ -335,6 +335,55 @@ func (r *rarReader) Close() {
 	// Nothing to clean up — archive is opened/closed per operation
 }
 
+// BatchExtractRarEntries 一次性流式扫描 RAR 文件，批量提取多个 entry。
+// needExtract: map[entryName]pageIndex，指定需要提取的条目。
+// cacheDir: 缓存目录，提取的文件会保存为 {pageIndex}{ext} 格式。
+// 返回成功提取的页数。
+func BatchExtractRarEntries(fp string, needExtract map[string]int, cacheDir string) (int, error) {
+	rc, err := rardecode.OpenReader(fp)
+	if err != nil {
+		return 0, fmt.Errorf("open rar %s: %w", fp, err)
+	}
+	defer rc.Close()
+
+	warmed := 0
+	remaining := len(needExtract)
+
+	for remaining > 0 {
+		header, err := rc.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return warmed, fmt.Errorf("read rar entry in %s: %w", fp, err)
+		}
+
+		name := strings.ReplaceAll(header.Name, "\\", "/")
+		pageIdx, ok := needExtract[name]
+		if !ok {
+			continue
+		}
+
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			log.Printf("[rar-batch] Failed to extract %s from %s: %v", name, fp, err)
+			continue
+		}
+
+		ext := strings.ToLower(path.Ext(name))
+		cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIdx, ext))
+		if err := os.WriteFile(cachePath, data, 0644); err != nil {
+			log.Printf("[rar-batch] Failed to write cache %s: %v", cachePath, err)
+			continue
+		}
+
+		warmed++
+		remaining--
+	}
+
+	return warmed, nil
+}
+
 // ============================================================
 // 7z/RAR Reader (via external 7za binary)
 // ============================================================
