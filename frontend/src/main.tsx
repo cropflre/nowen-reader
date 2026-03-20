@@ -27,6 +27,7 @@ import Logs from "@/app/logs/page";
 import Settings from "@/app/settings/page";
 import GroupDetail from "@/app/group/[id]/page";
 import Scraper from "@/app/scraper/page";
+import Collections from "@/app/collections/page";
 
 /** 路由过渡动画包装器 —— 每次 pathname 变化时触发 fade-in */
 function AnimatedRoutes() {
@@ -44,6 +45,7 @@ function AnimatedRoutes() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/scraper" element={<Scraper />} />
         <Route path="/group/:id" element={<GroupDetail />} />
+        <Route path="/collections" element={<Collections />} />
       </Routes>
     </div>
   );

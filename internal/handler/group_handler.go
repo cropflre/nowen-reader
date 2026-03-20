@@ -252,6 +252,73 @@ func (h *GroupHandler) BatchCreate(c *gin.Context) {
 }
 
 // ============================================================
+// POST /api/groups/batch-delete — 批量删除分组
+// ============================================================
+
+func (h *GroupHandler) BatchDelete(c *gin.Context) {
+	var body struct {
+		GroupIDs []int `json:"groupIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.GroupIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "分组ID列表不能为空"})
+		return
+	}
+
+	deleted, err := store.BatchDeleteGroups(body.GroupIDs)
+	if err != nil {
+		log.Printf("[API] BatchDelete error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "批量删除失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "deleted": deleted})
+}
+
+// ============================================================
+// POST /api/groups/merge — 合并多个分组
+// ============================================================
+
+func (h *GroupHandler) MergeGroups(c *gin.Context) {
+	var body struct {
+		GroupIDs []int  `json:"groupIds"`
+		NewName  string `json:"newName"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.GroupIDs) < 2 || body.NewName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "至少选择两个分组并提供合并后的名称"})
+		return
+	}
+
+	newID, err := store.MergeGroups(body.GroupIDs, body.NewName, getUserID(c))
+	if err != nil {
+		log.Printf("[API] MergeGroups error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "合并分组失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "newGroupId": newID})
+}
+
+// ============================================================
+// POST /api/groups/export — 导出分组数据
+// ============================================================
+
+func (h *GroupHandler) ExportGroups(c *gin.Context) {
+	var body struct {
+		GroupIDs []int `json:"groupIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.GroupIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "分组ID列表不能为空"})
+		return
+	}
+
+	data, err := store.ExportGroupsData(body.GroupIDs)
+	if err != nil {
+		log.Printf("[API] ExportGroups error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "导出分组数据失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"groups": data})
+}
+
+// ============================================================
 // GET /api/groups/comic-map — 获取所有已分组的漫画ID映射
 // ============================================================
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // ============================================================
@@ -427,8 +428,9 @@ func SetComicCategories(comicID string, categorySlugs []string) error {
 
 // normalizeTitle 标准化标题用于比较。
 // 增强版：提取核心标题，去除卷号、扫图组、作者等元信息。
+// 支持繁简体归一化，确保 "进击的巨人" 和 "進擊的巨人" 可以匹配。
 func normalizeTitle(title string) string {
-	// 第一步：如果包含方括号，尝试提取核心书名部分
+	// 第一步：如果包含方括号或圆括号，尝试提取核心书名部分
 	core := extractCoreTitle(title)
 	if core == "" {
 		core = title
@@ -437,7 +439,10 @@ func normalizeTitle(title string) string {
 	// 第二步：去除常见卷号后缀模式（在小写化之前处理中文模式）
 	core = removeVolumePatterns(core)
 
-	// 第三步：统一小写，去除标点和空白
+	// 第三步：繁简体归一化（将繁体转为简体）
+	core = toSimplified(core)
+
+	// 第四步：统一小写，去除标点和空白
 	s := strings.ToLower(core)
 	replacer := strings.NewReplacer(" ", "", "_", "", "-", "", ".", "", "~", "", "　", "")
 	s = replacer.Replace(s)
@@ -448,30 +453,36 @@ func normalizeTitle(title string) string {
 	}
 
 	// 只去掉末尾 1-3 位数字（卷号），保留 4 位及以上的数字（可能是年份）
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] >= '0' && s[i] <= '9' {
+	// 【P2修复】使用 rune 遍历而非字节遍历，确保 Unicode 字符安全
+	runes := []rune(s)
+	trailingDigits := 0
+	for i := len(runes) - 1; i >= 0; i-- {
+		if unicode.IsDigit(runes[i]) {
+			trailingDigits++
 			continue
-		}
-		digitLen := len(s) - 1 - i
-		if digitLen >= 1 && digitLen <= 3 {
-			s = s[:i+1]
 		}
 		break
 	}
+	if trailingDigits >= 1 && trailingDigits <= 3 {
+		s = string(runes[:len(runes)-trailingDigits])
+	}
+
 	return strings.TrimSpace(s)
 }
 
-// extractCoreTitle 从包含方括号的文件名中提取核心标题。
+// extractCoreTitle 从包含方括号/圆括号的文件名中提取核心标题。
 // 典型格式:
 //   - "[扫图组][作品名01][作者][出版社]" → "作品名01"
 //   - "[Group] Title Vol.01 [Author]" → "Title Vol.01"
-//   - "作品名 第3巻" → "作品名 第3巻" (无方括号直接返回)
+//   - "佛陀(01)" → "佛陀(01)"  (圆括号保留供后续卷号处理)
+//   - "(出版社)作品名[版本]" → "作品名"
+//   - "作品名 第3巻" → "作品名 第3巻" (无括号直接返回)
 func extractCoreTitle(title string) string {
-	if !strings.ContainsAny(title, "[]【】「」『』") {
+	if !strings.ContainsAny(title, "[]【】「」『』()（）") {
 		return title
 	}
 
-	// 分割出方括号内外的所有部分
+	// 分割出括号内外的所有部分（支持方括号和圆括号）
 	type segment struct {
 		text      string
 		inBracket bool
@@ -481,13 +492,13 @@ func extractCoreTitle(title string) string {
 	var current strings.Builder
 	for _, r := range title {
 		switch r {
-		case '[', '【', '「', '『':
+		case '[', '【', '「', '『', '(', '（':
 			if current.Len() > 0 {
 				segments = append(segments, segment{text: strings.TrimSpace(current.String()), inBracket: inBracket})
 				current.Reset()
 			}
 			inBracket = true
-		case ']', '】', '」', '』':
+		case ']', '】', '」', '』', ')', '）':
 			if current.Len() > 0 {
 				segments = append(segments, segment{text: strings.TrimSpace(current.String()), inBracket: inBracket})
 				current.Reset()
@@ -577,31 +588,83 @@ func hasVolumeIndicator(s string) bool {
 	return false
 }
 
-// removeVolumePatterns 去除常见的卷号/话号后缀模式
+// removeVolumePatterns 去除常见的卷号/话号后缀模式。
+// 【P0增强】支持圆括号卷号、无空格中文卷号、#号格式、日文卷标等。
 func removeVolumePatterns(s string) string {
 	lower := strings.ToLower(s)
 
-	// 处理模式列表（从长到短匹配，避免误删）
-	patterns := []struct {
-		prefix string // 小写匹配用
-		sep    bool   // 是否需要前面有空格/分隔符
-	}{
-		{" volume ", false},
-		{" vol.", false},
-		{" vol ", false},
-		{" chapter ", false},
-		{" ch.", false},
-		{" 第", false},
+	// ── 模式1: 带空格分隔的卷号关键词 ──
+	spacePatterns := []string{
+		" volume ", " vol.", " vol ",
+		" chapter ", " ch.", " ch ",
+		" 第", // 第X卷/第X巻/第X集/第X話
+		" 卷", // 卷X
+		" 巻", // 巻X（日文）
+		" #", // #127
 	}
-
-	for _, p := range patterns {
-		idx := strings.LastIndex(lower, p.prefix)
+	for _, p := range spacePatterns {
+		idx := strings.LastIndex(lower, p)
 		if idx > 0 {
 			return strings.TrimSpace(s[:idx])
 		}
 	}
 
-	// 处理 "_v01" "v01" 模式（v + 数字）
+	// ── 模式2: 无空格中文卷号（需要用 rune 处理）──
+	// 匹配: "进击的巨人第5卷" "火影忍者卷十二" "ナルト第12巻"
+	runes := []rune(s)
+	for i, r := range runes {
+		if r == '第' && i > 0 {
+			// "第" 后面跟数字或中文数字，说明是卷号
+			if i+1 < len(runes) && isChineseNumOrDigit(runes[i+1]) {
+				return strings.TrimSpace(string(runes[:i]))
+			}
+		}
+		if (r == '卷' || r == '巻') && i > 0 {
+			// "卷/巻" 后面跟数字，说明前面是书名后面是卷号
+			if i+1 < len(runes) && isChineseNumOrDigit(runes[i+1]) {
+				return strings.TrimSpace(string(runes[:i]))
+			}
+			// "卷/巻" 前面是数字，说明 "X卷" 是卷号后缀
+			if unicode.IsDigit(runes[i-1]) || isChineseNumChar(runes[i-1]) {
+				// 向前找到卷号起始位置
+				j := i - 1
+				for j > 0 && (unicode.IsDigit(runes[j-1]) || isChineseNumChar(runes[j-1])) {
+					j--
+				}
+				result := strings.TrimSpace(string(runes[:j]))
+				if result != "" {
+					return result
+				}
+			}
+		}
+	}
+
+	// ── 模式3: 圆括号卷号 ──
+	// "佛陀(01)" "作品名（第5卷）" "Title (Vol.3)"
+	for _, pair := range [][2]string{{"(", ")"}, {"（", "）"}} {
+		lastOpen := strings.LastIndex(s, pair[0])
+		if lastOpen > 0 {
+			closeIdx := strings.Index(s[lastOpen:], pair[1])
+			if closeIdx > 0 {
+				inside := s[lastOpen+len(pair[0]) : lastOpen+closeIdx]
+				if looksLikeVolumeNumber(inside) {
+					return strings.TrimSpace(s[:lastOpen])
+				}
+			}
+		}
+	}
+
+	// ── 模式4: #号格式 (无空格)──
+	// "Batman#127" "X-Men#001"
+	hashIdx := strings.LastIndex(lower, "#")
+	if hashIdx > 0 {
+		after := lower[hashIdx+1:]
+		if len(after) > 0 && after[0] >= '0' && after[0] <= '9' {
+			return strings.TrimSpace(s[:hashIdx])
+		}
+	}
+
+	// ── 模式5: "_v01" "v01" 模式（v + 数字）──
 	for i := len(lower) - 1; i >= 1; i-- {
 		if lower[i] >= '0' && lower[i] <= '9' {
 			continue
@@ -616,6 +679,63 @@ func removeVolumePatterns(s string) string {
 	}
 
 	return s
+}
+
+// looksLikeVolumeNumber 判断括号内的内容是否像卷号。
+// 匹配: "01" "第5卷" "Vol.3" "Volume 12" "#127" 等
+func looksLikeVolumeNumber(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	l := strings.ToLower(s)
+
+	// 纯数字
+	allDigit := true
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			allDigit = false
+			break
+		}
+	}
+	if allDigit {
+		return true
+	}
+
+	// 以 "第" 开头 或 以 "卷/巻/集/話/话/册" 结尾
+	if strings.HasPrefix(s, "第") {
+		return true
+	}
+	for _, suffix := range []string{"卷", "巻", "集", "話", "话", "册", "編", "编"} {
+		if strings.HasSuffix(s, suffix) {
+			return true
+		}
+	}
+
+	// Vol / Volume / Chapter / Ch 开头
+	for _, prefix := range []string{"vol", "volume", "chapter", "ch", "#"} {
+		if strings.HasPrefix(l, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isChineseNumOrDigit 判断字符是否为阿拉伯数字或中文数字
+func isChineseNumOrDigit(r rune) bool {
+	return unicode.IsDigit(r) || isChineseNumChar(r)
+}
+
+// isChineseNumChar 判断字符是否为中文数字字符
+func isChineseNumChar(r rune) bool {
+	switch r {
+	case '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
+		'零', '百', '千', '万', '壱', '弐', '参', '壹', '贰', '叁',
+		'肆', '伍', '陆', '柒', '捌', '玖', '拾':
+		return true
+	}
+	return false
 }
 
 // LevenshteinDistance 计算两个字符串的编辑距离（用于模糊匹配）
@@ -655,4 +775,75 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// isCJKRune 判断单个字符是否为CJK字符（中日韩统一表意文字 + 平假名 + 片假名 + 韩文）。
+func isCJKRune(r rune) bool {
+	return (r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
+		(r >= 0x3040 && r <= 0x30FF) || // Hiragana + Katakana
+		(r >= 0xAC00 && r <= 0xD7A3) // Korean
+}
+
+// ============================================================
+// 繁简体转换（P1: 漫画标题归一化）
+// ============================================================
+
+// toSimplified 将字符串中的繁体中文转为简体中文。
+// 使用高频漫画常用汉字映射表，覆盖常见的繁简差异。
+func toSimplified(s string) string {
+	var builder strings.Builder
+	builder.Grow(len(s))
+	for _, r := range s {
+		if mapped, ok := traditionalToSimplifiedMap[r]; ok {
+			builder.WriteRune(mapped)
+		} else {
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
+}
+
+// traditionalToSimplifiedMap 繁体→简体映射表。
+// 包含漫画/小说标题中高频出现的繁简差异字。
+var traditionalToSimplifiedMap = map[rune]rune{
+	// 常用动词/动作
+	'進': '进', '擊': '击', '戰': '战', '鬥': '斗', '殺': '杀', '滅': '灭',
+	'開': '开', '關': '关', '衝': '冲', '動': '动', '運': '运', '發': '发',
+	'變': '变', '護': '护', '與': '与', '覺': '觉', '學': '学', '練': '练',
+	'飛': '飞', '轉': '转', '過': '过', '還': '还', '選': '选', '認': '认',
+	'說': '说', '話': '话', '請': '请', '讓': '让', '記': '记', '設': '设',
+	'試': '试', '該': '该', '調': '调', '論': '论', '證': '证', '識': '识',
+	'讀': '读', '譯': '译', '議': '议', '許': '许', '訂': '订', '計': '计',
+	'報': '报', '書': '书', '買': '买', '賣': '卖', '質': '质', '賞': '赏',
+
+	// 常用名词
+	'龍': '龙', '鳳': '凤', '馬': '马', '魚': '鱼', '鳥': '鸟', '貓': '猫',
+	'獸': '兽', '靈': '灵', '寶': '宝', '劍': '剑', '鎧': '铠', '銃': '铳',
+	'彈': '弹', '國': '国', '園': '园', '場': '场', '門': '门', '東': '东',
+	'風': '风', '雲': '云', '電': '电', '體': '体', '頭': '头', '臉': '脸',
+	'聲': '声', '業': '业', '專': '专', '號': '号', '點': '点', '邊': '边',
+	'車': '车', '軍': '军', '陣': '阵', '隊': '队', '階': '阶', '職': '职',
+	'齒': '齿', '歲': '岁', '島': '岛', '嶺': '岭', '廳': '厅', '廠': '厂',
+
+	// 常用形容词/副词
+	'強': '强', '聖': '圣', '無': '无', '亂': '乱',
+	'難': '难', '雙': '双', '單': '单', '極': '极', '終': '终', '絕': '绝',
+	'獨': '独', '總': '总', '當': '当', '長': '长', '廣': '广', '萬': '万',
+	'後': '后', '復': '复', '遠': '远', '華': '华', '麗': '丽', '歡': '欢',
+
+	// 常用人称/代词
+	'個': '个', '們': '们', '誰': '谁', '對': '对', '從': '从', '將': '将',
+
+	// 漫画/小说特有高频字
+	'傳': '传', '俠': '侠', '賊': '贼', '盜': '盗', '獵': '猎', '衛': '卫',
+	'術': '术', '藝': '艺', '創': '创', '禦': '御', '導': '导', '師': '师',
+	'網': '网', '織': '织', '紀': '纪', '約': '约', '綫': '线', '線': '线',
+	'續': '续', '結': '结', '組': '组', '編': '编', '紅': '红', '綠': '绿',
+	'藍': '蓝', '銀': '银', '鐵': '铁', '鋼': '钢', '銅': '铜', '鑽': '钻',
+	'機': '机', '義': '义', '會': '会', '間': '间', '經': '经',
+	'裝': '装', '見': '见', '親': '亲', '觀': '观', '現': '现', '歷': '历',
+	'殘': '残', '價': '价', '億': '亿', '際': '际', '陰': '阴', '陽': '阳',
+	'靜': '静', '響': '响', '頂': '顶', '須': '须', '預': '预', '領': '领',
+	'題': '题', '騎': '骑', '驅': '驱', '驚': '惊', '願': '愿', '類': '类',
+	'異': '异', '範': '范', '築': '筑', '齊': '齐', '實': '实', '寫': '写',
 }

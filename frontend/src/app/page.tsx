@@ -24,7 +24,7 @@ import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpe
 import DuplicateDetector from "@/components/DuplicateDetector";
 import GroupCard from "@/components/GroupCard";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
-import AutoDetectPanel from "@/components/AutoDetectPanel";
+
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
 import GroupContextMenu from "@/components/GroupContextMenu";
@@ -158,7 +158,7 @@ export default function Home() {
     return false;
   });
   const [showMergeDialog, setShowMergeDialog] = useState(false);
-  const [showAutoDetect, setShowAutoDetect] = useState(false);
+
   const [showAddToGroup, setShowAddToGroup] = useState(false);
 
   // AI 批量标签状态
@@ -896,15 +896,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                     </span>
                   </button>
 
-                {/* Auto Detect Groups */}
-                <button
-                  onClick={() => setShowAutoDetect(true)}
-                  className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-2.5 sm:px-3 text-xs font-medium text-muted transition-all hover:text-foreground"
-                  title={t.comicGroup?.autoDetect || "智能分组"}
-                >
-                  <Brain className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t.comicGroup?.autoDetect || "智能分组"}</span>
-                </button>
+
 
                 {/* Batch Mode Toggle */}
                 <button
@@ -1419,16 +1411,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
         />
       )}
 
-      {/* Auto Detect Panel */}
-      <AutoDetectPanel
-        open={showAutoDetect}
-        onClose={() => setShowAutoDetect(false)}
-        onCreated={() => {
-          loadGroups();
-          setShowGroupView(true);
-        }}
-        contentType={contentType}
-      />
+
 
       {/* 分组右键菜单 */}
       {groupContextMenu && (

@@ -10,6 +10,7 @@ interface MetadataResult {
   publisher?: string;
   year?: number;
   description?: string;
+  language?: string;
   genre?: string;
   seriesName?: string;
   coverUrl?: string;
@@ -276,6 +277,7 @@ export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Pro
                     <div className="text-xs text-muted">
                       {result.year}
                       {result.publisher && ` · ${result.publisher}`}
+                      {result.language && ` · ${result.language}`}
                     </div>
                   )}
                   {result.description && (

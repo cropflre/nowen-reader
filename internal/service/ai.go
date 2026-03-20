@@ -1012,7 +1012,132 @@ Requirements:
 }
 
 // ============================================================
-// Phase 1-2: AI 文件名智能解析
+// Phase 1-2a: AI 漫画内容识别（基于封面+内页 Vision）
+// ============================================================
+
+// RecognizedContent AI 从漫画内容（封面+内页）识别出的结构化元数据
+type RecognizedContent struct {
+	Title    string `json:"title,omitempty"`
+	Author   string `json:"author,omitempty"`
+	Language string `json:"language,omitempty"`
+	Genre    string `json:"genre,omitempty"`
+	Year     *int   `json:"year,omitempty"`
+	Tags     string `json:"tags,omitempty"`
+}
+
+// AIRecognizeComicContent 使用多模态 AI 分析漫画封面和前几页内容，
+// 识别漫画名称、作者等元数据。完全不依赖文件名。
+// coverData: 封面图片字节，pageImages: 内页图片字节列表（最多取前 2-3 页）。
+func AIRecognizeComicContent(cfg AIConfig, coverData []byte, pageImages [][]byte, targetLang string) (*RecognizedContent, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return nil, fmt.Errorf("cloud AI not configured")
+	}
+
+	// 检查 provider 是否支持 Vision
+	if preset, ok := ProviderPresets[cfg.CloudProvider]; ok {
+		if !preset.SupportsVision {
+			return nil, fmt.Errorf("provider %s does not support vision/image analysis, cannot recognize comic content", cfg.CloudProvider)
+		}
+	}
+
+	langName := "Chinese (简体中文)"
+	if targetLang == "en" {
+		langName = "English"
+	}
+
+	systemPrompt := fmt.Sprintf(`You are an expert manga/comic content analyst with deep knowledge of manga, comics, manhwa, manhua and related media.
+
+Your task: Identify the comic/manga by analyzing its cover image and sample pages. DO NOT rely on any filename information.
+
+Analysis strategy:
+1. **Cover image**: Look for title text (any language), author/artist name, publisher logo, volume/issue number, art style
+2. **Sample pages**: Look for title pages, copyright pages, running headers/footers with series name, character dialogue that reveals the story
+3. **Visual recognition**: Use art style, character design, and visual elements to identify well-known series
+4. **Text extraction**: Read any visible text in the images (Japanese, Chinese, Korean, English, etc.)
+
+Return ONLY a valid JSON object:
+{
+  "title": "the official/clean title of the manga/comic (no volume numbers)",
+  "author": "author/artist name if identifiable",
+  "language": "primary language code (zh/ja/en/ko) detected from the content",
+  "genre": "comma-separated genres inferred from visual content and story elements",
+  "year": null,
+  "tags": "comma-separated descriptive tags based on visual analysis"
+}
+
+Rules:
+- Title should be the canonical/official name of the series, cleaned of volume/chapter numbers
+- If you recognize a well-known series, use its most commonly known title in %s
+- For unknown series, extract the title text exactly as shown on the cover/title page
+- If you cannot determine a field with reasonable confidence, omit it
+- Do NOT guess randomly — only include information you can actually see or confidently recognize`, langName)
+
+	userPrompt := "Analyze these comic/manga images and identify the work. The first image is the cover, followed by sample interior pages. Return a JSON object with title, author, language, genre, year, tags."
+
+	// 构建图片列表
+	var images []ImageContent
+	if len(coverData) > 0 {
+		mimeType := detectImageMimeType(coverData)
+		images = append(images, ImageContent{Base64: encodeBase64(coverData), MimeType: mimeType})
+	}
+	for _, pageData := range pageImages {
+		if len(pageData) > 0 {
+			mimeType := detectImageMimeType(pageData)
+			images = append(images, ImageContent{Base64: encodeBase64(pageData), MimeType: mimeType})
+		}
+		// 限制最多 3 张图片（封面 + 2 内页），避免 token 过多
+		if len(images) >= 3 {
+			break
+		}
+	}
+
+	if len(images) == 0 {
+		return nil, fmt.Errorf("no images provided for content recognition")
+	}
+
+	content, err := CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "recognize_content",
+		MaxTokens: 400,
+		Images:    images,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理 markdown 代码块
+	content = strings.ReplaceAll(content, "```json", "")
+	content = strings.ReplaceAll(content, "```", "")
+	content = strings.TrimSpace(content)
+
+	// 提取 JSON
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start >= 0 && end > start {
+		content = content[start : end+1]
+	}
+
+	var recognized RecognizedContent
+	if err := json.Unmarshal([]byte(content), &recognized); err != nil {
+		return nil, fmt.Errorf("failed to parse AI content recognition response: %w", err)
+	}
+	return &recognized, nil
+}
+
+// detectImageMimeType 检测图片 MIME 类型
+func detectImageMimeType(data []byte) string {
+	if len(data) > 4 {
+		if data[0] == 0x89 && data[1] == 0x50 {
+			return "image/png"
+		}
+		if data[0] == 0x52 && data[1] == 0x49 {
+			return "image/webp"
+		}
+	}
+	return "image/jpeg"
+}
+
+// ============================================================
+// Phase 1-2b: AI 文件名智能解析（备用方案）
 // ============================================================
 
 // ParsedFilename AI 从文件名解析出的结构化元数据
@@ -2233,14 +2358,19 @@ func AICompleteMetadata(cfg AIConfig, filename, title string, coverData []byte, 
 		langName = "English"
 	}
 
-	systemPrompt := fmt.Sprintf(`You are an expert manga/comic/novel metadata specialist. Based on the filename (and optionally cover image), infer as much metadata as possible.
+	systemPrompt := fmt.Sprintf(`You are an expert manga/comic/novel metadata specialist. Infer metadata primarily from the cover image (if provided), supplemented by the title and filename as secondary references.
 
-Use your knowledge of manga, comics, light novels, and related media to identify:
+Prioritize visual analysis:
+- Examine cover image for title text, author name, publisher logo, art style, genre cues
+- Use your knowledge of manga, comics, light novels to identify well-known series
+- Only fall back to filename/title analysis when no image is available
+
+Extract:
 - The likely title (clean, without volume numbers or group tags)
-- The author/artist if recognizable from naming conventions
-- Genre(s) based on title keywords and any visual cues
+- The author/artist if recognizable
+- Genre(s) based on visual and textual cues
 - A brief description in %s
-- Language (auto-detect from filename)
+- Language (auto-detect from visual text or filename)
 - Estimated year if possible
 - Relevant tags (comma-separated)
 

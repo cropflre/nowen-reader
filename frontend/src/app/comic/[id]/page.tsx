@@ -49,11 +49,14 @@ import {
   FileText,
   Loader2,
   Eye,
+  ChevronDown,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { MetadataSearch } from "@/components/MetadataSearch";
 import { SimilarComics } from "@/components/Recommendations";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { fetchGroupedComicMap, fetchGroupDetail } from "@/api/groups";
+import type { ComicGroupDetail, GroupComicItem } from "@/hooks/useComicTypes";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -85,6 +88,42 @@ export default function ComicDetailPage() {
 
   const { comic, loading, refetch } = useComicDetail(comicId);
   const { categories: allCategories, refetch: refetchCategories, initCategories } = useCategories();
+
+  // 查询当前漫画所属的合集
+  useEffect(() => {
+    if (!comicId) return;
+    let cancelled = false;
+    const loadGroups = async () => {
+      setGroupsLoading(true);
+      try {
+        const map = await fetchGroupedComicMap();
+        const groupIds = map[comicId];
+        if (!groupIds || groupIds.length === 0) {
+          setComicGroups([]);
+          return;
+        }
+        // 并行获取所有分组详情
+        const details = await Promise.all(groupIds.map(id => fetchGroupDetail(id)));
+        if (!cancelled) {
+          setComicGroups(
+            details.filter((d): d is ComicGroupDetail => d !== null).map(d => ({
+              id: d.id,
+              name: d.name,
+              coverUrl: d.coverUrl,
+              comicCount: d.comicCount,
+              comics: d.comics,
+            }))
+          );
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setGroupsLoading(false);
+      }
+    };
+    loadGroups();
+    return () => { cancelled = true; };
+  }, [comicId]);
   const [newTag, setNewTag] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -95,9 +134,17 @@ export default function ComicDetailPage() {
   const [coverKey, setCoverKey] = useState(0); // force re-render cover image
   const coverFileRef = useRef<HTMLInputElement>(null);
   const [metadataTranslating, setMetadataTranslating] = useState(false);
+  const [translateEngine, setTranslateEngine] = useState<string>("");
+  const [showEngineMenu, setShowEngineMenu] = useState(false);
+  const [translateEngines, setTranslateEngines] = useState<{id: string; name: string; available: boolean; speed: string; quality: string}[]>([]);
+  const [lastTranslateEngine, setLastTranslateEngine] = useState<string>("");
 
   // AI 功能 state
   const { aiConfigured } = useAIStatus();
+
+  // 合集信息 state
+  const [comicGroups, setComicGroups] = useState<{ id: number; name: string; coverUrl: string; comicCount: number; comics: GroupComicItem[] }[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiParseLoading, setAiParseLoading] = useState(false);
   const [aiParsedResult, setAiParsedResult] = useState<Record<string, unknown> | null>(null);
@@ -498,16 +545,19 @@ export default function ComicDetailPage() {
     }
   }, [comicId, locale, refetch]);
 
-  const handleTranslateMetadata = useCallback(async () => {
+  const handleTranslateMetadata = useCallback(async (engine?: string) => {
     if (metadataTranslating) return;
     setMetadataTranslating(true);
+    setShowEngineMenu(false);
     try {
       const res = await fetch(`/api/comics/${comicId}/translate-metadata`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetLang: locale }),
+        body: JSON.stringify({ targetLang: locale, engine: engine || translateEngine || "" }),
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data.engine) setLastTranslateEngine(data.engine);
         refetch();
       }
     } catch {
@@ -515,7 +565,17 @@ export default function ComicDetailPage() {
     } finally {
       setMetadataTranslating(false);
     }
-  }, [metadataTranslating, comicId, locale, refetch]);
+  }, [metadataTranslating, comicId, locale, refetch, translateEngine]);
+
+  // 加载可用翻译引擎
+  useEffect(() => {
+    fetch("/api/translate/engines")
+      .then(r => r.json())
+      .then(data => {
+        if (data.engines) setTranslateEngines(data.engines);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleDelete = useCallback(async () => {
     const success = await deleteComicById(comicId);
@@ -895,6 +955,97 @@ export default function ComicDetailPage() {
               )}
             </div>
 
+            {/* Collection / 合集信息 */}
+            {comicGroups.length > 0 && comicGroups.map((group) => {
+              // 当前漫画在合集中的位置
+              const currentIdx = group.comics.findIndex(c => c.id === comicId);
+              const totalComics = group.comics.length;
+              const completedCount = group.comics.filter(c => c.pageCount > 0 && c.lastReadPage >= c.pageCount).length;
+              const overallProgress = totalComics > 0 ? Math.round((completedCount / totalComics) * 100) : 0;
+              // 上一卷/下一卷
+              const prevComic = currentIdx > 0 ? group.comics[currentIdx - 1] : null;
+              const nextComic = currentIdx >= 0 && currentIdx < totalComics - 1 ? group.comics[currentIdx + 1] : null;
+              // 继续阅读的下一未读卷
+              const nextUnread = group.comics.find(c => c.id !== comicId && c.pageCount > 0 && c.lastReadPage < c.pageCount);
+
+              return (
+                <div key={group.id} className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
+                  {/* 合集头部 */}
+                  <Link
+                    href={`/group/${group.id}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-card-hover"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+                      <Layers className="h-5 w-5 text-accent" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-foreground truncate">{group.name}</h3>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-muted">{totalComics} {t.comicGroup?.volumes || "卷"}</span>
+                        {currentIdx >= 0 && (
+                          <span className="text-xs text-accent font-medium">
+                            #{currentIdx + 1}
+                          </span>
+                        )}
+                        <span className="text-xs text-muted">·</span>
+                        <span className={`text-xs font-medium ${overallProgress >= 100 ? "text-emerald-400" : "text-muted"}`}>
+                          {overallProgress}%
+                        </span>
+                      </div>
+                    </div>
+                    <ArrowLeft className="h-4 w-4 text-muted rotate-180" />
+                  </Link>
+
+                  {/* 合集进度条 */}
+                  <div className="px-4 pb-3">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/15">
+                      <div
+                        className={`h-full rounded-full transition-all ${overallProgress >= 100 ? "bg-emerald-400" : "bg-accent"}`}
+                        style={{ width: `${Math.min(overallProgress, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 前后卷快捷导航 */}
+                  {(prevComic || nextComic) && (
+                    <div className="flex items-center gap-2 border-t border-border/30 px-4 py-2.5">
+                      {prevComic ? (
+                        <Link
+                          href={isNovelFile(prevComic.filename) ? `/novel/${prevComic.id}` : `/comic/${prevComic.id}`}
+                          className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-card-hover"
+                        >
+                          <ArrowLeft className="h-3 w-3 text-muted flex-shrink-0" />
+                          <span className="truncate text-muted hover:text-foreground">{prevComic.title}</span>
+                        </Link>
+                      ) : <div className="flex-1" />}
+                      {nextComic ? (
+                        <Link
+                          href={isNovelFile(nextComic.filename) ? `/novel/${nextComic.id}` : `/comic/${nextComic.id}`}
+                          className="flex flex-1 items-center justify-end gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-card-hover"
+                        >
+                          <span className="truncate text-muted hover:text-foreground text-right">{nextComic.title}</span>
+                          <ArrowLeft className="h-3 w-3 text-muted rotate-180 flex-shrink-0" />
+                        </Link>
+                      ) : <div className="flex-1" />}
+                    </div>
+                  )}
+
+                  {/* 连续阅读提示 */}
+                  {nextUnread && nextUnread.id !== (nextComic?.id) && (
+                    <div className="border-t border-border/30 px-4 py-2.5">
+                      <Link
+                        href={isNovelFile(nextUnread.filename) ? `/novel/${nextUnread.id}` : `/reader/${nextUnread.id}`}
+                        className="flex items-center gap-2 text-xs text-accent transition-colors hover:text-accent-hover"
+                      >
+                        <Play className="h-3 w-3" />
+                        <span>{t.comicGroup?.continueReading || "继续阅读"}: {nextUnread.title}</span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
             {/* Tags */}
             <div>
               <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">{t.comicDetail.tagsLabel}</h3>
@@ -1073,15 +1224,55 @@ export default function ComicDetailPage() {
                       <Pencil className="h-3 w-3" />
                       <span>{t.metadata?.editMetadata || "Edit"}</span>
                     </button>
-                    <button
-                      onClick={handleTranslateMetadata}
-                      disabled={metadataTranslating}
-                      className="flex items-center gap-1 rounded-md border border-border/40 bg-card/50 px-1.5 py-0.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
-                      title={t.metadata?.translateMetadata || "Translate Metadata"}
-                    >
-                      <Languages className="h-3 w-3" />
-                      <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (t.metadata?.translateMetadata || "Translate")}</span>
-                    </button>
+                    <div className="relative">
+                      <div className="flex items-center gap-0">
+                        <button
+                          onClick={() => handleTranslateMetadata()}
+                          disabled={metadataTranslating}
+                          className="flex items-center gap-1 rounded-l-md border border-r-0 border-border/40 bg-card/50 px-1.5 py-0.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50 disabled:pointer-events-none"
+                          title={t.metadata?.translateMetadata || "Translate Metadata"}
+                        >
+                          <Languages className="h-3 w-3" />
+                          <span>{metadataTranslating ? (t.metadata?.translatingMetadata || "Translating...") : (lastTranslateEngine ? `${t.metadata?.translateMetadata || "Translate"} (${lastTranslateEngine})` : (t.metadata?.translateMetadata || "Translate"))}</span>
+                        </button>
+                        <button
+                          onClick={() => setShowEngineMenu(!showEngineMenu)}
+                          disabled={metadataTranslating}
+                          className="flex items-center rounded-r-md border border-border/40 bg-card/50 px-1 py-0.5 text-[10px] text-muted transition-all hover:text-foreground hover:border-border disabled:opacity-50"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {showEngineMenu && (
+                        <div className="absolute top-full left-0 z-50 mt-1 min-w-[180px] rounded-lg border border-border bg-card shadow-lg">
+                          <div className="p-1.5">
+                            <div className="px-2 py-1 text-[10px] font-medium text-muted uppercase tracking-wider">翻译引擎</div>
+                            {translateEngines.map(eng => (
+                              <button
+                                key={eng.id}
+                                onClick={() => { setTranslateEngine(eng.id); handleTranslateMetadata(eng.id); }}
+                                disabled={!eng.available}
+                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-foreground transition-colors hover:bg-card-hover disabled:opacity-40 disabled:pointer-events-none"
+                              >
+                                <span className="flex-1 text-left">{eng.name}</span>
+                                <span className={`text-[9px] px-1 py-0.5 rounded ${eng.speed === 'instant' ? 'bg-green-500/15 text-green-400' : eng.speed === 'fast' ? 'bg-blue-500/15 text-blue-400' : 'bg-yellow-500/15 text-yellow-400'}`}>
+                                  {eng.speed === 'instant' ? '极快' : eng.speed === 'fast' ? '快' : '慢'}
+                                </span>
+                                {!eng.available && <span className="text-[9px] text-muted">未配置</span>}
+                              </button>
+                            ))}
+                            <div className="mt-1 border-t border-border/40 pt-1">
+                              <button
+                                onClick={() => handleTranslateMetadata("")} 
+                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-muted transition-colors hover:bg-card-hover"
+                              >
+                                <span>自动选择最优引擎</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {aiConfigured && (
                       <button
                         onClick={handleAiSummary}

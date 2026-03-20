@@ -35,6 +35,25 @@ import {
   Globe,
   Bookmark,
   Zap,
+  Pencil,
+  Undo2,
+  Save,
+  Wand2,
+  Copy,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  MessageCircle,
+  Send,
+  Bot,
+  Eraser,
+  Command,
+  HelpCircle,
+  BookMarked,
+  Lightbulb,
+  Wrench,
+  GraduationCap,
+  CircleHelp,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
@@ -61,8 +80,893 @@ import {
   startBatchSelected,
   clearSelectedMetadata,
   setFocusedItem,
+  enterBatchEditMode,
+  exitBatchEditMode,
+  setBatchEditName,
+  applyNameToAll,
+  undoBatchEditNames,
+  saveBatchRename,
+  aiRename,
+  setLibrarySort,
+  toggleAIChat,
+  closeAIChat,
+  openAIChat,
+  setAIChatInput,
+  sendAIChatMessage,
+  clearAIChatMessages,
+  abortAIChat,
+  startGuide,
+  nextGuideStep,
+  prevGuideStep,
+  skipGuide,
+  finishGuide,
+  GUIDE_STEPS,
+  checkAutoStartGuide,
+  openHelpPanel,
+  closeHelpPanel,
+  setHelpSearchQuery,
+  resetGuide,
 } from "@/lib/scraper-store";
-import type { MetaFilter, LibraryItem } from "@/lib/scraper-store";
+import type { MetaFilter, LibraryItem, BatchEditNameEntry, LibrarySortBy, AIChatMessage } from "@/lib/scraper-store";
+
+/* ── 引导遮罩组件 ── */
+function GuideOverlay({
+  scraperT,
+  currentStep,
+}: {
+  scraperT: Record<string, string>;
+  currentStep: number;
+}) {
+  const step = GUIDE_STEPS[currentStep];
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const totalSteps = GUIDE_STEPS.length;
+
+  useEffect(() => {
+    if (!step) return;
+    const el = document.querySelector(step.targetSelector);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // 延迟计算位置（等待scroll完成）
+      const timer = setTimeout(() => {
+        setTargetRect(el.getBoundingClientRect());
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setTargetRect(null);
+    }
+  }, [currentStep, step]);
+
+  if (!step) return null;
+
+  const stepLabel = (scraperT.guideStepOf || "步骤 {current}/{total}")
+    .replace("{current}", String(currentStep + 1))
+    .replace("{total}", String(totalSteps));
+
+  // 计算弹窗位置
+  const getTooltipStyle = (): React.CSSProperties => {
+    if (!targetRect) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+
+    const gap = 16;
+    const style: React.CSSProperties = { position: "fixed", zIndex: 10002 };
+
+    switch (step.placement) {
+      case "bottom":
+        style.top = targetRect.bottom + gap;
+        style.left = Math.max(16, Math.min(targetRect.left, window.innerWidth - 380));
+        break;
+      case "top":
+        style.bottom = window.innerHeight - targetRect.top + gap;
+        style.left = Math.max(16, Math.min(targetRect.left, window.innerWidth - 380));
+        break;
+      case "left":
+        style.top = Math.max(16, targetRect.top);
+        style.right = window.innerWidth - targetRect.left + gap;
+        break;
+      case "right":
+        style.top = Math.max(16, targetRect.top);
+        style.left = targetRect.right + gap;
+        break;
+    }
+    return style;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000]">
+      {/* 暗色遮罩（排除高亮区域） */}
+      <svg className="absolute inset-0 w-full h-full" style={{ zIndex: 10000 }}>
+        <defs>
+          <mask id="guide-mask">
+            <rect width="100%" height="100%" fill="white" />
+            {targetRect && (
+              <rect
+                x={targetRect.left - 6}
+                y={targetRect.top - 6}
+                width={targetRect.width + 12}
+                height={targetRect.height + 12}
+                rx="12"
+                fill="black"
+              />
+            )}
+          </mask>
+        </defs>
+        <rect
+          width="100%"
+          height="100%"
+          fill="rgba(0,0,0,0.6)"
+          mask="url(#guide-mask)"
+        />
+      </svg>
+
+      {/* 高亮边框 */}
+      {targetRect && (
+        <div
+          className="fixed border-2 border-accent rounded-xl pointer-events-none animate-pulse"
+          style={{
+            zIndex: 10001,
+            top: targetRect.top - 6,
+            left: targetRect.left - 6,
+            width: targetRect.width + 12,
+            height: targetRect.height + 12,
+            boxShadow: "0 0 0 4px rgba(var(--accent-rgb, 99 102 241) / 0.3), 0 0 20px rgba(var(--accent-rgb, 99 102 241) / 0.2)",
+          }}
+        />
+      )}
+
+      {/* 提示卡片 */}
+      <div
+        style={getTooltipStyle()}
+        className="w-[360px] rounded-2xl bg-card border border-border/60 shadow-2xl p-5 space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-300"
+      >
+        {/* 步骤指示器 */}
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-medium text-accent bg-accent/10 rounded-full px-2.5 py-0.5">
+            {stepLabel}
+          </span>
+          <div className="flex gap-1">
+            {Array.from({ length: totalSteps }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === currentStep ? "w-4 bg-accent" : i < currentStep ? "w-1.5 bg-accent/40" : "w-1.5 bg-border/60"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* 标题 + 描述 */}
+        <div className="space-y-1.5">
+          <h4 className="text-sm font-bold text-foreground leading-tight">
+            {scraperT[step.titleKey] || step.titleKey}
+          </h4>
+          <p className="text-xs text-muted leading-relaxed">
+            {scraperT[step.descKey] || step.descKey}
+          </p>
+        </div>
+
+        {/* 操作提示（可选） */}
+        {step.actionKey && (
+          <div className="flex items-start gap-2 rounded-lg bg-accent/5 border border-accent/20 p-2.5">
+            <Lightbulb className="h-3.5 w-3.5 text-accent flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-accent/80 leading-relaxed">
+              {scraperT[step.actionKey] || step.actionKey}
+            </p>
+          </div>
+        )}
+
+        {/* 导航按钮 */}
+        <div className="flex items-center justify-between pt-1">
+          <button
+            onClick={skipGuide}
+            className="text-[11px] text-muted hover:text-foreground transition-colors"
+          >
+            {scraperT.guideSkip || "跳过教程"}
+          </button>
+          <div className="flex items-center gap-2">
+            {currentStep > 0 && (
+              <button
+                onClick={prevGuideStep}
+                className="flex items-center gap-1 rounded-lg border border-border/40 px-3 py-1.5 text-[11px] font-medium text-muted hover:text-foreground hover:bg-card-hover transition-all"
+              >
+                <ChevronLeft className="h-3 w-3" />
+                {scraperT.guidePrev || "上一步"}
+              </button>
+            )}
+            <button
+              onClick={currentStep < totalSteps - 1 ? nextGuideStep : finishGuide}
+              className="flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-accent-hover transition-all"
+            >
+              {currentStep < totalSteps - 1
+                ? (scraperT.guideNext || "下一步")
+                : (scraperT.guideFinish || "完成")
+              }
+              {currentStep < totalSteps - 1 && <ChevronRight className="h-3 w-3" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 帮助面板组件 ── */
+function HelpPanel({
+  scraperT,
+  searchQuery,
+  onClose,
+}: {
+  scraperT: Record<string, string>;
+  searchQuery: string;
+  onClose: () => void;
+}) {
+  type HelpCategory = "faq" | "tips" | "troubleshoot";
+  const [activeCategory, setActiveCategory] = useState<HelpCategory>("faq");
+
+  // FAQ 数据
+  const faqItems = [
+    { q: scraperT.helpFaq1Q || "什么是元数据刮削？", a: scraperT.helpFaq1A || "" },
+    { q: scraperT.helpFaq2Q || "标准模式和AI模式有什么区别？", a: scraperT.helpFaq2A || "" },
+    { q: scraperT.helpFaq3Q || "刮削失败怎么办？", a: scraperT.helpFaq3A || "" },
+    { q: scraperT.helpFaq4Q || "可以只刮削部分书籍吗？", a: scraperT.helpFaq4A || "" },
+    { q: scraperT.helpFaq5Q || "如何编辑错误的元数据？", a: scraperT.helpFaq5A || "" },
+  ];
+
+  // Tips
+  const tips = [
+    scraperT.helpTip1 || "💡 使用AI模式刮削时，先确保在设置中配置了AI服务",
+    scraperT.helpTip2 || "💡 文件名越接近正式书名，匹配率越高",
+    scraperT.helpTip3 || "💡 通过AI助手可以用自然语言控制操作",
+    scraperT.helpTip4 || "💡 点击书籍封面可查看详情并进行精准刮削",
+    scraperT.helpTip5 || "💡 排序功能可以按刮削状态排序",
+  ];
+
+  // Troubleshoot
+  const troubleshootItems = [
+    { q: scraperT.helpTrouble1Q || "刮削一直显示失败", a: scraperT.helpTrouble1A || "" },
+    { q: scraperT.helpTrouble2Q || "AI模式不可用", a: scraperT.helpTrouble2A || "" },
+    { q: scraperT.helpTrouble3Q || "刮削结果不准确", a: scraperT.helpTrouble3A || "" },
+  ];
+
+  // 搜索过滤
+  const lowerQ = searchQuery.toLowerCase();
+  const filteredFaq = lowerQ ? faqItems.filter((f) => f.q.toLowerCase().includes(lowerQ) || f.a.toLowerCase().includes(lowerQ)) : faqItems;
+  const filteredTips = lowerQ ? tips.filter((t) => t.toLowerCase().includes(lowerQ)) : tips;
+  const filteredTroubleshoot = lowerQ ? troubleshootItems.filter((t) => t.q.toLowerCase().includes(lowerQ) || t.a.toLowerCase().includes(lowerQ)) : troubleshootItems;
+
+  const hasResults = filteredFaq.length > 0 || filteredTips.length > 0 || filteredTroubleshoot.length > 0;
+
+  // FAQ 展开/折叠
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [expandedTrouble, setExpandedTrouble] = useState<number | null>(null);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* 头部 */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 flex-shrink-0 bg-gradient-to-r from-emerald-500/5 to-teal-500/5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
+            <CircleHelp className="h-3.5 w-3.5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              {scraperT.helpTitle || "帮助中心"}
+            </h3>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => { resetGuide(); startGuide(); onClose(); }}
+            className="flex items-center gap-1 rounded-lg text-[10px] font-medium text-muted hover:text-accent hover:bg-accent/5 px-2 py-1 transition-all"
+            title={scraperT.guideRestartBtn || "重新引导"}
+          >
+            <GraduationCap className="h-3 w-3" />
+            {scraperT.guideRestartBtn || "重新引导"}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="px-4 py-2.5 border-b border-border/20">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setHelpSearchQuery(e.target.value)}
+            placeholder={scraperT.helpSearchPlaceholder || "搜索帮助文档..."}
+            className="w-full rounded-lg bg-card-hover/50 pl-8 pr-3 py-1.5 text-xs text-foreground placeholder-muted/50 outline-none border border-border/40 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+          />
+        </div>
+      </div>
+
+      {/* 分类标签 */}
+      {!lowerQ && (
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-border/10">
+          {(["faq", "tips", "troubleshoot"] as HelpCategory[]).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all ${
+                activeCategory === cat
+                  ? "bg-emerald-500 text-white"
+                  : "bg-card-hover text-muted hover:text-foreground"
+              }`}
+            >
+              {cat === "faq" && <><BookMarked className="h-3 w-3" />{scraperT.helpFaqTitle || "常见问题"}</>}
+              {cat === "tips" && <><Lightbulb className="h-3 w-3" />{scraperT.helpTipsTitle || "使用技巧"}</>}
+              {cat === "troubleshoot" && <><Wrench className="h-3 w-3" />{scraperT.helpTroubleshootTitle || "故障排除"}</>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 内容区域 */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+        {!hasResults ? (
+          <div className="text-center py-8 text-xs text-muted">
+            {scraperT.helpNoResults || "没有找到匹配的帮助内容"}
+          </div>
+        ) : (
+          <>
+            {/* FAQ */}
+            {(lowerQ || activeCategory === "faq") && filteredFaq.length > 0 && (
+              <div className="space-y-1.5">
+                {lowerQ && (
+                  <h5 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">
+                    {scraperT.helpFaqTitle || "常见问题"}
+                  </h5>
+                )}
+                {filteredFaq.map((item, idx) => (
+                  <div key={idx} className="rounded-xl border border-border/30 overflow-hidden">
+                    <button
+                      onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
+                      className="flex w-full items-center justify-between px-3.5 py-2.5 text-left hover:bg-card-hover/30 transition-colors"
+                    >
+                      <span className="text-xs font-medium text-foreground pr-2">{item.q}</span>
+                      {expandedFaq === idx
+                        ? <ChevronUp className="h-3.5 w-3.5 text-muted flex-shrink-0" />
+                        : <ChevronDown className="h-3.5 w-3.5 text-muted flex-shrink-0" />
+                      }
+                    </button>
+                    {expandedFaq === idx && (
+                      <div className="px-3.5 pb-3 border-t border-border/10">
+                        <p className="text-xs text-muted leading-relaxed pt-2">{item.a}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Tips */}
+            {(lowerQ || activeCategory === "tips") && filteredTips.length > 0 && (
+              <div className="space-y-1.5">
+                {lowerQ && (
+                  <h5 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">
+                    {scraperT.helpTipsTitle || "使用技巧"}
+                  </h5>
+                )}
+                {filteredTips.map((tip, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-border/30 bg-amber-500/5 px-3.5 py-2.5"
+                  >
+                    <p className="text-xs text-foreground/80 leading-relaxed">{tip}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Troubleshoot */}
+            {(lowerQ || activeCategory === "troubleshoot") && filteredTroubleshoot.length > 0 && (
+              <div className="space-y-1.5">
+                {lowerQ && (
+                  <h5 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">
+                    {scraperT.helpTroubleshootTitle || "故障排除"}
+                  </h5>
+                )}
+                {filteredTroubleshoot.map((item, idx) => (
+                  <div key={idx} className="rounded-xl border border-border/30 overflow-hidden">
+                    <button
+                      onClick={() => setExpandedTrouble(expandedTrouble === idx ? null : idx)}
+                      className="flex w-full items-center justify-between px-3.5 py-2.5 text-left hover:bg-card-hover/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 pr-2">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                        <span className="text-xs font-medium text-foreground">{item.q}</span>
+                      </div>
+                      {expandedTrouble === idx
+                        ? <ChevronUp className="h-3.5 w-3.5 text-muted flex-shrink-0" />
+                        : <ChevronDown className="h-3.5 w-3.5 text-muted flex-shrink-0" />
+                      }
+                    </button>
+                    {expandedTrouble === idx && (
+                      <div className="px-3.5 pb-3 border-t border-border/10">
+                        <p className="text-xs text-muted leading-relaxed pt-2">{item.a}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── AI 聊天面板组件 ── */
+function AIChatPanel({
+  messages,
+  loading,
+  input,
+  scraperT,
+  onClose,
+}: {
+  messages: AIChatMessage[];
+  loading: boolean;
+  input: string;
+  scraperT: Record<string, string>;
+  onClose: () => void;
+}) {
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 自动滚动到底部
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // 自动聚焦输入框
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSend = () => {
+    if (!input.trim() || loading) return;
+    sendAIChatMessage();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // 快捷指令
+  const quickCommands = [
+    { label: scraperT.aiChatQuickScrapeAll || "刮削缺失项", prompt: "请帮我刮削所有缺失元数据的书籍", icon: "zap" },
+    { label: scraperT.aiChatQuickSetAI || "切换AI模式", prompt: "切换到AI智能刮削模式", icon: "brain" },
+    { label: scraperT.aiChatQuickStats || "查看统计", prompt: "告诉我当前书库的元数据统计情况", icon: "chart" },
+    { label: scraperT.aiChatQuickHelp || "使用帮助", prompt: "请告诉我如何使用元数据刮削功能", icon: "help" },
+    { label: scraperT.aiChatQuickSelectAll || "全选当页", prompt: "全选当前页面的所有书籍", icon: "check" },
+    { label: scraperT.aiChatQuickFilter || "筛选缺失", prompt: "筛选出缺失元数据的书籍", icon: "filter" },
+  ];
+
+  const visibleMessages = messages.filter((m) => m.role !== "system" || m.commandResult);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* 头部 */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 flex-shrink-0 bg-gradient-to-r from-violet-500/5 to-purple-500/5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-sm">
+            <Bot className="h-3.5 w-3.5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              {scraperT.aiChatTitle || "AI 刮削助手"}
+            </h3>
+            <p className="text-[10px] text-muted -mt-0.5">
+              {scraperT.aiChatSubtitle || "智能对话 · 指令控制"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {messages.length > 0 && (
+            <button
+              onClick={clearAIChatMessages}
+              disabled={loading}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
+              title={scraperT.aiChatClear || "清空对话"}
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* 消息区域 */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+        {visibleMessages.length === 0 ? (
+          /* 空状态 — 欢迎词 + 快捷指令 */
+          <div className="flex flex-col items-center justify-center h-full space-y-4 py-6">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/10 to-purple-500/10">
+              <Bot className="h-8 w-8 text-purple-400" />
+            </div>
+            <div className="text-center space-y-1">
+              <h4 className="text-sm font-semibold text-foreground">
+                {scraperT.aiChatEmpty || "你好！我是你的刮削助手 🤖"}
+              </h4>
+              <p className="text-xs text-muted leading-relaxed max-w-[280px]">
+                {scraperT.aiChatEmptyDesc || "你可以问我关于元数据刮削的问题，或者直接用自然语言下指令。试试看吧！"}
+              </p>
+            </div>
+
+            {/* 快捷指令网格 */}
+            <div className="grid grid-cols-2 gap-1.5 w-full max-w-[340px]">
+              {quickCommands.map((cmd) => (
+                <button
+                  key={cmd.prompt}
+                  onClick={() => sendAIChatMessage(cmd.prompt)}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 rounded-lg border border-border/40 bg-card-hover/30 px-2.5 py-2 text-[11px] font-medium text-muted hover:text-foreground hover:border-purple-500/30 hover:bg-purple-500/5 transition-all disabled:opacity-50 text-left"
+                >
+                  {cmd.icon === "zap" && <Zap className="h-3 w-3 text-amber-500 flex-shrink-0" />}
+                  {cmd.icon === "brain" && <Brain className="h-3 w-3 text-purple-500 flex-shrink-0" />}
+                  {cmd.icon === "chart" && <Database className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                  {cmd.icon === "help" && <HelpCircle className="h-3 w-3 text-emerald-500 flex-shrink-0" />}
+                  {cmd.icon === "check" && <CheckSquare className="h-3 w-3 text-accent flex-shrink-0" />}
+                  {cmd.icon === "filter" && <Filter className="h-3 w-3 text-orange-500 flex-shrink-0" />}
+                  <span className="truncate">{cmd.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* 消息列表 */
+          visibleMessages.map((msg) => (
+            <div key={msg.id}>
+              {msg.role === "user" ? (
+                /* 用户消息 */
+                <div className="flex justify-end">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 shadow-sm">
+                    <p className="text-xs text-white leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ) : msg.role === "system" && msg.commandResult ? (
+                /* 指令执行结果 */
+                <div className="flex justify-center">
+                  <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-medium ${
+                    msg.commandResult.success
+                      ? "bg-emerald-500/10 text-emerald-500"
+                      : "bg-red-500/10 text-red-500"
+                  }`}>
+                    <Command className="h-3 w-3" />
+                    {msg.commandResult.message}
+                  </div>
+                </div>
+              ) : (
+                /* 助手消息 */
+                <div className="flex gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex-shrink-0 mt-0.5">
+                    <Bot className="h-3 w-3 text-white" />
+                  </div>
+                  <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-card-hover/60 border border-border/20 px-3.5 py-2 shadow-sm">
+                    <div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                      {msg.content}
+                      {loading && msg === visibleMessages[visibleMessages.length - 1] && !msg.content && (
+                        <span className="inline-flex gap-1 ml-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* 快捷指令条（有消息时显示在输入框上方） */}
+      {visibleMessages.length > 0 && (
+        <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/10 overflow-x-auto scrollbar-hide">
+          {quickCommands.slice(0, 4).map((cmd) => (
+            <button
+              key={cmd.prompt}
+              onClick={() => sendAIChatMessage(cmd.prompt)}
+              disabled={loading}
+              className="flex-shrink-0 rounded-full border border-border/30 bg-card-hover/30 px-2.5 py-1 text-[10px] text-muted hover:text-foreground hover:border-purple-500/30 transition-all disabled:opacity-50"
+            >
+              {cmd.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 输入区域 */}
+      <div className="flex items-end gap-2 px-3 py-3 border-t border-border/30 flex-shrink-0 bg-card/30">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setAIChatInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={scraperT.aiChatPlaceholder || "输入问题或指令..."}
+          disabled={loading}
+          rows={1}
+          className="flex-1 rounded-xl bg-card-hover/50 px-3.5 py-2 text-xs text-foreground placeholder-muted/50 outline-none border border-border/40 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all resize-none max-h-24 disabled:opacity-50"
+          style={{ minHeight: "36px" }}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = Math.min(el.scrollHeight, 96) + "px";
+          }}
+        />
+        {loading ? (
+          <button
+            onClick={abortAIChat}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-white shadow-sm transition-colors hover:bg-red-600 flex-shrink-0"
+          >
+            <Square className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-sm transition-all hover:shadow-md disabled:opacity-40 flex-shrink-0"
+          >
+            <Send className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── 批量编辑面板组件 ── */
+function BatchEditPanel({
+  entries,
+  scraperT,
+  saving,
+  results,
+  aiLoading,
+  onExit,
+}: {
+  entries: Map<string, BatchEditNameEntry>;
+  scraperT: Record<string, string>;
+  saving: boolean;
+  results: { comicId: string; status: string; newTitle?: string; message?: string }[] | null;
+  aiLoading: boolean;
+  onExit: () => void;
+}) {
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [applyAllInput, setApplyAllInput] = useState("");
+  const [showApplyAll, setShowApplyAll] = useState(false);
+
+  const entriesArr = Array.from(entries.values());
+  const changedCount = entriesArr.filter((e) => e.newTitle.trim() !== e.oldTitle).length;
+  const successCount = results?.filter((r) => r.status === "success").length ?? 0;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* 头部 */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Pencil className="h-4 w-4 text-accent" />
+          <h3 className="text-sm font-semibold text-foreground">
+            {scraperT.batchEditTitle || "批量编辑名称"}
+          </h3>
+          <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+            {entries.size} {scraperT.libItems || "项"}
+          </span>
+        </div>
+        <button
+          onClick={onExit}
+          disabled={saving}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-50"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* AI 智能命名区域 */}
+        <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Wand2 className="h-4 w-4 text-purple-500" />
+            <h4 className="text-xs font-semibold text-foreground">{scraperT.aiRenameTitle || "AI 智能命名"}</h4>
+          </div>
+          <p className="text-[11px] text-muted leading-relaxed">
+            {scraperT.aiRenameDesc || "输入命名需求，AI会为所有选中书籍生成合适的名称"}
+          </p>
+          <textarea
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            placeholder={scraperT.aiRenamePlaceholder || "例如：提取纯净书名、去除方括号标记、格式统一为「作者 - 书名」..."}
+            disabled={aiLoading || saving}
+            className="w-full rounded-lg bg-card-hover/50 px-3 py-2 text-xs text-foreground placeholder-muted/50 outline-none border border-border/40 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all resize-none disabled:opacity-50"
+            rows={2}
+          />
+          <button
+            onClick={() => {
+              if (aiPrompt.trim()) aiRename(aiPrompt.trim());
+            }}
+            disabled={aiLoading || !aiPrompt.trim() || saving}
+            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-all shadow-sm disabled:opacity-50 hover:shadow-md"
+          >
+            {aiLoading ? (
+              <><Loader2 className="h-3 w-3 animate-spin" />{scraperT.aiRenameLoading || "AI 生成中..."}</>
+            ) : (
+              <><Brain className="h-3 w-3" />{scraperT.aiRenameBtn || "AI 生成名称"}</>
+            )}
+          </button>
+        </div>
+
+        {/* 一键应用同一名称 */}
+        <div className="rounded-xl border border-border/40 bg-card p-3 space-y-2">
+          <button
+            onClick={() => setShowApplyAll(!showApplyAll)}
+            className="flex w-full items-center justify-between text-xs font-medium text-foreground"
+          >
+            <div className="flex items-center gap-1.5">
+              <Copy className="h-3.5 w-3.5 text-muted" />
+              <span>{scraperT.applyAllTitle || "一键应用相同名称"}</span>
+            </div>
+            {showApplyAll ? <ChevronUp className="h-3 w-3 text-muted" /> : <ChevronDown className="h-3 w-3 text-muted" />}
+          </button>
+          {showApplyAll && (
+            <div className="flex gap-1.5 mt-1">
+              <input
+                type="text"
+                value={applyAllInput}
+                onChange={(e) => setApplyAllInput(e.target.value)}
+                placeholder={scraperT.applyAllPlaceholder || "输入统一名称..."}
+                disabled={saving}
+                className="flex-1 rounded-lg bg-card-hover/50 px-2.5 py-1.5 text-xs text-foreground placeholder-muted/50 outline-none border border-border/40 focus:border-accent/50 transition-all disabled:opacity-50"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && applyAllInput.trim()) {
+                    applyNameToAll(applyAllInput.trim());
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (applyAllInput.trim()) applyNameToAll(applyAllInput.trim());
+                }}
+                disabled={!applyAllInput.trim() || saving}
+                className="rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                {scraperT.applyBtn || "应用"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 编辑列表 */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold text-foreground">
+              {scraperT.batchEditList || "名称编辑"}
+              {changedCount > 0 && (
+                <span className="ml-1.5 text-accent text-[10px]">
+                  ({changedCount} {scraperT.batchEditChanged || "项已修改"})
+                </span>
+              )}
+            </h4>
+            <button
+              onClick={undoBatchEditNames}
+              disabled={saving}
+              className="flex items-center gap-1 text-[10px] text-muted hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <Undo2 className="h-3 w-3" />
+              {scraperT.batchEditUndo || "还原全部"}
+            </button>
+          </div>
+
+          <div className="space-y-1 max-h-[400px] overflow-y-auto rounded-xl border border-border/30 divide-y divide-border/10">
+            {entriesArr.map((entry) => {
+              const isChanged = entry.newTitle.trim() !== entry.oldTitle;
+              const result = results?.find((r) => r.comicId === entry.comicId);
+              return (
+                <div key={entry.comicId} className="px-3 py-2 space-y-1">
+                  {/* 文件名参考 */}
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="h-3 w-3 text-muted flex-shrink-0" />
+                    <span className="text-[10px] text-muted/60 truncate" title={entry.filename}>
+                      {entry.filename}
+                    </span>
+                  </div>
+                  {/* 编辑输入框 */}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={entry.newTitle}
+                      onChange={(e) => setBatchEditName(entry.comicId, e.target.value)}
+                      disabled={saving}
+                      className={`flex-1 rounded-md px-2 py-1 text-xs text-foreground outline-none border transition-all disabled:opacity-50 ${
+                        isChanged
+                          ? "bg-accent/5 border-accent/40 focus:border-accent focus:ring-1 focus:ring-accent/20"
+                          : "bg-card-hover/40 border-border/30 focus:border-border/60"
+                      }`}
+                    />
+                    {/* 状态标识 */}
+                    {result ? (
+                      result.status === "success" ? (
+                        <CheckCircle className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <span title={result.message}><XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" /></span>
+                      )
+                    ) : isChanged ? (
+                      <div className="h-2 w-2 rounded-full bg-accent flex-shrink-0" />
+                    ) : null}
+                  </div>
+                  {/* 原名参考 */}
+                  {isChanged && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted/50">
+                      <span>{scraperT.batchEditOldName || "原名"}:</span>
+                      <span className="line-through truncate">{entry.oldTitle}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 保存结果摘要 */}
+        {results && (
+          <div className="rounded-xl bg-card p-3 border border-border/30">
+            <div className="flex items-center gap-2 text-xs font-medium text-foreground mb-2">
+              <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
+              {scraperT.batchEditSaved || "保存完成"}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg bg-emerald-500/10 p-2 text-center">
+                <div className="text-sm font-bold text-emerald-500">{successCount}</div>
+                <div className="text-[10px] text-muted">{scraperT.resultSuccess || "成功"}</div>
+              </div>
+              <div className="rounded-lg bg-red-500/10 p-2 text-center">
+                <div className="text-sm font-bold text-red-500">{(results?.length ?? 0) - successCount}</div>
+                <div className="text-[10px] text-muted">{scraperT.resultFailed || "失败"}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 底部操作栏 */}
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-border/30 flex-shrink-0">
+        <button
+          onClick={onExit}
+          disabled={saving}
+          className="flex-1 flex items-center justify-center gap-1 rounded-xl border border-border/40 py-2 text-xs font-medium text-muted hover:text-foreground hover:bg-card-hover transition-all disabled:opacity-50"
+        >
+          <X className="h-3.5 w-3.5" />
+          {scraperT.cancelEdit || "取消"}
+        </button>
+        <button
+          onClick={saveBatchRename}
+          disabled={saving || changedCount === 0}
+          className="flex-1 flex items-center justify-center gap-1 rounded-xl bg-accent py-2 text-xs font-medium text-white shadow-lg shadow-accent/25 transition-all hover:bg-accent-hover disabled:opacity-50"
+        >
+          {saving ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" />{scraperT.batchEditSaving || "保存中..."}</>
+          ) : (
+            <><Save className="h-3.5 w-3.5" />{scraperT.batchEditSaveBtn || "保存"} ({changedCount})</>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ── 详情面板组件 ── */
 function DetailPanel({
@@ -354,6 +1258,22 @@ export default function ScraperPage() {
     libraryTotal,
     selectedIds,
     focusedItemId,
+    batchEditMode,
+    batchEditNames,
+    batchEditSaving,
+    batchEditResults,
+    aiRenameLoading,
+    librarySortBy,
+    librarySortOrder,
+    aiChatOpen,
+    aiChatMessages,
+    aiChatLoading,
+    aiChatInput,
+    guideActive,
+    guideCurrentStep,
+    guideDismissed,
+    helpPanelOpen,
+    helpSearchQuery,
   } = useScraperStore();
 
   const isAdmin = user?.role === "admin";
@@ -365,10 +1285,17 @@ export default function ScraperPage() {
     loadLibrary();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 首次使用引导检测
+  useEffect(() => {
+    if (stats && !guideDismissed && !guideActive) {
+      checkAutoStartGuide();
+    }
+  }, [stats, guideDismissed, guideActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 当筛选/分页/搜索变化时重新加载
   useEffect(() => {
     loadLibrary();
-  }, [libraryPage, libraryPageSize, libraryMetaFilter, libraryContentType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [libraryPage, libraryPageSize, libraryMetaFilter, libraryContentType, librarySortBy, librarySortOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 搜索防抖
   useEffect(() => {
@@ -403,7 +1330,7 @@ export default function ScraperPage() {
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* ═══════════ Header ═══════════ */}
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-2xl flex-shrink-0">
+      <header data-guide="header" className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-2xl flex-shrink-0">
         <div className="mx-auto flex h-14 sm:h-16 max-w-[1800px] items-center gap-3 px-3 sm:px-6">
           <button
             onClick={() => router.push("/")}
@@ -468,7 +1395,7 @@ export default function ScraperPage() {
         {/* ── 左侧面板：书库列表 ── */}
         <div className="flex-1 flex flex-col min-w-0 border-r border-border/30">
           {/* 搜索 & 筛选 */}
-          <div className="flex-shrink-0 p-3 sm:p-4 space-y-3 border-b border-border/20 bg-card/30">
+          <div data-guide="filter-bar" className="flex-shrink-0 p-3 sm:p-4 space-y-3 border-b border-border/20 bg-card/30">
             {/* 搜索框 */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
@@ -502,9 +1429,9 @@ export default function ScraperPage() {
 
               <div className="h-3 w-px bg-border/40 mx-0.5" />
 
-              {(["", "comic", "novel"] as string[]).map((ct) => (
+              {(["comic", "novel"] as string[]).map((ct) => (
                 <button
-                  key={ct || "all"}
+                  key={ct}
                   onClick={() => setLibraryContentType(ct)}
                   className={`rounded-lg px-2 py-1 text-[11px] font-medium transition-all ${
                     libraryContentType === ct
@@ -512,16 +1439,47 @@ export default function ScraperPage() {
                       : "bg-card-hover text-muted hover:text-foreground"
                   }`}
                 >
-                  {ct === "" && (scraperT.libTypeAll || "全部")}
                   {ct === "comic" && (scraperT.libTypeComic || "漫画")}
                   {ct === "novel" && (scraperT.libTypeNovel || "小说")}
                 </button>
               ))}
+
+              <div className="h-3 w-px bg-border/40 mx-0.5" />
+
+              {/* 排序 */}
+              {(([
+                ["title", scraperT.sortByTitle || "名称"],
+                ["fileSize", scraperT.sortByFileSize || "大小"],
+                ["updatedAt", scraperT.sortByUpdatedAt || "更新时间"],
+                ["metaStatus", scraperT.sortByMetaStatus || "刮削状态"],
+              ] as [LibrarySortBy, string][]).map(([field, label]) => {
+                const isActive = librarySortBy === field;
+                return (
+                  <button
+                    key={field}
+                    onClick={() => setLibrarySort(field)}
+                    className={`flex items-center gap-0.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-all ${
+                      isActive
+                        ? "bg-sky-500 text-white"
+                        : "bg-card-hover text-muted hover:text-foreground"
+                    }`}
+                    title={`${scraperT.sortBy || "排序"}: ${label}`}
+                  >
+                    {label}
+                    {isActive && (
+                      librarySortOrder === "asc"
+                        ? <ArrowUp className="h-3 w-3 ml-0.5" />
+                        : <ArrowDown className="h-3 w-3 ml-0.5" />
+                    )}
+                    {!isActive && <ArrowUpDown className="h-2.5 w-2.5 ml-0.5 opacity-40" />}
+                  </button>
+                );
+              }))}
             </div>
 
             {/* 多选操作栏 */}
             {isAdmin && (
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div data-guide="select-bar" className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => (selectedIds.size === libraryItems.length && libraryItems.length > 0 ? deselectAll() : selectAllVisible())}
@@ -539,6 +1497,14 @@ export default function ScraperPage() {
 
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={enterBatchEditMode}
+                      disabled={batchRunning || batchEditMode}
+                      className="flex items-center gap-1 rounded-lg bg-purple-500/10 px-2 py-1 text-[11px] font-medium text-purple-400 transition-all disabled:opacity-50 hover:bg-purple-500/20"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      {scraperT.batchEditBtn || "批量命名"}
+                    </button>
                     <button
                       onClick={startBatchSelected}
                       disabled={batchRunning}
@@ -565,7 +1531,7 @@ export default function ScraperPage() {
           </div>
 
           {/* 书库列表 */}
-          <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
+          <div ref={listRef} data-guide="book-list" className="flex-1 overflow-y-auto min-h-0">
             {libraryLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-accent" />
@@ -622,7 +1588,26 @@ export default function ScraperPage() {
 
                       {/* 信息 */}
                       <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium text-foreground truncate leading-tight">{item.title}</div>
+                        {batchEditMode && batchEditNames.has(item.id) ? (
+                          /* 批量编辑模式 - 内联输入框 */
+                          <input
+                            type="text"
+                            value={batchEditNames.get(item.id)!.newTitle}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setBatchEditName(item.id, e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={batchEditSaving}
+                            className={`w-full rounded-md px-1.5 py-0.5 text-[13px] font-medium text-foreground outline-none border transition-all disabled:opacity-50 ${
+                              batchEditNames.get(item.id)!.newTitle.trim() !== batchEditNames.get(item.id)!.oldTitle
+                                ? "bg-accent/5 border-accent/40 focus:border-accent"
+                                : "bg-transparent border-transparent hover:border-border/40 focus:border-border/60 focus:bg-card-hover/30"
+                            }`}
+                          />
+                        ) : (
+                          <div className="text-[13px] font-medium text-foreground truncate leading-tight">{item.title}</div>
+                        )}
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {item.author && (
                             <span className="text-[10px] text-muted/70 truncate max-w-[120px]">{item.author}</span>
@@ -787,9 +1772,35 @@ export default function ScraperPage() {
           )}
         </div>
 
-        {/* ── 右侧面板：详情 / 刮削控制 / 进度 ── */}
-        <div className="w-[420px] xl:w-[480px] flex-shrink-0 hidden md:flex flex-col bg-card/20 overflow-hidden">
-          {focusedItem ? (
+        {/* ── 右侧面板：详情 / 刮削控制 / 进度 / AI聊天 / 帮助 ── */}
+        <div data-guide="scrape-panel" className="w-[420px] xl:w-[480px] flex-shrink-0 hidden md:flex flex-col bg-card/20 overflow-hidden">
+          {helpPanelOpen ? (
+            /* ── 帮助面板 ── */
+            <HelpPanel
+              scraperT={scraperT}
+              searchQuery={helpSearchQuery}
+              onClose={closeHelpPanel}
+            />
+          ) : aiChatOpen ? (
+            /* ── AI 聊天模式 ── */
+            <AIChatPanel
+              messages={aiChatMessages}
+              loading={aiChatLoading}
+              input={aiChatInput}
+              scraperT={scraperT}
+              onClose={closeAIChat}
+            />
+          ) : batchEditMode ? (
+            /* ── 批量编辑模式 ── */
+            <BatchEditPanel
+              entries={batchEditNames}
+              scraperT={scraperT}
+              saving={batchEditSaving}
+              results={batchEditResults}
+              aiLoading={aiRenameLoading}
+              onExit={exitBatchEditMode}
+            />
+          ) : focusedItem ? (
             /* ── 详情模式 ── */
             <DetailPanel
               key={`${focusedItem.id}-${detailRefreshKey}`}
@@ -839,7 +1850,7 @@ export default function ScraperPage() {
                       <Brain className="h-4 w-4 text-purple-500 flex-shrink-0" />
                       <div>
                         <div className="text-xs font-medium text-foreground">{scraperT.modeAI || "AI 智能"}</div>
-                        <div className="text-[10px] text-muted mt-0.5">{scraperT.modeAIShort || "AI解析+搜索+补全"}</div>
+                        <div className="text-[10px] text-muted mt-0.5">{scraperT.modeAIShort || "AI识别+搜索+补全"}</div>
                       </div>
                     </button>
                   </div>
@@ -959,6 +1970,7 @@ export default function ScraperPage() {
                         />
                       </div>
                       <div className="flex h-7 w-7 items-center justify-center rounded bg-accent/10 flex-shrink-0">
+                        {currentProgress.step === "recognize" && <Eye className="h-3.5 w-3.5 text-purple-500 animate-pulse" />}
                         {currentProgress.step === "parse" && <Brain className="h-3.5 w-3.5 text-purple-500 animate-pulse" />}
                         {currentProgress.step === "search" && <Search className="h-3.5 w-3.5 text-accent animate-pulse" />}
                         {currentProgress.step === "apply" && <CheckCircle className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />}
@@ -968,6 +1980,7 @@ export default function ScraperPage() {
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium text-foreground truncate">{currentProgress.filename}</div>
                         <div className="text-[10px] text-muted">
+                          {currentProgress.step === "recognize" && (scraperT.stepRecognize || "AI 识别漫画内容...")}
                           {currentProgress.step === "parse" && (scraperT.stepParse || "AI 解析文件名...")}
                           {currentProgress.step === "search" && (scraperT.stepSearch || "在线搜索...")}
                           {currentProgress.step === "apply" && (scraperT.stepApply || "应用元数据...")}
@@ -1071,6 +2084,20 @@ export default function ScraperPage() {
         </div>
       </div>
 
+      {/* ── 移动端批量编辑浮层 ── */}
+      {batchEditMode && (
+        <div className="fixed inset-0 z-50 md:hidden bg-background">
+          <BatchEditPanel
+            entries={batchEditNames}
+            scraperT={scraperT}
+            saving={batchEditSaving}
+            results={batchEditResults}
+            aiLoading={aiRenameLoading}
+            onExit={exitBatchEditMode}
+          />
+        </div>
+      )}
+
       {/* ── 移动端详情浮层 ── */}
       {focusedItem && (
         <div className="fixed inset-0 z-50 md:hidden bg-background">
@@ -1083,6 +2110,75 @@ export default function ScraperPage() {
             onRefresh={() => setDetailRefreshKey((k) => k + 1)}
           />
         </div>
+      )}
+
+      {/* ── 移动端 AI 聊天浮层 ── */}
+      {aiChatOpen && (
+        <div className="fixed inset-0 z-50 md:hidden bg-background">
+          <AIChatPanel
+            messages={aiChatMessages}
+            loading={aiChatLoading}
+            input={aiChatInput}
+            scraperT={scraperT}
+            onClose={closeAIChat}
+          />
+        </div>
+      )}
+
+      {/* ── 悬浮 AI 助手按钮 ── */}
+      {isAdmin && !aiChatOpen && (
+        <button
+          onClick={openAIChat}
+          data-guide="ai-chat-btn"
+          className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-xl shadow-purple-500/30 transition-all hover:shadow-2xl hover:shadow-purple-500/40 hover:scale-105 active:scale-95 md:hidden"
+          title={scraperT.aiChatBtnLabel || "AI 助手"}
+        >
+          <MessageCircle className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* ── 桌面端悬浮 AI 助手按钮（当右侧面板不是AI聊天时显示） ── */}
+      {isAdmin && !aiChatOpen && (
+        <button
+          onClick={openAIChat}
+          data-guide="ai-chat-btn"
+          className="fixed bottom-6 right-6 z-40 hidden md:flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 px-4 text-white shadow-xl shadow-purple-500/30 transition-all hover:shadow-2xl hover:shadow-purple-500/40 hover:scale-[1.02] active:scale-[0.98]"
+          title={scraperT.aiChatBtnLabel || "AI 助手"}
+        >
+          <Bot className="h-4 w-4" />
+          <span className="text-xs font-medium">{scraperT.aiChatBtnLabel || "AI 助手"}</span>
+        </button>
+      )}
+
+      {/* ── 帮助按钮（桌面端左下角） ── */}
+      {isAdmin && !helpPanelOpen && (
+        <button
+          onClick={openHelpPanel}
+          className="fixed bottom-6 left-6 z-40 hidden md:flex h-9 items-center gap-1.5 rounded-xl bg-card border border-border/50 px-3 text-muted shadow-lg transition-all hover:text-foreground hover:border-emerald-500/40 hover:shadow-xl"
+          title={scraperT.helpTitle || "帮助中心"}
+        >
+          <CircleHelp className="h-3.5 w-3.5" />
+          <span className="text-[11px] font-medium">{scraperT.helpTitle || "帮助"}</span>
+        </button>
+      )}
+
+      {/* ── 移动端帮助浮层 ── */}
+      {helpPanelOpen && (
+        <div className="fixed inset-0 z-50 md:hidden bg-background">
+          <HelpPanel
+            scraperT={scraperT}
+            searchQuery={helpSearchQuery}
+            onClose={closeHelpPanel}
+          />
+        </div>
+      )}
+
+      {/* ── 引导遮罩 ── */}
+      {guideActive && (
+        <GuideOverlay
+          scraperT={scraperT}
+          currentStep={guideCurrentStep}
+        />
       )}
     </div>
   );

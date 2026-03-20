@@ -230,11 +230,12 @@ func GetComicsNeedingPageCount(limit int) ([]struct {
 type ComicIDFilename struct {
 	ID       string
 	Filename string
+	Title    string
 }
 
-// GetAllComicIDsAndFilenames 返回所有漫画的ID和文件名。
+// GetAllComicIDsAndFilenames 返回所有漫画的ID、文件名和标题。
 func GetAllComicIDsAndFilenames() ([]ComicIDFilename, error) {
-	rows, err := db.Query(`SELECT "id", "filename" FROM "Comic"`)
+	rows, err := db.Query(`SELECT "id", "filename", COALESCE("title", '') FROM "Comic"`)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +244,7 @@ func GetAllComicIDsAndFilenames() ([]ComicIDFilename, error) {
 	var result []ComicIDFilename
 	for rows.Next() {
 		var c ComicIDFilename
-		if rows.Scan(&c.ID, &c.Filename) == nil {
+		if rows.Scan(&c.ID, &c.Filename, &c.Title) == nil {
 			result = append(result, c)
 		}
 	}

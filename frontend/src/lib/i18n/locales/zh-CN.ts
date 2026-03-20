@@ -730,6 +730,48 @@ autoDetect: "智能分组",
     deleteSuccess: "分组已删除",
   },
 
+  // 合集管理页面
+  collections: {
+    title: "合集管理",
+    navTitle: "合集",
+    loading: "加载中...",
+    refresh: "刷新",
+    filterAll: "全部",
+    filterComic: "漫画",
+    filterNovel: "小说",
+    sortByName: "按名称",
+    sortByCount: "按作品数",
+    sortByUpdated: "按更新时间",
+    sortByCreated: "按创建时间",
+    works: "部作品",
+    emptyTitle: "还没有合集",
+    emptyHint: "使用智能分组自动发现同系列作品，或手动创建合集来整理你的书库",
+    emptySearchHint: "尝试其他关键词或清除搜索",
+    createTitle: "新建合集",
+    viewDetail: "查看详情",
+    // 批量操作
+    batchMode: "批量管理",
+    batchModeExit: "退出批量",
+    selectAll: "全选",
+    deselectAll: "取消全选",
+    selectedCount: "已选 {count} 个",
+    batchDelete: "批量删除",
+    batchMerge: "合并",
+    batchExport: "导出",
+    batchDeleteConfirm: "确认批量删除",
+    batchDeleteMsg: "确定要删除选中的 {count} 个合集吗？合集内的作品不会被删除。",
+    batchDeleteSuccess: "成功删除 {count} 个合集",
+    mergeTitle: "合并合集",
+    mergeHint: "将选中的 {count} 个合集合并为一个新合集",
+    mergeNameLabel: "合并后的名称",
+    mergeNamePlaceholder: "输入新合集名称...",
+    mergeSuccess: "合集已合并",
+    mergeNeedTwo: "至少需要选择两个合集才能合并",
+    exportSuccess: "导出成功",
+    exportFailed: "导出失败",
+    totalWorks: "共 {count} 部作品",
+  },
+
   // 系列导航
   series: {
     nextVolume: "下一卷",
@@ -750,7 +792,7 @@ autoDetect: "智能分组",
     modeStandard: "标准刮削",
     modeStandardDesc: "从 AniList、Bangumi 等在线源搜索并匹配元数据",
     modeAI: "AI 智能刮削",
-    modeAIDesc: "AI 解析文件名 → 在线搜索 → AI 补全，多级回退",
+    modeAIDesc: "AI 内容识别 → 在线搜索 → AI 补全，多级回退",
     scopeLabel: "刮削范围",
     scopeMissing: "仅缺失",
     scopeAll: "全部重刮",
@@ -760,6 +802,7 @@ autoDetect: "智能分组",
     progressTitle: "刮削进度",
     progressDone: "刮削完成",
     progressRemaining: "剩余",
+    stepRecognize: "AI 识别漫画内容...",
     stepParse: "AI 解析文件名...",
     stepSearch: "在线搜索元数据...",
     stepApply: "应用元数据...",
@@ -770,7 +813,7 @@ autoDetect: "智能分组",
     resultTotal: "总数",
     resultListTitle: "处理结果",
     emptyTitle: "开始为你的书库获取元数据",
-    emptyDesc: "选择刮削模式和范围后，点击「开始刮削」自动从在线数据源获取封面、简介、标签等信息。AI 模式可智能解析文件名提高匹配率。",
+    emptyDesc: "选择刮削模式和范围后，点击「开始刮削」自动从在线数据源获取封面、简介、标签等信息。AI 模式可智能识别漫画内容提高匹配率。",
     navEntry: "元数据刮削",
     updateTitleLabel: "同时更新书名",
     updateTitleDesc: "开启后会用元数据源中的标题替换当前书名（如文件名等）",
@@ -799,7 +842,7 @@ autoDetect: "智能分组",
     detailSearchTitle: "精准刮削",
     detailSearchDesc: "搜索在线数据源，选择最匹配的结果应用到此书",
     modeStandardShort: "在线源搜索匹配",
-    modeAIShort: "AI解析+搜索+补全",
+    modeAIShort: "AI识别+搜索+补全",
     rightPanelHint: "点击左侧书籍查看详情",
     rightPanelDesc: "选择一本书查看元数据详情并进行精准刮削，或使用上方批量操作对全库/选中项统一刮削",
     paginationPerPage: "每页",
@@ -812,6 +855,99 @@ autoDetect: "智能分组",
     saveTitle: "保存",
     cancelEdit: "取消",
     deleteTag: "删除标签",
+    batchEditBtn: "批量命名",
+    batchEditTitle: "批量编辑名称",
+    batchEditList: "名称编辑",
+    batchEditChanged: "项已修改",
+    batchEditUndo: "还原全部",
+    batchEditOldName: "原名",
+    batchEditSaving: "保存中...",
+    batchEditSaveBtn: "保存",
+    batchEditSaved: "保存完成",
+    aiRenameTitle: "AI 智能命名",
+    aiRenameDesc: "输入命名需求，AI会为所有选中书籍生成合适的名称",
+    aiRenamePlaceholder: "例如：提取纯净书名、去除方括号标记、格式统一为「作者 - 书名」...",
+    aiRenameBtn: "AI 生成名称",
+    aiRenameLoading: "AI 生成中...",
+    applyAllTitle: "一键应用相同名称",
+    applyAllPlaceholder: "输入统一名称...",
+    applyBtn: "应用",
+    sortBy: "排序",
+    sortByTitle: "名称",
+    sortByFileSize: "大小",
+    sortByUpdatedAt: "更新时间",
+    sortByMetaStatus: "刮削状态",
+    // AI 聊天面板
+    aiChatTitle: "AI 刮削助手",
+    aiChatSubtitle: "智能对话 · 指令控制",
+    aiChatPlaceholder: "输入问题或指令，如「刮削所有缺失元数据的书」...",
+    aiChatSend: "发送",
+    aiChatClear: "清空对话",
+    aiChatClose: "关闭",
+    aiChatEmpty: "你好！我是你的刮削助手 🤖",
+    aiChatEmptyDesc: "你可以问我关于元数据刮削的问题，或者直接用自然语言下指令。试试看吧！",
+    aiChatQuickScrapeAll: "刮削缺失项",
+    aiChatQuickSetAI: "切换AI模式",
+    aiChatQuickStats: "查看统计",
+    aiChatQuickHelp: "使用帮助",
+    aiChatQuickSelectAll: "全选当页",
+    aiChatQuickFilter: "筛选缺失",
+    aiChatCmdSuccess: "✅ 指令执行成功",
+    aiChatCmdFailed: "❌ 指令执行失败",
+    aiChatStopped: "已中断",
+    aiChatBtnLabel: "AI 助手",
+    // 引导教程系统
+    guideWelcomeTitle: "欢迎使用元数据刮削",
+    guideWelcomeDesc: "这个功能可以帮你自动从在线数据源获取漫画/小说的封面、简介、标签等信息。让我带你快速了解如何使用！",
+    guideFilterTitle: "筛选与搜索",
+    guideFilterDesc: "在这里可以按状态（缺失/已有）、类型（漫画/小说）筛选书籍，还可以通过关键词搜索。排序功能帮你快速定位目标。",
+    guideFilterAction: "试试点击「缺失」按钮筛选出需要刮削的书籍",
+    guideListTitle: "书籍列表",
+    guideListDesc: "左侧列表展示了你书库中的所有书籍。绿色✓表示已有元数据，黄色⚠表示缺失。点击任意书籍可查看详情。",
+    guideListAction: "点击一本书查看其元数据详情",
+    guideSelectTitle: "批量操作",
+    guideSelectDesc: "勾选书籍后可以进行批量操作：批量刮削、批量命名（支持AI智能命名）、清除元数据等。全选/取消全选可快速切换。",
+    guideSelectAction: "试试全选当前页的书籍",
+    guideScrapeTitle: "刮削控制面板",
+    guideScrapeDesc: "在右侧面板可以设置刮削模式（标准/AI智能）和范围（仅缺失/全部）。AI模式会先通过封面和内页智能识别漫画内容，再搜索匹配，最后AI补全缺失信息。",
+    guideScrapeAction: "选择刮削模式后点击「开始刮削」",
+    guideAIChatTitle: "AI 刮削助手",
+    guideAIChatDesc: "点击这个按钮打开AI助手，你可以用自然语言控制刮削操作，比如说「帮我刮削所有缺失元数据的书」、「切换到AI模式」等。",
+    guideAIChatAction: "试试打开AI助手并输入指令",
+    guideNext: "下一步",
+    guidePrev: "上一步",
+    guideSkip: "跳过教程",
+    guideFinish: "完成",
+    guideStepOf: "步骤 {current}/{total}",
+    guideRestartBtn: "重新引导",
+    // 帮助面板
+    helpTitle: "帮助中心",
+    helpSearchPlaceholder: "搜索帮助文档...",
+    helpNoResults: "没有找到匹配的帮助内容",
+    helpFaqTitle: "常见问题",
+    helpTipsTitle: "使用技巧",
+    helpTroubleshootTitle: "故障排除",
+    helpFaq1Q: "什么是元数据刮削？",
+    helpFaq1A: "元数据刮削是从在线数据源（如AniList、Bangumi等）自动获取漫画/小说的封面、简介、作者、标签等信息的过程。这样你的书库看起来更整洁专业。",
+    helpFaq2Q: "标准模式和AI模式有什么区别？",
+    helpFaq2A: "标准模式直接用书名搜索在线数据源匹配；AI模式会先通过封面和内页图片智能识别漫画内容（不依赖文件名），再搜索匹配，最后用AI补全缺失字段，匹配率更高。",
+    helpFaq3Q: "刮削失败怎么办？",
+    helpFaq3A: "可以尝试：1）修改书名使其更接近正式名称；2）使用精准刮削手动搜索；3）切换到AI模式重试；4）检查网络连接是否正常。",
+    helpFaq4Q: "可以只刮削部分书籍吗？",
+    helpFaq4A: "可以！勾选想刮削的书籍，然后点击「刮削选中」。也可以在筛选栏中选择「缺失」只显示需要刮削的书，再点全选后批量刮削。",
+    helpFaq5Q: "如何编辑错误的元数据？",
+    helpFaq5A: "点击书籍进入详情面板，可以编辑书名和删除标签。使用「精准刮削」搜索正确的元数据重新应用。也可以用批量命名修改多本书的名称。",
+    helpTip1: "💡 使用AI模式刮削时，先确保在设置中配置了AI服务",
+    helpTip2: "💡 AI 智能刮削通过分析封面和内页识别漫画，无需依赖文件名，识别率更高",
+    helpTip3: "💡 通过AI助手可以用自然语言控制操作，比如「刮削所有缺失的」",
+    helpTip4: "💡 点击书籍封面可查看详情并进行精准刮削",
+    helpTip5: "💡 排序功能可以按刮削状态排序，快速找到缺失元数据的书",
+    helpTrouble1Q: "刮削一直显示失败",
+    helpTrouble1A: "请检查：1）网络连接是否正常；2）AniList/Bangumi等在线源是否可访问；3）书名是否包含过多特殊字符。尝试简化书名后重试。",
+    helpTrouble2Q: "AI模式不可用",
+    helpTrouble2A: "需要先在「设置 → AI」中配置云端AI服务（如OpenAI、通义千问等）并测试连接成功后才能使用AI相关功能。",
+    helpTrouble3Q: "刮削结果不准确",
+    helpTrouble3A: "1）使用精准刮削手动搜索正确条目；2）修改书名更接近正式名称；3）试试不同的在线数据源；4）使用AI模式自动清洗书名再搜索。",
   },
 } satisfies Translations;
 
@@ -1486,6 +1622,25 @@ export interface Translations {
     noMatchGroup: string;
     deleteSuccess?: string;
   };
+  collections?: {
+    title: string;
+    navTitle: string;
+    loading: string;
+    refresh: string;
+    filterAll: string;
+    filterComic: string;
+    filterNovel: string;
+    sortByName: string;
+    sortByCount: string;
+    sortByUpdated: string;
+    sortByCreated: string;
+    works: string;
+    emptyTitle: string;
+    emptyHint: string;
+    emptySearchHint: string;
+    createTitle: string;
+    viewDetail: string;
+  };
   series: {
     nextVolume: string;
     prevVolume: string;
@@ -1513,6 +1668,7 @@ export interface Translations {
     progressTitle: string;
     progressDone: string;
     progressRemaining: string;
+    stepRecognize: string;
     stepParse: string;
     stepSearch: string;
     stepApply: string;
@@ -1565,5 +1721,27 @@ export interface Translations {
     saveTitle: string;
     cancelEdit: string;
     deleteTag: string;
+    batchEditBtn: string;
+    batchEditTitle: string;
+    batchEditList: string;
+    batchEditChanged: string;
+    batchEditUndo: string;
+    batchEditOldName: string;
+    batchEditSaving: string;
+    batchEditSaveBtn: string;
+    batchEditSaved: string;
+    aiRenameTitle: string;
+    aiRenameDesc: string;
+    aiRenamePlaceholder: string;
+    aiRenameBtn: string;
+    aiRenameLoading: string;
+    applyAllTitle: string;
+    applyAllPlaceholder: string;
+    applyBtn: string;
+    sortBy: string;
+    sortByTitle: string;
+    sortByFileSize: string;
+    sortByUpdatedAt: string;
+    sortByMetaStatus: string;
   };
 }

@@ -10,6 +10,7 @@ import {
   Moon,
   Brain,
   Database,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n";
@@ -117,6 +118,15 @@ export default function Navbar({
             <span className="hidden sm:inline">{uploading ? t.navbar.uploading : t.navbar.upload}</span>
           </button>
           )}
+
+          {/* Collections — 合集管理 */}
+          <Link
+            href="/collections"
+            className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-accent/40 hover:text-accent hover:bg-accent/5"
+            title={((t as any).collections?.title) || "合集管理"}
+          >
+            <Layers className="h-4 w-4" />
+          </Link>
 
           {/* Metadata Scraper — 仅管理员可见 */}
           {isAdmin && (

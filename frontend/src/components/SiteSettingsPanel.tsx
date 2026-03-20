@@ -291,6 +291,8 @@ export function SiteSettingsPanel() {
   const [translateProgress, setTranslateProgress] = useState<BatchProgress | null>(null);
   const [translateDone, setTranslateDone] = useState<BatchProgress | null>(null);
   const translateAbortRef = useRef<AbortController | null>(null);
+  const [batchTranslateEngine, setBatchTranslateEngine] = useState("");
+  const [availableEngines, setAvailableEngines] = useState<{id: string; name: string; available: boolean; speed: string; quality: string; configured: boolean}[]>([]);
 
   // New dir input
   const [newDir, setNewDir] = useState("");
@@ -464,7 +466,7 @@ export function SiteSettingsPanel() {
       const res = await fetch("/api/metadata/translate-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetLang: lang }),
+        body: JSON.stringify({ targetLang: lang, engine: batchTranslateEngine || undefined }),
         signal: abort.signal,
       });
 
@@ -500,7 +502,17 @@ export function SiteSettingsPanel() {
       setTranslateRunning(false);
       translateAbortRef.current = null;
     }
-  }, [config?.language]);
+  }, [config?.language, batchTranslateEngine]);
+
+  // 加载可用翻译引擎
+  useEffect(() => {
+    fetch("/api/translate/engines")
+      .then(r => r.json())
+      .then(data => {
+        if (data.engines) setAvailableEngines(data.engines);
+      })
+      .catch(() => {});
+  }, []);
 
   const cancelTranslate = () => {
     translateAbortRef.current?.abort();
@@ -926,6 +938,25 @@ export function SiteSettingsPanel() {
         <p className="text-[11px] text-muted">
             {siteT?.batchTranslateMetadataDesc || "Translate all comic metadata (title, description, genre) to the current language"}
         </p>
+
+        {/* 翻译引擎选择器 */}
+        {!translateRunning && !translateDone && availableEngines.length > 0 && (
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted">翻译引擎</label>
+            <select
+              value={batchTranslateEngine}
+              onChange={e => setBatchTranslateEngine(e.target.value)}
+              className="w-full rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground"
+            >
+              <option value="">自动选择最优引擎</option>
+              {availableEngines.filter(e => e.available).map(eng => (
+                <option key={eng.id} value={eng.id}>
+                  {eng.name} ({eng.speed === 'instant' ? '极快' : eng.speed === 'fast' ? '快' : '慢'})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {!translateRunning && !translateDone && (
           <button

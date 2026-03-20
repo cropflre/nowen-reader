@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useLocation } from "react-router-dom";
-import { BookMarked, Settings, BarChart3 } from "lucide-react";
+import { BookMarked, Settings, BarChart3, Layers } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 
@@ -42,6 +42,12 @@ export default function MobileBottomNav() {
       icon: BookMarked,
       label: t.mobileNav?.library || "书库",
       active: pathname === "/",
+    },
+    {
+      href: "/collections",
+      icon: Layers,
+      label: (t as any).collections?.navTitle || "合集",
+      active: pathname === "/collections",
     },
     {
       href: "/settings?tab=stats",

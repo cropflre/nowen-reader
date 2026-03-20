@@ -101,28 +101,91 @@ func sortByRelevance(results []ComicMetadata, query string) {
 		return
 	}
 	queryLower := strings.ToLower(strings.TrimSpace(query))
+	queryClean := strings.ToLower(strings.TrimSpace(CleanTitle(query)))
 
-	// 计算匹配分数：完全匹配 > 包含 > 部分匹配
+	// 多级匹配评分算法
 	score := func(m ComicMetadata) int {
 		titleLower := strings.ToLower(strings.TrimSpace(m.Title))
-		if titleLower == queryLower {
-			return 100 // 完全匹配
-		}
-		if strings.Contains(titleLower, queryLower) || strings.Contains(queryLower, titleLower) {
-			return 80 // 包含关系
-		}
-		// 检查每个搜索词是否出现在标题中
-		words := strings.Fields(queryLower)
-		matched := 0
-		for _, w := range words {
-			if strings.Contains(titleLower, w) {
-				matched++
+		titleClean := strings.ToLower(strings.TrimSpace(CleanTitle(m.Title)))
+
+		bestScore := 0
+
+		// 对原始查询和清洗后查询都进行评分，取最高分
+		for _, q := range []string{queryLower, queryClean} {
+			if q == "" {
+				continue
+			}
+			for _, t := range []string{titleLower, titleClean} {
+				if t == "" {
+					continue
+				}
+				s := 0
+
+				// 第1级: 完全匹配 (最高分)
+				if t == q {
+					s = 100
+				} else if strings.Contains(t, q) {
+					// 第2级: 结果标题包含整个查询
+					s = 85
+				} else if strings.Contains(q, t) {
+					// 第3级: 查询包含整个结果标题（查询更长）
+					s = 75
+				} else {
+					// 第4级: 关键词匹配 — 计算查询词在标题中的覆盖度
+					words := strings.Fields(q)
+					if len(words) > 0 {
+						matched := 0
+						for _, w := range words {
+							if len(w) < 2 {
+								continue // 跳过单字符词
+							}
+							if strings.Contains(t, w) {
+								matched++
+							}
+						}
+						// 覆盖率加权
+						coverage := float64(matched) / float64(len(words))
+						s = int(coverage * 60)
+					}
+
+					// 第5级: 反向检查 — 标题词在查询中的覆盖
+					tWords := strings.Fields(t)
+					if len(tWords) > 0 {
+						rmatched := 0
+						for _, w := range tWords {
+							if len(w) < 2 {
+								continue
+							}
+							if strings.Contains(q, w) {
+								rmatched++
+							}
+						}
+						rCoverage := float64(rmatched) / float64(len(tWords))
+						rScore := int(rCoverage * 55)
+						if rScore > s {
+							s = rScore
+						}
+					}
+				}
+
+				if s > bestScore {
+					bestScore = s
+				}
 			}
 		}
-		if len(words) > 0 {
-			return matched * 60 / len(words) // 部分匹配比例
+
+		// 额外加分：标题长度与查询长度相近（避免标题过长或过短的不相关结果）
+		if bestScore > 0 && bestScore < 100 {
+			lenRatio := float64(len(queryLower)) / float64(len(strings.ToLower(m.Title))+1)
+			if lenRatio > 1 {
+				lenRatio = 1.0 / lenRatio
+			}
+			if lenRatio > 0.5 {
+				bestScore += 5 // 长度相近加分
+			}
 		}
-		return 0
+
+		return bestScore
 	}
 
 	// 简单冒泡排序（结果集通常很小）
@@ -262,6 +325,82 @@ func ExtractSearchQuery(filename string) string {
 }
 
 // ============================================================
+// 智能名称清洗和搜索查询构建
+// ============================================================
+
+var (
+	// 版本/卷/章标记：v01, Vol.01, 第01卷, 第01话, 第01集, #01, Part 1 等
+	titleVolChRe = regexp.MustCompile(`(?i)(?:\b(?:v|vol|volume|ch|chapter|part|ep|episode|book|bk)\.?\s*\d+[-–~]\d+|\b(?:v|vol|volume|ch|chapter|part|ep|episode|book|bk)\.?\s*\d+|第\s*\d+\s*[卷巻册話话集部篇章回本]|\d+[卷巻册話话集部篇章回]|\b#\s*\d+)`)
+	// 常见格式/质量/扫描组标记
+	titleQualityRe = regexp.MustCompile(`(?i)\b(digital|scan|hq|lq|raw|rip|c\d{2,3}|web|webrip|kindle|kobo|asin|isbn)\b`)
+	// 年份标记（仅独立出现的4位数年份，如 2024, (2020)）
+	titleYearRe = regexp.MustCompile(`(?:^|\s)\(?\d{4}\)?(?:\s|$)`)
+	// 语言标记
+	titleLangRe = regexp.MustCompile(`(?i)\b(chinese|english|japanese|korean|zh|en|ja|jp|ko|cn|cht|chs|eng|jap)\b`)
+	// 尾部多余修饰词（常见于中文漫画文件名后缀）
+	titleSuffixRe = regexp.MustCompile(`(?i)(?:\s*[-–]\s*(?:完结|连载中|全集|完|全|合集))+\s*$`)
+	// 标题中的方括号内容（如 [汉化组], [DL版]）
+	titleBracketRe = regexp.MustCompile(`[\[【\(（{][^\]】\)）}]*[\]】\)）}]`)
+	// 中文书名号
+	titleBookMarkRe = regexp.MustCompile(`[《》「」『』]`)
+	// 分隔符序列
+	titleSepRe = regexp.MustCompile(`[-_.~]+`)
+	// 多空格
+	titleSpaceRe = regexp.MustCompile(`\s+`)
+)
+
+// CleanTitle 对漫画/小说标题进行智能清洗，去除版本号、卷号、特殊标记等干扰信息，
+// 提取核心作品名称用于搜索匹配。
+func CleanTitle(title string) string {
+	if title == "" {
+		return ""
+	}
+	name := title
+
+	// 1. 去除方括号及其内容（如 [汉化组]、(DL版) 等）
+	name = titleBracketRe.ReplaceAllString(name, " ")
+	// 2. 去除中文书名号（保留内容）
+	name = titleBookMarkRe.ReplaceAllString(name, "")
+	// 3. 去除版本/卷/章标记
+	name = titleVolChRe.ReplaceAllString(name, " ")
+	// 4. 去除质量/格式标记
+	name = titleQualityRe.ReplaceAllString(name, " ")
+	// 5. 去除语言标记
+	name = titleLangRe.ReplaceAllString(name, " ")
+	// 6. 去除尾部修饰词（完结、连载中等）
+	name = titleSuffixRe.ReplaceAllString(name, "")
+	// 7. 去除独立年份标记
+	name = titleYearRe.ReplaceAllString(name, " ")
+	// 8. 分隔符统一为空格
+	name = titleSepRe.ReplaceAllString(name, " ")
+	name = titleSpaceRe.ReplaceAllString(name, " ")
+
+	return strings.TrimSpace(name)
+}
+
+// BuildSearchQuery 根据标题和文件名智能构建搜索查询。
+// 优先使用已有标题（清洗后），文件名作为回退。
+// 实现多级策略：
+//  1. 标题不为空且与文件名不同 → 使用清洗后的标题
+//  2. 标题为空或等于文件名 → 从文件名提取
+//  3. 两者都无法得出有效查询 → 返回空字符串
+func BuildSearchQuery(title, filename string) string {
+	// 标题去除文件扩展名的比较
+	filenameBase := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	// 如果有独立的标题（非文件名派生），优先使用
+	if title != "" && title != filename && title != filenameBase {
+		cleaned := CleanTitle(title)
+		if cleaned != "" && len(cleaned) >= 2 {
+			return cleaned
+		}
+	}
+
+	// 回退：从文件名提取
+	return ExtractSearchQuery(filename)
+}
+
+// ============================================================
 // AniList API (free, no key)
 // ============================================================
 
@@ -285,6 +424,7 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 				description(asHtml: false)
 				genres
 				startDate { year }
+				countryOfOrigin
 				staff(sort: RELEVANCE, perPage: 5) {
 					edges { role node { name { full } } }
 				}
@@ -320,7 +460,8 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 					StartDate   struct {
 						Year *int `json:"year"`
 					} `json:"startDate"`
-					Staff struct {
+					CountryOfOrigin *string `json:"countryOfOrigin"`
+					Staff           struct {
 						Edges []struct {
 							Role string `json:"role"`
 							Node struct {
@@ -380,12 +521,32 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 			genre = TranslateGenre(genre, lang)
 		}
 
+		// countryOfOrigin → language（AniList 返回的是国家代码如 "JP", "CN", "KR"）
+		mediaLang := ""
+		if m.CountryOfOrigin != nil {
+			switch strings.ToUpper(*m.CountryOfOrigin) {
+			case "JP":
+				mediaLang = "ja"
+			case "CN", "TW", "HK":
+				mediaLang = "zh"
+			case "KR":
+				mediaLang = "ko"
+			case "US", "GB", "AU", "CA":
+				mediaLang = "en"
+			case "FR":
+				mediaLang = "fr"
+			default:
+				mediaLang = strings.ToLower(*m.CountryOfOrigin)
+			}
+		}
+
 		results = append(results, ComicMetadata{
 			Title:       title,
 			Author:      strings.Join(authors, ", "),
 			Year:        m.StartDate.Year,
 			Description: desc,
 			Genre:       genre,
+			Language:    mediaLang,
 			CoverURL:    m.CoverImage.Large,
 			Source:      sourceName,
 		})
@@ -437,10 +598,6 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 				Name  string `json:"name"`
 				Count int    `json:"count"`
 			} `json:"tags"`
-			Infobox []struct {
-				Key   string      `json:"key"`
-				Value interface{} `json:"value"`
-			} `json:"infobox"`
 		} `json:"list"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
@@ -451,30 +608,8 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 	isZh := strings.HasPrefix(lang, "zh")
 
 	for _, s := range data.List {
-		var author, publisher string
-		for _, info := range s.Infobox {
-			if info.Key == "作者" || info.Key == "著者" || info.Key == "作画" {
-				switch v := info.Value.(type) {
-				case string:
-					author = v
-				case []interface{}:
-					var names []string
-					for _, item := range v {
-						if m, ok := item.(map[string]interface{}); ok {
-							if vv, ok := m["v"].(string); ok {
-								names = append(names, vv)
-							}
-						}
-					}
-					author = strings.Join(names, ", ")
-				}
-			}
-			if info.Key == "出版社" || info.Key == "连载杂志" {
-				if v, ok := info.Value.(string); ok {
-					publisher = v
-				}
-			}
-		}
+		// 调用 Bangumi v0 详情 API 获取 infobox（包含作者、出版社等信息）
+		author, publisher, language := fetchBangumiSubjectDetail(s.ID)
 
 		var year *int
 		if s.Date != "" {
@@ -489,7 +624,6 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 
 		// Tags → genre (top 8 by count, sorted desc)
 		var tagNames []string
-		// Simple sort by count: use sorted insertion
 		type tagItem struct {
 			name  string
 			count int
@@ -498,7 +632,6 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 		for _, t := range s.Tags {
 			sortedTags = append(sortedTags, tagItem{t.Name, t.Count})
 		}
-		// Sort by count desc (simple bubble for small n)
 		for i := 0; i < len(sortedTags); i++ {
 			for j := i + 1; j < len(sortedTags); j++ {
 				if sortedTags[j].count > sortedTags[i].count {
@@ -529,12 +662,100 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 			Publisher:   publisher,
 			Year:        year,
 			Description: s.Summary,
+			Language:    language,
 			Genre:       strings.Join(tagNames, ", "),
 			CoverURL:    coverURL,
 			Source:      sourceName,
 		})
 	}
 	return results
+}
+
+// fetchBangumiSubjectDetail 调用 Bangumi v0 详情 API 获取 infobox 信息。
+// 搜索 API 不返回 infobox，只有详情 API 才有。
+func fetchBangumiSubjectDetail(subjectID int) (author, publisher, language string) {
+	u := fmt.Sprintf("%s/v0/subjects/%d", bangumiAPI, subjectID)
+	resp, err := httpGet(u, map[string]string{
+		"User-Agent": "NowenReader/1.0",
+		"Accept":     "application/json",
+	}, 10*time.Second)
+	if err != nil {
+		log.Printf("[metadata] Bangumi subject detail failed for %d: %v", subjectID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var detail struct {
+		Infobox []struct {
+			Key   string      `json:"key"`
+			Value interface{} `json:"value"`
+		} `json:"infobox"`
+		Platform string `json:"platform"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return
+	}
+
+	// 从 infobox 中提取作者、出版社、语言
+	for _, info := range detail.Infobox {
+		switch info.Key {
+		case "作者", "著者", "作画", "原作", "脚本":
+			if author == "" {
+				author = extractInfoboxValue(info.Value)
+			} else {
+				// 多个作者角色，追加
+				v := extractInfoboxValue(info.Value)
+				if v != "" && !strings.Contains(author, v) {
+					author = author + ", " + v
+				}
+			}
+		case "出版社", "连载杂志", "发行":
+			if publisher == "" {
+				publisher = extractInfoboxValue(info.Value)
+			}
+		case "语言":
+			if language == "" {
+				language = extractInfoboxValue(info.Value)
+			}
+		}
+	}
+
+	// 如果 infobox 中没有语言信息，根据 platform 或默认推断
+	if language == "" && detail.Platform != "" {
+		platLower := strings.ToLower(detail.Platform)
+		if strings.Contains(platLower, "日本") || strings.Contains(platLower, "japan") {
+			language = "ja"
+		} else if strings.Contains(platLower, "中国") || strings.Contains(platLower, "china") {
+			language = "zh"
+		} else if strings.Contains(platLower, "韩国") || strings.Contains(platLower, "korea") {
+			language = "ko"
+		}
+	}
+
+	return
+}
+
+// extractInfoboxValue 从 Bangumi infobox value 中提取字符串值。
+// infobox value 可能是纯字符串，也可能是 [{"v": "xxx"}, ...] 格式的数组。
+func extractInfoboxValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []interface{}:
+		var names []string
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if vv, ok := m["v"].(string); ok {
+					vv = strings.TrimSpace(vv)
+					if vv != "" {
+						names = append(names, vv)
+					}
+				}
+			}
+		}
+		return strings.Join(names, ", ")
+	}
+	return ""
 }
 
 // ============================================================
@@ -969,6 +1190,32 @@ func SearchMetadata(query string, sources []string, lang string, contentType ...
 		}
 	}
 
+	// 主搜索
+	all := doSearch(query, sources, lang)
+
+	// 多重查询策略：如果主搜索结果为空或质量不佳，尝试清洗后的查询
+	cleanedQuery := CleanTitle(query)
+	if cleanedQuery != "" && cleanedQuery != query && len(cleanedQuery) >= 2 {
+		if len(all) == 0 {
+			// 主搜索无结果，用清洗后查询重新搜索
+			all = doSearch(cleanedQuery, sources, lang)
+		} else {
+			// 主搜索有结果但不多，用清洗后查询补充搜索并合并
+			if len(all) < 3 {
+				extra := doSearch(cleanedQuery, sources, lang)
+				all = mergeResults(all, extra)
+			}
+		}
+	}
+
+	// 按标题与搜索关键词的匹配度排序，优先返回最相关的结果
+	sortByRelevance(all, query)
+
+	return all
+}
+
+// doSearch 执行并行搜索
+func doSearch(query string, sources []string, lang string) []ComicMetadata {
 	type result struct {
 		data []ComicMetadata
 	}
@@ -993,7 +1240,6 @@ func SearchMetadata(query string, sources []string, lang string, contentType ...
 				ch <- result{SearchKitsu(query, lang)}
 			case "googlebooks":
 				ch <- result{SearchGoogleBooks(query, lang)}
-
 			default:
 				ch <- result{}
 			}
@@ -1005,11 +1251,25 @@ func SearchMetadata(query string, sources []string, lang string, contentType ...
 		r := <-ch
 		all = append(all, r.data...)
 	}
-
-	// 按标题与搜索关键词的匹配度排序，优先返回最相关的结果
-	sortByRelevance(all, query)
-
 	return all
+}
+
+// mergeResults 合并两组搜索结果，去除标题+来源相同的重复项
+func mergeResults(primary, extra []ComicMetadata) []ComicMetadata {
+	seen := make(map[string]bool)
+	for _, m := range primary {
+		key := strings.ToLower(m.Title) + "|" + m.Source
+		seen[key] = true
+	}
+	merged := append([]ComicMetadata{}, primary...)
+	for _, m := range extra {
+		key := strings.ToLower(m.Title) + "|" + m.Source
+		if !seen[key] {
+			merged = append(merged, m)
+			seen[key] = true
+		}
+	}
+	return merged
 }
 
 // ============================================================

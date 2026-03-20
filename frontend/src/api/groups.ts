@@ -156,6 +156,63 @@ export async function batchCreateGroups(groups: AutoDetectGroup[]): Promise<{ su
   }
 }
 
+// ============================================================
+// 批量操作
+// ============================================================
+
+/** 批量删除分组 */
+export async function batchDeleteGroups(groupIds: number[]): Promise<{ success: boolean; deleted: number }> {
+  try {
+    const res = await fetch("/api/groups/batch-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupIds }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, deleted: data.deleted || 0 };
+    }
+    return { success: false, deleted: 0 };
+  } catch {
+    return { success: false, deleted: 0 };
+  }
+}
+
+/** 合并多个分组 */
+export async function mergeGroups(groupIds: number[], newName: string): Promise<{ success: boolean; newGroupId?: number }> {
+  try {
+    const res = await fetch("/api/groups/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupIds, newName }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, newGroupId: data.newGroupId };
+    }
+    return { success: false };
+  } catch {
+    return { success: false };
+  }
+}
+
+/** 导出分组数据 */
+export async function exportGroups(groupIds: number[]): Promise<unknown | null> {
+  try {
+    const res = await fetch("/api/groups/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupIds }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** 获取已分组的漫画ID映射（一本漫画可属于多个分组） */
 export async function fetchGroupedComicMap(): Promise<Record<string, number[]>> {
   try {

@@ -3,8 +3,10 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"path"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // firstString 从可变参数中安全取第一个字符串值。
@@ -77,7 +79,8 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 	var conditions []string
 	var args []interface{}
 	if opts.UserID != "" {
-		conditions = append(conditions, `g."userId" = ?`)
+		// 同时匹配当前用户创建的分组 和 公共分组（userId 为空，如单用户模式或早期创建的分组）
+		conditions = append(conditions, `(g."userId" = ? OR g."userId" = '')`)
 		args = append(args, opts.UserID)
 	}
 	// contentType 过滤：只返回至少包含一本指定类型漫画的分组
@@ -338,7 +341,7 @@ type AutoDetectGroup struct {
 
 // AutoDetectGroups 使用 normalizeTitle 自动检测可合并的漫画。
 // 排除已经在分组中的漫画。
-// 增强版：精确匹配 + 编辑距离模糊匹配。
+// 增强版：路径分组 + 精确匹配 + 编辑距离模糊匹配。
 // contentType 可选参数：传入 "comic" 或 "novel" 只检测对应类型的漫画。
 func AutoDetectGroups(contentType ...string) ([]AutoDetectGroup, error) {
 	// 获取已分组的漫画ID
@@ -347,8 +350,8 @@ func AutoDetectGroups(contentType ...string) ([]AutoDetectGroup, error) {
 		return nil, err
 	}
 
-	// 构建查询：可按 contentType 过滤
-	querySQL := `SELECT "id", "title" FROM "Comic"`
+	// 构建查询：可按 contentType 过滤（增加 filename 字段用于路径分组）
+	querySQL := `SELECT "id", "title", "filename" FROM "Comic"`
 	var queryArgs []interface{}
 	if len(contentType) > 0 && (contentType[0] == "comic" || contentType[0] == "novel") {
 		querySQL += ` WHERE "type" = ?`
@@ -363,25 +366,73 @@ func AutoDetectGroups(contentType ...string) ([]AutoDetectGroup, error) {
 	defer rows.Close()
 
 	type comicRef struct {
-		ID    string
-		Title string
+		ID       string
+		Title    string
+		Filename string // 相对路径，如 "海贼王/1.cbz"
 	}
 
-	// 第一轮：精确匹配（normalizeTitle 完全相同）
-	titleMap := make(map[string][]comicRef)
+	// 收集所有未分组漫画
 	var allRefs []comicRef
 	for rows.Next() {
-		var id, title string
-		if rows.Scan(&id, &title) != nil {
+		var id, title, filename string
+		if rows.Scan(&id, &title, &filename) != nil {
 			continue
 		}
 		// 跳过已分组的漫画
 		if _, ok := grouped[id]; ok {
 			continue
 		}
-		ref := comicRef{ID: id, Title: title}
-		allRefs = append(allRefs, ref)
-		normalized := normalizeTitle(title)
+		allRefs = append(allRefs, comicRef{ID: id, Title: title, Filename: filename})
+	}
+
+	var suggestions []AutoDetectGroup
+	matchedIDs := make(map[string]bool) // 记录已被匹配的漫画ID
+
+	// ── 第零轮：路径分组（同一文件夹下的文件归为一组）──
+	// 将 filename 按父文件夹聚合，如 "海贼王/1.cbz" → dir="海贼王"
+	dirMap := make(map[string][]comicRef)
+	for _, ref := range allRefs {
+		dir := path.Dir(ref.Filename) // 使用 path（正斜杠），因为 filename 已统一为 "/"
+		if dir == "." || dir == "/" || dir == "" {
+			continue // 根目录下的文件跳过路径分组，交给后续标题匹配
+		}
+		dirMap[dir] = append(dirMap[dir], ref)
+	}
+
+	for dir, refs := range dirMap {
+		if len(refs) < 2 {
+			continue // 文件夹下只有一个文件，不构成分组
+		}
+
+		// 使用最近一级文件夹名作为组名
+		groupName := path.Base(dir)
+		// 清理文件夹名中的常见杂质（如方括号标签等）
+		groupName = cleanDirName(groupName)
+		if groupName == "" {
+			continue
+		}
+
+		var ids []string
+		var titles []string
+		for _, ref := range refs {
+			ids = append(ids, ref.ID)
+			titles = append(titles, ref.Title)
+			matchedIDs[ref.ID] = true
+		}
+		suggestions = append(suggestions, AutoDetectGroup{
+			Name:     groupName,
+			ComicIDs: ids,
+			Titles:   titles,
+		})
+	}
+
+	// ── 第一轮：精确匹配（normalizeTitle 完全相同）──
+	titleMap := make(map[string][]comicRef)
+	for _, ref := range allRefs {
+		if matchedIDs[ref.ID] {
+			continue // 已被路径分组匹配，跳过
+		}
+		normalized := normalizeTitle(ref.Title)
 		if normalized == "" {
 			continue
 		}
@@ -389,9 +440,6 @@ func AutoDetectGroups(contentType ...string) ([]AutoDetectGroup, error) {
 	}
 
 	// 收集精确匹配的结果
-	var suggestions []AutoDetectGroup
-	matchedIDs := make(map[string]bool) // 记录已被精确匹配的漫画ID
-
 	for normalized, refs := range titleMap {
 		if len(refs) < 2 {
 			continue
@@ -418,7 +466,7 @@ func AutoDetectGroups(contentType ...string) ([]AutoDetectGroup, error) {
 		})
 	}
 
-	// 第二轮：对未匹配的漫画做编辑距离模糊匹配
+	// ── 第二轮：对未匹配的漫画做编辑距离模糊匹配 ──
 	var unmatched []struct {
 		ref        comicRef
 		normalized string
@@ -640,8 +688,14 @@ func trimTrailingVolumeNumber(s string) string {
 
 // isLikelyCode 判断是否像编号（如 FL063, HMM, DL版 等）。
 // 注意：含有多个CJK字符的字符串不应被判定为编号。
+// 【P2修复】放宽对2字符CJK名称的限制，避免 "火影"、"死神"、"棋魂" 被误判。
 func isLikelyCode(s string) bool {
 	if len(s) <= 2 {
+		// 如果是2字符且都是CJK，不算编号（如 "火影"、"死神"、"棋魂"）
+		runes := []rune(s)
+		if len(runes) == 2 && isCJKRune(runes[0]) && isCJKRune(runes[1]) {
+			return false
+		}
 		return true
 	}
 	// 如果包含CJK字符且CJK字符数>=2，不太可能是编号
@@ -716,6 +770,232 @@ func isAlphaNumeric(s string) bool {
 		}
 	}
 	return true
+}
+
+// cleanDirName 清理文件夹名称，提取出可读的组名。
+// 处理策略：
+//  1. 去除方括号标签（如 [汉化组]、[作者名]），保留核心名称
+//  2. 如果文件夹名本身就是简洁的系列名（如"海贼王"），直接返回
+//  3. 处理嵌套路径时只取最近一级（path.Base 已在调用处完成）
+func cleanDirName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+
+	// 如果文件夹名不含方括号，直接作为组名（去掉首尾空白即可）
+	if !strings.ContainsAny(name, "[]【】「」『』") {
+		// 去掉常见的无意义前缀/后缀
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return ""
+		}
+		return name
+	}
+
+	// 包含方括号时，尝试提取核心名称
+	// 收集方括号外的部分和方括号内含CJK的部分
+	var outsideParts []string
+	var bracketParts []string
+	inBracket := false
+	var current strings.Builder
+	for _, r := range name {
+		switch r {
+		case '[', '【', '「', '『':
+			if current.Len() > 0 && !inBracket {
+				outsideParts = append(outsideParts, strings.TrimSpace(current.String()))
+			}
+			current.Reset()
+			inBracket = true
+		case ']', '】', '」', '』':
+			if inBracket && current.Len() > 0 {
+				part := strings.TrimSpace(current.String())
+				if part != "" && !isLikelyCode(part) {
+					bracketParts = append(bracketParts, part)
+				}
+			}
+			current.Reset()
+			inBracket = false
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if current.Len() > 0 && !inBracket {
+		outsideParts = append(outsideParts, strings.TrimSpace(current.String()))
+	}
+
+	// 优先使用方括号外的非空内容（更可能是文件夹的主名称）
+	for _, p := range outsideParts {
+		p = strings.TrimSpace(p)
+		if p != "" && len([]rune(p)) >= 2 {
+			return p
+		}
+	}
+
+	// 其次使用方括号内CJK字符最多的部分
+	bestPart := ""
+	bestCJK := 0
+	for _, p := range bracketParts {
+		c := cjkRuneCount(p)
+		if c > bestCJK {
+			bestPart = p
+			bestCJK = c
+		}
+	}
+	if bestPart != "" {
+		return bestPart
+	}
+
+	// 兜底：使用方括号内最长的部分
+	for _, p := range bracketParts {
+		if len([]rune(p)) > len([]rune(bestPart)) {
+			bestPart = p
+		}
+	}
+	if bestPart != "" {
+		return bestPart
+	}
+
+	// 最终兜底：返回原始名称
+	return name
+}
+
+// isNumericTitle 判断标题是否为纯数字命名（如 "1"、"02"、"123"）。
+// 用于辅助路径分组：如果文件名是纯数字，说明系列信息只在文件夹名中。
+func isNumericTitle(title string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false
+	}
+	for _, r := range title {
+		if !unicode.IsDigit(r) && r != ' ' && r != '_' && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// ============================================================
+// 批量操作
+// ============================================================
+
+// BatchDeleteGroups 批量删除多个分组。
+func BatchDeleteGroups(groupIDs []int) (int, error) {
+	deleted := 0
+	for _, id := range groupIDs {
+		if err := DeleteGroup(id); err != nil {
+			continue
+		}
+		deleted++
+	}
+	return deleted, nil
+}
+
+// MergeGroups 将多个分组合并为一个新分组。
+// 取第一个分组的封面，合并所有成员漫画并去重。
+func MergeGroups(groupIDs []int, newName string, userID string) (int64, error) {
+	if len(groupIDs) < 2 {
+		return 0, fmt.Errorf("至少需要两个分组才能合并")
+	}
+
+	// 1. 收集所有漫画 ID（去重）
+	seen := make(map[string]bool)
+	var allComicIDs []string
+	var coverURL string
+	for i, gid := range groupIDs {
+		detail, err := GetGroupByID(gid)
+		if err != nil || detail == nil {
+			continue
+		}
+		// 使用第一个有封面的分组的封面
+		if i == 0 || (coverURL == "" && detail.CoverURL != "") {
+			coverURL = detail.CoverURL
+		}
+		for _, c := range detail.Comics {
+			if !seen[c.ComicID] {
+				seen[c.ComicID] = true
+				allComicIDs = append(allComicIDs, c.ComicID)
+			}
+		}
+	}
+
+	// 2. 创建新分组
+	uid := userID
+	newID, err := CreateGroup(newName, uid)
+	if err != nil {
+		return 0, fmt.Errorf("创建合并分组失败: %w", err)
+	}
+
+	// 3. 设置封面
+	if coverURL != "" {
+		UpdateGroup(int(newID), newName, coverURL)
+	}
+
+	// 4. 添加所有漫画到新分组
+	if len(allComicIDs) > 0 {
+		if err := AddComicsToGroup(int(newID), allComicIDs); err != nil {
+			return newID, fmt.Errorf("添加漫画到合并分组失败: %w", err)
+		}
+	}
+
+	// 5. 删除旧分组
+	for _, gid := range groupIDs {
+		DeleteGroup(gid)
+	}
+
+	return newID, nil
+}
+
+// GroupExportItem 分组导出数据条目。
+type GroupExportItem struct {
+	ID         int               `json:"id"`
+	Name       string            `json:"name"`
+	CoverURL   string            `json:"coverUrl"`
+	ComicCount int               `json:"comicCount"`
+	CreatedAt  string            `json:"createdAt"`
+	UpdatedAt  string            `json:"updatedAt"`
+	Comics     []GroupComicBrief `json:"comics"`
+}
+
+// GroupComicBrief 分组导出中的漫画简要信息。
+type GroupComicBrief struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Filename string `json:"filename"`
+}
+
+// ExportGroupsData 导出指定分组的数据。
+func ExportGroupsData(groupIDs []int) ([]GroupExportItem, error) {
+	var items []GroupExportItem
+	for _, gid := range groupIDs {
+		detail, err := GetGroupByID(gid)
+		if err != nil || detail == nil {
+			continue
+		}
+		item := GroupExportItem{
+			ID:         detail.ID,
+			Name:       detail.Name,
+			CoverURL:   detail.CoverURL,
+			ComicCount: detail.ComicCount,
+			CreatedAt:  detail.CreatedAt,
+			UpdatedAt:  detail.UpdatedAt,
+		}
+		for _, c := range detail.Comics {
+			item.Comics = append(item.Comics, GroupComicBrief{
+				ID:       c.ComicID,
+				Title:    c.Title,
+				Filename: c.Filename,
+			})
+		}
+		if item.Comics == nil {
+			item.Comics = []GroupComicBrief{}
+		}
+		items = append(items, item)
+	}
+	if items == nil {
+		items = []GroupExportItem{}
+	}
+	return items, nil
 }
 
 // BatchCreateGroups 批量创建分组并添加漫画（用于自动检测后一键创建）。

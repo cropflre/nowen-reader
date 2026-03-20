@@ -273,6 +273,9 @@ func SetupRoutes(r *gin.Engine) {
 		metadataGroup.GET("/library", meta.Library)
 		metadataGroup.POST("/batch-selected", meta.BatchSelected)
 		metadataGroup.POST("/clear", meta.ClearMetadata)
+		metadataGroup.POST("/batch-rename", meta.BatchRename)
+		metadataGroup.POST("/ai-rename", meta.AIRename)
+		metadataGroup.POST("/ai-chat", meta.AIChat)
 	}
 
 	// AI services
@@ -377,6 +380,22 @@ func SetupRoutes(r *gin.Engine) {
 	comicByIDWrite.POST("/translate-metadata", tagTranslate.TranslateMetadata)
 
 	// ============================================================
+	// 翻译引擎管理 API
+	// ============================================================
+	api.GET("/translate/engines", tagTranslate.GetEngines)
+	api.GET("/translate/config", tagTranslate.GetTranslateConfig)
+	api.GET("/translate/health", tagTranslate.GetEngineHealth)
+	api.GET("/translate/cache/stats", tagTranslate.GetCacheStats)
+
+	translateWrite := api.Group("/translate")
+	translateWrite.Use(middleware.AuthRequired())
+	{
+		translateWrite.PUT("/config", tagTranslate.UpdateTranslateConfig)
+		translateWrite.DELETE("/cache", tagTranslate.ClearCache)
+		translateWrite.POST("/test", tagTranslate.TestEngine)
+	}
+
+	// ============================================================
 	// Comic Groups (自定义合并分组)
 	// ============================================================
 	group := NewGroupHandler()
@@ -395,6 +414,9 @@ func SetupRoutes(r *gin.Engine) {
 		groupWrite.PUT("/:id/reorder", group.ReorderComics)
 		groupWrite.POST("/auto-detect", group.AutoDetect)
 		groupWrite.POST("/batch-create", group.BatchCreate)
+		groupWrite.POST("/batch-delete", group.BatchDelete)
+		groupWrite.POST("/merge", group.MergeGroups)
+		groupWrite.POST("/export", group.ExportGroups)
 	}
 
 	// ============================================================

@@ -188,12 +188,18 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	switch opts.SortBy {
 	case "addedAt":
 		sortField = "c.\"addedAt\""
+	case "updatedAt":
+		sortField = "c.\"updatedAt\""
 	case "lastReadAt":
 		sortField = "c.\"lastReadAt\""
 	case "rating":
 		sortField = "c.\"rating\""
 	case "custom":
 		sortField = "c.\"sortOrder\""
+	case "fileSize":
+		sortField = "c.\"fileSize\""
+	case "metadataSource":
+		sortField = "c.\"metadataSource\""
 	}
 	sortDir := "ASC"
 	if strings.ToLower(opts.SortOrder) == "desc" {
