@@ -579,11 +579,14 @@ export default function ComicDetailPage() {
   }, []);
 
   const handleDelete = useCallback(async () => {
-    const success = await deleteComicById(comicId);
-    if (success) {
+    const result = await deleteComicById(comicId);
+    if (result.success) {
       router.push("/");
+    } else {
+      const msg = t.comicDetail?.deleteError || "删除失败：";
+      alert(msg.replace("{{error}}", result.error || "Unknown error"));
     }
-  }, [comicId, router]);
+  }, [comicId, router, t]);
 
   if (loading) {
     return (

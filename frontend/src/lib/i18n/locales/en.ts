@@ -181,6 +181,7 @@ const en: Translations = {
     cancel: "Cancel",
     confirm: "Confirm",
     deleteSuccess: "Deleted",
+    deleteError: "Delete failed: {{error}}",
   },
 
   // Stats Page

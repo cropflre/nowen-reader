@@ -44,6 +44,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   int _swipePage = 0;
   int _swipeTotalPages = 1;
   final GlobalKey _contentKey = GlobalKey();
+  final GlobalKey _swipeContentInnerKey = GlobalKey();
 
   // 章节目录列表
   List<Map<String, dynamic>> _chapters = [];
@@ -459,6 +460,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     if (_settings.pageMode != NovelPageMode.swipe) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // 获取视口高度
       final ctx = _contentKey.currentContext;
       if (ctx == null) return;
       final renderBox = ctx.findRenderObject() as RenderBox?;
@@ -468,8 +470,18 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         setState(() => _swipeTotalPages = 1);
         return;
       }
-      // 基于文本内容估算总高度
-      final contentH = _estimateContentHeight();
+      // 获取内容实际渲染高度
+      final innerCtx = _swipeContentInnerKey.currentContext;
+      if (innerCtx == null) {
+        setState(() => _swipeTotalPages = 1);
+        return;
+      }
+      final innerBox = innerCtx.findRenderObject() as RenderBox?;
+      if (innerBox == null || !innerBox.hasSize) {
+        setState(() => _swipeTotalPages = 1);
+        return;
+      }
+      final contentH = innerBox.size.height;
       setState(() {
         _swipeTotalPages = max(1, (contentH / viewH).ceil());
         if (_swipePage >= _swipeTotalPages) {
@@ -477,24 +489,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         }
       });
     });
-  }
-
-  double _estimateContentHeight() {
-    final isHtml = _chapterMimeType == 'text/html' ||
-        _chapterContent.trimLeft().startsWith('<');
-    final displayText = isHtml ? _stripHtml(_chapterContent) : _chapterContent;
-    final paragraphs = displayText
-        .split('\n')
-        .where((line) => line.trim().isNotEmpty)
-        .toList();
-    final screenWidth = MediaQuery.of(context).size.width - _settings.horizontalPadding * 2;
-    final charsPerLine = max(1, (screenWidth / _settings.fontSize).floor());
-    double totalH = (_settings.fontSize + 4) * 1.4 + 24; // 章节标题高度
-    for (final p in paragraphs) {
-      final lineCount = max(1, ((p.trim().length + 2) / charsPerLine).ceil());
-      totalH += lineCount * _settings.fontSize * _settings.lineHeight + 16;
-    }
-    return totalH;
   }
 
   void _swipePrevPage() {
@@ -618,6 +612,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   void _updateSettings(NovelSettings s) {
     final oldSpeed = _settings.autoScrollSpeed;
     final oldPageMode = _settings.pageMode;
+    final oldFontSize = _settings.fontSize;
+    final oldLineHeight = _settings.lineHeight;
+    final oldPadding = _settings.padding;
+    final oldFont = _settings.font;
     setState(() => _settings = s);
     s.save();
     // 自动滚动速度变更时，动态更新定时器
@@ -630,6 +628,14 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       if (s.pageMode == NovelPageMode.swipe) {
         _computeSwipePages();
       }
+    } else if (s.pageMode == NovelPageMode.swipe &&
+        (s.fontSize != oldFontSize ||
+            s.lineHeight != oldLineHeight ||
+            s.padding != oldPadding ||
+            s.font != oldFont)) {
+      // 排版参数变化时，重置到第一页并重新计算分页
+      _swipePage = 0;
+      _computeSwipePages();
     }
   }
 
@@ -1162,16 +1168,21 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                       -_swipePage * viewHeight,
                       0,
                     ),
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        _settings.horizontalPadding,
-                        16,
-                        _settings.horizontalPadding,
-                        80,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: contentWidgets,
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Padding(
+                        key: _swipeContentInnerKey,
+                        padding: EdgeInsets.fromLTRB(
+                          _settings.horizontalPadding,
+                          16,
+                          _settings.horizontalPadding,
+                          80,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: contentWidgets,
+                        ),
                       ),
                     ),
                   ),

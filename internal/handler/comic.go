@@ -161,10 +161,14 @@ func (h *ComicHandler) UpdateProgress(c *gin.Context) {
 
 func (h *ComicHandler) DeleteComic(c *gin.Context) {
 	id := c.Param("id")
-	if err := store.DeleteComic(id, config.GetAllComicsDirs()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comic"})
+	dirs := config.GetAllComicsDirs()
+	log.Printf("[API] DeleteComic: id=%s, comicsDirs=%v", id, dirs)
+	if err := store.DeleteComic(id, dirs); err != nil {
+		log.Printf("[API] DeleteComic failed: id=%s, err=%v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comic: " + err.Error()})
 		return
 	}
+	log.Printf("[API] DeleteComic success: id=%s", id)
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 

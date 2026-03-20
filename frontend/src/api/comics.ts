@@ -131,15 +131,26 @@ export async function batchOperation(
 
 /**
  * 删除单个漫画
+ * 返回 { success, error? } 包含具体错误信息
  */
-export async function deleteComicById(comicId: string) {
+export async function deleteComicById(comicId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`/api/comics/${comicId}/delete`, {
       method: "DELETE",
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) {
+      return { success: true };
+    }
+    // 尝试解析后端返回的具体错误信息
+    try {
+      const data = await res.json();
+      const detail = data.error || `HTTP ${res.status}`;
+      return { success: false, error: detail };
+    } catch {
+      return { success: false, error: `HTTP ${res.status} ${res.statusText}` };
+    }
+  } catch (e) {
+    return { success: false, error: String(e) };
   }
 }
 

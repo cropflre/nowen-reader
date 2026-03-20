@@ -1533,10 +1533,14 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             // 先播放删除动画
             setRemovingIds(new Set([id]));
             setTimeout(async () => {
-              await deleteComicById(id);
+              const result = await deleteComicById(id);
               setRemovingIds(new Set());
-              await refetch();
-              toast.success(t.comicDetail?.deleteSuccess || "已删除");
+              if (result.success) {
+                await refetch();
+                toast.success(t.comicDetail?.deleteSuccess || "已删除");
+              } else {
+                toast.error(result.error || "删除失败");
+              }
             }, 400);
           }}
         />
