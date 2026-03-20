@@ -110,6 +110,42 @@ export interface AIChatQuickCommand {
   icon?: string;
 }
 
+/* ── 合集管理相关类型 ── */
+
+export interface CollectionGroup {
+  id: number;
+  name: string;
+  coverUrl: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  comicCount: number;
+}
+
+export interface CollectionGroupDetail extends CollectionGroup {
+  comics: CollectionGroupComic[];
+}
+
+export interface CollectionGroupComic {
+  id: string;
+  filename: string;
+  title: string;
+  pageCount: number;
+  fileSize: number;
+  lastReadPage: number;
+  totalReadTime: number;
+  coverUrl: string;
+  sortIndex: number;
+  readingStatus: string;
+  lastReadAt: string | null;
+}
+
+export interface AutoDetectSuggestion {
+  name: string;
+  comicIds: string[];
+  titles: string[];
+}
+
 /* ── 引导教程系统相关类型 ── */
 
 export interface GuideStep {
@@ -175,6 +211,19 @@ export interface ScraperState {
   guideDismissed: boolean;   // 用户是否已永久关闭引导
   helpPanelOpen: boolean;    // 帮助面板是否打开
   helpSearchQuery: string;   // 帮助面板搜索词
+
+  // 合集管理
+  collectionPanelOpen: boolean;       // 合集管理面板是否打开
+  collectionGroups: CollectionGroup[]; // 合集列表
+  collectionGroupsLoading: boolean;
+  collectionDetail: CollectionGroupDetail | null; // 当前查看的合集详情
+  collectionDetailLoading: boolean;
+  collectionAutoSuggestions: AutoDetectSuggestion[]; // 智能检测建议
+  collectionAutoLoading: boolean;
+  collectionCreateDialog: boolean;    // 创建合集弹窗
+  collectionAddToGroupDialog: boolean; // 添加到合集弹窗（从选中项触发）
+  collectionEditingId: number | null; // 正在编辑的合集ID
+  collectionEditingName: string;      // 编辑中的合集名称
 }
 
 /* ── 模块级状态 ── */
@@ -224,6 +273,19 @@ let state: ScraperState = {
   guideDismissed: typeof globalThis !== "undefined" ? globalThis.localStorage?.getItem("scraper-guide-dismissed") === "true" : false,
   helpPanelOpen: false,
   helpSearchQuery: "",
+
+  // 合集管理
+  collectionPanelOpen: false,
+  collectionGroups: [],
+  collectionGroupsLoading: false,
+  collectionDetail: null,
+  collectionDetailLoading: false,
+  collectionAutoSuggestions: [],
+  collectionAutoLoading: false,
+  collectionCreateDialog: false,
+  collectionAddToGroupDialog: false,
+  collectionEditingId: null,
+  collectionEditingName: "",
 };
 
 let abortController: AbortController | null = null;
@@ -1203,4 +1265,305 @@ export function checkAutoStartGuide() {
     state.guideCurrentStep = 0;
     notify();
   }
+}
+
+/* ── 合集管理 Actions ── */
+
+export function openCollectionPanel() {
+  state.collectionPanelOpen = true;
+  state.focusedItemId = null;
+  state.aiChatOpen = false;
+  state.batchEditMode = false;
+  state.helpPanelOpen = false;
+  state.collectionDetail = null;
+  notify();
+  loadCollectionGroups();
+}
+
+export function closeCollectionPanel() {
+  state.collectionPanelOpen = false;
+  state.collectionDetail = null;
+  state.collectionAutoSuggestions = [];
+  state.collectionCreateDialog = false;
+  state.collectionAddToGroupDialog = false;
+  state.collectionEditingId = null;
+  notify();
+}
+
+export function openAddToGroupDialog() {
+  state.collectionAddToGroupDialog = true;
+  notify();
+  // 确保合集列表已加载
+  if (state.collectionGroups.length === 0) {
+    loadCollectionGroups();
+  }
+}
+
+export function closeAddToGroupDialog() {
+  state.collectionAddToGroupDialog = false;
+  notify();
+}
+
+export function setCollectionEditingId(id: number | null) {
+  state.collectionEditingId = id;
+  if (id !== null) {
+    const group = state.collectionGroups.find(g => g.id === id);
+    state.collectionEditingName = group?.name || "";
+  } else {
+    state.collectionEditingName = "";
+  }
+  notify();
+}
+
+export function setCollectionEditingName(name: string) {
+  state.collectionEditingName = name;
+  notify();
+}
+
+export async function loadCollectionGroups() {
+  state.collectionGroupsLoading = true;
+  notify();
+  try {
+    const params = new URLSearchParams();
+    if (state.libraryContentType) params.set("contentType", state.libraryContentType);
+    const res = await fetch(`/api/groups?${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      state.collectionGroups = data.groups || [];
+    }
+  } catch {
+    // ignore
+  } finally {
+    state.collectionGroupsLoading = false;
+    notify();
+  }
+}
+
+export async function loadCollectionDetail(groupId: number) {
+  state.collectionDetailLoading = true;
+  notify();
+  try {
+    const res = await fetch(`/api/groups/${groupId}`);
+    if (res.ok) {
+      const data = await res.json();
+      state.collectionDetail = data;
+    }
+  } catch {
+    // ignore
+  } finally {
+    state.collectionDetailLoading = false;
+    notify();
+  }
+}
+
+export function clearCollectionDetail() {
+  state.collectionDetail = null;
+  notify();
+}
+
+export async function createCollection(name: string, comicIds?: string[]) {
+  try {
+    const res = await fetch("/api/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, comicIds: comicIds || [] }),
+    });
+    if (res.ok) {
+      state.collectionCreateDialog = false;
+      notify();
+      await loadCollectionGroups();
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function updateCollection(groupId: number, name: string, coverUrl?: string) {
+  try {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, coverUrl: coverUrl || "" }),
+    });
+    if (res.ok) {
+      state.collectionEditingId = null;
+      state.collectionEditingName = "";
+      notify();
+      await loadCollectionGroups();
+      // 如果正在查看该合集的详情，也刷新详情
+      if (state.collectionDetail && state.collectionDetail.id === groupId) {
+        await loadCollectionDetail(groupId);
+      }
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function deleteCollection(groupId: number) {
+  try {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      // 如果正在查看该合集的详情，关闭详情
+      if (state.collectionDetail && state.collectionDetail.id === groupId) {
+        state.collectionDetail = null;
+      }
+      notify();
+      await loadCollectionGroups();
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function addComicsToCollection(groupId: number, comicIds: string[]) {
+  try {
+    const res = await fetch(`/api/groups/${groupId}/comics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comicIds }),
+    });
+    if (res.ok) {
+      state.collectionAddToGroupDialog = false;
+      notify();
+      await loadCollectionGroups();
+      if (state.collectionDetail && state.collectionDetail.id === groupId) {
+        await loadCollectionDetail(groupId);
+      }
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function removeComicFromCollection(groupId: number, comicId: string) {
+  try {
+    const res = await fetch(`/api/groups/${groupId}/comics/${comicId}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      await loadCollectionGroups();
+      if (state.collectionDetail && state.collectionDetail.id === groupId) {
+        await loadCollectionDetail(groupId);
+      }
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function reorderCollectionComics(groupId: number, comicIds: string[]) {
+  try {
+    const res = await fetch(`/api/groups/${groupId}/reorder`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comicIds }),
+    });
+    if (res.ok) {
+      if (state.collectionDetail && state.collectionDetail.id === groupId) {
+        await loadCollectionDetail(groupId);
+      }
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function autoDetectCollections() {
+  state.collectionAutoLoading = true;
+  notify();
+  try {
+    const res = await fetch("/api/groups/auto-detect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentType: state.libraryContentType }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      state.collectionAutoSuggestions = data.suggestions || [];
+    }
+  } catch {
+    // ignore
+  } finally {
+    state.collectionAutoLoading = false;
+    notify();
+  }
+}
+
+export async function batchCreateCollections(groups: AutoDetectSuggestion[]) {
+  try {
+    const res = await fetch("/api/groups/batch-create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groups }),
+    });
+    if (res.ok) {
+      state.collectionAutoSuggestions = [];
+      notify();
+      await loadCollectionGroups();
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function batchDeleteCollections(groupIds: number[]) {
+  try {
+    const res = await fetch("/api/groups/batch-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupIds }),
+    });
+    if (res.ok) {
+      if (state.collectionDetail && groupIds.includes(state.collectionDetail.id)) {
+        state.collectionDetail = null;
+      }
+      notify();
+      await loadCollectionGroups();
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export async function mergeCollections(groupIds: number[], newName: string) {
+  try {
+    const res = await fetch("/api/groups/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupIds, newName }),
+    });
+    if (res.ok) {
+      state.collectionDetail = null;
+      notify();
+      await loadCollectionGroups();
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export function setCollectionCreateDialog(open: boolean) {
+  state.collectionCreateDialog = open;
+  notify();
 }

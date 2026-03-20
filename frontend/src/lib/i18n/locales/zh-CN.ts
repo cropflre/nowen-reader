@@ -948,6 +948,39 @@ autoDetect: "智能分组",
     helpTrouble2A: "需要先在「设置 → AI」中配置云端AI服务（如OpenAI、通义千问等）并测试连接成功后才能使用AI相关功能。",
     helpTrouble3Q: "刮削结果不准确",
     helpTrouble3A: "1）使用精准刮削手动搜索正确条目；2）修改书名更接近正式名称；3）试试不同的在线数据源；4）使用AI模式自动清洗书名再搜索。",
+
+    // 合集管理
+    collectionTitle: "合集管理",
+    collectionDesc: "管理漫画系列分组与元数据关联",
+    collectionEmpty: "暂无合集",
+    collectionEmptyHint: "可通过智能检测自动发现系列，或手动创建合集",
+    collectionCreate: "创建合集",
+    collectionCreatePlaceholder: "输入合集名称...",
+    collectionAutoDetect: "智能检测",
+    collectionAutoDetectDesc: "自动识别可合并的系列漫画",
+    collectionAutoEmpty: "未发现可合并的系列",
+    collectionAutoApplyAll: "全部创建",
+    collectionAutoApplySelected: "创建选中",
+    collectionSuggestions: "检测到的系列",
+    collectionItemCount: "{count} 本",
+    collectionEdit: "编辑",
+    collectionDelete: "删除",
+    collectionDeleteConfirm: "确定要删除合集「{name}」吗？（不会删除漫画文件本身）",
+    collectionAddSelected: "加入合集",
+    collectionAddToGroup: "添加到合集",
+    collectionAddToNew: "创建新合集并添加",
+    collectionRemoveItem: "从合集移除",
+    collectionReorder: "排序",
+    collectionBack: "返回列表",
+    collectionScrapeAll: "刮削整个合集",
+    collectionMoveUp: "上移",
+    collectionMoveDown: "下移",
+    collectionNoName: "请输入合集名称",
+    collectionCreated: "合集已创建",
+    collectionUpdated: "合集已更新",
+    collectionDeleted: "合集已删除",
+    collectionItemAdded: "已添加到合集",
+    collectionItemRemoved: "已从合集移除",
   },
 } satisfies Translations;
 
@@ -1831,5 +1864,37 @@ export interface Translations {
     helpTrouble2A: string;
     helpTrouble3Q: string;
     helpTrouble3A: string;
+    // 合集管理
+    collectionTitle: string;
+    collectionDesc: string;
+    collectionEmpty: string;
+    collectionEmptyHint: string;
+    collectionCreate: string;
+    collectionCreatePlaceholder: string;
+    collectionAutoDetect: string;
+    collectionAutoDetectDesc: string;
+    collectionAutoEmpty: string;
+    collectionAutoApplyAll: string;
+    collectionAutoApplySelected: string;
+    collectionSuggestions: string;
+    collectionItemCount: string;
+    collectionEdit: string;
+    collectionDelete: string;
+    collectionDeleteConfirm: string;
+    collectionAddSelected: string;
+    collectionAddToGroup: string;
+    collectionAddToNew: string;
+    collectionRemoveItem: string;
+    collectionReorder: string;
+    collectionBack: string;
+    collectionScrapeAll: string;
+    collectionMoveUp: string;
+    collectionMoveDown: string;
+    collectionNoName: string;
+    collectionCreated: string;
+    collectionUpdated: string;
+    collectionDeleted: string;
+    collectionItemAdded: string;
+    collectionItemRemoved: string;
   };
 }
