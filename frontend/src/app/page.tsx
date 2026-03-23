@@ -165,9 +165,27 @@ export default function Home() {
   const [aiTagsLoading, setAiTagsLoading] = useState(false);
   const [aiCategoryLoading, setAiCategoryLoading] = useState(false);
 
-  // 分组视图分页
-  const [groupPage, setGroupPage] = useState(1);
+  // 分组视图分页（优先从 URL 参数恢复，其次从 sessionStorage 恢复，确保从分组详情页返回时保持页码）
+  const [groupPage, setGroupPage] = useState(() => {
+    if (typeof window !== "undefined") {
+      // 优先从 URL 查询参数 gpage 读取
+      const gp = new URLSearchParams(window.location.search).get("gpage");
+      if (gp) {
+        const n = parseInt(gp, 10);
+        if (n > 0) return n;
+      }
+      // URL 没有 gpage 参数时，尝试从 sessionStorage 恢复
+      const saved = sessionStorage.getItem("homeGroupPage");
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (n > 0) return n;
+      }
+    }
+    return 1;
+  });
   const GROUP_PAGE_SIZE = 24;
+  // 用于跳过 showGroupView effect 首次挂载时的重置
+  const showGroupViewMountedRef = useRef(false);
 
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{
@@ -321,6 +339,20 @@ export default function Home() {
     window.history.replaceState(null, "", newUrl);
   }, [currentPage]);
 
+  // 分组视图分页变化时持久化到 sessionStorage 和 URL 参数（确保从分组详情页返回时可恢复）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (groupPage > 1) {
+      sessionStorage.setItem("homeGroupPage", String(groupPage));
+      params.set("gpage", String(groupPage));
+    } else {
+      sessionStorage.removeItem("homeGroupPage");
+      params.delete("gpage");
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [groupPage]);
+
   // Load pageSize from site settings
   useEffect(() => {
     fetch("/api/site-settings")
@@ -364,8 +396,12 @@ export default function Home() {
     setGroupPage(1);
   }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, contentType]);
 
-  // 分组视图切换时重置分组分页
+  // 分组视图切换时重置分组分页（跳过首次挂载，避免覆盖从 URL/sessionStorage 恢复的页码）
   useEffect(() => {
+    if (!showGroupViewMountedRef.current) {
+      showGroupViewMountedRef.current = true;
+      return;
+    }
     setGroupPage(1);
   }, [showGroupView]);
 

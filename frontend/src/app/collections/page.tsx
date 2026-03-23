@@ -84,6 +84,26 @@ export default function CollectionsPage() {
   const [mergeName, setMergeName] = useState("");
   const [merging, setMerging] = useState(false);
 
+  // 分页状态（优先从 URL 参数恢复，其次从 sessionStorage 恢复，确保从详情页返回时保持页码）
+  const COLLECTIONS_PAGE_SIZE = 24;
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== "undefined") {
+      // 优先从 URL 查询参数 page 读取
+      const p = new URLSearchParams(window.location.search).get("page");
+      if (p) {
+        const n = parseInt(p, 10);
+        if (n > 0) return n;
+      }
+      // URL 没有 page 参数时，尝试从 sessionStorage 恢复
+      const saved = sessionStorage.getItem("collectionsPage");
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (n > 0) return n;
+      }
+    }
+    return 1;
+  });
+
   // 弹窗状态
   const [showAutoDetect, setShowAutoDetect] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -132,6 +152,20 @@ export default function CollectionsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ── 分页持久化：页码变化时同步到 sessionStorage 和 URL 参数 ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentPage > 1) {
+      sessionStorage.setItem("collectionsPage", String(currentPage));
+      params.set("page", String(currentPage));
+    } else {
+      sessionStorage.removeItem("collectionsPage");
+      params.delete("page");
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [currentPage]);
+
   // ── 过滤 + 排序 ──
   const filteredAndSorted = useMemo(() => {
     let result = [...groups];
@@ -164,6 +198,25 @@ export default function CollectionsPage() {
 
     return result;
   }, [groups, searchQuery, sortField, sortOrder]);
+
+  // ── 分页计算 ──
+  const collectionsTotalPages = Math.max(1, Math.ceil(filteredAndSorted.length / COLLECTIONS_PAGE_SIZE));
+  const pagedCollections = useMemo(() => {
+    const start = (currentPage - 1) * COLLECTIONS_PAGE_SIZE;
+    return filteredAndSorted.slice(start, start + COLLECTIONS_PAGE_SIZE);
+  }, [filteredAndSorted, currentPage, COLLECTIONS_PAGE_SIZE]);
+
+  // 搜索/排序/筛选变化时重置到第1页
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortField, sortOrder, contentFilter]);
+
+  // 确保当前页码不超出范围（比如删除后总页数减少）
+  useEffect(() => {
+    if (currentPage > collectionsTotalPages) {
+      setCurrentPage(collectionsTotalPages);
+    }
+  }, [currentPage, collectionsTotalPages]);
 
   // ── 创建分组 ──
   const handleCreate = useCallback(async () => {
@@ -307,7 +360,7 @@ export default function CollectionsPage() {
                 {tCollections.title || "合集管理"}
               </h1>
               <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent flex-shrink-0">
-                {groups.length}
+                {filteredAndSorted.length}
               </span>
             </div>
 
@@ -669,7 +722,7 @@ export default function CollectionsPage() {
         ) : viewMode === "grid" ? (
           /* ── 网格视图 ── */
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-            {filteredAndSorted.map((group, index) => (
+            {pagedCollections.map((group, index) => (
               <CollectionGridCard
                 key={group.id}
                 group={group}
@@ -686,7 +739,7 @@ export default function CollectionsPage() {
         ) : (
           /* ── 列表视图 ── */
           <div className="space-y-2">
-            {filteredAndSorted.map((group, index) => (
+            {pagedCollections.map((group, index) => (
               <CollectionListCard
                 key={group.id}
                 group={group}
@@ -699,6 +752,136 @@ export default function CollectionsPage() {
                 onToggleSelect={toggleSelect}
               />
             ))}
+          </div>
+        )}
+
+        {/* ── 分页导航 ── */}
+        {collectionsTotalPages > 1 && (
+          <div className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+            {/* 首页 */}
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+              title={tCollections.firstPage || "首页"}
+            >
+              «
+            </button>
+            {/* 上一页 */}
+            <button
+              onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+              title={tCollections.prevPage || "上一页"}
+            >
+              ‹
+            </button>
+
+            {/* 页码按钮 */}
+            {(() => {
+              const pages: (number | string)[] = [];
+              const maxVisible = typeof window !== "undefined" && window.innerWidth < 640 ? 5 : 7;
+              if (collectionsTotalPages <= maxVisible) {
+                for (let i = 1; i <= collectionsTotalPages; i++) pages.push(i);
+              } else {
+                pages.push(1);
+                if (currentPage > 3) pages.push("...");
+                const start = Math.max(2, currentPage - 1);
+                const end = Math.min(collectionsTotalPages - 1, currentPage + 1);
+                for (let i = start; i <= end; i++) pages.push(i);
+                if (currentPage < collectionsTotalPages - 2) pages.push("...");
+                pages.push(collectionsTotalPages);
+              }
+              return pages.map((p, idx) =>
+                typeof p === "string" ? (
+                  <span key={`ellipsis-${idx}`} className="px-0.5 sm:px-1 text-muted">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`flex h-8 min-w-[32px] sm:h-9 sm:min-w-[36px] items-center justify-center rounded-lg px-1.5 sm:px-2 text-xs sm:text-sm font-medium transition-colors ${
+                      currentPage === p
+                        ? "bg-accent text-white"
+                        : "border border-border/60 text-muted hover:border-border hover:text-foreground"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              );
+            })()}
+
+            {/* 下一页 */}
+            <button
+              onClick={() => setCurrentPage((p: number) => Math.min(collectionsTotalPages, p + 1))}
+              disabled={currentPage === collectionsTotalPages}
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+              title={tCollections.nextPage || "下一页"}
+            >
+              ›
+            </button>
+            {/* 末页 */}
+            <button
+              onClick={() => setCurrentPage(collectionsTotalPages)}
+              disabled={currentPage === collectionsTotalPages}
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border/60 text-sm text-muted transition-colors hover:border-border hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+              title={tCollections.lastPage || "末页"}
+            >
+              »
+            </button>
+
+            {/* 页码信息 */}
+            <span className="ml-2 sm:ml-3 text-xs text-muted">
+              {currentPage} / {collectionsTotalPages}
+            </span>
+
+            {/* 页码跳转输入框 */}
+            <div className="ml-2 sm:ml-3 flex items-center gap-1">
+              <input
+                type="number"
+                min={1}
+                max={collectionsTotalPages}
+                placeholder={tCollections.pageInputPlaceholder || "页码"}
+                className="w-14 sm:w-16 rounded-lg border border-border/60 bg-card px-2 py-1 text-xs text-center text-foreground outline-none focus:border-accent/50 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const val = parseInt((e.target as HTMLInputElement).value, 10);
+                    if (val >= 1 && val <= collectionsTotalPages) {
+                      setCurrentPage(val);
+                      (e.target as HTMLInputElement).value = "";
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (val >= 1 && val <= collectionsTotalPages) {
+                    setCurrentPage(val);
+                    e.target.value = "";
+                  }
+                }}
+              />
+              <button
+                onClick={(e) => {
+                  const input = (e.currentTarget as HTMLElement).previousElementSibling as HTMLInputElement;
+                  const val = parseInt(input?.value, 10);
+                  if (val >= 1 && val <= collectionsTotalPages) {
+                    setCurrentPage(val);
+                    input.value = "";
+                  }
+                }}
+                className="rounded-lg border border-border/60 px-2 py-1 text-xs text-muted hover:text-foreground hover:border-border transition-colors"
+              >
+                {tCollections.goToPage || "跳转"}
+              </button>
+            </div>
+
+            {/* 总数信息 */}
+            <span className="ml-2 text-xs text-muted hidden sm:inline">
+              {(tCollections.totalCollections || "共 {count} 个合集").replace("{count}", String(filteredAndSorted.length))}
+            </span>
           </div>
         )}
       </main>

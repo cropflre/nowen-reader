@@ -771,6 +771,14 @@ autoDetect: "智能分组",
     exportSuccess: "导出成功",
     exportFailed: "导出失败",
     totalWorks: "共 {count} 部作品",
+    // 分页
+    firstPage: "首页",
+    prevPage: "上一页",
+    nextPage: "下一页",
+    lastPage: "末页",
+    goToPage: "跳转",
+    pageInputPlaceholder: "页码",
+    totalCollections: "共 {count} 个合集",
   },
 
   // 系列导航

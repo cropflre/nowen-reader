@@ -99,8 +99,12 @@ export default function TagFilter({
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.translated > 0) {
-          onClearAll(); // Clear selected tags since names changed
+        if (data.success) {
+          // renamed > 0 表示有标签被实际重命名，需要清除选中状态（因为旧标签名已不存在）
+          if (data.renamed > 0) {
+            onClearAll();
+          }
+          // 无论是否有实际重命名，都刷新标签列表以确保显示最新数据
           onTagsTranslated?.();
         }
       }

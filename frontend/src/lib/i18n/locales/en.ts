@@ -772,6 +772,14 @@ const en: Translations = {
     exportSuccess: "Export successful",
     exportFailed: "Export failed",
     totalWorks: "{count} works total",
+    // Pagination
+    firstPage: "First Page",
+    prevPage: "Previous",
+    nextPage: "Next",
+    lastPage: "Last Page",
+    goToPage: "Go",
+    pageInputPlaceholder: "Page",
+    totalCollections: "{count} collections total",
   },
 
   // Series navigation
