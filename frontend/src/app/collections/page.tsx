@@ -760,6 +760,7 @@ export default function CollectionsPage() {
                 batchMode={batchMode}
                 selected={selectedIds.has(group.id)}
                 onToggleSelect={toggleSelect}
+                contentFilter={contentFilter}
               />
             ))}
           </div>
@@ -777,6 +778,7 @@ export default function CollectionsPage() {
                 batchMode={batchMode}
                 selected={selectedIds.has(group.id)}
                 onToggleSelect={toggleSelect}
+                contentFilter={contentFilter}
               />
             ))}
           </div>
@@ -1140,6 +1142,7 @@ function CollectionGridCard({
   batchMode,
   selected,
   onToggleSelect,
+  contentFilter,
 }: {
   group: ComicGroup;
   index: number;
@@ -1151,6 +1154,7 @@ function CollectionGridCard({
   batchMode: boolean;
   selected: boolean;
   onToggleSelect: (id: number) => void;
+  contentFilter: string;
 }) {
   const [coverLoaded, setCoverLoaded] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -1288,6 +1292,7 @@ function CollectionListCard({
   batchMode,
   selected,
   onToggleSelect,
+  contentFilter,
 }: {
   group: ComicGroup;
   index: number;
@@ -1299,6 +1304,7 @@ function CollectionListCard({
   batchMode: boolean;
   selected: boolean;
   onToggleSelect: (id: number) => void;
+  contentFilter: string;
 }) {
   const handleRowClick = (e: React.MouseEvent) => {
     if (batchMode) {

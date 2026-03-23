@@ -1723,6 +1723,14 @@ export interface Translations {
     exportSuccess: string;
     exportFailed: string;
     totalWorks: string;
+    // 分页
+    firstPage: string;
+    prevPage: string;
+    nextPage: string;
+    lastPage: string;
+    goToPage: string;
+    pageInputPlaceholder: string;
+    totalCollections: string;
   };
   series: {
     nextVolume: string;

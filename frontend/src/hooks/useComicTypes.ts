@@ -32,6 +32,7 @@ export interface ApiComic {
   language: string;
   genre: string;
   metadataSource: string;
+  type: string; // 内容类型："comic" | "novel"
 }
 
 export interface ComicsResponse {
