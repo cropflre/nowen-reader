@@ -161,7 +161,7 @@ func (h *ComicHandler) UpdateProgress(c *gin.Context) {
 
 func (h *ComicHandler) DeleteComic(c *gin.Context) {
 	id := c.Param("id")
-	dirs := config.GetAllComicsDirs()
+	dirs := config.GetAllScanDirs()
 	log.Printf("[API] DeleteComic: id=%s, comicsDirs=%v", id, dirs)
 	if err := store.DeleteComic(id, dirs); err != nil {
 		log.Printf("[API] DeleteComic failed: id=%s, err=%v", id, err)

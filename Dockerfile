@@ -112,21 +112,22 @@ COPY --chown=appuser:appgroup docker-entrypoint.sh /docker-entrypoint.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod 755 /docker-entrypoint.sh
 
 # Create data directories with correct permissions
-RUN mkdir -p /data /app/comics /app/.cache/thumbnails /app/.cache/pages && \
-    chown -R appuser:appgroup /data /app /app/comics /app/.cache
+RUN mkdir -p /data /app/comics /app/novels /app/.cache/thumbnails /app/.cache/pages && \
+    chown -R appuser:appgroup /data /app /app/comics /app/novels /app/.cache
 
 # Environment defaults
 ENV GIN_MODE=release \
     PORT=3000 \
     DATABASE_URL=/data/nowen-reader.db \
     COMICS_DIR=/app/comics \
+    NOVELS_DIR=/app/novels \
     DATA_DIR=/app/.cache \
     TZ=Asia/Shanghai
 
 EXPOSE 3000
 
 # Declare volumes for persistent data
-VOLUME ["/data", "/app/comics", "/app/.cache"]
+VOLUME ["/data", "/app/comics", "/app/novels", "/app/.cache"]
 
 # Note: NOT using USER appuser here.
 # entrypoint runs as root to fix bind-mount permissions,

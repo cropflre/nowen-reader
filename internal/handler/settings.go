@@ -22,6 +22,8 @@ type SiteConfigResponse struct {
 	SiteName         string   `json:"siteName"`
 	ComicsDir        string   `json:"comicsDir"`
 	ExtraComicsDirs  []string `json:"extraComicsDirs"`
+	NovelsDir        string   `json:"novelsDir"`
+	ExtraNovelsDirs  []string `json:"extraNovelsDirs"`
 	ThumbnailWidth   int      `json:"thumbnailWidth"`
 	ThumbnailHeight  int      `json:"thumbnailHeight"`
 	PageSize         int      `json:"pageSize"`
@@ -50,10 +52,28 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 		extraDirs = []string{}
 	}
 
+	// 电子书目录
+	novelsDir := cfg.NovelsDir
+	if novelsDir == "" {
+		if d := os.Getenv("NOVELS_DIR"); d != "" {
+			novelsDir = d
+		} else {
+			cwd, _ := os.Getwd()
+			novelsDir = filepath.Join(cwd, "novels")
+		}
+	}
+
+	extraNovelsDirs := cfg.ExtraNovelsDirs
+	if extraNovelsDirs == nil {
+		extraNovelsDirs = []string{}
+	}
+
 	resp := SiteConfigResponse{
 		SiteName:         config.GetSiteName(),
 		ComicsDir:        comicsDir,
 		ExtraComicsDirs:  extraDirs,
+		NovelsDir:        novelsDir,
+		ExtraNovelsDirs:  extraNovelsDirs,
 		ThumbnailWidth:   config.GetThumbnailWidth(),
 		ThumbnailHeight:  config.GetThumbnailHeight(),
 		PageSize:         config.GetPageSize(),
@@ -78,6 +98,8 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		SiteName         *string  `json:"siteName"`
 		ComicsDir        *string  `json:"comicsDir"`
 		ExtraComicsDirs  []string `json:"extraComicsDirs"`
+		NovelsDir        *string  `json:"novelsDir"`
+		ExtraNovelsDirs  []string `json:"extraNovelsDirs"`
 		ThumbnailWidth   *int     `json:"thumbnailWidth"`
 		ThumbnailHeight  *int     `json:"thumbnailHeight"`
 		PageSize         *int     `json:"pageSize"`
@@ -101,6 +123,12 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 	if body.ExtraComicsDirs != nil {
 		current.ExtraComicsDirs = body.ExtraComicsDirs
+	}
+	if body.NovelsDir != nil {
+		current.NovelsDir = *body.NovelsDir
+	}
+	if body.ExtraNovelsDirs != nil {
+		current.ExtraNovelsDirs = body.ExtraNovelsDirs
 	}
 	if body.ThumbnailWidth != nil && *body.ThumbnailWidth > 0 {
 		current.ThumbnailWidth = *body.ThumbnailWidth

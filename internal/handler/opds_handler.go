@@ -138,7 +138,7 @@ func (h *OPDSHandler) Download(c *gin.Context) {
 
 	// Find file on disk
 	var filePath string
-	for _, dir := range config.GetAllComicsDirs() {
+	for _, dir := range config.GetAllScanDirs() {
 		fp := filepath.Join(dir, comic.Filename)
 		if _, err := os.Stat(fp); err == nil {
 			filePath = fp

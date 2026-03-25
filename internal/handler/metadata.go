@@ -1589,7 +1589,7 @@ func (h *MetadataHandler) AIChat(c *gin.Context) {
 
 // Helper: find comic file on disk across all comic directories.
 func findComicFile(filename string) string {
-	for _, dir := range config.GetAllComicsDirs() {
+	for _, dir := range config.GetAllScanDirs() {
 		fp := filepath.Join(dir, filename)
 		if _, err := os.Stat(fp); err == nil {
 			return fp

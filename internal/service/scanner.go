@@ -121,7 +121,7 @@ func directoriesChanged() bool {
 	lastDirMtimesMu.RLock()
 	defer lastDirMtimesMu.RUnlock()
 
-	for _, dir := range config.GetAllComicsDirs() {
+	for _, dir := range config.GetAllScanDirs() {
 		info, err := os.Stat(dir)
 		if err != nil {
 			continue
@@ -140,7 +140,7 @@ func updateDirMtimes() {
 	defer lastDirMtimesMu.Unlock()
 
 	newMap := make(map[string]time.Time)
-	for _, dir := range config.GetAllComicsDirs() {
+	for _, dir := range config.GetAllScanDirs() {
 		info, err := os.Stat(dir)
 		if err != nil {
 			continue
@@ -159,6 +159,7 @@ type diskFile struct {
 	Filename string
 	Title    string
 	FileSize int64
+	Source   string // "comics" or "novels" — 来源目录类型
 }
 
 // walkDirRecursive 递归遍历目录中的所有支持文件。
@@ -206,11 +207,40 @@ func walkDirRecursive(root string) []diskFile {
 
 func quickSync() (added, removed int) {
 	allDirs := config.GetAllComicsDirs()
+	novelDirs := config.GetAllNovelsDirs()
+	// 构建电子书目录集合，用于判断文件来源
+	novelDirSet := make(map[string]bool, len(novelDirs))
+	for _, d := range novelDirs {
+		novelDirSet[d] = true
+	}
 	var filesOnDisk []diskFile
 
+	// 扫描漫画目录
 	for _, dir := range allDirs {
-		// 递归扫描子目录
 		files := walkDirRecursive(dir)
+		for i := range files {
+			files[i].Source = "comics"
+		}
+		filesOnDisk = append(filesOnDisk, files...)
+	}
+
+	// 扫描电子书目录（跳过与漫画目录重复的目录）
+	for _, dir := range novelDirs {
+		// 如果电子书目录已经在漫画目录中，跳过以避免重复扫描
+		alreadyScanned := false
+		for _, cd := range allDirs {
+			if cd == dir {
+				alreadyScanned = true
+				break
+			}
+		}
+		if alreadyScanned {
+			continue
+		}
+		files := walkDirRecursive(dir)
+		for i := range files {
+			files[i].Source = "novels"
+		}
 		filesOnDisk = append(filesOnDisk, files...)
 	}
 
@@ -297,12 +327,18 @@ func quickSync() (added, removed int) {
 
 	// Batch insert new comics
 	if len(toAdd) > 0 {
+		// 构建文件 ID 到来源的映射
+		fileSourceMap := make(map[string]string, len(filesOnDisk))
+		for _, f := range filesOnDisk {
+			fileSourceMap[f.ID] = f.Source
+		}
+
 		for i := 0; i < len(toAdd); i += dbBatchSize {
 			end := i + dbBatchSize
 			if end > len(toAdd) {
 				end = len(toAdd)
 			}
-			if err := store.BulkCreateComics(toAdd[i:end]); err != nil {
+			if err := store.BulkCreateComicsWithSource(toAdd[i:end], fileSourceMap); err != nil {
 				log.Printf("[quick-sync] Failed to bulk create: %v", err)
 			}
 		}
@@ -338,7 +374,7 @@ func fullSync() {
 		return
 	}
 
-	allDirs := config.GetAllComicsDirs()
+	allDirs := config.GetAllScanDirs()
 
 	// 使用 worker pool 并发处理（默认 4 个并发 worker）
 	const numWorkers = 4
@@ -424,7 +460,7 @@ func md5Sync() {
 		return
 	}
 
-	allDirs := config.GetAllComicsDirs()
+	allDirs := config.GetAllScanDirs()
 
 	numWorkers := getMD5Workers()
 	type workItem struct {
@@ -590,8 +626,8 @@ func startFSWatcher() {
 	}
 	fsWatcher = watcher
 
-	// 递归添加所有漫画目录
-	for _, dir := range config.GetAllComicsDirs() {
+	// 递归添加所有目录（漫画 + 电子书）
+	for _, dir := range config.GetAllScanDirs() {
 		if _, err := os.Stat(dir); err == nil {
 			watchDirectoriesRecursive(watcher, dir)
 			log.Printf("[fsnotify] Watching directory: %s (recursive)", dir)
@@ -707,7 +743,7 @@ func CleanupInvalidComics() (int, error) {
 		return 0, err
 	}
 
-	allDirs := config.GetAllComicsDirs()
+	allDirs := config.GetAllScanDirs()
 	var invalidIDs []string
 
 	for _, c := range allComics {

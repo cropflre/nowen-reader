@@ -24,6 +24,8 @@ services:
       - ./data:/data
       # 漫画文件目录 - 把你的漫画放这里（默认挂载到当前目录下的 comics 文件夹）
       - ./comics:/app/comics
+      # 电子书文件目录 - 把你的电子书放这里（默认挂载到当前目录下的 novels 文件夹）
+      - ./novels:/app/novels
 
       # NAS 额外目录（可选，取消注释并修改路径）
       # - /mnt/nas/manga:/mnt/nas/manga
@@ -35,6 +37,7 @@ services:
       - GIN_MODE=release
       - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
+      - NOVELS_DIR=/app/novels
       - DATA_DIR=/app/.cache
       - PORT=3000
       - TZ=Asia/Shanghai

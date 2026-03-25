@@ -12,6 +12,8 @@ interface SiteConfig {
   siteName: string;
   comicsDir: string;
   extraComicsDirs: string[];
+  novelsDir: string;
+  extraNovelsDirs: string[];
   thumbnailWidth: number;
   thumbnailHeight: number;
   pageSize: number;
@@ -296,10 +298,11 @@ export function SiteSettingsPanel() {
 
   // New dir input
   const [newDir, setNewDir] = useState("");
+  const [newNovelDir, setNewNovelDir] = useState("");
 
   // Folder browser states
   const [browseOpen, setBrowseOpen] = useState(false);
-  const [browseTarget, setBrowseTarget] = useState<"primary" | "extra">("extra");
+  const [browseTarget, setBrowseTarget] = useState<"primary" | "extra" | "novelPrimary" | "novelExtra">("extra");
 
   // Cleanup invalid comics states
   const [cleaningUp, setCleaningUp] = useState(false);
@@ -309,7 +312,7 @@ export function SiteSettingsPanel() {
     fetch("/api/site-settings")
       .then((r) => r.json())
       .then((data) => {
-        setConfig({ extraComicsDirs: [], ...data });
+        setConfig({ extraComicsDirs: [], extraNovelsDirs: [], ...data });
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -362,6 +365,18 @@ export function SiteSettingsPanel() {
   const removeExtraDir = (idx: number) => {
     if (!config) return;
     update("extraComicsDirs", config.extraComicsDirs.filter((_, i) => i !== idx));
+  };
+
+  const addExtraNovelDir = () => {
+    if (!config || !newNovelDir.trim()) return;
+    if (config.extraNovelsDirs.includes(newNovelDir.trim())) return;
+    update("extraNovelsDirs", [...config.extraNovelsDirs, newNovelDir.trim()]);
+    setNewNovelDir("");
+  };
+
+  const removeExtraNovelDir = (idx: number) => {
+    if (!config) return;
+    update("extraNovelsDirs", config.extraNovelsDirs.filter((_, i) => i !== idx));
   };
 
   const handleClearCache = async (action: string, setLoading: (v: boolean) => void) => {
@@ -641,14 +656,95 @@ export function SiteSettingsPanel() {
         onSelect={(path) => {
           if (browseTarget === "primary") {
             update("comicsDir", path);
-          } else {
+          } else if (browseTarget === "extra") {
             if (!config.extraComicsDirs.includes(path)) {
               update("extraComicsDirs", [...config.extraComicsDirs, path]);
+            }
+          } else if (browseTarget === "novelPrimary") {
+            update("novelsDir", path);
+          } else if (browseTarget === "novelExtra") {
+            if (!config.extraNovelsDirs.includes(path)) {
+              update("extraNovelsDirs", [...config.extraNovelsDirs, path]);
             }
           }
         }}
         siteT={siteT}
       />
+
+      {/* Novels/Ebooks Directories */}
+      <div className="space-y-3 rounded-xl bg-background p-4">
+        <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+          <BookOpen className="h-3.5 w-3.5 text-accent" />
+          {siteT?.novelsDir || "电子书目录"}
+        </div>
+        <p className="text-[11px] text-muted">
+          {siteT?.novelsDirDesc || "独立的电子书文件存放路径，与漫画目录分离管理。支持 EPUB/MOBI/AZW3/TXT 等格式，修改后需重启生效"}
+        </p>
+
+        {/* Primary novels dir */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={config.novelsDir}
+              onChange={(e) => update("novelsDir", e.target.value)}
+              className="w-full rounded-lg border border-accent/40 bg-card px-3 py-1.5 text-sm text-foreground font-mono outline-none focus:border-accent/50 transition-colors pr-14"
+              placeholder="/path/to/novels"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+              {siteT?.primaryDir || "Primary"}
+            </span>
+          </div>
+          <button
+            onClick={() => { setBrowseTarget("novelPrimary"); setBrowseOpen(true); }}
+            className="shrink-0 rounded-lg bg-accent/15 p-1.5 text-accent hover:bg-accent/25 transition-colors"
+            title={siteT?.browseDir || "Browse"}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Extra novels dirs */}
+        {config.extraNovelsDirs.map((dir, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <div className="flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-foreground font-mono truncate">
+              {dir}
+            </div>
+            <button
+              onClick={() => removeExtraNovelDir(idx)}
+              className="shrink-0 rounded-lg p-1.5 text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+
+        {/* Add new novel dir */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={newNovelDir}
+            onChange={(e) => setNewNovelDir(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addExtraNovelDir()}
+            className="flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-foreground font-mono outline-none focus:border-accent/50 transition-colors"
+            placeholder={siteT?.extraNovelDirPlaceholder || "/mnt/nas/ebooks 或 /data/novels"}
+          />
+          <button
+            onClick={() => { setBrowseTarget("novelExtra"); setBrowseOpen(true); }}
+            className="shrink-0 rounded-lg bg-accent/15 p-1.5 text-accent hover:bg-accent/25 transition-colors"
+            title={siteT?.browseDir || "Browse"}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </button>
+          <button
+            onClick={addExtraNovelDir}
+            disabled={!newNovelDir.trim()}
+            className="shrink-0 rounded-lg bg-accent/15 p-1.5 text-accent hover:bg-accent/25 transition-colors disabled:opacity-30"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
 
       {/* Thumbnail Size */}
       <div className="space-y-3 rounded-xl bg-background p-4">

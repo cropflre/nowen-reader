@@ -14,6 +14,8 @@ type SiteConfig struct {
 	SiteName         string         `json:"siteName,omitempty"`
 	ComicsDir        string         `json:"comicsDir,omitempty"`
 	ExtraComicsDirs  []string       `json:"extraComicsDirs,omitempty"`
+	NovelsDir        string         `json:"novelsDir,omitempty"`       // 电子书主目录
+	ExtraNovelsDirs  []string       `json:"extraNovelsDirs,omitempty"` // 额外电子书目录
 	ThumbnailWidth   int            `json:"thumbnailWidth,omitempty"`
 	ThumbnailHeight  int            `json:"thumbnailHeight,omitempty"`
 	PageSize         int            `json:"pageSize,omitempty"`
@@ -145,6 +147,64 @@ func GetAllComicsDirs() []string {
 		}
 	}
 	return dirs
+}
+
+// GetNovelsDir returns the primary novels/ebook directory.
+// Priority: NOVELS_DIR env > site-config.json > default ./novels
+func GetNovelsDir() string {
+	if d := os.Getenv("NOVELS_DIR"); d != "" {
+		return d
+	}
+	cfg := loadSiteConfig()
+	if cfg.NovelsDir != "" {
+		return cfg.NovelsDir
+	}
+	cwd, _ := os.Getwd()
+	return filepath.Join(cwd, "novels")
+}
+
+// GetAllNovelsDirs returns all novel/ebook directories (main + extras).
+func GetAllNovelsDirs() []string {
+	dirs := []string{GetNovelsDir()}
+	cfg := loadSiteConfig()
+	for _, d := range cfg.ExtraNovelsDirs {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		// Deduplicate
+		found := false
+		for _, existing := range dirs {
+			if existing == d {
+				found = true
+				break
+			}
+		}
+		if !found {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// GetAllScanDirs returns all directories that need to be scanned (comics + novels).
+func GetAllScanDirs() []string {
+	allDirs := GetAllComicsDirs()
+	novelDirs := GetAllNovelsDirs()
+	for _, d := range novelDirs {
+		// Deduplicate
+		found := false
+		for _, existing := range allDirs {
+			if existing == d {
+				found = true
+				break
+			}
+		}
+		if !found {
+			allDirs = append(allDirs, d)
+		}
+	}
+	return allDirs
 }
 
 // GetThumbnailsDir returns the thumbnails cache directory.

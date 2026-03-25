@@ -201,6 +201,11 @@ var Migrations = []Migration{
 			`UPDATE "User" SET "aiEnabled" = 1 WHERE "role" = 'admin';`,
 		}, "\n"),
 	},
+	{
+		Version:     14,
+		Description: "Fix novel type backfill: mark .html/.htm files as novel type",
+		SQL:         `UPDATE "Comic" SET "type" = 'novel' WHERE ("filename" LIKE '%.html' OR "filename" LIKE '%.htm') AND "type" = 'comic';`,
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.

@@ -159,7 +159,7 @@ func FindComicFilePath(comicID string) (string, string, error) {
 	}
 
 	// Search all directories for the file
-	for _, dir := range config.GetAllComicsDirs() {
+	for _, dir := range config.GetAllScanDirs() {
 		fp := filepath.Join(dir, comic.Filename)
 		if _, err := os.Stat(fp); err == nil {
 			return fp, comic.Filename, nil

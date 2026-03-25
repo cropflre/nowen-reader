@@ -173,10 +173,52 @@ func BulkCreateComics(comics []struct {
 func detectComicType(filename string) string {
 	lower := strings.ToLower(filename)
 	if strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".epub") ||
-		strings.HasSuffix(lower, ".mobi") || strings.HasSuffix(lower, ".azw3") {
+		strings.HasSuffix(lower, ".mobi") || strings.HasSuffix(lower, ".azw3") ||
+		strings.HasSuffix(lower, ".html") || strings.HasSuffix(lower, ".htm") {
 		return "novel"
 	}
 	return "comic"
+}
+
+// BulkCreateComicsWithSource 在单个事务中批量插入漫画/电子书，根据来源目录智能识别类型。
+// fileSourceMap: map[fileID] => "comics" | "novels"
+func BulkCreateComicsWithSource(comics []struct {
+	ID       string
+	Filename string
+	Title    string
+	FileSize int64
+}, fileSourceMap map[string]string) error {
+	if len(comics) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	stmt, err := tx.Prepare(`
+		INSERT INTO "Comic" ("id", "filename", "title", "pageCount", "fileSize", "type", "addedAt", "updatedAt")
+		VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+		ON CONFLICT("id") DO NOTHING
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, c := range comics {
+		// 来自电子书目录的文件强制标记为 novel，否则根据文件后缀判断
+		comicType := detectComicType(c.Filename)
+		if source, ok := fileSourceMap[c.ID]; ok && source == "novels" {
+			comicType = "novel"
+		}
+		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, c.FileSize, comicType, now, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // BulkDeleteComicsByIDs 批量删除指定ID的漫画。

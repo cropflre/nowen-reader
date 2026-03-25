@@ -487,6 +487,9 @@ const zhCN = {
     extraDirs: "额外漫画目录（Docker / NAS）",
     extraDirsDesc: "挂载多个目录用于 Docker 或 NAS，所有目录都会被扫描",
     extraDirPlaceholder: "/mnt/nas/comics 或 /data/manga",
+    novelsDir: "电子书目录",
+    novelsDirDesc: "独立的电子书文件存放路径，与漫画目录分离管理。支持 EPUB/MOBI/AZW3/TXT 等格式，修改后需重启生效",
+    extraNovelDirPlaceholder: "/mnt/nas/ebooks 或 /data/novels",
     browseDir: "浏览目录",
     selectDir: "选择此目录",
     parentDir: "上级目录",
@@ -1452,6 +1455,9 @@ export interface Translations {
     extraDirs: string;
     extraDirsDesc: string;
     extraDirPlaceholder: string;
+    novelsDir: string;
+    novelsDirDesc: string;
+    extraNovelDirPlaceholder: string;
     browseDir: string;
     selectDir: string;
     parentDir: string;
