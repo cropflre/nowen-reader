@@ -11,6 +11,7 @@ import {
   Brain,
   Database,
   Layers,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n";
@@ -27,6 +28,8 @@ interface NavbarProps {
   uploading?: boolean;
   aiSearchMode?: boolean;
   onAiSearchModeChange?: (mode: boolean) => void;
+  onScanLibrary?: () => void;
+  scanning?: boolean;
 }
 
 export default function Navbar({
@@ -36,6 +39,8 @@ export default function Navbar({
   uploading,
   aiSearchMode = false,
   onAiSearchModeChange,
+  onScanLibrary,
+  scanning,
 }: NavbarProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const t = useTranslation();
@@ -117,6 +122,18 @@ export default function Navbar({
             )}
             <span className="hidden sm:inline">{uploading ? t.navbar.uploading : t.navbar.upload}</span>
           </button>
+          )}
+
+          {/* Scan Library — 手动扫描文库（仅管理员可见） */}
+          {isAdmin && onScanLibrary && (
+            <button
+              onClick={onScanLibrary}
+              disabled={scanning}
+              className="flex h-8 sm:h-9 w-8 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-accent/40 hover:text-accent hover:bg-accent/5 disabled:opacity-50"
+              title={t.navbar?.scanLibrary || "扫描文库"}
+            >
+              <RefreshCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
+            </button>
           )}
 
           {/* Collections — 合集管理（仅管理员可见） */}

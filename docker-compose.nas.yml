@@ -31,6 +31,9 @@ services:
       # 群晖 Synology 示例:
       - /volume1/comics:/app/comics
 
+      # === 电子书目录 - 修改为你的实际路径 ===
+      # - /volume1/novels:/app/novels
+
       # 如果有多个漫画目录，全部挂载进来:
       # - /volume1/manga:/mnt/manga
       # - /volume2/comics:/mnt/comics2
@@ -39,10 +42,15 @@ services:
       - GIN_MODE=release
       - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
+      - NOVELS_DIR=/app/novels
       - DATA_DIR=/app/.cache
       - PORT=3000
       # 时区（改为你的时区）
       - TZ=Asia/Shanghai
+      # 文件权限映射（设置为你 NAS 文件的 UID:GID，解决 permission denied 问题）
+      # 可通过 SSH 执行 ls -ln 查看文件的 UID/GID
+      # - PUID=1000
+      # - PGID=1000
     # 内存限制（NAS 通常内存有限）
     deploy:
       resources:

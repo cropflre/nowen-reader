@@ -41,3 +41,6 @@ services:
       - DATA_DIR=/app/.cache
       - PORT=3000
       - TZ=Asia/Shanghai
+      # 文件权限映射（设置为你宿主机文件的 UID:GID，解决 permission denied 问题）
+      # - PUID=1000
+      # - PGID=1000

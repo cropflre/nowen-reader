@@ -56,6 +56,9 @@ services:
       # 示例1: 漫画存放在共享文件夹 "comics" 中
       - /vol1/1000/comics:/app/comics
       #
+      # === 📚 电子书目录 - 修改为你的实际路径 ===
+      # - /vol1/1000/novels:/app/novels
+      #
       # 示例2: 如果有多个漫画目录，全部挂载进来
       # - /vol1/1000/manga:/mnt/manga
       # - /vol2/1000/comics:/mnt/comics2
@@ -65,10 +68,15 @@ services:
       - GIN_MODE=release
       - DATABASE_URL=/data/nowen-reader.db
       - COMICS_DIR=/app/comics
+      - NOVELS_DIR=/app/novels
       - DATA_DIR=/app/.cache
       - PORT=3000
       # 时区设置（中国用户无需修改）
       - TZ=Asia/Shanghai
+      # 文件权限映射（设置为你飞牛 NAS 文件的 UID:GID，解决 permission denied 问题）
+      # 飞牛OS 默认用户通常是 1000:1000，可通过 SSH 执行 ls -ln 确认
+      # - PUID=1000
+      # - PGID=1000
 
     # 内存限制（飞牛OS设备内存通常有限，可根据需要调整）
     deploy:

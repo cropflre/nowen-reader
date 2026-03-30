@@ -30,11 +30,16 @@ func permissionHint(path string) string {
 	return fmt.Sprintf(
 		"没有权限访问: %s\n"+
 			"请尝试以下方式获取权限:\n"+
-			"1. SSH 到服务器执行: chmod -R 755 %s\n"+
-			"2. 或更改目录所有者: chown -R 1000:1000 %s\n"+
-			"3. Docker 用户请在 docker-compose.yml 中添加 volumes 挂载, 并确保容器有读取权限 (如: user: \"0:0\" 以 root 运行)\n"+
-			"4. 绿联/群晖 NAS 请在 Docker 管理界面的存储空间/卷挂载中添加该路径, 并设置为读写模式",
-		path, path, path,
+			"1. 在 docker-compose.yml 中设置 PUID/PGID 环境变量, 匹配你 NAS 文件的 UID/GID:\n"+
+			"   environment:\n"+
+			"     - PUID=1000\n"+
+			"     - PGID=1000\n"+
+			"   (可通过 SSH 执行 ls -ln %s 查看文件的 UID/GID)\n"+
+			"2. SSH 到服务器执行: chmod -R 755 %s\n"+
+			"3. 或更改目录所有者: chown -R 1001:1001 %s\n"+
+			"4. Docker 用户请确保在 docker-compose.yml 中正确挂载了该目录\n"+
+			"5. 绿联/群晖 NAS 请在 Docker 管理界面的存储空间/卷挂载中添加该路径, 并设置为读写模式",
+		path, path, path, path,
 	)
 }
 

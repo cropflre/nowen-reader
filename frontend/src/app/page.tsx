@@ -107,6 +107,7 @@ export default function Home() {
     return "grid";
   });
   const [uploading, setUploading] = useState(false);
+  const [scanningLibrary, setScanningLibrary] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(() => {
     if (typeof window !== "undefined") {
       return sessionStorage.getItem("homeFilter:favorites") === "true";
@@ -478,6 +479,21 @@ export default function Home() {
     fileInputRef.current?.click();
   }, []);
 
+  // 手动扫描文库
+  const handleScanLibrary = useCallback(async () => {
+    setScanningLibrary(true);
+    try {
+      await fetch("/api/sync", { method: "POST" });
+      // 等待一小段时间让后端完成扫描
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await refetch();
+    } catch {
+      // 扫描失败不影响体验
+    } finally {
+      setScanningLibrary(false);
+    }
+  }, [refetch]);
+
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
@@ -813,6 +829,8 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
         uploading={uploading}
         aiSearchMode={aiSearchMode}
         onAiSearchModeChange={aiConfigured ? setAiSearchMode : undefined}
+        onScanLibrary={handleScanLibrary}
+        scanning={scanningLibrary}
       />
 
       {/* Main Content */}

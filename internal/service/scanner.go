@@ -117,35 +117,62 @@ func getFullSyncInterval() time.Duration {
 // Directory change detection
 // ============================================================
 
+// directoriesChanged 递归检查所有扫描目录及其子目录的 mtime 变更。
+// 这解决了在子目录中添加文件时，父目录 mtime 不变导致无法检测到变更的问题。
+// 特别适用于 NAS/NFS/CIFS 等文件系统，这些系统上 fsnotify 可能不工作。
 func directoriesChanged() bool {
 	lastDirMtimesMu.RLock()
 	defer lastDirMtimesMu.RUnlock()
 
 	for _, dir := range config.GetAllScanDirs() {
-		info, err := os.Stat(dir)
-		if err != nil {
-			continue
-		}
-		mtime := info.ModTime()
-		lastMtime, ok := lastDirMtimes[dir]
-		if !ok || !lastMtime.Equal(mtime) {
+		changed := false
+		filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil // 跳过不可访问的目录
+			}
+			if !d.IsDir() {
+				return nil // 只检查目录
+			}
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			mtime := info.ModTime()
+			lastMtime, ok := lastDirMtimes[path]
+			if !ok || !lastMtime.Equal(mtime) {
+				changed = true
+				return filepath.SkipAll // 发现变更，立即停止遍历
+			}
+			return nil
+		})
+		if changed {
 			return true
 		}
 	}
 	return false
 }
 
+// updateDirMtimes 递归记录所有扫描目录及其子目录的 mtime。
 func updateDirMtimes() {
 	lastDirMtimesMu.Lock()
 	defer lastDirMtimesMu.Unlock()
 
 	newMap := make(map[string]time.Time)
 	for _, dir := range config.GetAllScanDirs() {
-		info, err := os.Stat(dir)
-		if err != nil {
-			continue
-		}
-		newMap[dir] = info.ModTime()
+		filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !d.IsDir() {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			newMap[path] = info.ModTime()
+			return nil
+		})
 	}
 	lastDirMtimes = newMap
 }

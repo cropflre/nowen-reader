@@ -26,9 +26,8 @@ const zhCN = {
     aiSearchPlaceholder: "用自然语言搜索，如「关于巨人的漫画」...",
     aiSearchTitle: "AI 语义搜索结果",
     aiSearchNoResults: "未找到匹配结果，试试换个描述方式",
+    scanLibrary: "扫描文库",
   },
-
-  // Home page
   home: {
     mockDataNotice: "当前显示 Mock 数据。将",
     mockDataNotice2: "漫画文件放入",
@@ -1034,6 +1033,7 @@ export interface Translations {
     aiSearchPlaceholder: string;
     aiSearchTitle: string;
     aiSearchNoResults: string;
+    scanLibrary: string;
   };
   home: {
     mockDataNotice: string;

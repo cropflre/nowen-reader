@@ -122,6 +122,8 @@ ENV GIN_MODE=release \
     COMICS_DIR=/app/comics \
     NOVELS_DIR=/app/novels \
     DATA_DIR=/app/.cache \
+    PUID=1001 \
+    PGID=1001 \
     TZ=Asia/Shanghai
 
 EXPOSE 3000

@@ -28,6 +28,7 @@ const en: Translations = {
     aiSearchPlaceholder: "Search naturally, e.g. 'that manga about giants'...",
     aiSearchTitle: "AI Semantic Search Results",
     aiSearchNoResults: "No matches found, try a different description",
+    scanLibrary: "Scan Library",
   },
 
   // Home page
