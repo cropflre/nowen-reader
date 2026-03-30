@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useLocation } from "react-router-dom";
-import { BookMarked, Settings, BarChart3, Layers } from "lucide-react";
+import { BookMarked, Settings, BarChart3, Layers, Tag } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 
@@ -51,6 +51,13 @@ export default function MobileBottomNav() {
       icon: Layers,
       label: (t as any).collections?.navTitle || "合集",
       active: pathname === "/collections",
+    }] : []),
+    // 标签管理——仅管理员可见
+    ...(isAdmin ? [{
+      href: "/tag-manager",
+      icon: Tag,
+      label: (t as any).tagManager?.navTitle || (t as any).tagManager?.title || "标签",
+      active: pathname === "/tag-manager",
     }] : []),
     // 统计——仅管理员可见
     ...(isAdmin ? [{

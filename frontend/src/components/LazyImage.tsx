@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, ImgHTMLAttributes } from "react";
+import { useState, useCallback, useEffect, useRef, ImgHTMLAttributes } from "react";
 
 interface LazyImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, "onLoad" | "onError"> {
   /** 加载完成回调 */
@@ -18,6 +18,7 @@ interface LazyImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, "onLo
  * - 加载前显示 shimmer 骨架屏
  * - 加载完成后模糊渐清过渡
  * - 加载失败显示占位
+ * - src 变化时自动重置状态
  */
 export default function LazyImage({
   blurEffect = true,
@@ -30,6 +31,16 @@ export default function LazyImage({
 }: LazyImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const prevSrc = useRef(imgProps.src);
+
+  // Reset loaded/error state when src changes (e.g. after cover update)
+  useEffect(() => {
+    if (imgProps.src !== prevSrc.current) {
+      prevSrc.current = imgProps.src;
+      setLoaded(false);
+      setError(false);
+    }
+  }, [imgProps.src]);
 
   const handleLoad = useCallback(() => {
     setLoaded(true);

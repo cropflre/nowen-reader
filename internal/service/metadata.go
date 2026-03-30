@@ -1373,7 +1373,9 @@ func downloadCoverAsThumbnail(comicID, coverURL string) {
 		return
 	}
 
-	thumbPath := filepath.Join(thumbDir, comicID+".webp")
+	// Clear old cache files first, then write to canonical path
+	archive.ClearThumbnailCache(comicID)
+	thumbPath := filepath.Join(thumbDir, archive.ThumbnailCacheName(comicID))
 	webpData, err := archive.ResizeImageToWebP(imgData, config.GetThumbnailWidth(), config.GetThumbnailHeight(), 85)
 	if err != nil {
 		// Fallback: save raw image data directly

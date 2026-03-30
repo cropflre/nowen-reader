@@ -206,6 +206,11 @@ var Migrations = []Migration{
 		Description: "Fix novel type backfill: mark .html/.htm files as novel type",
 		SQL:         `UPDATE "Comic" SET "type" = 'novel' WHERE ("filename" LIKE '%.html' OR "filename" LIKE '%.htm') AND "type" = 'comic';`,
 	},
+	{
+		Version:     15,
+		Description: "Add coverAspectRatio field to Comic for adaptive cover display",
+		SQL:         `ALTER TABLE "Comic" ADD COLUMN "coverAspectRatio" REAL NOT NULL DEFAULT 0;`,
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.

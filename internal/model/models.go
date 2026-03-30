@@ -68,7 +68,8 @@ type Comic struct {
 	Language       string `json:"language"`
 	Genre          string `json:"genre"`          // comma-separated
 	MetadataSource string `json:"metadataSource"` // "comicvine" | "anilist" | "manual"
-	CoverImageURL  string `json:"coverImageUrl"`  // external cover URL
+	CoverImageURL    string  `json:"coverImageUrl"`    // external cover URL
+	CoverAspectRatio float64 `json:"coverAspectRatio"` // width/height ratio (>1 = landscape)
 
 	// Relations (populated by queries)
 	Tags       []Tag      `json:"tags,omitempty"`

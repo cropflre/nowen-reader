@@ -9,6 +9,7 @@ export interface Comic {
   id: string;
   title: string;
   coverUrl: string;
+  coverAspectRatio?: number;
   tags: string[];
   tagData?: { name: string; color: string }[];
   categories?: ComicCategory[];

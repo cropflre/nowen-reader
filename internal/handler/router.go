@@ -136,7 +136,15 @@ func SetupRoutes(r *gin.Engine) {
 	// ============================================================
 	tag := NewTagHandler()
 	api.GET("/tags", tag.ListTags)
-	api.PUT("/tags/color", tag.UpdateTagColor)
+
+	tagAdmin := api.Group("/tags")
+	tagAdmin.Use(middleware.AdminRequired())
+	{
+		tagAdmin.PUT("/color", tag.UpdateTagColor)
+		tagAdmin.PUT("/rename", tag.RenameTag)
+		tagAdmin.DELETE("", tag.DeleteTag)
+		tagAdmin.POST("/merge", tag.MergeTags)
+	}
 
 	// ============================================================
 	// Categories (Phase 2)
@@ -144,10 +152,12 @@ func SetupRoutes(r *gin.Engine) {
 	cat := NewCategoryHandler()
 	api.GET("/categories", cat.ListCategories)
 
-	catAdmin := api.Group("")
+	catAdmin := api.Group("/categories")
 	catAdmin.Use(middleware.AdminRequired())
 	{
-		catAdmin.POST("/categories", cat.InitCategories)
+		catAdmin.POST("", cat.InitCategories)
+		catAdmin.PUT("/:slug", cat.UpdateCategory)
+		catAdmin.DELETE("/:slug", cat.DeleteCategory)
 	}
 
 	// ============================================================

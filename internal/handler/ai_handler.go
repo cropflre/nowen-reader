@@ -417,7 +417,7 @@ func (h *AIHandler) AnalyzeCover(c *gin.Context) {
 	}
 
 	// 获取封面图片数据
-	coverData, err := service.GetComicThumbnail(comicID)
+	coverData, _, err := service.GetComicThumbnail(comicID)
 	if err != nil || len(coverData) == 0 {
 		c.JSON(500, gin.H{"error": "Failed to get cover image"})
 		return
@@ -1253,7 +1253,7 @@ func (h *AIHandler) CompleteMetadata(c *gin.Context) {
 
 	// 获取封面数据（可选，用于 Vision 分析）
 	var coverData []byte
-	coverBytes, err := service.GetComicThumbnail(comicID)
+	coverBytes, _, err := service.GetComicThumbnail(comicID)
 	if err == nil && len(coverBytes) > 0 {
 		coverData = coverBytes
 	}
@@ -1670,7 +1670,7 @@ func (h *AIHandler) VerifyDuplicates(c *gin.Context) {
 				"pageCount": fmt.Sprintf("%d", comic.PageCount),
 			})
 			// 获取封面数据
-			coverData, err := service.GetComicThumbnail(comic.ID)
+			coverData, _, err := service.GetComicThumbnail(comic.ID)
 			if err == nil && len(coverData) > 0 {
 				coverDataList = append(coverDataList, coverData)
 			}

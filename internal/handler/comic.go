@@ -161,14 +161,15 @@ func (h *ComicHandler) UpdateProgress(c *gin.Context) {
 
 func (h *ComicHandler) DeleteComic(c *gin.Context) {
 	id := c.Param("id")
+	deleteFiles := c.Query("deleteFiles") == "true"
 	dirs := config.GetAllScanDirs()
-	log.Printf("[API] DeleteComic: id=%s, comicsDirs=%v", id, dirs)
-	if err := store.DeleteComic(id, dirs); err != nil {
+	log.Printf("[API] DeleteComic: id=%s, deleteFiles=%v, comicsDirs=%v", id, deleteFiles, dirs)
+	if err := store.DeleteComic(id, dirs, deleteFiles); err != nil {
 		log.Printf("[API] DeleteComic failed: id=%s, err=%v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comic: " + err.Error()})
 		return
 	}
-	log.Printf("[API] DeleteComic success: id=%s", id)
+	log.Printf("[API] DeleteComic success: id=%s, deleteFiles=%v", id, deleteFiles)
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -302,6 +303,7 @@ func (h *ComicHandler) BatchOperation(c *gin.Context) {
 		IsFavorite    *bool    `json:"isFavorite"`
 		Tags          []string `json:"tags"`
 		CategorySlugs []string `json:"categorySlugs"`
+		DeleteFiles   bool     `json:"deleteFiles"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -314,7 +316,8 @@ func (h *ComicHandler) BatchOperation(c *gin.Context) {
 
 	switch body.Action {
 	case "delete":
-		n, err := store.BatchDeleteComics(body.ComicIDs)
+		dirs := config.GetAllScanDirs()
+		n, err := store.BatchDeleteComicsWithFiles(body.ComicIDs, dirs, body.DeleteFiles)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Batch delete failed"})
 			return

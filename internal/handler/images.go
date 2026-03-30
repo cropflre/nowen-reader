@@ -160,15 +160,22 @@ func (h *ImageHandler) GetThumbnail(c *gin.Context) {
 		return
 	}
 
-	thumbnail, err := service.GetComicThumbnail(id)
+	thumbnail, aspectRatio, err := service.GetComicThumbnail(id)
 	if err != nil || thumbnail == nil {
 		log.Printf("[thumbnail] Failed for %s (%s): %v", id, comic.Filename, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("Thumbnail unavailable: %v", err)})
 		return
 	}
 
+	// Store aspect ratio to DB if it was detected (non-zero) and comic doesn't have one yet
+	if aspectRatio > 0 && comic.CoverAspectRatio == 0 {
+		go func() {
+			_ = store.UpdateComicFields(id, map[string]interface{}{"coverAspectRatio": aspectRatio})
+		}()
+	}
+
 	// Generate ETag based on thumbnail file mtime + size
-	cachePath := filepath.Join(config.GetThumbnailsDir(), id+".webp")
+	cachePath := filepath.Join(config.GetThumbnailsDir(), archive.ThumbnailCacheName(id))
 	etag := fmt.Sprintf(`"%d"`, len(thumbnail))
 	if stat, err := os.Stat(cachePath); err == nil {
 		etag = fmt.Sprintf(`"%s-%s"`,
@@ -185,7 +192,7 @@ func (h *ImageHandler) GetThumbnail(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "image/webp")
-	c.Header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
+	c.Header("Cache-Control", "public, max-age=300, must-revalidate")
 	c.Header("Content-Length", strconv.Itoa(len(thumbnail)))
 	c.Header("ETag", etag)
 	c.Data(http.StatusOK, "image/webp", thumbnail)
@@ -209,7 +216,11 @@ func (h *ImageHandler) UpdateCover(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create thumbnails dir"})
 		return
 	}
-	cachePath := filepath.Join(thumbDir, id+".webp")
+	// Use canonical cache path (consistent with GenerateThumbnail)
+	cachePath := filepath.Join(thumbDir, archive.ThumbnailCacheName(id))
+	// Remove old-format cache file ({id}.webp) if it exists to avoid stale data
+	oldCachePath := filepath.Join(thumbDir, id+".webp")
+	_ = os.Remove(oldCachePath)
 
 	contentType := c.GetHeader("Content-Type")
 
@@ -246,8 +257,9 @@ func (h *ImageHandler) UpdateCover(c *gin.Context) {
 
 	// Case 2: JSON body
 	var body struct {
-		URL   string `json:"url"`
-		Reset bool   `json:"reset"`
+		URL       string `json:"url"`
+		Reset     bool   `json:"reset"`
+		PageIndex *int   `json:"pageIndex"` // P4: select cover from archive page
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -256,8 +268,32 @@ func (h *ImageHandler) UpdateCover(c *gin.Context) {
 
 	// Reset to default
 	if body.Reset {
-		os.Remove(cachePath)
+		archive.ClearThumbnailCache(id)
 		c.JSON(http.StatusOK, gin.H{"success": true, "source": "reset"})
+		return
+	}
+
+	// P4: Select cover from archive page
+	if body.PageIndex != nil {
+		imgData, err := service.GetPageImageData(id, *body.PageIndex)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to extract page: " + err.Error()})
+			return
+		}
+
+		thumbnail, err := archive.ResizeImageToWebP(imgData,
+			config.GetThumbnailWidth(), config.GetThumbnailHeight(), 85)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process image"})
+			return
+		}
+
+		if err := os.WriteFile(cachePath, thumbnail, 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save thumbnail"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"success": true, "source": "archive", "pageIndex": *body.PageIndex})
 		return
 	}
 

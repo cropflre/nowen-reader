@@ -54,6 +54,7 @@ function apiToComic(api: ApiComic): Comic {
     id: api.id,
     title: api.title,
     coverUrl: api.coverUrl,
+    coverAspectRatio: api.coverAspectRatio || 0,
     tags: (api.tags || []).map((t) => t.name),
     tagData: api.tags || [],
     pageCount: api.pageCount,
@@ -589,13 +590,13 @@ export default function Home() {
     }, 400);
   }, [selectedGroupIds, loadGroups, refetch, toast, t]);
 
-  const handleBatchDelete = useCallback(async () => {
+  const handleBatchDelete = useCallback(async (deleteFiles?: boolean) => {
     const ids = Array.from(selectedIds);
     // 先播放删除动画
     setRemovingIds(new Set(ids));
     // 等动画播完后再真正删除
     setTimeout(async () => {
-      await batchOperation("delete", ids);
+      await batchOperation("delete", ids, deleteFiles ? { deleteFiles: true } : undefined);
       setRemovingIds(new Set());
       exitBatchMode();
       await refetch();

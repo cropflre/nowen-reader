@@ -124,6 +124,11 @@ const ComicCard = memo(function ComicCard({
   const t = useTranslation();
   const [coverLoaded, setCoverLoaded] = useState(false);
 
+  // Detect landscape cover: aspect ratio > 1.3 means wide cover
+  const isLandscape = (comic.coverAspectRatio ?? 0) > 1.3;
+  const coverAspectClass = isLandscape ? "aspect-[7/5]" : "aspect-[5/7]";
+  const coverObjectFit = isLandscape ? "object-contain" : "object-cover";
+
   const handleClick = (e: React.MouseEvent) => {
     if (batchMode) {
       e.preventDefault();
@@ -339,8 +344,8 @@ const ComicCard = memo(function ComicCard({
               </div>
             </div>
 
-            <div className="relative aspect-[5/7] w-full overflow-hidden">
-              <Image src={comic.coverUrl} alt={comic.title} fill unoptimized={isReal} className="object-cover" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" />
+            <div className={`relative ${coverAspectClass} w-full overflow-hidden`}>
+              <Image src={comic.coverUrl} alt={comic.title} fill unoptimized={isReal} className={coverObjectFit} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" />
               {comic.progress !== undefined && comic.progress > 0 && (
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
                   <div className="h-full bg-accent transition-all duration-300" style={{ width: `${comic.progress}%` }} />
@@ -373,7 +378,7 @@ const ComicCard = memo(function ComicCard({
           >
             <div className="relative overflow-hidden rounded-xl bg-card transition-all duration-300 ease-out group-hover:scale-[1.03] group-hover:shadow-2xl group-hover:shadow-accent/10">
               {/* Cover Image */}
-              <div className="relative aspect-[5/7] w-full overflow-hidden">
+              <div className={`relative ${coverAspectClass} w-full overflow-hidden ${isLandscape ? "bg-black/5 dark:bg-white/5" : ""}`}>
                 {/* 骨架屏加载占位 */}
                 {!coverLoaded && (
                   <div className="absolute inset-0 animate-pulse bg-gradient-to-b from-muted/30 to-muted/10" />
@@ -383,7 +388,7 @@ const ComicCard = memo(function ComicCard({
                   alt={comic.title}
                   fill
                   unoptimized={isReal}
-                  className={`object-cover transition-all duration-500 group-hover:scale-110 ${
+                  className={`${coverObjectFit} transition-all duration-500 group-hover:scale-110 ${
                     coverLoaded ? "opacity-100" : "opacity-0"
                   }`}
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"

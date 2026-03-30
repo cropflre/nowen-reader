@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -10,8 +12,13 @@ import (
 // 批量操作
 // ============================================================
 
-// BatchDeleteComics 批量删除漫画及其关联数据。
+// BatchDeleteComics 批量删除漫画及其关联数据（仅删除数据库记录）。
 func BatchDeleteComics(comicIDs []string) (int64, error) {
+	return BatchDeleteComicsWithFiles(comicIDs, nil, false)
+}
+
+// BatchDeleteComicsWithFiles 批量删除漫画及其关联数据，可选删除磁盘文件。
+func BatchDeleteComicsWithFiles(comicIDs []string, comicsDirs []string, deleteFiles bool) (int64, error) {
 	if len(comicIDs) == 0 {
 		return 0, nil
 	}
@@ -23,6 +30,21 @@ func BatchDeleteComics(comicIDs []string) (int64, error) {
 	}
 	in := strings.Join(placeholders, ",")
 
+	// If deleteFiles requested, get filenames first
+	var filenames []string
+	if deleteFiles && len(comicsDirs) > 0 {
+		rows, err := db.Query(fmt.Sprintf(`SELECT "filename" FROM "Comic" WHERE "id" IN (%s)`, in), args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var fn string
+				if rows.Scan(&fn) == nil {
+					filenames = append(filenames, fn)
+				}
+			}
+		}
+	}
+
 	// Delete related data first (explicit, even though CASCADE should handle it)
 	db.Exec(fmt.Sprintf(`DELETE FROM "ComicTag" WHERE "comicId" IN (%s)`, in), args...)
 	db.Exec(fmt.Sprintf(`DELETE FROM "ComicCategory" WHERE "comicId" IN (%s)`, in), args...)
@@ -32,6 +54,20 @@ func BatchDeleteComics(comicIDs []string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// Delete files from disk
+	if deleteFiles && len(filenames) > 0 {
+		for _, fn := range filenames {
+			for _, dir := range comicsDirs {
+				fp := filepath.Join(dir, fn)
+				if _, err := os.Stat(fp); err == nil {
+					_ = os.Remove(fp)
+					break
+				}
+			}
+		}
+	}
+
 	return res.RowsAffected()
 }
 

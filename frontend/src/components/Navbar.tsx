@@ -12,6 +12,7 @@ import {
   Database,
   Layers,
   RefreshCw,
+  Tag,
 } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n";
@@ -144,6 +145,17 @@ export default function Navbar({
             title={((t as any).collections?.title) || "合集管理"}
           >
             <Layers className="h-4 w-4" />
+          </Link>
+          )}
+
+          {/* Tag & Category Manager — 标签与分类管理（仅管理员可见） */}
+          {isAdmin && (
+          <Link
+            href="/tag-manager"
+            className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-accent/40 hover:text-accent hover:bg-accent/5"
+            title={((t as any).tagManager?.title) || "标签与分类管理"}
+          >
+            <Tag className="h-4 w-4" />
           </Link>
           )}
 

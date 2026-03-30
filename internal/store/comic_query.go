@@ -73,8 +73,9 @@ type ComicListItem struct {
 	Rating         *int                `json:"rating"`
 	SortOrder      int                 `json:"sortOrder"`
 	TotalReadTime  int                 `json:"totalReadTime"`
-	CoverURL       string              `json:"coverUrl"`
-	Author         string              `json:"author"`
+	CoverURL          string              `json:"coverUrl"`
+	CoverAspectRatio  float64             `json:"coverAspectRatio"`
+	Author            string              `json:"author"`
 	Publisher      string              `json:"publisher"`
 	Year           *int                `json:"year"`
 	Description    string              `json:"description"`
@@ -245,7 +246,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       c."readingStatus", c."type"
+		       c."readingStatus", c."type", c."coverAspectRatio"
 		FROM "Comic" c
 		%s %s %s
 	`, whereClause, orderClause, limitClause)
@@ -271,7 +272,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
 			&c.Author, &c.Publisher, &year, &c.Description,
 			&c.Language, &c.Genre, &c.MetadataSource,
-			&c.ReadingStatus, &c.ComicType,
+			&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
 		); err != nil {
 			return nil, fmt.Errorf("scan comic: %w", err)
 		}
@@ -429,7 +430,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       c."readingStatus", c."type"
+		       c."readingStatus", c."type", c."coverAspectRatio"
 		FROM "Comic" c WHERE c."id" = ?
 	`
 	var c ComicListItem
@@ -445,7 +446,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
 		&c.Author, &c.Publisher, &year, &c.Description,
 		&c.Language, &c.Genre, &c.MetadataSource,
-		&c.ReadingStatus, &c.ComicType,
+		&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil

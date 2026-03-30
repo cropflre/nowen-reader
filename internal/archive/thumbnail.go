@@ -20,11 +20,11 @@ import (
 )
 
 // GenerateThumbnail generates a WebP thumbnail for a comic.
-// Returns the thumbnail bytes and writes it to disk cache.
-func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
+// Returns the thumbnail bytes, the original cover aspect ratio (width/height), and writes it to disk cache.
+func GenerateThumbnail(archivePath, comicID string) ([]byte, float64, error) {
 	thumbDir := config.GetThumbnailsDir()
 	if err := os.MkdirAll(thumbDir, 0755); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// 缓存路径包含尺寸信息，尺寸变更后自动生成新缩略图
@@ -35,7 +35,8 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 
 	// Check cache first（尺寸匹配才命中）
 	if data, err := os.ReadFile(cachePath); err == nil && len(data) > 0 {
-		return data, nil
+		// 从缓存返回时，尝试检测已有缩略图的宽高比（无法获取原始比例，返回 0）
+		return data, 0, nil
 	}
 
 	// 清理该 comicID 的旧尺寸缓存文件
@@ -52,7 +53,8 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 		if err != nil {
 			log.Printf("[thumbnail] PDF render failed for %s: %v, generating text cover", comicID, err)
 			// 渲染工具不可用时，回退到文字封面
-			return generateTextCover(archivePath, comicID, thumbDir, cachePath)
+			data, err := generateTextCover(archivePath, comicID, thumbDir, cachePath)
+			return data, 0, err
 		}
 		pageBuffer = buf
 
@@ -60,7 +62,7 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 		// EPUB/MOBI/AZW3: try to extract cover image (MOBI/AZW3 auto-converted to EPUB)
 		reader, err := NewReader(archivePath)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		defer reader.Close()
 
@@ -68,42 +70,47 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 		if err != nil {
 			log.Printf("[thumbnail] EPUB cover extraction failed for %s: %v, generating text cover", comicID, err)
 			// Fallback: generate a text-based cover
-			return generateTextCover(archivePath, comicID, thumbDir, cachePath)
+			data, err := generateTextCover(archivePath, comicID, thumbDir, cachePath)
+			return data, 0, err
 		}
 		pageBuffer = coverData
 
 	case archiveType == TypeTxt:
 		// TXT: generate a text-based cover image
-		return generateTextCover(archivePath, comicID, thumbDir, cachePath)
+		data, err := generateTextCover(archivePath, comicID, thumbDir, cachePath)
+		return data, 0, err
 
 	default:
 		// Open archive and extract first image
 		reader, err := NewReader(archivePath)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		defer reader.Close()
 
 		images := GetImageEntries(reader)
 		if len(images) == 0 {
-			return nil, fmt.Errorf("no images in archive %s", archivePath)
+			return nil, 0, fmt.Errorf("no images in archive %s", archivePath)
 		}
 
 		buf, err := reader.ExtractEntry(images[0])
 		if err != nil {
-			return nil, fmt.Errorf("extract first page: %w", err)
+			return nil, 0, fmt.Errorf("extract first page: %w", err)
 		}
 		pageBuffer = buf
 	}
 
 	if len(pageBuffer) == 0 {
-		return nil, fmt.Errorf("empty page buffer for %s", comicID)
+		return nil, 0, fmt.Errorf("empty page buffer for %s", comicID)
 	}
+
+	// Detect original aspect ratio before resizing
+	aspectRatio := detectAspectRatio(pageBuffer)
 
 	// Generate thumbnail
 	thumbnail, err := resizeToWebP(pageBuffer, config.GetThumbnailWidth(), config.GetThumbnailHeight(), 80)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Write to cache (fire-and-forget)
@@ -111,7 +118,7 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, error) {
 		log.Printf("[thumbnail] Failed to write cache for %s: %v", comicID, err)
 	}
 
-	return thumbnail, nil
+	return thumbnail, aspectRatio, nil
 }
 
 // resizeToWebP resizes an image and converts it to WebP format.
@@ -251,6 +258,34 @@ func ResizeImageToWebP(imgData []byte, width, height, quality int) ([]byte, erro
 	return resizeToWebP(imgData, width, height, quality)
 }
 
+// ThumbnailCacheName returns the canonical cache filename for a comic thumbnail.
+// All code that reads/writes thumbnail cache MUST use this function to ensure consistency.
+func ThumbnailCacheName(comicID string) string {
+	tw := config.GetThumbnailWidth()
+	th := config.GetThumbnailHeight()
+	return fmt.Sprintf("%s_%dx%d.webp", comicID, tw, th)
+}
+
+// ClearThumbnailCache removes all cached thumbnails for a given comic ID,
+// including the old format ({id}.webp) and all sized variants ({id}_{W}x{H}.webp).
+func ClearThumbnailCache(comicID string) {
+	thumbDir := config.GetThumbnailsDir()
+	// Remove old format
+	oldPath := filepath.Join(thumbDir, comicID+".webp")
+	_ = os.Remove(oldPath)
+	// Remove all sized variants
+	entries, err := os.ReadDir(thumbDir)
+	if err != nil {
+		return
+	}
+	prefix := comicID + "_"
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), prefix) {
+			_ = os.Remove(filepath.Join(thumbDir, entry.Name()))
+		}
+	}
+}
+
 // cleanOldThumbnailCache 删除同一 comicID 的旧尺寸缓存文件（包括旧格式 comicID.webp）。
 func cleanOldThumbnailCache(thumbDir, comicID, currentCacheName string) {
 	// 清理旧格式缓存 comicID.webp（不含尺寸后缀）
@@ -344,6 +379,19 @@ func generateTextCover(filePath, comicID, thumbDir, cachePath string) ([]byte, e
 	}
 
 	return thumbnail, nil
+}
+
+// detectAspectRatio decodes image bytes and returns width/height ratio.
+// Returns 0 if the image cannot be decoded.
+func detectAspectRatio(imgData []byte) float64 {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(imgData))
+	if err != nil {
+		return 0
+	}
+	if cfg.Height == 0 {
+		return 0
+	}
+	return float64(cfg.Width) / float64(cfg.Height)
 }
 
 // drawSimpleText draws a simple blocky text string centered at (cx, cy).

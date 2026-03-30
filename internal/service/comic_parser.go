@@ -419,6 +419,15 @@ func GetPageImage(comicID string, pageIndex int) (*PageImage, error) {
 	return getArchivePageImage(comicID, fp, pageIndex)
 }
 
+// GetPageImageData extracts the raw image bytes for a page (used for cover selection).
+func GetPageImageData(comicID string, pageIndex int) ([]byte, error) {
+	img, err := GetPageImage(comicID, pageIndex)
+	if err != nil {
+		return nil, err
+	}
+	return img.Data, nil
+}
+
 // getArchivePageImage extracts a page from a non-PDF archive.
 func getArchivePageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
@@ -502,11 +511,11 @@ func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 // Get comic thumbnail
 // ============================================================
 
-// GetComicThumbnail returns the thumbnail for a comic.
-func GetComicThumbnail(comicID string) ([]byte, error) {
+// GetComicThumbnail returns the thumbnail and cover aspect ratio for a comic.
+func GetComicThumbnail(comicID string) ([]byte, float64, error) {
 	fp, _, err := FindComicFilePath(comicID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	return archive.GenerateThumbnail(fp, comicID)
 }

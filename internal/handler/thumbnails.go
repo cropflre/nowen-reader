@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/archive"
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -50,7 +51,7 @@ func (h *ThumbnailHandler) ManageThumbnails(c *gin.Context) {
 		// 筛选出缺失缩略图的漫画
 		var missing []store.ComicIDFilename
 		for _, comic := range comics {
-			cachePath := filepath.Join(thumbDir, comic.ID+".webp")
+			cachePath := filepath.Join(thumbDir, archive.ThumbnailCacheName(comic.ID))
 			if _, err := os.Stat(cachePath); err != nil {
 				missing = append(missing, comic)
 			}
@@ -66,7 +67,7 @@ func (h *ThumbnailHandler) ManageThumbnails(c *gin.Context) {
 			go func() {
 				defer wg.Done()
 				for comic := range jobs {
-					if _, err := service.GetComicThumbnail(comic.ID); err == nil {
+					if _, _, err := service.GetComicThumbnail(comic.ID); err == nil {
 						atomic.AddInt64(&generated, 1)
 					} else {
 						log.Printf("[thumbnails] Failed to generate for %s: %v", comic.ID, err)
@@ -104,7 +105,7 @@ func (h *ThumbnailHandler) ManageThumbnails(c *gin.Context) {
 			go func() {
 				defer wg.Done()
 				for comic := range jobs {
-					if _, err := service.GetComicThumbnail(comic.ID); err == nil {
+					if _, _, err := service.GetComicThumbnail(comic.ID); err == nil {
 						atomic.AddInt64(&generated, 1)
 					} else {
 						atomic.AddInt64(&failed, 1)
@@ -129,7 +130,7 @@ func (h *ThumbnailHandler) ManageThumbnails(c *gin.Context) {
 		existing := 0
 		missing := 0
 		for _, comic := range comics {
-			cachePath := filepath.Join(thumbDir, comic.ID+".webp")
+			cachePath := filepath.Join(thumbDir, archive.ThumbnailCacheName(comic.ID))
 			if _, err := os.Stat(cachePath); err == nil {
 				existing++
 			} else {

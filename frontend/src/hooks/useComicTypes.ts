@@ -20,6 +20,7 @@ export interface ApiComic {
   isFavorite: boolean;
   rating: number | null;
   coverUrl: string;
+  coverAspectRatio: number;
   sortOrder: number;
   totalReadTime: number;
   tags: ApiComicTag[];

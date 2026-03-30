@@ -79,6 +79,17 @@ export function clearServiceWorkerCache() {
   navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_CACHE" });
 }
 
+/**
+ * Invalidate specific cached URLs in Service Worker by pattern.
+ * Used after cover updates to ensure the new thumbnail is fetched from server.
+ */
+export function invalidateSwCache(urlPattern: string) {
+  navigator.serviceWorker?.controller?.postMessage({
+    type: "INVALIDATE_CACHE",
+    urlPattern,
+  });
+}
+
 function dispatchPwaEvent(type: string) {
   window.dispatchEvent(new CustomEvent(type));
 }

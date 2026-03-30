@@ -145,13 +145,13 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
                 <Link key={comic.id} href={href} className="group shrink-0">
                   <div className="w-[140px] space-y-1.5">
                     {/* 封面 */}
-                    <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card">
+                    <div className={`relative ${(comic.coverAspectRatio ?? 0) > 1.3 ? "aspect-[7/5]" : "aspect-[5/7]"} w-full overflow-hidden rounded-lg bg-card`}>
                       <Image
                         src={comic.coverUrl}
                         alt={comic.title}
                         fill
                         unoptimized
-                        className="object-cover transition-transform duration-200 group-hover:scale-105"
+                        className={`${(comic.coverAspectRatio ?? 0) > 1.3 ? "object-contain" : "object-cover"} transition-transform duration-200 group-hover:scale-105`}
                         sizes="140px"
                       />
 

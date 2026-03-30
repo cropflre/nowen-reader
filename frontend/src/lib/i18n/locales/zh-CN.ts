@@ -135,12 +135,18 @@ const zhCN = {
     addTagPlaceholder: "添加标签...",
     clickToEdit: "(点击编辑)",
     confirmDelete: "确认删除",
-    confirmDeleteMsg: "确定要删除「{title}」吗？此操作将同时删除磁盘上的文件，不可撤销。",
+    confirmDeleteMsg: "确定要删除「{title}」吗？请选择删除方式：",
+    deleteRecordOnly: "仅移除记录",
+    deleteRecordOnlyDesc: "从书库移除，保留磁盘文件",
+    deleteWithFiles: "同时删除文件",
+    deleteWithFilesDesc: "从书库移除并删除磁盘上的文件，不可恢复",
     changeCover: "更换封面",
     uploadCover: "上传本地图片",
     coverFromUrl: "输入图片URL",
     coverFromPlatform: "从漫画平台获取",
     resetCover: "恢复默认封面",
+    coverFromArchive: "从内页选择",
+    coverPickerLimitMsg: "仅显示前 50 页",
     editTitle: "编辑标题",
     editMetadata: "编辑元数据",
     saveMetadata: "保存",
@@ -1004,6 +1010,62 @@ autoDetect: "智能分组",
     collectionItemAdded: "已添加到合集",
     collectionItemRemoved: "已从合集移除",
   },
+  tagManager: {
+    title: "标签与分类管理",
+    tagsTab: "标签",
+    categoriesTab: "分类",
+    searchPlaceholder: "搜索标签或分类...",
+    noTags: "暂无标签",
+    noCategories: "暂无分类",
+    rename: "重命名",
+    edit: "编辑",
+    merge: "合并",
+    mergeTitle: "合并标签",
+    mergeDesc: "将选中的标签合并为一个。所有漫画将使用目标标签名称。",
+    mergeTargetLabel: "目标标签名称",
+    selected: "已选择",
+    tags: "个标签",
+    confirmDeleteTag: "确认删除标签",
+    confirmDeleteCategory: "确认删除分类",
+    // 分页
+    total: "共",
+    items: "项",
+    perPage: "每页",
+    // 排序
+    sortByName: "名称",
+    sortByCount: "使用量",
+    // 批量操作
+    batchDelete: "批量删除",
+    batchColor: "批量改色",
+    selectAllPage: "全选当页",
+    deselectAll: "取消全选",
+    clearSelection: "取消选择",
+    showing: "当前",
+    // 创建标签
+    createTag: "新建标签",
+    newTagPlaceholder: "输入新标签名称...",
+    create: "创建",
+    createSuccess: "标签已创建",
+    // 搜索
+    noSearchResults: "未找到匹配结果",
+    // 刷新
+    refreshed: "已刷新",
+    refresh: "刷新",
+    // 批量删除反馈
+    batchDeleteWarning: "此操作将从所有漫画中移除这些标签，不可撤销。",
+    confirmBatchDeleteTags: "确认删除选中的",
+    batchDeleteDone: "已删除",
+    batchDeletePartial: "删除完成",
+    success: "成功",
+    failed: "失败",
+    // 批量颜色
+    colorChanged: "已更新",
+    tagsColor: "个标签颜色",
+    // 分类
+    categoriesUnit: "个分类",
+    confirmBatchDeleteCats: "确认删除选中的",
+    batchDeleteCatsWarning: "此操作将从所有漫画中移除这些分类。",
+  },
 } satisfies Translations;
 
 export default zhCN;
@@ -1128,11 +1190,17 @@ export interface Translations {
     clickToEdit: string;
     confirmDelete: string;
     confirmDeleteMsg: string;
+    deleteRecordOnly?: string;
+    deleteRecordOnlyDesc?: string;
+    deleteWithFiles?: string;
+    deleteWithFilesDesc?: string;
     changeCover: string;
     uploadCover: string;
     coverFromUrl: string;
     coverFromPlatform: string;
     resetCover: string;
+    coverFromArchive?: string;
+    coverPickerLimitMsg?: string;
     editTitle: string;
     editMetadata: string;
     saveMetadata: string;
@@ -1942,5 +2010,61 @@ export interface Translations {
     collectionDeleted: string;
     collectionItemAdded: string;
     collectionItemRemoved: string;
+  };
+  tagManager?: {
+    title: string;
+    tagsTab: string;
+    categoriesTab: string;
+    searchPlaceholder: string;
+    noTags: string;
+    noCategories: string;
+    rename: string;
+    edit: string;
+    merge: string;
+    mergeTitle: string;
+    mergeDesc: string;
+    mergeTargetLabel: string;
+    selected: string;
+    tags: string;
+    confirmDeleteTag: string;
+    confirmDeleteCategory: string;
+    // Pagination
+    total: string;
+    items: string;
+    perPage: string;
+    // Sorting
+    sortByName: string;
+    sortByCount: string;
+    // Batch operations
+    batchDelete: string;
+    batchColor: string;
+    selectAllPage: string;
+    deselectAll: string;
+    clearSelection: string;
+    showing: string;
+    // Create tag
+    createTag: string;
+    newTagPlaceholder: string;
+    create: string;
+    createSuccess: string;
+    // Search
+    noSearchResults: string;
+    // Refresh
+    refreshed: string;
+    refresh: string;
+    // Batch delete feedback
+    batchDeleteWarning: string;
+    confirmBatchDeleteTags: string;
+    batchDeleteDone: string;
+    batchDeletePartial: string;
+    success: string;
+    failed: string;
+    // Batch color
+    colorChanged: string;
+    tagsColor: string;
+    // Categories
+    categoriesUnit: string;
+    confirmBatchDeleteCats: string;
+    batchDeleteCatsWarning: string;
   };
 }

@@ -124,6 +124,7 @@ export async function clearAllComicTags(comicId: string) {
 
 /**
  * 批量操作
+ * @param params - 额外参数（如 deleteFiles: true, tags: [...] 等）
  */
 export async function batchOperation(
   action: string,
@@ -144,11 +145,15 @@ export async function batchOperation(
 
 /**
  * 删除单个漫画
+ * @param deleteFiles - 是否同时删除磁盘文件（默认 false，仅删除数据库记录）
  * 返回 { success, error? } 包含具体错误信息
  */
-export async function deleteComicById(comicId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteComicById(comicId: string, deleteFiles = false): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await fetch(`/api/comics/${comicId}/delete`, {
+    const url = deleteFiles
+      ? `/api/comics/${comicId}/delete?deleteFiles=true`
+      : `/api/comics/${comicId}/delete`;
+    const res = await fetch(url, {
       method: "DELETE",
     });
     if (res.ok) {

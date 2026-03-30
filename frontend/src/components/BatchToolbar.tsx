@@ -20,7 +20,7 @@ import { useCategories, ApiCategory } from "@/hooks/useComics";
 interface BatchToolbarProps {
   selectedCount: number;
   onCancel: () => void;
-  onDelete: () => void;
+  onDelete: (deleteFiles?: boolean) => void;
   onFavorite: () => void;
   onUnfavorite: () => void;
   onAddTags: (tags: string[]) => void;
@@ -54,6 +54,7 @@ export default function BatchToolbar({
   const [tagInput, setTagInput] = useState("");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [batchDeleteFiles, setBatchDeleteFiles] = useState(false);
   const t = useTranslation();
   const { categories } = useCategories();
 
@@ -282,26 +283,48 @@ export default function BatchToolbar({
       {showDeleteConfirm && (
         <>
           <div className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal-in">
+          <div className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-2rem)] max-w-96 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal-in">
             <h3 className="text-lg font-semibold text-foreground">{t.batch.confirmDelete}</h3>
             <p className="mt-2 text-sm text-muted">
               {t.batch.confirmDeleteMsg.replace("{count}", String(selectedCount))}
             </p>
-            <div className="mt-6 flex justify-end gap-3">
+            {/* Delete mode options */}
+            <div className="mt-4 space-y-2">
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/60 p-3 transition-colors hover:bg-card/80" onClick={() => setBatchDeleteFiles(false)}>
+                <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${!batchDeleteFiles ? "border-accent" : "border-muted/50"}`}>
+                  {!batchDeleteFiles && <div className="h-2 w-2 rounded-full bg-accent" />}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-foreground">{t.comicDetail?.deleteRecordOnly || "仅移除记录"}</div>
+                  <div className="text-xs text-muted">{t.comicDetail?.deleteRecordOnlyDesc || "从书库移除，保留磁盘文件"}</div>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-red-500/30 p-3 transition-colors hover:bg-red-500/5" onClick={() => setBatchDeleteFiles(true)}>
+                <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${batchDeleteFiles ? "border-red-500" : "border-muted/50"}`}>
+                  {batchDeleteFiles && <div className="h-2 w-2 rounded-full bg-red-500" />}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-red-400">{t.comicDetail?.deleteWithFiles || "同时删除文件"}</div>
+                  <div className="text-xs text-muted">{t.comicDetail?.deleteWithFilesDesc || "从书库移除并删除磁盘上的文件，不可恢复"}</div>
+                </div>
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
               <button
-                onClick={() => setShowDeleteConfirm(false)}
+                onClick={() => { setShowDeleteConfirm(false); setBatchDeleteFiles(false); }}
                 className="rounded-lg bg-card px-4 py-2 text-sm text-foreground"
               >
                 {t.common.cancel}
               </button>
               <button
                 onClick={() => {
-                  onDelete();
+                  onDelete(batchDeleteFiles);
                   setShowDeleteConfirm(false);
+                  setBatchDeleteFiles(false);
                 }}
-                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white"
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${batchDeleteFiles ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"}`}
               >
-                {t.batch.confirmDelete}
+                {batchDeleteFiles ? (t.comicDetail?.deleteWithFiles || "删除文件") : t.batch.confirmDelete}
               </button>
             </div>
           </div>

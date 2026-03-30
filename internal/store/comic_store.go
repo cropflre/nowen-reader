@@ -119,8 +119,9 @@ func UpdateRating(comicID string, rating *int, userID ...string) error {
 	return err
 }
 
-// DeleteComic 从数据库和磁盘删除漫画。
-func DeleteComic(comicID string, comicsDirs []string) error {
+// DeleteComic 从数据库删除漫画，可选删除磁盘文件。
+// deleteFiles 为 true 时同时删除磁盘上的文件。
+func DeleteComic(comicID string, comicsDirs []string, deleteFiles bool) error {
 	// Get filename before deleting
 	var filename string
 	err := db.QueryRow(`SELECT "filename" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&filename)
@@ -134,12 +135,14 @@ func DeleteComic(comicID string, comicsDirs []string) error {
 		return err
 	}
 
-	// Try to delete file from disk
-	for _, dir := range comicsDirs {
-		fp := filepath.Join(dir, filename)
-		if _, err := os.Stat(fp); err == nil {
-			_ = os.Remove(fp)
-			break
+	// Delete file from disk only if requested
+	if deleteFiles {
+		for _, dir := range comicsDirs {
+			fp := filepath.Join(dir, filename)
+			if _, err := os.Stat(fp); err == nil {
+				_ = os.Remove(fp)
+				break
+			}
 		}
 	}
 	return nil
@@ -276,6 +279,18 @@ func ClearAllTagsFromComic(comicID string) error {
 // UpdateTagColor 更新标签颜色。
 func UpdateTagColor(tagName, color string) error {
 	_, err := db.Exec(`UPDATE "Tag" SET "color" = ? WHERE "name" = ?`, color, tagName)
+	return err
+}
+
+// DeleteTag 删除标签及其所有关联（从所有漫画移除此标签）。
+func DeleteTag(tagName string) error {
+	var tagID int
+	err := db.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, tagName).Scan(&tagID)
+	if err != nil {
+		return nil // tag doesn't exist
+	}
+	_, _ = db.Exec(`DELETE FROM "ComicTag" WHERE "tagId" = ?`, tagID)
+	_, err = db.Exec(`DELETE FROM "Tag" WHERE "id" = ?`, tagID)
 	return err
 }
 
@@ -459,6 +474,39 @@ func SetComicCategories(comicID string, categorySlugs []string) error {
 		return AddCategoriesToComic(comicID, categorySlugs)
 	}
 	return nil
+}
+
+// UpdateCategory 更新分类的名称和图标。
+func UpdateCategory(slug, name, icon string) error {
+	sets := []string{}
+	args := []interface{}{}
+	if name != "" {
+		sets = append(sets, `"name" = ?`)
+		args = append(args, name)
+	}
+	if icon != "" {
+		sets = append(sets, `"icon" = ?`)
+		args = append(args, icon)
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	args = append(args, slug)
+	query := fmt.Sprintf(`UPDATE "Category" SET %s WHERE "slug" = ?`, strings.Join(sets, ", "))
+	_, err := db.Exec(query, args...)
+	return err
+}
+
+// DeleteCategory 删除分类及其所有漫画关联。
+func DeleteCategory(slug string) error {
+	var catID int
+	err := db.QueryRow(`SELECT "id" FROM "Category" WHERE "slug" = ?`, slug).Scan(&catID)
+	if err != nil {
+		return nil // doesn't exist
+	}
+	_, _ = db.Exec(`DELETE FROM "ComicCategory" WHERE "categoryId" = ?`, catID)
+	_, err = db.Exec(`DELETE FROM "Category" WHERE "id" = ?`, catID)
+	return err
 }
 
 // ============================================================

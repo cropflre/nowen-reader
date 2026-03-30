@@ -422,20 +422,28 @@ func fullSync() {
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				pageCount, err := GetArchivePageCount(item.Path)
-				if err != nil || pageCount <= 0 {
-					log.Printf("[full-sync] Failed to parse %s: %v", item.Filename, err)
-					_ = store.UpdateComicPageCount(item.ID, -1)
-					continue
-				}
-				if err := store.UpdateComicPageCount(item.ID, pageCount); err != nil {
-					log.Printf("[full-sync] Failed to update %s: %v", item.Filename, err)
-					_ = store.UpdateComicPageCount(item.ID, -1)
-				} else {
-					mu.Lock()
-					processed++
-					mu.Unlock()
-				}
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[full-sync] PANIC processing %s: %v", item.Filename, r)
+							_ = store.UpdateComicPageCount(item.ID, -1)
+						}
+					}()
+					pageCount, err := GetArchivePageCount(item.Path)
+					if err != nil || pageCount <= 0 {
+						log.Printf("[full-sync] Failed to parse %s: %v", item.Filename, err)
+						_ = store.UpdateComicPageCount(item.ID, -1)
+						return
+					}
+					if err := store.UpdateComicPageCount(item.ID, pageCount); err != nil {
+						log.Printf("[full-sync] Failed to update %s: %v", item.Filename, err)
+						_ = store.UpdateComicPageCount(item.ID, -1)
+					} else {
+						mu.Lock()
+						processed++
+						mu.Unlock()
+					}
+				}()
 			}
 		}()
 	}
@@ -506,31 +514,38 @@ func md5Sync() {
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				// 如果阅读开始了，立即停止 MD5 计算
-				if isReadingActive() {
-					log.Println("[md5-sync] Paused: active reading session detected")
-					return
-				}
-				f, err := os.Open(item.Path)
-				if err != nil {
-					log.Printf("[md5-sync] Failed to open %s: %v", item.Filename, err)
-					continue
-				}
-				h := md5.New()
-				if _, err := io.Copy(h, f); err != nil {
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[md5-sync] PANIC processing %s: %v", item.Filename, r)
+						}
+					}()
+					// 如果阅读开始了，立即停止 MD5 计算
+					if isReadingActive() {
+						log.Println("[md5-sync] Paused: active reading session detected")
+						return
+					}
+					f, err := os.Open(item.Path)
+					if err != nil {
+						log.Printf("[md5-sync] Failed to open %s: %v", item.Filename, err)
+						return
+					}
+					h := md5.New()
+					if _, err := io.Copy(h, f); err != nil {
+						f.Close()
+						log.Printf("[md5-sync] Failed to hash %s: %v", item.Filename, err)
+						return
+					}
 					f.Close()
-					log.Printf("[md5-sync] Failed to hash %s: %v", item.Filename, err)
-					continue
-				}
-				f.Close()
-				hash := fmt.Sprintf("%x", h.Sum(nil))
-				if err := store.UpdateComicMD5Hash(item.ID, hash); err != nil {
-					log.Printf("[md5-sync] Failed to update %s: %v", item.Filename, err)
-				} else {
-					mu.Lock()
-					processed++
-					mu.Unlock()
-				}
+					hash := fmt.Sprintf("%x", h.Sum(nil))
+					if err := store.UpdateComicMD5Hash(item.ID, hash); err != nil {
+						log.Printf("[md5-sync] Failed to update %s: %v", item.Filename, err)
+					} else {
+						mu.Lock()
+						processed++
+						mu.Unlock()
+					}
+				}()
 			}
 		}()
 	}
@@ -722,36 +737,72 @@ func StartBackgroundSync() {
 
 	// Initial quick sync on startup
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[bg-sync] PANIC in initial sync: %v", r)
+			}
+		}()
 		SyncComicsToDatabase()
 	}()
 
 	// 启动 fsnotify 文件监控（实时响应文件变更）
-	go startFSWatcher()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[bg-sync] PANIC in fsnotify watcher: %v", r)
+			}
+		}()
+		startFSWatcher()
+	}()
 
 	// Periodic quick sync (作为 fsnotify 的兜底保障)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[bg-sync] PANIC in periodic quick sync: %v", r)
+			}
+		}()
 		ticker := time.NewTicker(getQuickSyncInterval())
 		defer ticker.Stop()
 		for range ticker.C {
-			SyncComicsToDatabase()
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[bg-sync] PANIC during quick sync tick: %v", r)
+					}
+				}()
+				SyncComicsToDatabase()
+			}()
 		}
 	}()
 
 	// Periodic full sync (process page counts)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[bg-sync] PANIC in periodic full sync: %v", r)
+			}
+		}()
 		// Wait a bit for initial quick sync to finish
 		time.Sleep(5 * time.Second)
 
 		ticker := time.NewTicker(getFullSyncInterval())
 		defer ticker.Stop()
 		for range ticker.C {
-			// 有活跃阅读会话时跳过 fullSync，避免 IO 竞争
-			if isReadingActive() {
-				log.Println("[bg-sync] Skipped full sync: active reading session")
-				continue
-			}
-			fullSync()
-			md5Sync() // 在 full sync 之后计算 MD5
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[bg-sync] PANIC during full sync tick: %v", r)
+					}
+				}()
+				// 有活跃阅读会话时跳过 fullSync，避免 IO 竞争
+				if isReadingActive() {
+					log.Println("[bg-sync] Skipped full sync: active reading session")
+					return
+				}
+				fullSync()
+				md5Sync() // 在 full sync 之后计算 MD5
+			}()
 		}
 	}()
 
