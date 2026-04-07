@@ -4,8 +4,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
@@ -500,6 +502,81 @@ func (h *GroupHandler) SyncGroupTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// POST /api/groups/:id/ai-suggest-tags — AI 智能建议系列标签
+func (h *GroupHandler) AISuggestTags(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列ID"})
+		return
+	}
+
+	var body struct {
+		TargetLang string `json:"targetLang"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	if body.TargetLang == "" {
+		body.TargetLang = "zh"
+	}
+
+	cfg := service.LoadAIConfig()
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "AI 未配置"})
+		return
+	}
+
+	group, err := store.GetGroupByID(id)
+	if err != nil || group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "系列不存在"})
+		return
+	}
+
+	// 收集已有标签
+	existingTags, _ := store.GetGroupTags(id)
+	var existingTagNames []string
+	for _, t := range existingTags {
+		existingTagNames = append(existingTagNames, t.Name)
+	}
+
+	// 收集所有卷的标题
+	var volumeTitles []string
+	for _, comic := range group.Comics {
+		if comic.Title != "" {
+			volumeTitles = append(volumeTitles, comic.Title)
+		}
+	}
+
+	// 判断内容类型
+	contentType := "comic/manga"
+	if len(group.Comics) > 0 {
+		firstFilename := group.Comics[0].Filename
+		if service.IsNovelFilename(firstFilename) {
+			contentType = "novel/light novel"
+		}
+	}
+
+	suggestedTags, err := service.SuggestGroupTags(
+		cfg,
+		group.Name,
+		group.Author,
+		group.Genre,
+		group.Description,
+		volumeTitles,
+		contentType,
+		body.TargetLang,
+		existingTagNames,
+	)
+	if err != nil {
+		log.Printf("[API] AISuggestTags for group %d error: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 标签建议失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"suggestedTags": suggestedTags,
+	})
+}
+
 // ============================================================
 // P3: 按话/卷自动分组
 // ============================================================
@@ -513,4 +590,244 @@ func (h *GroupHandler) AutoGroupByDirectory(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "created": created})
+}
+
+// ============================================================
+// P4: 系列级元数据刮削 & AI 识别
+// ============================================================
+
+// POST /api/groups/:id/scrape-metadata — 搜索系列元数据（在线数据源）
+func (h *GroupHandler) ScrapeMetadata(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列ID"})
+		return
+	}
+
+	group, err := store.GetGroupByID(id)
+	if err != nil || group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "系列不存在"})
+		return
+	}
+
+	var body struct {
+		Query       string   `json:"query"`
+		Sources     []string `json:"sources"`
+		Lang        string   `json:"lang"`
+		ContentType string   `json:"contentType"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	if body.Lang == "" {
+		body.Lang = "zh"
+	}
+
+	query := body.Query
+	if query == "" {
+		query = group.Name
+	}
+
+	ct := body.ContentType
+	if ct == "" {
+		ct = "comic"
+	}
+
+	results := service.SearchMetadata(query, body.Sources, body.Lang, ct)
+	if results == nil {
+		results = []service.ComicMetadata{}
+	}
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
+// POST /api/groups/:id/apply-metadata — 将刮削结果应用到系列元数据
+func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列ID"})
+		return
+	}
+
+	group, err := store.GetGroupByID(id)
+	if err != nil || group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "系列不存在"})
+		return
+	}
+
+	var body struct {
+		Metadata  service.ComicMetadata `json:"metadata"`
+		Fields    []string              `json:"fields"`
+		Overwrite bool                  `json:"overwrite"`
+		SyncTags  bool                  `json:"syncTags"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+		return
+	}
+
+	meta := body.Metadata
+	fieldsSet := make(map[string]bool)
+	for _, f := range body.Fields {
+		fieldsSet[f] = true
+	}
+	applyAll := len(body.Fields) == 0
+
+	shouldApply := func(field string) bool {
+		return applyAll || fieldsSet[field]
+	}
+
+	update := store.GroupMetadataUpdate{}
+
+	// 标题 → 系列名称（需要用户显式选择 title 字段才会应用）
+	if meta.Title != "" && shouldApply("title") {
+		if body.Overwrite || group.Name == "" {
+			update.Name = &meta.Title
+		}
+	}
+
+	if meta.Author != "" && shouldApply("author") {
+		if body.Overwrite || group.Author == "" {
+			update.Author = &meta.Author
+		}
+	}
+	if meta.Description != "" && shouldApply("description") {
+		if body.Overwrite || group.Description == "" {
+			update.Description = &meta.Description
+		}
+	}
+	if meta.Genre != "" && shouldApply("genre") {
+		if body.Overwrite || group.Genre == "" {
+			update.Genre = &meta.Genre
+		}
+	}
+	if meta.Publisher != "" && shouldApply("publisher") {
+		if body.Overwrite || group.Publisher == "" {
+			update.Publisher = &meta.Publisher
+		}
+	}
+	if meta.Language != "" && shouldApply("language") {
+		if body.Overwrite || group.Language == "" {
+			update.Language = &meta.Language
+		}
+	}
+	if meta.Year != nil && shouldApply("year") {
+		if body.Overwrite || group.Year == nil {
+			update.Year = meta.Year
+		}
+	}
+	if meta.CoverURL != "" && shouldApply("cover") {
+		update.CoverURL = &meta.CoverURL
+	}
+
+	if err := store.UpdateGroupMetadata(id, update); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "应用元数据失败"})
+		return
+	}
+
+	// 处理标签
+	if meta.Genre != "" && shouldApply("tags") {
+		genres := splitAndTrim(meta.Genre)
+		if len(genres) > 0 {
+			existingTags, _ := store.GetGroupTags(id)
+			existingNames := make(map[string]bool)
+			for _, t := range existingTags {
+				existingNames[t.Name] = true
+			}
+			allNames := make([]string, 0)
+			for _, t := range existingTags {
+				allNames = append(allNames, t.Name)
+			}
+			for _, g := range genres {
+				if !existingNames[g] {
+					allNames = append(allNames, g)
+				}
+			}
+			_ = store.SetGroupTags(id, allNames)
+			if body.SyncTags {
+				_ = store.SyncGroupTagsToVolumes(id)
+			}
+		}
+	}
+
+	// 下载封面
+	if meta.CoverURL != "" && shouldApply("cover") {
+		go service.DownloadGroupCover(id, meta.CoverURL)
+	}
+
+	updated, _ := store.GetGroupByID(id)
+	c.JSON(http.StatusOK, gin.H{"success": true, "group": updated})
+}
+
+// POST /api/groups/:id/ai-recognize — AI 智能识别系列元数据
+func (h *GroupHandler) AIRecognize(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列ID"})
+		return
+	}
+
+	group, err := store.GetGroupByID(id)
+	if err != nil || group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "系列不存在"})
+		return
+	}
+
+	var body struct {
+		Lang string `json:"lang"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	if body.Lang == "" {
+		body.Lang = "zh"
+	}
+
+	cfg := service.LoadAIConfig()
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "AI 未配置"})
+		return
+	}
+
+	if len(group.Comics) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "系列内没有漫画，无法进行AI识别"})
+		return
+	}
+
+	firstComic := group.Comics[0]
+	var coverData []byte
+	coverBytes, _, coverErr := service.GetComicThumbnail(firstComic.ComicID)
+	if coverErr == nil && len(coverBytes) > 0 {
+		coverData = coverBytes
+	}
+
+	var pageImages [][]byte
+	for pi := 0; pi < 2; pi++ {
+		pageImg, err := service.GetPageImage(firstComic.ComicID, pi)
+		if err == nil && pageImg != nil && len(pageImg.Data) > 0 {
+			pageImages = append(pageImages, pageImg.Data)
+		}
+	}
+
+	recognized, err := service.AIRecognizeComicContent(cfg, coverData, pageImages, body.Lang)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 识别失败: " + err.Error()})
+		return
+	}
+
+	meta, _ := service.AICompleteMetadata(cfg, firstComic.Filename, group.Name, coverData, body.Lang)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"recognized": recognized,
+		"metadata":   meta,
+	})
+}
+
+// splitAndTrim 分割逗号分隔的字符串并去除空白。
+func splitAndTrim(s string) []string {
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }

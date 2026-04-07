@@ -276,6 +276,11 @@ type rarReader struct {
 func newRarReader(fp string) (*rarReader, error) {
 	rc, err := rardecode.OpenReader(fp)
 	if err != nil {
+		errMsg := err.Error()
+		// 检测加密 RAR 文件的错误信息
+		if strings.Contains(errMsg, "password") || strings.Contains(errMsg, "encrypted") || strings.Contains(errMsg, "decrypt") {
+			return nil, fmt.Errorf("该 RAR 文件已加密（需要密码），暂不支持打开加密压缩包: %s", fp)
+		}
 		return nil, fmt.Errorf("open rar %s: %w", fp, err)
 	}
 	defer rc.Close()
@@ -292,6 +297,10 @@ func newRarReader(fp string) (*rarReader, error) {
 			break
 		}
 		if err != nil {
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "password") || strings.Contains(errMsg, "encrypted") || strings.Contains(errMsg, "decrypt") {
+				return nil, fmt.Errorf("该 RAR 文件已加密（需要密码），暂不支持打开加密压缩包: %s", fp)
+			}
 			return nil, fmt.Errorf("read rar entry in %s: %w", fp, err)
 		}
 
@@ -460,9 +469,9 @@ func IsEbookConvertAvailable() bool {
 	return findEbookConvert() != ""
 }
 
-// convertToEpub converts a MOBI/AZW3 file to EPUB using Calibre ebook-convert.
+// ConvertToEpub converts a MOBI/AZW3 file to EPUB using Calibre ebook-convert.
 // Returns the path to the converted EPUB file (stored in cache directory).
-func convertToEpub(inputPath string) (string, error) {
+func ConvertToEpub(inputPath string) (string, error) {
 	bin := findEbookConvert()
 	if bin == "" {
 		return "", fmt.Errorf("ebook-convert (Calibre) not found — install Calibre to read MOBI/AZW3 files: https://calibre-ebook.com")
@@ -507,7 +516,7 @@ func convertToEpub(inputPath string) (string, error) {
 
 // newMobiReader converts a MOBI/AZW3 file to EPUB and returns an EPUB reader.
 func newMobiReader(fp string) (Reader, error) {
-	epubPath, err := convertToEpub(fp)
+	epubPath, err := ConvertToEpub(fp)
 	if err != nil {
 		return nil, err
 	}
@@ -565,10 +574,16 @@ func newSevenZipReader(fp string) (*sevenZipReader, error) {
 
 	r := &sevenZipReader{filepath: fp}
 
-	// List entries: 7za l -slt filepath
-	cmd := exec.Command(bin, "l", "-slt", fp)
-	out, err := cmd.Output()
+	// List entries: 7za l -slt -p"" filepath
+	// -p"" 传入空密码，防止 7z 遇到加密文件时等待用户输入密码导致进程挂起
+	cmd := exec.Command(bin, "l", "-slt", `-p`, fp)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		outStr := string(out)
+		// 检测加密文件的错误信息
+		if strings.Contains(outStr, "encrypted") || strings.Contains(outStr, "Wrong password") || strings.Contains(outStr, "password") {
+			return nil, fmt.Errorf("该压缩包已加密（需要密码），暂不支持打开加密压缩包: %s", fp)
+		}
 		return nil, fmt.Errorf("7z list %s: %w", fp, err)
 	}
 
@@ -611,10 +626,17 @@ func (s *sevenZipReader) ExtractEntry(entryName string) ([]byte, error) {
 		return nil, fmt.Errorf("7za not found")
 	}
 
-	// Extract to stdout: 7za e -y -so filepath entryName
-	cmd := exec.Command(bin, "e", "-y", "-so", s.filepath, entryName)
+	// Extract to stdout: 7za e -y -so -p"" filepath entryName
+	// -p"" 传入空密码，防止 7z 遇到加密文件时等待用户输入密码导致进程挂起
+	cmd := exec.Command(bin, "e", "-y", "-so", `-p`, s.filepath, entryName)
 	out, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderrStr := string(exitErr.Stderr)
+			if strings.Contains(stderrStr, "encrypted") || strings.Contains(stderrStr, "Wrong password") || strings.Contains(stderrStr, "password") {
+				return nil, fmt.Errorf("该压缩包已加密（需要密码），暂不支持解压加密文件: %s", entryName)
+			}
+		}
 		return nil, fmt.Errorf("7z extract %s from %s: %w", entryName, s.filepath, err)
 	}
 	return out, nil

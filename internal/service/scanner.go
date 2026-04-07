@@ -448,14 +448,21 @@ func fullSync() {
 					// 对 epub/mobi/azw3 文件检测内容类型：如果以图片为主则标记为漫画
 					archiveType := archive.DetectType(item.Path)
 					if archive.IsEbookType(archiveType) {
-						// 对于 mobi/azw3，需要先转换为 epub 再检测
-						// 但 IsImageHeavyEpub 目前只支持 epub 格式
-						// mobi/azw3 通过 Calibre 转换后的临时 epub 路径不可用
-						// 所以只对 epub 文件进行检测
 						if archiveType == archive.TypeEpub {
 							if archive.IsImageHeavyEpub(item.Path) {
 								log.Printf("[full-sync] Detected image-heavy EPUB, marking as comic: %s", item.Filename)
 								_ = store.UpdateComicType(item.ID, "comic")
+							}
+						} else if archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 {
+							// mobi/azw3 需要先通过 Calibre 转换为 epub，再检测内容类型
+							epubPath, convErr := archive.ConvertToEpub(item.Path)
+							if convErr == nil && epubPath != "" {
+								if archive.IsImageHeavyEpub(epubPath) {
+									log.Printf("[full-sync] Detected image-heavy %s (via EPUB conversion), marking as comic: %s", archiveType, item.Filename)
+									_ = store.UpdateComicType(item.ID, "comic")
+								}
+							} else if convErr != nil {
+								log.Printf("[full-sync] Cannot detect content type for %s (conversion failed): %v", item.Filename, convErr)
 							}
 						}
 					}
@@ -589,6 +596,77 @@ func md5Sync() {
 }
 
 // ============================================================
+// 重新检测 mobi/azw3 文件的内容类型
+// ============================================================
+
+// RedetectEbookTypes 对所有 type="novel" 的 mobi/azw3 文件重新检测内容类型。
+// 如果检测到文件以图片为主（漫画），则将 type 更新为 "comic"。
+// 返回重新分类的数量。
+func RedetectEbookTypes() int {
+	comics, err := store.GetNovelsNeedingTypeRedetect()
+	if err != nil || len(comics) == 0 {
+		if err != nil {
+			log.Printf("[redetect] Error querying novels: %v", err)
+		}
+		return 0
+	}
+
+	log.Printf("[redetect] Found %d mobi/azw3 files with type=novel, checking content...", len(comics))
+
+	allDirs := config.GetAllScanDirs()
+	reclassified := 0
+
+	for _, c := range comics {
+		// 查找文件路径
+		var foundPath string
+		for _, dir := range allDirs {
+			candidate := filepath.Join(dir, c.Filename)
+			if _, err := os.Stat(candidate); err == nil {
+				foundPath = candidate
+				break
+			}
+		}
+		if foundPath == "" {
+			log.Printf("[redetect] File not found on disk: %s", c.Filename)
+			continue
+		}
+
+		archiveType := archive.DetectType(foundPath)
+		if archiveType != archive.TypeMobi && archiveType != archive.TypeAzw3 {
+			log.Printf("[redetect] Skipping %s: detected as %s, not mobi/azw3", c.Filename, archiveType)
+			continue
+		}
+
+		// 通过 Calibre 转换为 epub，再检测内容类型
+		epubPath, convErr := archive.ConvertToEpub(foundPath)
+		if convErr != nil {
+			log.Printf("[redetect] Cannot convert %s: %v", c.Filename, convErr)
+			continue
+		}
+		if epubPath == "" {
+			log.Printf("[redetect] Empty epub path for %s", c.Filename)
+			continue
+		}
+
+		log.Printf("[redetect] Checking converted epub: %s", epubPath)
+		if archive.IsImageHeavyEpub(epubPath) {
+			log.Printf("[redetect] ✓ Detected image-heavy %s, reclassifying as comic: %s", archiveType, c.Filename)
+			_ = store.UpdateComicType(c.ID, "comic")
+			reclassified++
+		} else {
+			log.Printf("[redetect] ✗ Not image-heavy, keeping as novel: %s", c.Filename)
+		}
+	}
+
+	if reclassified > 0 {
+		log.Printf("[redetect] Reclassified %d/%d mobi/azw3 files from novel to comic", reclassified, len(comics))
+	} else {
+		log.Printf("[redetect] No files reclassified (checked %d files)", len(comics))
+	}
+	return reclassified
+}
+
+// ============================================================
 // Main sync orchestrator
 // ============================================================
 
@@ -640,6 +718,9 @@ func SyncComicsToDatabase() {
 			}
 		}()
 	}
+
+	// 重新检测已入库的 mobi/azw3 文件的内容类型（修正错误分类）
+	go RedetectEbookTypes()
 }
 
 // ============================================================

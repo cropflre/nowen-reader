@@ -22,6 +22,9 @@ import {
   Tag,
   Layers,
   MoreHorizontal,
+  RefreshCw,
+  ArrowDownToLine,
+  Loader2,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useToast } from "@/components/Toast";
@@ -37,9 +40,17 @@ import {
   inheritGroupMetadata,
   previewInheritMetadata,
   inheritMetadataToVolumes,
+  fetchGroupTags,
+  setGroupTags,
+  syncGroupTags,
+  aiSuggestGroupTags,
 } from "@/api/groups";
 import type { ComicGroupDetail, GroupComicItem } from "@/hooks/useComicTypes";
-import type { InheritPreview } from "@/api/groups";
+import type { InheritPreview, GroupTag } from "@/api/groups";
+import { GroupMetadataSearch } from "@/components/GroupMetadataSearch";
+import { Sparkles, Brain } from "lucide-react";
+import { useAIStatus } from "@/hooks/useAIStatus";
+import { useLocale } from "@/lib/i18n/context";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -65,6 +76,13 @@ function isNovelFile(filename?: string): boolean {
     ext.endsWith(".mobi") ||
     ext.endsWith(".azw3")
   );
+}
+
+// 优先使用数据库 type 字段判断，fallback 到文件后缀
+function getReaderUrl(comic: { id: string; filename?: string; type?: string }): string {
+  if (comic.type === "comic") return `/reader/${comic.id}`;
+  if (comic.type === "novel") return `/novel/${comic.id}`;
+  return isNovelFile(comic.filename) ? `/novel/${comic.id}` : `/reader/${comic.id}`;
 }
 
 // 自然排序键：将字符串中的数字部分补零对齐，实现数字感知排序
@@ -97,6 +115,21 @@ export default function GroupDetailPage() {
   const [addSearchLoading, setAddSearchLoading] = useState(false);
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
   const addSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 系列级标签管理状态
+  const [groupTags, setGroupTags] = useState<GroupTag[]>([]);
+  const [newTagInput, setNewTagInput] = useState("");
+  const [tagSyncing, setTagSyncing] = useState(false);
+  const [tagSaving, setTagSaving] = useState(false);
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [showScraper, setShowScraper] = useState(false);
+
+  // AI 标签建议状态
+  const { aiConfigured } = useAIStatus();
+  const { locale } = useLocale();
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>([]);
+  const [aiSelectedTags, setAiSelectedTags] = useState<Set<string>>(new Set());
 
   // 元数据编辑状态
   const [showMetadataEdit, setShowMetadataEdit] = useState(false);
@@ -161,6 +194,114 @@ export default function GroupDetailPage() {
   useEffect(() => {
     loadGroup();
   }, [loadGroup]);
+
+  // 加载系列标签
+  const loadGroupTags = useCallback(async () => {
+    if (!groupId) return;
+    const tags = await fetchGroupTags(groupId);
+    setGroupTags(tags);
+  }, [groupId]);
+
+  useEffect(() => {
+    loadGroupTags();
+  }, [loadGroupTags]);
+
+  // 添加系列标签
+  const handleAddGroupTag = useCallback(async () => {
+    if (!group || !newTagInput.trim()) return;
+    setTagSaving(true);
+    const currentNames = groupTags.map(t => t.name);
+    // 支持逗号分隔批量添加
+    const newNames = newTagInput.split(",").map(s => s.trim()).filter(Boolean);
+    const allNames = [...new Set([...currentNames, ...newNames])];
+    const result = await setGroupTags(group.id, allNames);
+    if (result?.success) {
+      const addedCount = result.added?.length || 0;
+      const syncedTo = result.syncedTo || 0;
+      toast.success(
+        addedCount > 0
+          ? `已添加 ${addedCount} 个标签${syncedTo > 0 ? `，已同步到 ${syncedTo} 卷` : ""}`
+          : "标签未变化"
+      );
+      setNewTagInput("");
+      await loadGroupTags();
+    }
+    setTagSaving(false);
+  }, [group, newTagInput, groupTags, toast, loadGroupTags]);
+
+  // 删除系列标签
+  const handleRemoveGroupTag = useCallback(async (tagName: string) => {
+    if (!group) return;
+    setTagSaving(true);
+    const newNames = groupTags.filter(t => t.name !== tagName).map(t => t.name);
+    const result = await setGroupTags(group.id, newNames);
+    if (result?.success) {
+      const syncedTo = result.syncedTo || 0;
+      toast.success(
+        `已移除标签「${tagName}」${syncedTo > 0 ? `，已从 ${syncedTo} 卷中移除` : ""}`
+      );
+      await loadGroupTags();
+    }
+    setTagSaving(false);
+  }, [group, groupTags, toast, loadGroupTags]);
+
+  // 完整同步标签到所有卷
+  // AI 建议标签
+  const handleAiSuggestTags = useCallback(async () => {
+    if (!group || aiSuggestLoading) return;
+    setAiSuggestLoading(true);
+    setAiSuggestedTags([]);
+    setAiSelectedTags(new Set());
+    try {
+      const result = await aiSuggestGroupTags(group.id, locale === "en" ? "en" : "zh");
+      if (result?.success && result.suggestedTags?.length > 0) {
+        setAiSuggestedTags(result.suggestedTags);
+        setAiSelectedTags(new Set(result.suggestedTags));
+      } else {
+        toast.info(t.comicGroup?.aiSuggestTagsEmpty || "AI 未生成新标签建议");
+      }
+    } catch {
+      toast.error("AI 标签建议失败");
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  }, [group, aiSuggestLoading, locale, toast, t.comicGroup]);
+
+  // 应用 AI 建议的标签
+  const handleApplyAiTags = useCallback(async (tagsToAdd: string[]) => {
+    if (!group || tagsToAdd.length === 0) return;
+    setTagSaving(true);
+    const currentNames = groupTags.map(t => t.name);
+    const allNames = [...new Set([...currentNames, ...tagsToAdd])];
+    const result = await setGroupTags(group.id, allNames);
+    if (result?.success) {
+      const addedCount = result.added?.length || 0;
+      const syncedTo = result.syncedTo || 0;
+      toast.success(
+        (t.comicGroup?.aiSuggestTagsSuccess || "已添加 {count} 个 AI 建议标签").replace("{count}", String(addedCount))
+        + (syncedTo > 0 ? `，已同步到 ${syncedTo} 卷` : "")
+      );
+      setAiSuggestedTags([]);
+      setAiSelectedTags(new Set());
+      await loadGroupTags();
+    }
+    setTagSaving(false);
+  }, [group, groupTags, toast, loadGroupTags, t.comicGroup]);
+
+  const handleSyncTagsToVolumes = useCallback(async () => {
+    if (!group) return;
+    setTagSyncing(true);
+    const result = await syncGroupTags(group.id);
+    if (result?.success) {
+      toast.success(
+        `同步完成：${result.syncedVolumes}/${result.totalVolumes} 卷已更新，` +
+        `添加 ${result.tagsAdded} 个、移除 ${result.tagsRemoved} 个标签关联`
+      );
+    } else {
+      toast.error("同步失败");
+    }
+    setTagSyncing(false);
+  }, [group, toast]);
 
   // 保存编辑
   const handleSaveName = useCallback(async () => {
@@ -391,9 +532,6 @@ export default function GroupDetailPage() {
     (c) => c.lastReadPage > 0 && c.lastReadPage < c.pageCount
   );
 
-  // 解析标签字符串
-  const tagsList = group?.tags ? group.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -604,14 +742,147 @@ export default function GroupDetailPage() {
                 </p>
               )}
 
-              {/* 标签 */}
-              {tagsList.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {tagsList.map((tag, i) => (
-                    <span key={i} className="rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
-                      {tag}
-                    </span>
-                  ))}
+              {/* 系列标签管理 */}
+              {(groupTags.length > 0 || isAdmin) && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-muted flex items-center gap-1.5">
+                      <Tag className="h-3 w-3" />
+                      {t.comicGroup?.tags || "标签"}
+                      {groupTags.length > 0 && (
+                        <span className="text-[10px] text-muted/60">({groupTags.length})</span>
+                      )}
+                    </h4>
+                    {isAdmin && groupTags.length > 0 && (
+                      <button
+                        onClick={handleSyncTagsToVolumes}
+                        disabled={tagSyncing}
+                        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-accent/80 transition-colors hover:bg-accent/10"
+                        title="将系列标签完整同步到所有卷"
+                      >
+                        {tagSyncing ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3" />
+                        )}
+                        <span>同步到所有卷</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {groupTags.map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="group flex items-center gap-1 rounded-lg bg-accent/10 px-2.5 py-1 text-xs text-accent"
+                      >
+                        <Tag className="h-3 w-3 flex-shrink-0" />
+                        {tag.name}
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleRemoveGroupTag(tag.name)}
+                            disabled={tagSaving}
+                            className="ml-0.5 rounded-full p-0.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/10"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    {groupTags.length === 0 && !isAdmin && (
+                      <span className="text-xs text-muted/50">暂无标签</span>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddGroupTag()}
+                        placeholder="添加标签（多个用逗号分隔）"
+                        className="flex-1 rounded-lg bg-card px-3 py-1.5 text-xs text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/30"
+                      />
+                      <button
+                        onClick={handleAddGroupTag}
+                        disabled={!newTagInput.trim() || tagSaving}
+                        className="rounded-lg bg-accent/20 px-2.5 py-1.5 text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
+                      >
+                        {tagSaving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                      {aiConfigured && (
+                        <button
+                          onClick={handleAiSuggestTags}
+                          disabled={aiSuggestLoading}
+                          className="flex items-center gap-1.5 rounded-lg bg-purple-500/15 px-2.5 py-1.5 text-xs font-medium text-purple-400 transition-colors hover:bg-purple-500/25 disabled:opacity-50"
+                          title={t.comicGroup?.aiSuggestTags || "AI 标签"}
+                        >
+                          {aiSuggestLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+                          <span className="hidden sm:inline">{aiSuggestLoading ? (t.comicGroup?.aiSuggestTagsLoading || "AI 分析中...") : (t.comicGroup?.aiSuggestTags || "AI 标签")}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* AI 建议标签展示 */}
+                  {aiSuggestedTags.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs text-purple-400">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>{t.comicGroup?.aiSuggestTagsTitle || "AI 建议标签"}</span>
+                      </div>
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {aiSuggestedTags.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => {
+                              const next = new Set(aiSelectedTags);
+                              if (next.has(tag)) next.delete(tag); else next.add(tag);
+                              setAiSelectedTags(next);
+                            }}
+                            className={`rounded-md px-2 py-1 text-xs transition-all ${
+                              aiSelectedTags.has(tag)
+                                ? "bg-purple-500/20 text-purple-300 ring-1 ring-purple-500/40"
+                                : "bg-card text-muted hover:text-foreground"
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApplyAiTags(Array.from(aiSelectedTags))}
+                          disabled={aiSelectedTags.size === 0 || tagSaving}
+                          className="rounded-md bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-40"
+                        >
+                          {t.comicGroup?.aiAddSelected || "添加选中"} ({aiSelectedTags.size})
+                        </button>
+                        <button
+                          onClick={() => handleApplyAiTags(aiSuggestedTags)}
+                          disabled={tagSaving}
+                          className="rounded-md bg-card px-3 py-1 text-xs text-muted transition-colors hover:text-foreground"
+                        >
+                          {t.comicGroup?.aiAddAll || "全部添加"}
+                        </button>
+                        <button
+                          onClick={() => { setAiSuggestedTags([]); setAiSelectedTags(new Set()); }}
+                          className="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {isAdmin && groupTags.length > 0 && (
+                    <p className="mt-1.5 text-[10px] text-muted/50 flex items-center gap-1">
+                      <ArrowDownToLine className="h-3 w-3" />
+                      添加/删除标签时自动同步到系列内所有卷
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -620,9 +891,7 @@ export default function GroupDetailPage() {
                 {continueVolume && (
                   <Link
                     href={
-                      isNovelFile(continueVolume.filename)
-                        ? `/novel/${continueVolume.id}`
-                        : `/reader/${continueVolume.id}`
+                      getReaderUrl(continueVolume)
                     }
                     className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/20 transition-all hover:bg-accent-hover hover:shadow-accent/30"
                   >
@@ -672,6 +941,14 @@ export default function GroupDetailPage() {
                         {t.comicGroup?.inheritToVolumes || "继承到所有卷"}
                       </button>
                     )}
+                    <button
+                      onClick={() => setShowScraper(true)}
+                      className="flex items-center gap-1.5 rounded-xl bg-purple-500/10 px-4 py-2.5 text-sm text-purple-400 transition-colors hover:bg-purple-500/20"
+                      title="从在线数据库搜索并获取系列信息，支持 AI 智能识别"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {t.comicGroup?.scrapeMetadata || "刮削元数据"}
+                    </button>
                   </>
                 )}
               </div>
@@ -727,9 +1004,7 @@ export default function GroupDetailPage() {
                 comic.pageCount > 0
                   ? Math.round((comic.lastReadPage / comic.pageCount) * 100)
                   : 0;
-              const readerUrl = isNovelFile(comic.filename)
-                ? `/novel/${comic.id}`
-                : `/reader/${comic.id}`;
+              const readerUrl = getReaderUrl(comic);
 
               return (
                 <div
@@ -831,9 +1106,7 @@ export default function GroupDetailPage() {
                 comic.pageCount > 0
                   ? Math.round((comic.lastReadPage / comic.pageCount) * 100)
                   : 0;
-              const readerUrl = isNovelFile(comic.filename)
-                ? `/novel/${comic.id}`
-                : `/reader/${comic.id}`;
+              const readerUrl = getReaderUrl(comic);
 
               return (
                 <div
@@ -988,6 +1261,45 @@ export default function GroupDetailPage() {
           </div>
       )}
 
+      {/* 刮削元数据弹窗 */}
+      {showScraper && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 animate-backdrop-in" onClick={() => setShowScraper(false)}>
+          <div className="w-[90vw] max-w-2xl rounded-2xl border border-border bg-card shadow-2xl animate-modal-in max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border/30 bg-card px-5 py-3 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-400" />
+                <h3 className="text-base font-semibold text-foreground">
+                  {t.comicGroup?.scrapeMetadata || "刮削元数据"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowScraper(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-card-hover"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="mb-4 text-xs text-muted">
+                从 AniList、Bangumi 等在线数据库搜索系列信息，或使用 AI 智能识别。支持选择性应用字段和标签同步。
+              </p>
+              <GroupMetadataSearch
+                groupId={group.id}
+                groupName={group.name}
+                onApplied={async (success, message) => {
+                  if (success) {
+                    await loadGroup();
+                    await loadGroupTags();
+                    setShowScraper(false);
+                    toast.success(message || t.comicGroup?.scrapeApplySuccess || "元数据应用成功");
+                  }
+                }}
+              />
+            </div>
+          </div>
+          </div>
+      )}
+
       {/* 元数据编辑弹窗 */}
       {showMetadataEdit && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 animate-backdrop-in" onClick={() => setShowMetadataEdit(false)}>
@@ -1074,14 +1386,24 @@ export default function GroupDetailPage() {
               {/* 标签 */}
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted">{t.comicGroup?.tags || "标签"}</label>
-                <input
-                  type="text"
-                  value={metaForm.tags}
-                  onChange={(e) => setMetaForm(f => ({ ...f, tags: e.target.value }))}
-                  placeholder="冒险, 友情, 少年漫画"
-                  className="w-full rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-accent/30"
-                />
-                <p className="mt-1 text-[10px] text-muted/60">多个标签用逗号分隔</p>
+                <div className="rounded-lg bg-background/50 border border-border/20 px-3 py-2.5">
+                  {groupTags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {groupTags.map((tag) => (
+                        <span key={tag.id} className="flex items-center gap-1 rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                          <Tag className="h-3 w-3" />
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted/50 mb-2">暂无标签</p>
+                  )}
+                  <p className="text-[10px] text-muted/60 flex items-center gap-1">
+                    <ArrowDownToLine className="h-3 w-3" />
+                    标签通过系列详情页的标签管理器管理，添加/删除时自动同步到所有卷
+                  </p>
+                </div>
               </div>
               {/* 简介 */}
               <div>

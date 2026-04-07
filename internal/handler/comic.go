@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -416,6 +417,7 @@ func (h *ComicHandler) DetectDuplicates(c *gin.Context) {
 
 func (h *ComicHandler) TriggerSync(c *gin.Context) {
 	go service.SyncComicsToDatabase()
+	go service.RedetectEbookTypes()
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sync triggered"})
 }
 
@@ -430,6 +432,19 @@ func (h *ComicHandler) CleanupInvalid(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "removed": removed})
+}
+
+// ============================================================
+// POST /api/comics/redetect-types — 重新检测 mobi/azw3 文件的内容类型
+// ============================================================
+
+func (h *ComicHandler) RedetectTypes(c *gin.Context) {
+	reclassified := service.RedetectEbookTypes()
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"reclassified": reclassified,
+		"message":      fmt.Sprintf("Reclassified %d files from novel to comic", reclassified),
+	})
 }
 
 // ============================================================

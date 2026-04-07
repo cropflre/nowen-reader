@@ -328,6 +328,15 @@ export interface GroupTag {
   color: string;
 }
 
+/** 标签同步结果 */
+export interface TagSyncResult {
+  success: boolean;
+  added: string[];
+  removed: string[];
+  unchanged: string[];
+  syncedTo: number;
+}
+
 /** 获取系列标签 */
 export async function fetchGroupTags(groupId: number): Promise<GroupTag[]> {
   try {
@@ -340,29 +349,61 @@ export async function fetchGroupTags(groupId: number): Promise<GroupTag[]> {
   }
 }
 
-/** 设置系列标签（替换所有现有标签） */
-export async function setGroupTags(groupId: number, tags: string[]): Promise<boolean> {
+/** 设置系列标签（替换所有现有标签，自动同步到所有卷） */
+export async function setGroupTags(groupId: number, tags: string[], autoSync: boolean = true): Promise<TagSyncResult | null> {
   try {
     const res = await fetch(`/api/groups/${groupId}/tags`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tags }),
+      body: JSON.stringify({ tags, autoSync }),
     });
-    return res.ok;
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** 将系列标签同步到所有卷 */
-export async function syncGroupTags(groupId: number): Promise<boolean> {
+/** 标签完整同步结果 */
+export interface TagFullSyncResult {
+  success: boolean;
+  totalVolumes: number;
+  syncedVolumes: number;
+  tagsAdded: number;
+  tagsRemoved: number;
+}
+
+/** 将系列标签同步到所有卷（完整同步） */
+export async function syncGroupTags(groupId: number): Promise<TagFullSyncResult | null> {
   try {
     const res = await fetch(`/api/groups/${groupId}/sync-tags`, {
       method: "POST",
     });
-    return res.ok;
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+/** AI 建议系列标签 */
+export async function aiSuggestGroupTags(groupId: number, targetLang: string = "zh"): Promise<{ success: boolean; suggestedTags: string[] } | null> {
+  try {
+    const res = await fetch(`/api/groups/${groupId}/ai-suggest-tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetLang }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 

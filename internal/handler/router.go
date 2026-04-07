@@ -87,6 +87,7 @@ func SetupRoutes(r *gin.Engine) {
 	comicsAdmin.Use(middleware.AdminRequired())
 	{
 		comicsAdmin.POST("/cleanup", comic.CleanupInvalid)
+		comicsAdmin.POST("/redetect-types", comic.RedetectTypes)
 	}
 
 	// Single comic read operations (no auth)
@@ -457,6 +458,11 @@ func SetupRoutes(r *gin.Engine) {
 		groupWrite.GET("/:id/tags", group.GetGroupTags)
 		groupWrite.PUT("/:id/tags", group.SetGroupTags)
 		groupWrite.POST("/:id/sync-tags", group.SyncGroupTags)
+		groupWrite.POST("/:id/ai-suggest-tags", group.AISuggestTags)
+		// P4: 系列级元数据刮削 & AI 识别
+		groupWrite.POST("/:id/scrape-metadata", group.ScrapeMetadata)
+		groupWrite.POST("/:id/apply-metadata", group.ApplyScrapedMetadata)
+		groupWrite.POST("/:id/ai-recognize", group.AIRecognize)
 		// P3: 按话/卷自动分组
 		groupWrite.POST("/auto-group-by-dir", group.AutoGroupByDirectory)
 		groupWrite.POST("/auto-detect", group.AutoDetect)

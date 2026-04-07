@@ -41,8 +41,11 @@ const zhCN = {
     ascending: "升序",
     descending: "降序",
     emptyLibrary: "漫画库为空",
+    emptyNovelLibrary: "小说库为空",
     noMatchingComics: "没有找到匹配的漫画",
+    noMatchingNovels: "没有找到匹配的小说",
     emptyLibraryHint: "点击上传按钮或将 .zip/.cbz 文件放入 comics/ 目录",
+    emptyNovelLibraryHint: "点击上传按钮或将 .epub/.mobi/.txt 文件放入 comics/ 目录",
     noMatchingHint: "试试更换搜索关键词或清除标签筛选",
     uploadFailed: "上传失败，请重试",
     uploadSuccess: "上传成功",
@@ -778,6 +781,25 @@ autoDetect: "智能分组",
     statusOngoing: "连载中",
     statusCompleted: "已完结",
     statusHiatus: "休刊中",
+    // 标签管理
+    syncTagsToVolumes: "同步到所有卷",
+    syncTagsSuccess: "标签同步成功",
+    addTagPlaceholder: "添加标签（多个用逗号分隔）",
+    tagAutoSyncHint: "添加/删除标签时自动同步到系列内所有卷",
+    tagFromSeries: "系列",
+    tagExcluded: "已排除",
+    scrapeMetadata: "刮削元数据",
+    scrapeMetadataDesc: "从在线数据库搜索并获取系列信息，支持 AI 智能识别",
+    scrapeApplySuccess: "元数据应用成功",
+    // AI 标签建议
+    aiSuggestTags: "AI 标签",
+    aiSuggestTagsLoading: "AI 分析中...",
+    aiSuggestTagsTitle: "AI 建议标签",
+    aiAddSelected: "添加选中",
+    aiAddAll: "全部添加",
+    aiSuggestTagsSuccess: "已添加 {count} 个 AI 建议标签",
+    aiSuggestTagsEmpty: "AI 未生成新标签建议",
+    aiNotConfigured: "请先在设置中配置 AI",
   },
 
   // 合集管理页面
@@ -1145,8 +1167,11 @@ export interface Translations {
     ascending: string;
     descending: string;
     emptyLibrary: string;
+    emptyNovelLibrary: string;
     noMatchingComics: string;
+    noMatchingNovels: string;
     emptyLibraryHint: string;
+    emptyNovelLibraryHint: string;
     noMatchingHint: string;
     uploadFailed: string;
     uploadSuccess: string;
@@ -1825,6 +1850,26 @@ export interface Translations {
     statusOngoing?: string;
     statusCompleted?: string;
     statusHiatus?: string;
+    // 标签管理
+    syncTagsToVolumes?: string;
+    syncTagsSuccess?: string;
+    addTagPlaceholder?: string;
+    tagAutoSyncHint?: string;
+    tagFromSeries?: string;
+    tagExcluded?: string;
+    // 元数据刮削
+    scrapeMetadata?: string;
+    scrapeMetadataDesc?: string;
+    scrapeApplySuccess?: string;
+    // AI 标签建议
+    aiSuggestTags?: string;
+    aiSuggestTagsLoading?: string;
+    aiSuggestTagsTitle?: string;
+    aiAddSelected?: string;
+    aiAddAll?: string;
+    aiSuggestTagsSuccess?: string;
+    aiSuggestTagsEmpty?: string;
+    aiNotConfigured?: string;
   };
   collections?: {
     title: string;

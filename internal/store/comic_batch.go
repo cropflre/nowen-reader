@@ -375,3 +375,35 @@ func GetComicsNeedingMD5(limit int) ([]struct {
 	}
 	return result, nil
 }
+
+// GetNovelsNeedingTypeRedetect 获取所有 type="novel" 且文件名以 .mobi/.azw3 结尾的漫画记录。
+// 这些文件可能是图片密集型的漫画，需要通过内容检测来重新分类。
+func GetNovelsNeedingTypeRedetect() ([]struct {
+	ID       string
+	Filename string
+}, error) {
+	rows, err := db.Query(`
+		SELECT "id", "filename" FROM "Comic"
+		WHERE "type" = 'novel'
+		AND (LOWER("filename") LIKE '%.mobi' OR LOWER("filename") LIKE '%.azw3')
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []struct {
+		ID       string
+		Filename string
+	}
+	for rows.Next() {
+		var c struct {
+			ID       string
+			Filename string
+		}
+		if rows.Scan(&c.ID, &c.Filename) == nil {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}

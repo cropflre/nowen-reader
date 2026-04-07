@@ -1670,6 +1670,7 @@ function DetailPanel({
               comicId={item.id}
               comicTitle={item.title}
               filename={item.filename}
+              comicType={item.contentType}
               onApplied={() => {
                 onRefresh();
                 loadLibrary();

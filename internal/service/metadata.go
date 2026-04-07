@@ -1398,6 +1398,32 @@ func downloadCoverAsThumbnail(comicID, coverURL string) {
 	log.Printf("[metadata] Cover cached for %s", comicID)
 }
 
+// DownloadGroupCover 下载系列封面图片并保存到系列的 coverUrl 字段。
+func DownloadGroupCover(groupID int, coverURL string) {
+	if coverURL == "" {
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", coverURL, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("User-Agent", "NowenReader/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return
+	}
+	defer resp.Body.Close()
+
+	// 将封面 URL 保存到系列的 coverUrl 字段
+	_ = store.UpdateGroupMetadata(groupID, store.GroupMetadataUpdate{
+		CoverURL: &coverURL,
+	})
+	log.Printf("[metadata] Group cover URL saved for group %d", groupID)
+}
+
 // ============================================================
 // HTTP helpers
 // ============================================================

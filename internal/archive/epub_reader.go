@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"path"
 	"regexp"
 	"strings"
@@ -715,8 +716,11 @@ func readZipEntry(f *zip.File) ([]byte, error) {
 // EPUB 内容类型检测：漫画 vs 小说
 // ============================================================
 
-// imgTagRegex 匹配 HTML 中的 <img> 标签
-var imgTagRegex = regexp.MustCompile(`(?i)<img\s`)
+// imgTagRegex 匹配 HTML 中的 <img> 标签、SVG 中的 <image> 标签
+var imgTagRegex = regexp.MustCompile(`(?i)<(?:img|image)\s`)
+
+// svgTagRegex 匹配 SVG 标签（Calibre 转换 mobi 时常用 SVG 包裹图片）
+var svgTagRegex = regexp.MustCompile(`(?i)<svg[\s>]`)
 
 // IsImageHeavyEpub 检测 EPUB 文件是否以图片为主（漫画/画集类型）。
 // 通过分析 manifest 中图片资源占比和章节内容中图片与文字的比例来判断。
@@ -735,7 +739,8 @@ func IsImageHeavyEpub(filePath string) bool {
 		lower := strings.ToLower(f.Name)
 		if strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg") ||
 			strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".gif") ||
-			strings.HasSuffix(lower, ".webp") || strings.HasSuffix(lower, ".bmp") {
+			strings.HasSuffix(lower, ".webp") || strings.HasSuffix(lower, ".bmp") ||
+			strings.HasSuffix(lower, ".svg") {
 			imageCount++
 			imageSize += int64(f.UncompressedSize64)
 		} else if strings.HasSuffix(lower, ".xhtml") || strings.HasSuffix(lower, ".html") ||
@@ -747,8 +752,11 @@ func IsImageHeavyEpub(filePath string) bool {
 
 	// 如果图片数量 >= 5 且图片总大小占比 > 80%，判定为漫画
 	totalContentSize := imageSize + textSize
+	log.Printf("[IsImageHeavyEpub] %s: images=%d (%.1f KB), texts=%d (%.1f KB)",
+		filePath, imageCount, float64(imageSize)/1024, textCount, float64(textSize)/1024)
 	if imageCount >= 5 && totalContentSize > 0 {
 		imageRatio := float64(imageSize) / float64(totalContentSize)
+		log.Printf("[IsImageHeavyEpub] Image ratio: %.2f%% (threshold: 80%%)", imageRatio*100)
 		if imageRatio > 0.80 {
 			return true
 		}
@@ -857,21 +865,26 @@ func IsImageHeavyEpub(filePath string) bool {
 		sampleCount++
 		html := string(chapterData)
 
-		// 统计 <img> 标签数量
+		// 统计 <img> 和 <image> 标签数量
 		imgMatches := imgTagRegex.FindAllStringIndex(html, -1)
 		imgCount := len(imgMatches)
+
+		// 也统计 <svg> 标签数量（Calibre 转换 mobi 时常用 SVG 包裹图片）
+		svgMatches := svgTagRegex.FindAllStringIndex(html, -1)
+		svgCount := len(svgMatches)
 
 		// 提取纯文字长度
 		plainText := extractTextFromXHTML(html)
 		textLen := len(strings.TrimSpace(plainText))
 
-		// 如果章节中有图片且纯文字很少（< 100字符），认为是图片为主的章节
-		if imgCount > 0 && textLen < 100 {
+		// 如果章节中有图片（img/image/svg）且纯文字很少（< 100字符），认为是图片为主的章节
+		if (imgCount > 0 || svgCount > 0) && textLen < 100 {
 			imageHeavyCount++
 		}
 	}
 
 	// 如果 >= 60% 的抽样章节是图片为主，判定为漫画
+	log.Printf("[IsImageHeavyEpub] Chapter sampling: %d/%d image-heavy (threshold: 60%%)", imageHeavyCount, sampleCount)
 	if sampleCount > 0 && float64(imageHeavyCount)/float64(sampleCount) >= 0.6 {
 		return true
 	}

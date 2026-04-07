@@ -58,6 +58,8 @@ import { MetadataSearch } from "@/components/MetadataSearch";
 import { SimilarComics } from "@/components/Recommendations";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { fetchGroupedComicMap, fetchGroupDetail } from "@/api/groups";
+import { getComicTagsWithSource } from "@/api/comics";
+import type { ComicTagWithSource } from "@/api/comics";
 import type { ComicGroupDetail, GroupComicItem } from "@/hooks/useComicTypes";
 import { invalidateSwCache } from "@/lib/pwa";
 import { invalidateComicsCache } from "@/hooks/useComicList";
@@ -72,6 +74,25 @@ function isNovelFile(filename?: string): boolean {
   if (!filename) return false;
   const ext = filename.toLowerCase();
   return ext.endsWith(".txt") || ext.endsWith(".epub") || ext.endsWith(".mobi") || ext.endsWith(".azw3") || ext.endsWith(".html") || ext.endsWith(".htm");
+}
+
+// 优先使用数据库 type 字段判断是否为小说，fallback 到文件后缀
+function getReaderUrl(comic: { id: string; filename?: string; type?: string }): string {
+  if (comic.type === "comic") return `/reader/${comic.id}`;
+  if (comic.type === "novel") return `/novel/${comic.id}`;
+  return isNovelFile(comic.filename) ? `/novel/${comic.id}` : `/reader/${comic.id}`;
+}
+
+function getDetailUrl(comic: { id: string; filename?: string; type?: string }): string {
+  if (comic.type === "comic") return `/comic/${comic.id}`;
+  if (comic.type === "novel") return `/novel/${comic.id}`;
+  return isNovelFile(comic.filename) ? `/novel/${comic.id}` : `/comic/${comic.id}`;
+}
+
+function isNovelComic(comic: { filename?: string; type?: string }): boolean {
+  if (comic.type === "comic") return false;
+  if (comic.type === "novel") return true;
+  return isNovelFile(comic.filename);
 }
 
 export default function ComicDetailPage() {
@@ -129,6 +150,13 @@ export default function ComicDetailPage() {
     loadGroups();
     return () => { cancelled = true; };
   }, [comicId]);
+
+  // 加载标签来源信息
+  useEffect(() => {
+    if (!comicId || !comic?.tags?.length) return;
+    getComicTagsWithSource(comicId).then(setTagsWithSource);
+  }, [comicId, comic?.tags]);
+
   const [newTag, setNewTag] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteFilesOption, setDeleteFilesOption] = useState(false);
@@ -159,6 +187,7 @@ export default function ComicDetailPage() {
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>([]);
   const [aiSelectedTags, setAiSelectedTags] = useState<Set<string>>(new Set());
+  const [tagsWithSource, setTagsWithSource] = useState<ComicTagWithSource[]>([]);
   const [aiCoverLoading, setAiCoverLoading] = useState(false);
   const [aiCoverResult, setAiCoverResult] = useState<Record<string, unknown> | null>(null);
   const [aiCompleteMetaLoading, setAiCompleteMetaLoading] = useState(false);
@@ -831,7 +860,7 @@ export default function ComicDetailPage() {
                     </button>
 
                     {/* Select from archive pages (P4) */}
-                    {!isNovelFile(comic.filename) && (
+                    {!isNovelComic(comic) && (
                     <button
                       onClick={handleOpenCoverPicker}
                       disabled={coverLoading}
@@ -873,7 +902,7 @@ export default function ComicDetailPage() {
 
             {/* Read Button */}
             <Link
-              href={isNovelFile(comic.filename) ? `/novel/${comic.id}` : `/reader/${comic.id}`}
+              href={getReaderUrl(comic)}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-medium text-white transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/25 btn-press"
             >
               <Play className="h-4 w-4" />
@@ -1108,7 +1137,7 @@ export default function ComicDetailPage() {
                     <div className="flex items-center gap-2 border-t border-border/30 px-4 py-2.5">
                       {prevComic ? (
                         <Link
-                          href={isNovelFile(prevComic.filename) ? `/novel/${prevComic.id}` : `/comic/${prevComic.id}`}
+                          href={getDetailUrl(prevComic)}
                           className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-card-hover"
                         >
                           <ArrowLeft className="h-3 w-3 text-muted flex-shrink-0" />
@@ -1117,7 +1146,7 @@ export default function ComicDetailPage() {
                       ) : <div className="flex-1" />}
                       {nextComic ? (
                         <Link
-                          href={isNovelFile(nextComic.filename) ? `/novel/${nextComic.id}` : `/comic/${nextComic.id}`}
+                          href={getDetailUrl(nextComic)}
                           className="flex flex-1 items-center justify-end gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-card-hover"
                         >
                           <span className="truncate text-muted hover:text-foreground text-right">{nextComic.title}</span>
@@ -1131,7 +1160,7 @@ export default function ComicDetailPage() {
                   {nextUnread && nextUnread.id !== (nextComic?.id) && (
                     <div className="border-t border-border/30 px-4 py-2.5">
                       <Link
-                        href={isNovelFile(nextUnread.filename) ? `/novel/${nextUnread.id}` : `/reader/${nextUnread.id}`}
+                        href={getReaderUrl(nextUnread)}
                         className="flex items-center gap-2 text-xs text-accent transition-colors hover:text-accent-hover"
                       >
                         <Play className="h-3 w-3" />
@@ -1160,21 +1189,42 @@ export default function ComicDetailPage() {
                 )}
               </div>
               <div className="mb-3 flex flex-wrap gap-2">
-                {(comic.tags || []).map((tag) => (
-                  <span
-                    key={tag.name}
-                    className="flex items-center gap-1.5 rounded-lg bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent"
-                  >
-                    <Tag className="h-3 w-3" />
-                    {tag.name}
-                    <button
-                      onClick={() => handleRemoveTag(tag.name)}
-                      className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
+                {(comic.tags || []).map((tag) => {
+                  const sourceInfo = tagsWithSource.find(t => t.name === tag.name);
+                  const isFromSeries = sourceInfo?.source === "series";
+                  const isExcluded = sourceInfo?.source === "excluded";
+                  return (
+                    <span
+                      key={tag.name}
+                      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                        isExcluded
+                          ? "bg-muted/10 text-muted/50 line-through"
+                          : isFromSeries
+                          ? "bg-blue-500/15 text-blue-400"
+                          : "bg-accent/15 text-accent"
+                      }`}
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
+                      <Tag className="h-3 w-3" />
+                      {tag.name}
+                      {isFromSeries && (
+                        <span className="ml-0.5 rounded bg-blue-500/20 px-1 py-0 text-[9px] text-blue-400/80">
+                          系列
+                        </span>
+                      )}
+                      {isExcluded && (
+                        <span className="ml-0.5 rounded bg-muted/20 px-1 py-0 text-[9px] text-muted/60">
+                          已排除
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleRemoveTag(tag.name)}
+                        className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  );
+                })}
                 {(comic.tags || []).length === 0 && (
                   <span className="text-xs text-muted">{t.comicDetail.noTags}</span>
                 )}
@@ -1699,6 +1749,7 @@ export default function ComicDetailPage() {
                 comicId={comic.id}
                 comicTitle={comic.title}
                 filename={comic.filename}
+                comicType={comic.type}
                 onApplied={() => refetch()}
               />
             </div>

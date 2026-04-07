@@ -8,7 +8,7 @@ import { BookOpen, Heart, Star, Info, GripVertical } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { ApiComicTag } from "@/hooks/useComicTypes";
 
-// Check if file is a novel type based on filename extension
+// Check if file is a novel type: prioritize DB type field, fallback to filename extension
 function isNovelFile(filename?: string): boolean {
   if (!filename) return false;
   const ext = filename.toLowerCase();
@@ -16,6 +16,10 @@ function isNovelFile(filename?: string): boolean {
 }
 
 function getReaderUrl(comic: Comic): string {
+  // 优先使用数据库中的 type 字段判断（支持 mobi 漫画等特殊情况）
+  if (comic.type === "comic") return `/reader/${comic.id}`;
+  if (comic.type === "novel") return `/novel/${comic.id}`;
+  // fallback: 按文件后缀判断
   return isNovelFile(comic.filename)
     ? `/novel/${comic.id}`
     : `/reader/${comic.id}`;

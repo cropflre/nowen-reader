@@ -58,14 +58,16 @@ interface Props {
   comicId: string;
   comicTitle: string;
   filename?: string;
+  comicType?: string; // "comic" | "novel" — 优先使用此字段判断类型
   onApplied?: () => void;
 }
 
-export function MetadataSearch({ comicId, comicTitle, filename, onApplied }: Props) {
+export function MetadataSearch({ comicId, comicTitle, filename, comicType, onApplied }: Props) {
   const t = useTranslation();
   const { locale } = useLocale();
 
-  const isNovel = isNovelFile(filename);
+  // 优先使用数据库 type 字段判断，fallback 到文件后缀
+  const isNovel = comicType ? comicType === "novel" : isNovelFile(filename);
   const availableSources = isNovel ? NOVEL_SOURCES : COMIC_SOURCES;
   const defaultSources = isNovel ? DEFAULT_NOVEL_SOURCES : DEFAULT_COMIC_SOURCES;
 

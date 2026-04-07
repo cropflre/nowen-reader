@@ -60,32 +60,32 @@ type ComicListOptions struct {
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
 type ComicListItem struct {
-	ID             string              `json:"id"`
-	Filename       string              `json:"filename"`
-	Title          string              `json:"title"`
-	PageCount      int                 `json:"pageCount"`
-	FileSize       int64               `json:"fileSize"`
-	AddedAt        string              `json:"addedAt"`
-	UpdatedAt      string              `json:"updatedAt"`
-	LastReadPage   int                 `json:"lastReadPage"`
-	LastReadAt     *string             `json:"lastReadAt"`
-	IsFavorite     bool                `json:"isFavorite"`
-	Rating         *int                `json:"rating"`
-	SortOrder      int                 `json:"sortOrder"`
-	TotalReadTime  int                 `json:"totalReadTime"`
-	CoverURL          string              `json:"coverUrl"`
-	CoverAspectRatio  float64             `json:"coverAspectRatio"`
-	Author            string              `json:"author"`
-	Publisher      string              `json:"publisher"`
-	Year           *int                `json:"year"`
-	Description    string              `json:"description"`
-	Language       string              `json:"language"`
-	Genre          string              `json:"genre"`
-	MetadataSource string              `json:"metadataSource"`
-	ReadingStatus  string              `json:"readingStatus"`
-	ComicType      string              `json:"type"`
-	Tags           []ComicTagInfo      `json:"tags"`
-	Categories     []ComicCategoryInfo `json:"categories"`
+	ID               string              `json:"id"`
+	Filename         string              `json:"filename"`
+	Title            string              `json:"title"`
+	PageCount        int                 `json:"pageCount"`
+	FileSize         int64               `json:"fileSize"`
+	AddedAt          string              `json:"addedAt"`
+	UpdatedAt        string              `json:"updatedAt"`
+	LastReadPage     int                 `json:"lastReadPage"`
+	LastReadAt       *string             `json:"lastReadAt"`
+	IsFavorite       bool                `json:"isFavorite"`
+	Rating           *int                `json:"rating"`
+	SortOrder        int                 `json:"sortOrder"`
+	TotalReadTime    int                 `json:"totalReadTime"`
+	CoverURL         string              `json:"coverUrl"`
+	CoverAspectRatio float64             `json:"coverAspectRatio"`
+	Author           string              `json:"author"`
+	Publisher        string              `json:"publisher"`
+	Year             *int                `json:"year"`
+	Description      string              `json:"description"`
+	Language         string              `json:"language"`
+	Genre            string              `json:"genre"`
+	MetadataSource   string              `json:"metadataSource"`
+	ReadingStatus    string              `json:"readingStatus"`
+	ComicType        string              `json:"type"`
+	Tags             []ComicTagInfo      `json:"tags"`
+	Categories       []ComicCategoryInfo `json:"categories"`
 }
 
 type ComicTagInfo struct {
@@ -520,6 +520,7 @@ type RecommendationComic struct {
 	Author        string
 	Genre         string
 	Filename      string
+	Type          string
 	PageCount     int
 	LastReadPage  int
 	LastReadAt    *time.Time
@@ -534,7 +535,7 @@ type RecommendationComic struct {
 func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 	rows, err := db.Query(`
 		SELECT "id", "title", "author", "genre",
-		       "filename", "pageCount", "lastReadPage", "lastReadAt", "isFavorite",
+		       "filename", "type", "pageCount", "lastReadPage", "lastReadAt", "isFavorite",
 		       "rating", "totalReadTime"
 		FROM "Comic"
 	`)
@@ -552,7 +553,7 @@ func GetAllComicsForRecommendation() ([]RecommendationComic, error) {
 
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Author, &c.Genre,
-			&c.Filename, &c.PageCount, &c.LastReadPage, &lastReadAt, &isFav,
+			&c.Filename, &c.Type, &c.PageCount, &c.LastReadPage, &lastReadAt, &isFav,
 			&rating, &c.TotalReadTime,
 		); err != nil {
 			continue

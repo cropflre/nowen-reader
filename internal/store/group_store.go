@@ -75,6 +75,7 @@ type GroupComicItem struct {
 	SortIndex     int     `json:"sortIndex"`
 	ReadingStatus string  `json:"readingStatus"`
 	LastReadAt    *string `json:"lastReadAt"`
+	ComicType     string  `json:"type"`
 }
 
 // GroupListOptions 分组列表查询选项。
@@ -211,7 +212,7 @@ func GetGroupByID(groupID int, contentType ...string) (*ComicGroupDetail, error)
 	comicSQL := `
 		SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
 		       c."lastReadPage", c."totalReadTime", c."readingStatus", c."lastReadAt",
-		       gi."sortIndex"
+		       gi."sortIndex", COALESCE(c."type", '') as "type"
 		FROM "ComicGroupItem" gi
 		JOIN "Comic" c ON c."id" = gi."comicId"
 		WHERE gi."groupId" = ?`
@@ -236,7 +237,7 @@ func GetGroupByID(groupID int, contentType ...string) (*ComicGroupDetail, error)
 		if err := rows.Scan(
 			&item.ComicID, &item.Filename, &item.Title, &item.PageCount, &item.FileSize,
 			&item.LastReadPage, &item.TotalReadTime, &item.ReadingStatus, &lastReadAt,
-			&item.SortIndex,
+			&item.SortIndex, &item.ComicType,
 		); err != nil {
 			continue
 		}

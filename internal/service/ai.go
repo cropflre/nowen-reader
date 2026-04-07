@@ -1304,6 +1304,107 @@ Requirements:
 }
 
 // ============================================================
+// Phase 1-3b: AI 智能标签建议（系列级增强版）
+// ============================================================
+
+// SuggestGroupTags 根据系列的元数据和所有卷的标题，让 AI 推荐合适的标签。
+// 相比单本 SuggestTags，增加了系列上下文（卷数、所有卷标题列表）。
+func SuggestGroupTags(cfg AIConfig, groupName, author, genre, description string, volumeTitles []string, contentType, targetLang string, existingTags []string) ([]string, error) {
+	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
+		return nil, fmt.Errorf("cloud AI not configured")
+	}
+
+	langName := "Chinese (简体中文)"
+	if targetLang == "en" {
+		langName = "English"
+	}
+
+	systemPrompt := fmt.Sprintf(`You are an expert %s librarian and tagger. Based on the given series metadata and volume titles, suggest relevant tags in %s.
+
+Requirements:
+- Suggest 5-10 tags that would help users discover and categorize this series
+- Tags should be concise (1-4 words each)
+- Include genre tags, theme tags, mood/style tags, and audience tags (e.g. target demographic)
+- Consider the overall series theme based on all volume titles
+- If existing tags are provided, suggest NEW tags that complement them (don't repeat existing ones)
+- Return ONLY a JSON array of tag strings, no extra text or markdown
+- Tags should be in %s`, contentType, langName, langName)
+
+	// 构建上下文
+	var parts []string
+	if groupName != "" {
+		parts = append(parts, fmt.Sprintf("Series Name: %s", groupName))
+	}
+	if author != "" {
+		parts = append(parts, fmt.Sprintf("Author: %s", author))
+	}
+	if genre != "" {
+		parts = append(parts, fmt.Sprintf("Genre: %s", genre))
+	}
+	if description != "" {
+		desc := description
+		if len(desc) > 500 {
+			desc = desc[:500] + "..."
+		}
+		parts = append(parts, fmt.Sprintf("Description: %s", desc))
+	}
+	if len(volumeTitles) > 0 {
+		// 最多列出前 20 个卷标题
+		titles := volumeTitles
+		if len(titles) > 20 {
+			titles = titles[:20]
+		}
+		parts = append(parts, fmt.Sprintf("Volume count: %d", len(volumeTitles)))
+		parts = append(parts, fmt.Sprintf("Volume titles:\n%s", strings.Join(titles, "\n")))
+	}
+	if len(existingTags) > 0 {
+		parts = append(parts, fmt.Sprintf("Existing tags (do NOT repeat): %s", strings.Join(existingTags, ", ")))
+	}
+
+	userPrompt := fmt.Sprintf("Suggest tags for this %s series:\n\n%s\n\nReturn a JSON array of tag strings.", contentType, strings.Join(parts, "\n"))
+
+	content, err := CallCloudLLM(cfg, systemPrompt, userPrompt, &LLMCallOptions{
+		Scenario:  "suggest_tags",
+		MaxTokens: 300,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理
+	content = strings.ReplaceAll(content, "```json", "")
+	content = strings.ReplaceAll(content, "```", "")
+	content = strings.TrimSpace(content)
+
+	// 提取 JSON 数组
+	start := strings.Index(content, "[")
+	end := strings.LastIndex(content, "]")
+	if start >= 0 && end > start {
+		content = content[start : end+1]
+	}
+
+	var tags []string
+	if err := json.Unmarshal([]byte(content), &tags); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	// 过滤掉已有标签
+	existingSet := make(map[string]bool)
+	for _, t := range existingTags {
+		existingSet[strings.ToLower(strings.TrimSpace(t))] = true
+	}
+	var newTags []string
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t != "" && !existingSet[strings.ToLower(t)] {
+			newTags = append(newTags, t)
+		}
+	}
+
+	return newTags, nil
+}
+
+// ============================================================
 // Phase 2-1: Vision 封面分析
 // ============================================================
 

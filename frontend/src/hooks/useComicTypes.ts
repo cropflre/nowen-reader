@@ -86,6 +86,7 @@ export interface GroupComicItem {
   sortIndex: number;
   readingStatus: string;
   lastReadAt: string | null;
+  type?: string; // "comic" | "novel"
 }
 
 export interface ComicGroupDetail {

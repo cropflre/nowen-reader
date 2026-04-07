@@ -122,6 +122,59 @@ export async function clearAllComicTags(comicId: string) {
   }
 }
 
+/** 带来源信息的标签 */
+export interface ComicTagWithSource {
+  id: number;
+  name: string;
+  color: string;
+  source: "manual" | "series" | "excluded";
+  sourceGroupId: number;
+}
+
+/**
+ * 获取漫画标签（含来源信息）
+ */
+export async function getComicTagsWithSource(comicId: string): Promise<ComicTagWithSource[]> {
+  try {
+    const res = await fetch(`/api/comics/${comicId}/tags-with-source`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.tags || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 排除系列同步的标签（在卷级别）
+ */
+export async function excludeSeriesTag(comicId: string, tagName: string, groupId: number) {
+  try {
+    await fetch(`/api/comics/${comicId}/tags/exclude-series`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tagName, groupId }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * 重新包含之前排除的系列标签
+ */
+export async function includeSeriesTag(comicId: string, tagName: string, groupId: number) {
+  try {
+    await fetch(`/api/comics/${comicId}/tags/include-series`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tagName, groupId }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * 批量操作
  * @param params - 额外参数（如 deleteFiles: true, tags: [...] 等）

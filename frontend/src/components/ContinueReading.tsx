@@ -79,9 +79,14 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
 
   if (loading || recentComics.length === 0) return null;
 
-  // 判断小说文件扩展名
-  const isNovel = (filename: string) =>
+  // 判断是否为小说：优先使用数据库 type 字段，fallback 到文件后缀
+  const isNovelByFilename = (filename: string) =>
     /\.(txt|epub|mobi|azw3|html|htm)$/i.test(filename || "");
+  const isNovel = (comic: ApiComic) => {
+    if (comic.type === "comic") return false;
+    if (comic.type === "novel") return true;
+    return isNovelByFilename(comic.filename);
+  };
 
   // 格式化阅读时间
   const formatTime = (dateStr: string) => {
@@ -138,7 +143,7 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
                 comic.pageCount > 0
                   ? Math.round((comic.lastReadPage / comic.pageCount) * 100)
                   : 0;
-              const novel = isNovel(comic.filename);
+              const novel = isNovel(comic);
               const href = novel ? `/novel/${comic.id}` : `/reader/${comic.id}`;
 
               return (

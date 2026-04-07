@@ -33,7 +33,26 @@ func GetRecommendations(limit int, excludeRead bool, contentType string, seed in
 		return []ScoredComic{}, nil
 	}
 
-	profile := buildUserProfile(allComics)
+	// 先按内容类型过滤候选集，再基于过滤后的内容构建用户画像
+	// 这样可以确保：1) 画像仅反映目标类型的用户偏好；2) 无匹配内容时直接返回空结果
+	var candidates []store.RecommendationComic
+	for _, comic := range allComics {
+		if contentType == "novel" && comic.Type != "novel" {
+			continue
+		}
+		if contentType == "comic" && comic.Type != "comic" {
+			continue
+		}
+		candidates = append(candidates, comic)
+	}
+
+	// 过滤后无匹配内容，直接返回空结果
+	if len(candidates) == 0 {
+		return []ScoredComic{}, nil
+	}
+
+	// 基于过滤后的候选集构建用户画像，确保推荐偏好与目标内容类型一致
+	profile := buildUserProfile(candidates)
 
 	// 根据 seed 创建随机源（seed==0 时不添加随机扰动）
 	var rng *rand.Rand
@@ -42,14 +61,7 @@ func GetRecommendations(limit int, excludeRead bool, contentType string, seed in
 	}
 
 	var scored []ScoredComic
-	for _, comic := range allComics {
-		// 按内容类型过滤
-		if contentType == "novel" && !IsNovelFilename(comic.Filename) {
-			continue
-		}
-		if contentType == "comic" && IsNovelFilename(comic.Filename) {
-			continue
-		}
+	for _, comic := range candidates {
 
 		if excludeRead && comic.LastReadPage > 0 && comic.PageCount > 0 {
 			progress := float64(comic.LastReadPage) / float64(comic.PageCount)

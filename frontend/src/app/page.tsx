@@ -841,13 +841,18 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
             <span className="text-sm text-amber-400">
               {t.home.mockDataNotice}{" "}
-              <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">
-                .zip
-              </code>{" "}
-              /{" "}
-              <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">
-                .cbz
-              </code>{" "}
+              {contentType === "novel" ? (
+                <>
+                  <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">.epub</code>{" / "}
+                  <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">.mobi</code>{" / "}
+                  <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">.txt</code>
+                </>
+              ) : (
+                <>
+                  <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">.zip</code>{" / "}
+                  <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">.cbz</code>
+                </>
+              )}{" "}
               {t.home.mockDataNotice2}{" "}
               <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-xs">
                 comics/
@@ -1215,12 +1220,12 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                 </div>
                 <h3 className="mb-2 text-lg font-medium text-foreground/80">
                   {apiTotal === 0
-                    ? t.home.emptyLibrary
-                    : t.home.noMatchingComics}
+                    ? (contentType === "novel" ? t.home.emptyNovelLibrary : t.home.emptyLibrary)
+                    : (contentType === "novel" ? t.home.noMatchingNovels : t.home.noMatchingComics)}
                 </h3>
                 <p className="max-w-sm text-sm text-muted mb-5">
                   {apiTotal === 0
-                    ? t.home.emptyLibraryHint
+                    ? (contentType === "novel" ? t.home.emptyNovelLibraryHint : t.home.emptyLibraryHint)
                     : t.home.noMatchingHint}
                 </p>
                 {/* 引导性操作按钮 */}
@@ -1600,7 +1605,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
           onRead={(id) => {
             const c = sortedComics.find((c) => c.id === id);
             if (c) {
-              const isNovel = c.filename && /\.(txt|epub|mobi|azw3|html|htm)$/i.test(c.filename);
+              const isNovel = c.type === "novel" || (!c.type && c.filename && /\.(txt|epub|mobi|azw3|html|htm)$/i.test(c.filename));
               router.push(isNovel ? `/novel/${id}` : `/reader/${id}`);
             }
           }}
