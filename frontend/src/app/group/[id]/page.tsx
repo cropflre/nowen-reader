@@ -25,6 +25,8 @@ import {
   RefreshCw,
   ArrowDownToLine,
   Loader2,
+  AlertTriangle,
+  Copy,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useToast } from "@/components/Toast";
@@ -43,6 +45,7 @@ import {
   fetchGroupTags,
   setGroupTags as setGroupTagsApi,
   syncGroupTags,
+  overrideGroupTagsToVolumes,
   aiSuggestGroupTags,
 } from "@/api/groups";
 import type { ComicGroupDetail, GroupComicItem } from "@/hooks/useComicTypes";
@@ -130,6 +133,10 @@ export default function GroupDetailPage() {
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>([]);
   const [aiSelectedTags, setAiSelectedTags] = useState<Set<string>>(new Set());
+
+  // 标签覆盖状态
+  const [overrideConfirm, setOverrideConfirm] = useState(false);
+  const [overrideLoading, setOverrideLoading] = useState(false);
 
   // 元数据编辑状态
   const [showMetadataEdit, setShowMetadataEdit] = useState(false);
@@ -299,6 +306,28 @@ export default function GroupDetailPage() {
       toast.error("同步失败");
     }
     setTagSyncing(false);
+  }, [group, toast]);
+
+  // 覆盖标签到所有卷（先清除卷标签再设置为系列标签）
+  const handleOverrideTagsToVolumes = useCallback(async () => {
+    if (!group) return;
+    setOverrideLoading(true);
+    try {
+      const result = await overrideGroupTagsToVolumes(group.id);
+      if (result?.success) {
+        toast.success(
+          `覆盖完成：${result.syncedVolumes}/${result.totalVolumes} 卷已更新，` +
+          `每卷设置 ${result.tagsSet} 个标签`
+        );
+      } else {
+        toast.error("覆盖标签失败");
+      }
+    } catch {
+      toast.error("覆盖标签失败");
+    } finally {
+      setOverrideLoading(false);
+      setOverrideConfirm(false);
+    }
   }, [group, toast]);
 
   // 保存编辑
@@ -752,19 +781,34 @@ export default function GroupDetailPage() {
                       )}
                     </h4>
                     {isAdmin && groupTags.length > 0 && (
-                      <button
-                        onClick={handleSyncTagsToVolumes}
-                        disabled={tagSyncing}
-                        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-accent/80 transition-colors hover:bg-accent/10"
-                        title="将系列标签完整同步到所有卷"
-                      >
-                        {tagSyncing ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3 w-3" />
-                        )}
-                        <span>同步到所有卷</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleSyncTagsToVolumes}
+                          disabled={tagSyncing}
+                          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-accent/80 transition-colors hover:bg-accent/10"
+                          title="将系列标签增量同步到所有卷（仅添加缺少的标签）"
+                        >
+                          {tagSyncing ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          <span>同步到所有卷</span>
+                        </button>
+                        <button
+                          onClick={() => setOverrideConfirm(true)}
+                          disabled={overrideLoading}
+                          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-orange-400/80 transition-colors hover:bg-orange-400/10"
+                          title="将系列标签覆盖到所有卷（先清除卷的所有标签，再设置为系列标签）"
+                        >
+                          {overrideLoading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                          <span>覆盖到所有卷</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -880,6 +924,42 @@ export default function GroupDetailPage() {
                       <ArrowDownToLine className="h-3 w-3" />
                       添加/删除标签时自动同步到系列内所有卷
                     </p>
+                  )}
+
+                  {/* 覆盖确认对话框 */}
+                  {overrideConfirm && (
+                    <div className="mt-3 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-orange-400">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>确认覆盖标签</span>
+                      </div>
+                      <p className="mb-3 text-[11px] text-muted/70 leading-relaxed">
+                        此操作将<strong className="text-orange-400">清除</strong>系列内所有卷的现有标签，
+                        然后将当前系列的 <strong className="text-orange-400">{groupTags.length}</strong> 个标签设置到每一卷。
+                        此操作不可撤销，请确认是否继续？
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleOverrideTagsToVolumes}
+                          disabled={overrideLoading}
+                          className="flex items-center gap-1.5 rounded-md bg-orange-500/20 px-3 py-1 text-xs font-medium text-orange-300 transition-colors hover:bg-orange-500/30 disabled:opacity-40"
+                        >
+                          {overrideLoading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Check className="h-3 w-3" />
+                          )}
+                          {overrideLoading ? "覆盖中..." : "确认覆盖"}
+                        </button>
+                        <button
+                          onClick={() => setOverrideConfirm(false)}
+                          disabled={overrideLoading}
+                          className="rounded-md px-3 py-1 text-xs text-muted transition-colors hover:text-foreground disabled:opacity-40"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

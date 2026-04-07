@@ -1626,6 +1626,51 @@ func SyncGroupTagsToVolumes(groupID int) error {
 	return nil
 }
 
+// OverrideGroupTagsToVolumes 将系列级标签覆盖到系列内所有卷。
+// 先清除卷的所有标签，再设置为系列标签，返回处理统计信息。
+func OverrideGroupTagsToVolumes(groupID int) (totalVolumes, syncedVolumes, tagsSet int, err error) {
+	group, e := GetGroupByID(groupID)
+	if e != nil {
+		err = e
+		return
+	}
+	if group == nil || len(group.Comics) == 0 {
+		return
+	}
+
+	// 获取系列级标签名称
+	groupTags, e := GetGroupTags(groupID)
+	if e != nil {
+		err = e
+		return
+	}
+
+	var tagNames []string
+	for _, t := range groupTags {
+		tagNames = append(tagNames, t.Name)
+	}
+
+	totalVolumes = len(group.Comics)
+
+	// 对每本漫画：先清除所有标签，再添加系列标签
+	for _, comic := range group.Comics {
+		if e := ClearAllTagsFromComic(comic.ComicID); e != nil {
+			log.Printf("[OverrideGroupTags] 清除漫画 %s 标签失败: %v", comic.ComicID, e)
+			continue
+		}
+		if len(tagNames) > 0 {
+			if e := AddTagsToComic(comic.ComicID, tagNames); e != nil {
+				log.Printf("[OverrideGroupTags] 设置漫画 %s 标签失败: %v", comic.ComicID, e)
+				continue
+			}
+		}
+		syncedVolumes++
+	}
+	tagsSet = len(tagNames)
+
+	return
+}
+
 // ============================================================
 // P3: 按话/卷分类模式 — 扫描后自动分组
 // ============================================================

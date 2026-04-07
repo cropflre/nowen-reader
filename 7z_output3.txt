@@ -1,0 +1,10 @@
+
+7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12
+
+Scanning the drive for archives:
+1 file, 53400012 bytes (51 MiB)
+
+Listing archive: C:\UGit\nowen-reader\comics\名侦探柯南(单页版)\名侦探柯南 014卷.rar
+
+
+Errors: 1

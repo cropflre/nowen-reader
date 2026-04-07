@@ -502,6 +502,28 @@ func (h *GroupHandler) SyncGroupTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// POST /api/groups/:id/override-tags — 将系列标签覆盖到所有卷（先清除卷标签再设置）
+func (h *GroupHandler) OverrideGroupTags(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列ID"})
+		return
+	}
+
+	totalVolumes, syncedVolumes, tagsSet, err := store.OverrideGroupTagsToVolumes(id)
+	if err != nil {
+		log.Printf("[API] OverrideGroupTags error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "覆盖标签到所有卷失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"totalVolumes":  totalVolumes,
+		"syncedVolumes": syncedVolumes,
+		"tagsSet":       tagsSet,
+	})
+}
+
 // POST /api/groups/:id/ai-suggest-tags — AI 智能建议系列标签
 func (h *GroupHandler) AISuggestTags(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))

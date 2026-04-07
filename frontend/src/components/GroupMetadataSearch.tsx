@@ -86,7 +86,7 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
 
   // 选择性字段应用（标题字段默认不选中，避免意外覆盖系列名称）
   const [selectedFields, setSelectedFields] = useState<Set<string>>(
-    new Set(APPLICABLE_FIELDS.filter((f) => !f.defaultOff).map((f) => f.id))
+    new Set(APPLICABLE_FIELDS.filter((f) => !("defaultOff" in f && f.defaultOff)).map((f) => f.id))
   );
   const [showFieldSelector, setShowFieldSelector] = useState(false);
 

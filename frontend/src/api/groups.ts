@@ -390,6 +390,29 @@ export async function syncGroupTags(groupId: number): Promise<TagFullSyncResult 
   }
 }
 
+/** 标签覆盖结果 */
+export interface TagOverrideResult {
+  success: boolean;
+  totalVolumes: number;
+  syncedVolumes: number;
+  tagsSet: number;
+}
+
+/** 将系列标签覆盖到所有卷（先清除卷标签再设置为系列标签） */
+export async function overrideGroupTagsToVolumes(groupId: number): Promise<TagOverrideResult | null> {
+  try {
+    const res = await fetch(`/api/groups/${groupId}/override-tags`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** AI 建议系列标签 */
 export async function aiSuggestGroupTags(groupId: number, targetLang: string = "zh"): Promise<{ success: boolean; suggestedTags: string[] } | null> {
   try {
