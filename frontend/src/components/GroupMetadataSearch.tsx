@@ -83,6 +83,7 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
   const [showSourceFilter, setShowSourceFilter] = useState(false);
   const [overwrite, setOverwrite] = useState(true);
   const [syncTags, setSyncTags] = useState(true);
+  const [syncToVolumes, setSyncToVolumes] = useState(true);
 
   // 选择性字段应用（标题字段默认不选中，避免意外覆盖系列名称）
   const [selectedFields, setSelectedFields] = useState<Set<string>>(
@@ -159,6 +160,7 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
           fields: Array.from(selectedFields),
           overwrite,
           syncTags,
+          syncToVolumes,
         }),
       });
       const data = await res.json();
@@ -224,6 +226,7 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
           fields: Array.from(selectedFields),
           overwrite,
           syncTags,
+          syncToVolumes,
         }),
       });
       const data = await res.json();
@@ -322,6 +325,15 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
             className="h-3.5 w-3.5 rounded border-border accent-accent"
           />
           <span className="text-xs text-muted">同步标签到所有卷</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={syncToVolumes}
+            onChange={(e) => setSyncToVolumes(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-border accent-accent"
+          />
+          <span className="text-xs text-muted">同步元数据到所有卷</span>
         </label>
         <button
           onClick={() => setShowFieldSelector(!showFieldSelector)}

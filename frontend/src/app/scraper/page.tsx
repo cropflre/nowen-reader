@@ -148,6 +148,20 @@ import {
   startGroupBatchScrape,
   cancelGroupBatchScrape,
   clearGroupBatchDone,
+  // 批量在线刮削
+  openGroupBatchScrapeDialog,
+  closeGroupBatchScrapeDialog,
+  setGroupBatchScrapeMode,
+  toggleGroupBatchScrapeField,
+  setGroupBatchScrapeAllFields,
+  setGroupBatchScrapeOverwrite,
+  setGroupBatchScrapeSyncTags,
+  setGroupBatchScrapeSyncToVolumes,
+  toggleGroupBatchScrapeSource,
+  previewGroupBatchScrape,
+  applyGroupBatchScrape,
+  clearGroupBatchScrapeResult,
+  BATCH_SCRAPE_FIELDS,
   // 系列分页
   setGroupPage,
   setGroupPageSize,
@@ -158,7 +172,7 @@ import {
   clearCleanupResult,
   clearDirtyIssues,
 } from "@/lib/scraper-store";
-import type { MetaFilter, LibraryItem, BatchEditNameEntry, LibrarySortBy, AIChatMessage, CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion, MetadataFolderNode, MetadataFolderFile, ViewMode, ScraperGroup, GroupMetaFilter, GroupSortBy, GroupDirtyIssue, GroupCleanupResult } from "@/lib/scraper-store";
+import type { MetaFilter, LibraryItem, BatchEditNameEntry, LibrarySortBy, AIChatMessage, CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion, MetadataFolderNode, MetadataFolderFile, ViewMode, ScraperGroup, GroupMetaFilter, GroupSortBy, GroupDirtyIssue, GroupCleanupResult, BatchScrapePreviewItem, BatchScrapeResultSummary } from "@/lib/scraper-store";
 import { FolderOpen, FolderPlus, Layers, Plus, Minus, FolderTree, Folder, List } from "lucide-react";
 
 /* ── 文件夹树搜索/筛选辅助函数 ── */
@@ -2354,6 +2368,18 @@ export default function ScraperPage() {
     groupBatchRunning,
     groupBatchProgress,
     groupBatchDone,
+    // 批量在线刮削
+    groupBatchScrapeDialogOpen,
+    groupBatchScrapeMode,
+    groupBatchScrapeFields,
+    groupBatchScrapeOverwrite,
+    groupBatchScrapeSyncTags,
+    groupBatchScrapeSyncToVolumes,
+    groupBatchScrapeSources,
+    groupBatchScrapePreview,
+    groupBatchScrapePreviewLoading,
+    groupBatchScrapeApplying,
+    groupBatchScrapeResult,
     // 脏数据检测与清理
     dirtyIssues,
     dirtyStats,
@@ -2807,6 +2833,14 @@ export default function ScraperPage() {
                         >
                           <Brain className="h-3 w-3" />
                           AI 批量刮削 ({scraperGroupSelectedIds.size})
+                        </button>
+                        <button
+                          onClick={() => openGroupBatchScrapeDialog("online")}
+                          disabled={groupBatchRunning || groupBatchScrapeApplying}
+                          className="flex items-center gap-1 rounded-md bg-accent/20 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
+                        >
+                          <Database className="h-3 w-3" />
+                          批量在线刮削 ({scraperGroupSelectedIds.size})
                         </button>
                       </>
                     )}
@@ -4089,6 +4123,294 @@ export default function ScraperPage() {
           selectedIds={selectedIds}
           onClose={closeAddToGroupDialog}
         />
+      )}
+
+      {/* ── 批量在线刮削对话框 ── */}
+      {groupBatchScrapeDialogOpen && scraperGroupSelectedIds.size > 0 && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 animate-backdrop-in" onClick={() => closeGroupBatchScrapeDialog()}>
+          <div className="w-[95vw] max-w-2xl rounded-2xl border border-border bg-card shadow-2xl animate-modal-in max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* 标题栏 */}
+            <div className="flex items-center justify-between border-b border-border/30 px-5 py-3 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-accent" />
+                <h3 className="text-base font-semibold text-foreground">
+                  批量在线刮削
+                </h3>
+                <span className="text-xs text-muted bg-accent/10 px-2 py-0.5 rounded-full">
+                  {scraperGroupSelectedIds.size} 个系列
+                </span>
+              </div>
+              <button onClick={() => closeGroupBatchScrapeDialog()} className="rounded-lg p-1.5 text-muted hover:text-foreground hover:bg-card-hover transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* 配置区域 */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* 数据源选择 */}
+              <div>
+                <label className="text-xs font-medium text-foreground/80 mb-1.5 block">数据源</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: "anilist", name: "AniList", icon: "🅰" },
+                    { id: "bangumi", name: "Bangumi", icon: "🅱" },
+                    { id: "mangadex", name: "MangaDex", icon: "📖" },
+                    { id: "mangaupdates", name: "MangaUpdates", icon: "📋" },
+                    { id: "kitsu", name: "Kitsu", icon: "🦊" },
+                  ].map((src) => (
+                    <button
+                      key={src.id}
+                      onClick={() => toggleGroupBatchScrapeSource(src.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors ${
+                        groupBatchScrapeSources.includes(src.id)
+                          ? "bg-accent/20 text-accent ring-1 ring-accent/30"
+                          : "bg-card-hover text-muted opacity-50"
+                      }`}
+                    >
+                      <span>{src.icon}</span>
+                      <span>{src.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 应用字段选择 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-foreground/80">应用字段</label>
+                  <button
+                    onClick={() => setGroupBatchScrapeAllFields(groupBatchScrapeFields.size !== BATCH_SCRAPE_FIELDS.length)}
+                    className="text-[10px] text-accent/70 hover:text-accent"
+                  >
+                    {groupBatchScrapeFields.size === BATCH_SCRAPE_FIELDS.length ? "取消全选" : "全选"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {BATCH_SCRAPE_FIELDS.map((field) => (
+                    <button
+                      key={field.id}
+                      onClick={() => toggleGroupBatchScrapeField(field.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                        groupBatchScrapeFields.has(field.id)
+                          ? field.id === "title"
+                            ? "bg-amber-500/20 text-amber-500 ring-1 ring-amber-500/30"
+                            : "bg-accent/20 text-accent"
+                          : "bg-card-hover text-muted opacity-50"
+                      }`}
+                      title={field.id === "title" ? "⚠️ 启用后将覆盖系列名称" : undefined}
+                    >
+                      {field.id === "title" && groupBatchScrapeFields.has(field.id) ? `⚠ ${field.label}` : field.label}
+                    </button>
+                  ))}
+                </div>
+                {groupBatchScrapeFields.has("title") && (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-amber-500">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>已启用标题字段：系列名称将被刮削结果替换</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 选项 */}
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={groupBatchScrapeOverwrite}
+                    onChange={(e) => setGroupBatchScrapeOverwrite(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-border accent-accent"
+                  />
+                  <span className="text-xs text-muted">覆盖现有数据</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={groupBatchScrapeSyncTags}
+                    onChange={(e) => setGroupBatchScrapeSyncTags(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-border accent-accent"
+                  />
+                  <span className="text-xs text-muted">同步标签到所有卷</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={groupBatchScrapeSyncToVolumes}
+                    onChange={(e) => setGroupBatchScrapeSyncToVolumes(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-border accent-accent"
+                  />
+                  <span className="text-xs text-muted">同步元数据到所有卷</span>
+                </label>
+              </div>
+
+              {/* 预览结果 */}
+              {groupBatchScrapePreviewLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                  <span className="ml-2 text-sm text-muted">正在搜索元数据...</span>
+                </div>
+              )}
+
+              {groupBatchScrapePreview && !groupBatchScrapePreviewLoading && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-medium text-foreground/80">
+                      预览结果 ({groupBatchScrapePreview.filter((r) => r.success).length}/{groupBatchScrapePreview.length} 找到匹配)
+                    </h4>
+                  </div>
+                  <div className="max-h-[300px] overflow-y-auto space-y-1.5 rounded-xl border border-border/30 p-2">
+                    {groupBatchScrapePreview.map((item) => (
+                      <div
+                        key={item.groupId}
+                        className={`rounded-lg p-2.5 text-xs ${
+                          item.success
+                            ? "bg-emerald-500/5 border border-emerald-500/20"
+                            : "bg-red-500/5 border border-red-500/20"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {item.success ? (
+                              <CheckCircle className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
+                            ) : (
+                              <XCircle className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+                            )}
+                            <span className="font-medium text-foreground truncate">{item.groupName}</span>
+                            <span className="text-muted/50 flex-shrink-0">{item.volumes} 卷</span>
+                          </div>
+                          {item.metadata?.source && (
+                            <span className="text-[10px] text-accent/60 bg-accent/10 px-1.5 py-0.5 rounded flex-shrink-0">
+                              {item.metadata.source}
+                            </span>
+                          )}
+                        </div>
+                        {item.success && item.metadata && (
+                          <div className="mt-1.5 pl-5.5 space-y-0.5 text-[11px]">
+                            {item.metadata.title && groupBatchScrapeFields.has("title") && (
+                              <div className="flex gap-1.5">
+                                <span className="text-muted/50 w-10 flex-shrink-0">标题</span>
+                                <span className="text-foreground/70 truncate">{item.metadata.title}</span>
+                              </div>
+                            )}
+                            {item.metadata.author && groupBatchScrapeFields.has("author") && (
+                              <div className="flex gap-1.5">
+                                <span className="text-muted/50 w-10 flex-shrink-0">作者</span>
+                                <span className="text-foreground/70 truncate">{item.metadata.author}</span>
+                              </div>
+                            )}
+                            {item.metadata.genre && groupBatchScrapeFields.has("genre") && (
+                              <div className="flex gap-1.5">
+                                <span className="text-muted/50 w-10 flex-shrink-0">类型</span>
+                                <span className="text-foreground/70 truncate">{item.metadata.genre}</span>
+                              </div>
+                            )}
+                            {item.metadata.description && groupBatchScrapeFields.has("description") && (
+                              <div className="flex gap-1.5">
+                                <span className="text-muted/50 w-10 flex-shrink-0">简介</span>
+                                <span className="text-foreground/70 line-clamp-1">{item.metadata.description}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!item.success && item.error && (
+                          <div className="mt-1 pl-5.5 text-[11px] text-red-400/70">{item.error}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 应用结果 */}
+              {groupBatchScrapeResult && (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-emerald-400" />
+                    <span className="text-sm font-medium text-emerald-400">批量刮削完成</span>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="text-foreground/70">总计: {groupBatchScrapeResult.total}</span>
+                    <span className="text-emerald-400">成功: {groupBatchScrapeResult.success}</span>
+                    {groupBatchScrapeResult.failed > 0 && (
+                      <span className="text-red-400">失败: {groupBatchScrapeResult.failed}</span>
+                    )}
+                    <span className="text-accent">已应用: {groupBatchScrapeResult.applied}</span>
+                  </div>
+                  {/* 失败详情 */}
+                  {groupBatchScrapeResult.results.filter((r) => !r.success).length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <span className="text-[11px] text-red-400/70">失败详情:</span>
+                      {groupBatchScrapeResult.results.filter((r) => !r.success).map((r) => (
+                        <div key={r.groupId} className="text-[11px] text-red-400/60 pl-2">
+                          • {r.groupName}: {r.error}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 底部操作栏 */}
+            <div className="flex items-center justify-between border-t border-border/30 px-5 py-3 flex-shrink-0">
+              <div className="text-xs text-muted">
+                {groupBatchScrapePreview
+                  ? `${groupBatchScrapePreview.filter((r) => r.success).length} 个系列找到匹配结果`
+                  : `将为 ${scraperGroupSelectedIds.size} 个系列搜索在线元数据`}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => closeGroupBatchScrapeDialog()}
+                  className="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+                >
+                  关闭
+                </button>
+                {!groupBatchScrapeResult && (
+                  <>
+                    {!groupBatchScrapePreview ? (
+                      <button
+                        onClick={() => previewGroupBatchScrape(Array.from(scraperGroupSelectedIds))}
+                        disabled={groupBatchScrapePreviewLoading || groupBatchScrapeSources.length === 0}
+                        className="flex items-center gap-1.5 rounded-lg bg-accent/20 px-4 py-1.5 text-xs font-medium text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
+                      >
+                        {groupBatchScrapePreviewLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                        预览
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => applyGroupBatchScrape(Array.from(scraperGroupSelectedIds))}
+                        disabled={groupBatchScrapeApplying || groupBatchScrapePreview.filter((r) => r.success).length === 0}
+                        className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-xs font-medium text-white hover:opacity-90 transition-colors disabled:opacity-50"
+                      >
+                        {groupBatchScrapeApplying ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                        确认应用 ({groupBatchScrapePreview.filter((r) => r.success).length})
+                      </button>
+                    )}
+                  </>
+                )}
+                {groupBatchScrapeResult && (
+                  <button
+                    onClick={() => {
+                      closeGroupBatchScrapeDialog();
+                      clearGroupSelection();
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-4 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    完成
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── 引导遮罩 ── */}

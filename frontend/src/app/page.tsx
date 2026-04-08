@@ -321,6 +321,8 @@ export default function Home() {
     localStorage.setItem("showGroupView", String(showGroupView));
   }, [showGroupView]);
 
+  const { categories, groupCategories, refetch: refetchCategories, refetchGroupCategories, initCategories } = useCategories();
+
   // 加载分组数据（按 contentType 过滤）
   const loadGroups = useCallback(async () => {
     const [grps, gmap] = await Promise.all([
@@ -329,7 +331,11 @@ export default function Home() {
     ]);
     setGroups(grps);
     setGroupedComicMap(gmap);
-  }, [contentType, selectedCategory, selectedTags]);
+    // 分组数据变化后刷新系列级分类统计
+    if (showGroupView) {
+      refetchGroupCategories(contentType || undefined);
+    }
+  }, [contentType, selectedCategory, selectedTags, showGroupView, refetchGroupCategories]);
 
   // 分组视图分页计算
   const groupTotalPages = Math.max(1, Math.ceil(groups.length / GROUP_PAGE_SIZE));
@@ -407,7 +413,15 @@ export default function Home() {
     contentType: contentType || undefined,
     excludeGrouped: showGroupView || undefined,
   });
-  const { categories, refetch: refetchCategories, initCategories } = useCategories();
+  // 系列视图下加载系列级分类统计
+  useEffect(() => {
+    if (showGroupView) {
+      refetchGroupCategories(contentType || undefined);
+    }
+  }, [showGroupView, contentType, refetchGroupCategories]);
+
+  // 系列级分类：只显示有关联系列的分类（count > 0）
+  const effectiveCategories = showGroupView ? groupCategories.filter(c => c.count > 0) : categories;
 
   // 根据当前 contentType 决定分页总页数
   const effectiveTotalPages = showGroupView ? groupTotalPages : totalPages;
@@ -778,12 +792,13 @@ export default function Home() {
       exitBatchMode();
       await refetch();
       refetchCategories();
+      if (showGroupView) refetchGroupCategories(contentType || undefined);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "AI category failed");
     } finally {
       setAiCategoryLoading(false);
     }
-  }, [selectedIds, exitBatchMode, refetch, refetchCategories, toast, t, locale]);
+  }, [selectedIds, exitBatchMode, refetch, refetchCategories, refetchGroupCategories, showGroupView, contentType, toast, t, locale]);
 
   const handleBatchSetCategory = useCallback(
     async (categorySlugs: string[]) => {
@@ -791,8 +806,9 @@ export default function Home() {
       exitBatchMode();
       await refetch();
       refetchCategories();
+      if (showGroupView) refetchGroupCategories(contentType || undefined);
     },
-    [selectedIds, exitBatchMode, refetch, refetchCategories]
+    [selectedIds, exitBatchMode, refetch, refetchCategories, refetchGroupCategories, showGroupView, contentType]
   );
 
   // 合并为分组
@@ -1106,10 +1122,10 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             </div>
 
             {/* Category Filter */}
-            {categories.length > 0 && (
+            {effectiveCategories.length > 0 && (
               <div className="mt-4">
                 <CategoryFilter
-                  categories={categories}
+                  categories={effectiveCategories}
                   selectedCategory={selectedCategory}
                   onCategorySelect={setSelectedCategory}
                 />

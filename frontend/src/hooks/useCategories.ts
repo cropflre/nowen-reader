@@ -8,6 +8,7 @@ import type { ApiCategory } from "./useComicTypes";
  */
 export function useCategories() {
   const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [groupCategories, setGroupCategories] = useState<ApiCategory[]>([]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -15,6 +16,21 @@ export function useCategories() {
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories || []);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // 获取系列级分类统计（用于系列视图的分类筛选）
+  const fetchGroupCategories = useCallback(async (contentType?: string) => {
+    try {
+      const params = new URLSearchParams({ scope: "groups" });
+      if (contentType) params.set("contentType", contentType);
+      const res = await fetch(`/api/categories?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGroupCategories(data.categories || []);
       }
     } catch {
       // ignore
@@ -42,5 +58,11 @@ export function useCategories() {
     fetchCategories();
   }, [fetchCategories]);
 
-  return { categories, refetch: fetchCategories, initCategories };
+  return {
+    categories,
+    groupCategories,
+    refetch: fetchCategories,
+    refetchGroupCategories: fetchGroupCategories,
+    initCategories,
+  };
 }

@@ -16,7 +16,23 @@ func NewCategoryHandler() *CategoryHandler {
 }
 
 // GET /api/categories — List all categories
+// 支持查询参数:
+//   - scope=groups: 返回基于系列(GroupCategory)的分类统计，而非基于漫画(ComicCategory)的统计
+//   - contentType=comic|novel: 配合 scope=groups 使用，按内容类型过滤
 func (h *CategoryHandler) ListCategories(c *gin.Context) {
+	scope := c.Query("scope")
+
+	if scope == "groups" {
+		contentType := c.Query("contentType")
+		cats, err := store.GetGroupCategoryStats(contentType)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch group categories"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"categories": cats})
+		return
+	}
+
 	cats, err := store.GetAllCategories()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch categories"})

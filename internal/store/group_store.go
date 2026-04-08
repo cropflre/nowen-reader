@@ -1713,6 +1713,59 @@ func OverrideGroupTagsToVolumes(groupID int) (totalVolumes, syncedVolumes, tagsS
 // P5: 系列级分类管理
 // ============================================================
 
+// GetGroupCategoryStats 返回所有分类及其关联的系列数量（用于系列视图的分类筛选）。
+// 可选按 contentType 过滤：只统计包含指定类型漫画的系列。
+func GetGroupCategoryStats(contentType string) ([]CategoryWithCount, error) {
+	var query string
+	var args []interface{}
+
+	if contentType == "comic" || contentType == "novel" {
+		// 只统计包含指定类型漫画的系列
+		query = `
+			SELECT cat."id", cat."name", cat."slug", cat."icon",
+			       COUNT(DISTINCT gc."groupId") as cnt
+			FROM "Category" cat
+			LEFT JOIN "GroupCategory" gc ON gc."categoryId" = cat."id"
+			    AND gc."groupId" IN (
+			        SELECT DISTINCT gi."groupId" FROM "ComicGroupItem" gi
+			        JOIN "Comic" c ON c."id" = gi."comicId"
+			        WHERE c."type" = ?
+			    )
+			GROUP BY cat."id"
+			ORDER BY cat."sortOrder" ASC
+		`
+		args = append(args, contentType)
+	} else {
+		query = `
+			SELECT cat."id", cat."name", cat."slug", cat."icon",
+			       COUNT(DISTINCT gc."groupId") as cnt
+			FROM "Category" cat
+			LEFT JOIN "GroupCategory" gc ON gc."categoryId" = cat."id"
+			GROUP BY cat."id"
+			ORDER BY cat."sortOrder" ASC
+		`
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cats []CategoryWithCount
+	for rows.Next() {
+		var c CategoryWithCount
+		if err := rows.Scan(&c.ID, &c.Name, &c.Slug, &c.Icon, &c.Count); err != nil {
+			continue
+		}
+		cats = append(cats, c)
+	}
+	if cats == nil {
+		cats = []CategoryWithCount{}
+	}
+	return cats, nil
+}
+
 // GetGroupCategories 获取系列的所有分类。
 func GetGroupCategories(groupID int) ([]CategoryWithCount, error) {
 	rows, err := db.Query(`

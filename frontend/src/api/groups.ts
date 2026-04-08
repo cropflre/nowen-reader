@@ -525,3 +525,67 @@ export async function autoGroupByDirectory(): Promise<{ success: boolean; create
     return { success: false, created: 0 };
   }
 }
+
+// ============================================================
+// P6: 批量刮削
+// ============================================================
+
+/** 批量刮削单个结果 */
+export interface BatchScrapeResultItem {
+  groupId: number;
+  groupName: string;
+  success: boolean;
+  error?: string;
+  metadata?: {
+    title?: string;
+    author?: string;
+    publisher?: string;
+    year?: number;
+    description?: string;
+    language?: string;
+    genre?: string;
+    coverUrl?: string;
+    source: string;
+  };
+  applied: boolean;
+  volumes: number;
+}
+
+/** 批量刮削响应 */
+export interface BatchScrapeResponse {
+  results: BatchScrapeResultItem[];
+  total: number;
+  success: number;
+  failed: number;
+  applied: number;
+}
+
+/** 批量刮削参数 */
+export interface BatchScrapeParams {
+  groupIds: number[];
+  sources?: string[];
+  lang?: string;
+  fields?: string[];
+  overwrite?: boolean;
+  syncTags?: boolean;
+  syncToVolumes?: boolean;
+  autoApply?: boolean;
+  dryRun?: boolean;
+}
+
+/** 批量刮削系列元数据 */
+export async function batchScrapeGroups(params: BatchScrapeParams): Promise<BatchScrapeResponse | null> {
+  try {
+    const res = await fetch("/api/groups/batch-scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

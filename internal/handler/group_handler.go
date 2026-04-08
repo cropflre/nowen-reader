@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -876,10 +877,11 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 	}
 
 	var body struct {
-		Metadata  service.ComicMetadata `json:"metadata"`
-		Fields    []string              `json:"fields"`
-		Overwrite bool                  `json:"overwrite"`
-		SyncTags  bool                  `json:"syncTags"`
+		Metadata      service.ComicMetadata `json:"metadata"`
+		Fields        []string              `json:"fields"`
+		Overwrite     bool                  `json:"overwrite"`
+		SyncTags      bool                  `json:"syncTags"`
+		SyncToVolumes bool                  `json:"syncToVolumes"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
@@ -975,11 +977,119 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 		go service.DownloadGroupCover(id, meta.CoverURL)
 	}
 
+	// 同步元数据到所有卷
+	if body.SyncToVolumes {
+		go func() {
+			if err := syncGroupMetadataToVolumes(id, meta, fieldsSet, body.Overwrite); err != nil {
+				log.Printf("[API] syncGroupMetadataToVolumes error for group %d: %v", id, err)
+			}
+		}()
+	}
+
 	updated, _ := store.GetGroupByID(id)
 	c.JSON(http.StatusOK, gin.H{"success": true, "group": updated})
 }
 
-// POST /api/groups/:id/ai-recognize — AI 智能识别系列元数据
+// syncGroupMetadataToVolumes 将刮削的元数据同步到系列下所有卷
+func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsSet map[string]bool, overwrite bool) error {
+	group, err := store.GetGroupByID(groupID)
+	if err != nil || group == nil || len(group.Comics) == 0 {
+		return fmt.Errorf("系列不存在或没有漫画")
+	}
+
+	applyAll := len(fieldsSet) == 0
+	shouldApply := func(field string) bool {
+		return applyAll || fieldsSet[field]
+	}
+
+	for _, comic := range group.Comics {
+		updates := map[string]interface{}{}
+
+		if meta.Author != "" && shouldApply("author") {
+			updates["author"] = meta.Author
+		}
+		if meta.Publisher != "" && shouldApply("publisher") {
+			updates["publisher"] = meta.Publisher
+		}
+		if meta.Language != "" && shouldApply("language") {
+			updates["language"] = meta.Language
+		}
+		if meta.Genre != "" && shouldApply("genre") {
+			updates["genre"] = meta.Genre
+		}
+		if meta.Description != "" && shouldApply("description") {
+			updates["description"] = meta.Description
+		}
+		if meta.Year != nil && shouldApply("year") {
+			updates["year"] = *meta.Year
+		}
+
+		if !overwrite {
+			// 非覆盖模式：只填充空字段，需要先查询当前值
+			updates = filterEmptyFieldsOnly(comic.ComicID, updates)
+		}
+
+		if len(updates) > 0 {
+			if err := store.UpdateComicFields(comic.ComicID, updates); err != nil {
+				log.Printf("[API] syncGroupMetadataToVolumes: failed to update comic %s: %v", comic.ComicID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// filterEmptyFieldsOnly 过滤掉漫画中已有值的字段，只保留空字段的更新
+func filterEmptyFieldsOnly(comicID string, updates map[string]interface{}) map[string]interface{} {
+	if len(updates) == 0 {
+		return updates
+	}
+
+	var author, publisher, language, genre, description string
+	var year *int
+	err := store.DB().QueryRow(`
+		SELECT COALESCE("author",''), COALESCE("publisher",''), COALESCE("language",''),
+		       COALESCE("genre",''), COALESCE("description",''), "year"
+		FROM "Comic" WHERE "id" = ?
+	`, comicID).Scan(&author, &publisher, &language, &genre, &description, &year)
+	if err != nil {
+		return updates // 查询失败时保留所有更新
+	}
+
+	filtered := map[string]interface{}{}
+	for k, v := range updates {
+		switch k {
+		case "author":
+			if author == "" {
+				filtered[k] = v
+			}
+		case "publisher":
+			if publisher == "" {
+				filtered[k] = v
+			}
+		case "language":
+			if language == "" {
+				filtered[k] = v
+			}
+		case "genre":
+			if genre == "" {
+				filtered[k] = v
+			}
+		case "description":
+			if description == "" {
+				filtered[k] = v
+			}
+		case "year":
+			if year == nil {
+				filtered[k] = v
+			}
+		default:
+			filtered[k] = v
+		}
+	}
+	return filtered
+}
+
+// POST /api/groups/:id/ai-recognize
 func (h *GroupHandler) AIRecognize(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -1195,4 +1305,211 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================================
+// POST /api/groups/batch-scrape — 批量刮削系列元数据
+// ============================================================
+
+// BatchScrapeResult 单个系列的批量刮削结果
+type BatchScrapeResult struct {
+	GroupID   int                    `json:"groupId"`
+	GroupName string                 `json:"groupName"`
+	Success   bool                   `json:"success"`
+	Error     string                 `json:"error,omitempty"`
+	Metadata  *service.ComicMetadata `json:"metadata,omitempty"`
+	Applied   bool                   `json:"applied"`
+	Volumes   int                    `json:"volumes"`
+}
+
+func (h *GroupHandler) BatchScrape(c *gin.Context) {
+	var body struct {
+		GroupIDs      []int    `json:"groupIds"`
+		Sources       []string `json:"sources"`
+		Lang          string   `json:"lang"`
+		Fields        []string `json:"fields"`
+		Overwrite     bool     `json:"overwrite"`
+		SyncTags      bool     `json:"syncTags"`
+		SyncToVolumes bool     `json:"syncToVolumes"`
+		AutoApply     bool     `json:"autoApply"`
+		DryRun        bool     `json:"dryRun"` // 预览模式，不实际应用
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+		return
+	}
+
+	if len(body.GroupIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请选择至少一个系列"})
+		return
+	}
+	if len(body.GroupIDs) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "单次最多处理 100 个系列"})
+		return
+	}
+
+	if body.Lang == "" {
+		body.Lang = "zh"
+	}
+	if len(body.Sources) == 0 {
+		body.Sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
+	}
+
+	fieldsSet := make(map[string]bool)
+	for _, f := range body.Fields {
+		fieldsSet[f] = true
+	}
+
+	results := make([]BatchScrapeResult, 0, len(body.GroupIDs))
+
+	for _, gid := range body.GroupIDs {
+		result := BatchScrapeResult{GroupID: gid}
+
+		group, err := store.GetGroupByID(gid)
+		if err != nil || group == nil {
+			result.Error = "系列不存在"
+			results = append(results, result)
+			continue
+		}
+		result.GroupName = group.Name
+		result.Volumes = len(group.Comics)
+
+		// 搜索元数据
+		metaResults := service.SearchMetadata(group.Name, body.Sources, body.Lang, "comic")
+		if len(metaResults) == 0 {
+			result.Error = "未找到匹配的元数据"
+			results = append(results, result)
+			continue
+		}
+
+		// 取第一个结果（最佳匹配）
+		bestMatch := metaResults[0]
+		result.Metadata = &bestMatch
+		result.Success = true
+
+		// 预览模式不实际应用
+		if body.DryRun {
+			results = append(results, result)
+			continue
+		}
+
+		// 自动应用模式
+		if body.AutoApply {
+			applyAll := len(body.Fields) == 0
+			shouldApply := func(field string) bool {
+				return applyAll || fieldsSet[field]
+			}
+
+			update := store.GroupMetadataUpdate{}
+			if bestMatch.Title != "" && shouldApply("title") {
+				if body.Overwrite || group.Name == "" {
+					update.Name = &bestMatch.Title
+				}
+			}
+			if bestMatch.Author != "" && shouldApply("author") {
+				if body.Overwrite || group.Author == "" {
+					update.Author = &bestMatch.Author
+				}
+			}
+			if bestMatch.Description != "" && shouldApply("description") {
+				if body.Overwrite || group.Description == "" {
+					update.Description = &bestMatch.Description
+				}
+			}
+			if bestMatch.Genre != "" && shouldApply("genre") {
+				if body.Overwrite || group.Genre == "" {
+					update.Genre = &bestMatch.Genre
+				}
+			}
+			if bestMatch.Publisher != "" && shouldApply("publisher") {
+				if body.Overwrite || group.Publisher == "" {
+					update.Publisher = &bestMatch.Publisher
+				}
+			}
+			if bestMatch.Language != "" && shouldApply("language") {
+				if body.Overwrite || group.Language == "" {
+					update.Language = &bestMatch.Language
+				}
+			}
+			if bestMatch.Year != nil && shouldApply("year") {
+				if body.Overwrite || group.Year == nil {
+					update.Year = bestMatch.Year
+				}
+			}
+			if bestMatch.CoverURL != "" && shouldApply("cover") {
+				update.CoverURL = &bestMatch.CoverURL
+			}
+
+			if err := store.UpdateGroupMetadata(gid, update); err != nil {
+				result.Error = "应用元数据失败: " + err.Error()
+				result.Success = false
+				results = append(results, result)
+				continue
+			}
+
+			// 处理标签
+			if bestMatch.Genre != "" && shouldApply("tags") {
+				genres := splitAndTrim(bestMatch.Genre)
+				if len(genres) > 0 {
+					existingTags, _ := store.GetGroupTags(gid)
+					existingNames := make(map[string]bool)
+					for _, t := range existingTags {
+						existingNames[t.Name] = true
+					}
+					allNames := make([]string, 0)
+					for _, t := range existingTags {
+						allNames = append(allNames, t.Name)
+					}
+					for _, g := range genres {
+						if !existingNames[g] {
+							allNames = append(allNames, g)
+						}
+					}
+					_ = store.SetGroupTags(gid, allNames)
+					if body.SyncTags {
+						_, _, _, _ = store.SyncGroupTagsToVolumes(gid)
+					}
+				}
+			}
+
+			// 下载封面
+			if bestMatch.CoverURL != "" && shouldApply("cover") {
+				go service.DownloadGroupCover(gid, bestMatch.CoverURL)
+			}
+
+			// 同步到所有卷
+			if body.SyncToVolumes {
+				if err := syncGroupMetadataToVolumes(gid, bestMatch, fieldsSet, body.Overwrite); err != nil {
+					log.Printf("[API] BatchScrape: syncToVolumes error for group %d: %v", gid, err)
+				}
+			}
+
+			result.Applied = true
+		}
+
+		results = append(results, result)
+	}
+
+	// 统计
+	totalSuccess := 0
+	totalFailed := 0
+	totalApplied := 0
+	for _, r := range results {
+		if r.Success {
+			totalSuccess++
+		} else {
+			totalFailed++
+		}
+		if r.Applied {
+			totalApplied++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"results": results,
+		"total":   len(body.GroupIDs),
+		"success": totalSuccess,
+		"failed":  totalFailed,
+		"applied": totalApplied,
+	})
 }

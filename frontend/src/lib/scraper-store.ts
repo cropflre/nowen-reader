@@ -280,6 +280,18 @@ export interface ScraperState {
   groupBatchRunning: boolean;
   groupBatchProgress: { current: number; total: number; currentName: string } | null;
   groupBatchDone: { total: number; success: number; failed: number } | null;
+  // 批量在线刮削
+  groupBatchScrapeDialogOpen: boolean;
+  groupBatchScrapeMode: "online" | "ai";
+  groupBatchScrapeFields: Set<string>;
+  groupBatchScrapeOverwrite: boolean;
+  groupBatchScrapeSyncTags: boolean;
+  groupBatchScrapeSyncToVolumes: boolean;
+  groupBatchScrapeSources: string[];
+  groupBatchScrapePreview: BatchScrapePreviewItem[] | null;
+  groupBatchScrapePreviewLoading: boolean;
+  groupBatchScrapeApplying: boolean;
+  groupBatchScrapeResult: BatchScrapeResultSummary | null;
   // 脏数据检测与清理
   dirtyIssues: GroupDirtyIssue[];
   dirtyStats: Record<string, number> | null;
@@ -326,6 +338,49 @@ export interface GroupCleanupResult {
   dirtyNamesFixed: number;
   duplicatesMerged: number;
 }
+
+/* 批量刮削预览项 */
+export interface BatchScrapePreviewItem {
+  groupId: number;
+  groupName: string;
+  success: boolean;
+  error?: string;
+  metadata?: {
+    title?: string;
+    author?: string;
+    publisher?: string;
+    year?: number;
+    description?: string;
+    language?: string;
+    genre?: string;
+    coverUrl?: string;
+    source: string;
+  };
+  applied: boolean;
+  volumes: number;
+}
+
+/* 批量刮削结果汇总 */
+export interface BatchScrapeResultSummary {
+  total: number;
+  success: number;
+  failed: number;
+  applied: number;
+  results: BatchScrapePreviewItem[];
+}
+
+/* 批量刮削可选字段 */
+export const BATCH_SCRAPE_FIELDS = [
+  { id: "title", label: "标题", defaultOff: true },
+  { id: "author", label: "作者" },
+  { id: "description", label: "简介" },
+  { id: "genre", label: "类型" },
+  { id: "publisher", label: "出版商" },
+  { id: "language", label: "语言" },
+  { id: "year", label: "年份" },
+  { id: "cover", label: "封面" },
+  { id: "tags", label: "标签" },
+] as const;
 
 /* ── 模块级状态 ── */
 let state: ScraperState = {
@@ -415,6 +470,20 @@ let state: ScraperState = {
   groupBatchRunning: false,
   groupBatchProgress: null,
   groupBatchDone: null,
+  // 批量在线刮削
+  groupBatchScrapeDialogOpen: false,
+  groupBatchScrapeMode: "online" as const,
+  groupBatchScrapeFields: new Set([
+    "author", "description", "genre", "publisher", "language", "year", "cover", "tags",
+  ]),
+  groupBatchScrapeOverwrite: true,
+  groupBatchScrapeSyncTags: true,
+  groupBatchScrapeSyncToVolumes: true,
+  groupBatchScrapeSources: ["anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"],
+  groupBatchScrapePreview: null,
+  groupBatchScrapePreviewLoading: false,
+  groupBatchScrapeApplying: false,
+  groupBatchScrapeResult: null,
   // 脏数据检测与清理
   dirtyIssues: [],
   dirtyStats: null,
@@ -2043,6 +2112,165 @@ export function cancelGroupBatchScrape() {
 
 export function clearGroupBatchDone() {
   state.groupBatchDone = null;
+  notify();
+}
+
+/* ── 批量在线刮削 Actions ── */
+
+export function openGroupBatchScrapeDialog(mode: "online" | "ai" = "online") {
+  state.groupBatchScrapeDialogOpen = true;
+  state.groupBatchScrapeMode = mode;
+  state.groupBatchScrapePreview = null;
+  state.groupBatchScrapeResult = null;
+  notify();
+}
+
+export function closeGroupBatchScrapeDialog() {
+  state.groupBatchScrapeDialogOpen = false;
+  state.groupBatchScrapePreview = null;
+  state.groupBatchScrapeResult = null;
+  state.groupBatchScrapePreviewLoading = false;
+  state.groupBatchScrapeApplying = false;
+  notify();
+}
+
+export function setGroupBatchScrapeMode(mode: "online" | "ai") {
+  state.groupBatchScrapeMode = mode;
+  state.groupBatchScrapePreview = null;
+  state.groupBatchScrapeResult = null;
+  notify();
+}
+
+export function toggleGroupBatchScrapeField(field: string) {
+  const next = new Set(state.groupBatchScrapeFields);
+  if (next.has(field)) {
+    next.delete(field);
+  } else {
+    next.add(field);
+  }
+  state.groupBatchScrapeFields = next;
+  notify();
+}
+
+export function setGroupBatchScrapeAllFields(selectAll: boolean) {
+  if (selectAll) {
+    state.groupBatchScrapeFields = new Set(BATCH_SCRAPE_FIELDS.map((f) => f.id));
+  } else {
+    state.groupBatchScrapeFields = new Set();
+  }
+  notify();
+}
+
+export function setGroupBatchScrapeOverwrite(v: boolean) {
+  state.groupBatchScrapeOverwrite = v;
+  notify();
+}
+
+export function setGroupBatchScrapeSyncTags(v: boolean) {
+  state.groupBatchScrapeSyncTags = v;
+  notify();
+}
+
+export function setGroupBatchScrapeSyncToVolumes(v: boolean) {
+  state.groupBatchScrapeSyncToVolumes = v;
+  notify();
+}
+
+export function toggleGroupBatchScrapeSource(source: string) {
+  const sources = [...state.groupBatchScrapeSources];
+  const idx = sources.indexOf(source);
+  if (idx >= 0) {
+    sources.splice(idx, 1);
+  } else {
+    sources.push(source);
+  }
+  state.groupBatchScrapeSources = sources;
+  notify();
+}
+
+/** 预览批量刮削结果（dryRun 模式） */
+export async function previewGroupBatchScrape(groupIds: number[]) {
+  if (state.groupBatchScrapePreviewLoading || groupIds.length === 0) return;
+  state.groupBatchScrapePreviewLoading = true;
+  state.groupBatchScrapePreview = null;
+  state.groupBatchScrapeResult = null;
+  notify();
+
+  try {
+    const res = await fetch("/api/groups/batch-scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupIds,
+        sources: state.groupBatchScrapeSources,
+        lang: "zh",
+        fields: Array.from(state.groupBatchScrapeFields),
+        overwrite: state.groupBatchScrapeOverwrite,
+        syncTags: state.groupBatchScrapeSyncTags,
+        syncToVolumes: state.groupBatchScrapeSyncToVolumes,
+        autoApply: false,
+        dryRun: true,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      state.groupBatchScrapePreview = data.results || [];
+    }
+  } catch {
+    state.groupBatchScrapePreview = [];
+  } finally {
+    state.groupBatchScrapePreviewLoading = false;
+    notify();
+  }
+}
+
+/** 确认执行批量刮削（实际应用） */
+export async function applyGroupBatchScrape(groupIds: number[]) {
+  if (state.groupBatchScrapeApplying || groupIds.length === 0) return;
+  state.groupBatchScrapeApplying = true;
+  state.groupBatchScrapeResult = null;
+  notify();
+
+  try {
+    const res = await fetch("/api/groups/batch-scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupIds,
+        sources: state.groupBatchScrapeSources,
+        lang: "zh",
+        fields: Array.from(state.groupBatchScrapeFields),
+        overwrite: state.groupBatchScrapeOverwrite,
+        syncTags: state.groupBatchScrapeSyncTags,
+        syncToVolumes: state.groupBatchScrapeSyncToVolumes,
+        autoApply: true,
+        dryRun: false,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      state.groupBatchScrapeResult = {
+        total: data.total || 0,
+        success: data.success || 0,
+        failed: data.failed || 0,
+        applied: data.applied || 0,
+        results: data.results || [],
+      };
+    }
+  } catch {
+    // ignore
+  } finally {
+    state.groupBatchScrapeApplying = false;
+    notify();
+    // 刷新数据
+    loadScraperGroups();
+    loadStats();
+  }
+}
+
+export function clearGroupBatchScrapeResult() {
+  state.groupBatchScrapeResult = null;
+  state.groupBatchScrapePreview = null;
   notify();
 }
 
