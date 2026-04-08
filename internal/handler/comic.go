@@ -506,6 +506,44 @@ func (h *ComicHandler) UpdateMetadata(c *gin.Context) {
 	// 标记为手动编辑来源
 	updates["metadataSource"] = "manual"
 
+	// 记录同步日志（保存修改前的旧值用于回滚）
+	prevValues := map[string]interface{}{}
+	if body.Title != nil {
+		prevValues["title"] = existing.Title
+	}
+	if body.Author != nil {
+		prevValues["author"] = existing.Author
+	}
+	if body.Publisher != nil {
+		prevValues["publisher"] = existing.Publisher
+	}
+	if body.Year != nil {
+		if existing.Year != nil {
+			prevValues["year"] = *existing.Year
+		} else {
+			prevValues["year"] = nil
+		}
+	}
+	if body.Description != nil {
+		prevValues["description"] = existing.Description
+	}
+	if body.Language != nil {
+		prevValues["language"] = existing.Language
+	}
+	if body.Genre != nil {
+		prevValues["genre"] = existing.Genre
+	}
+	prevValues["metadataSource"] = existing.MetadataSource
+
+	// 确定操作来源（通过 header 或默认为 detail）
+	syncSource := c.GetHeader("X-Sync-Source")
+	if syncSource == "" {
+		syncSource = "detail"
+	}
+	userID, _ := c.Get("userId")
+	userIDStr, _ := userID.(string)
+	_ = store.InsertSyncLog(id, "manual_edit", syncSource, userIDStr, updates, prevValues)
+
 	if err := store.UpdateComicFields(id, updates); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update metadata"})
 		return

@@ -83,11 +83,62 @@ func (h *MetadataHandler) Apply(c *gin.Context) {
 		return
 	}
 
+	// 获取修改前的旧值（用于同步日志）
+	existing, _ := store.GetComicByID(body.ComicID)
+	prevValues := map[string]interface{}{}
+	if existing != nil {
+		prevValues["title"] = existing.Title
+		prevValues["author"] = existing.Author
+		prevValues["publisher"] = existing.Publisher
+		prevValues["description"] = existing.Description
+		prevValues["language"] = existing.Language
+		prevValues["genre"] = existing.Genre
+		prevValues["metadataSource"] = existing.MetadataSource
+		if existing.Year != nil {
+			prevValues["year"] = *existing.Year
+		}
+	}
+
 	comic, err := service.ApplyMetadata(body.ComicID, body.Metadata, body.Lang, body.Overwrite, service.ApplyOption{SkipCover: body.SkipCover})
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to apply metadata"})
 		return
 	}
+
+	// 记录同步日志
+	fields := map[string]interface{}{}
+	if body.Metadata.Title != "" {
+		fields["title"] = body.Metadata.Title
+	}
+	if body.Metadata.Author != "" {
+		fields["author"] = body.Metadata.Author
+	}
+	if body.Metadata.Publisher != "" {
+		fields["publisher"] = body.Metadata.Publisher
+	}
+	if body.Metadata.Description != "" {
+		fields["description"] = body.Metadata.Description
+	}
+	if body.Metadata.Language != "" {
+		fields["language"] = body.Metadata.Language
+	}
+	if body.Metadata.Genre != "" {
+		fields["genre"] = body.Metadata.Genre
+	}
+	if body.Metadata.Source != "" {
+		fields["metadataSource"] = body.Metadata.Source
+	}
+	if body.Metadata.Year != nil {
+		fields["year"] = *body.Metadata.Year
+	}
+	syncSource := c.GetHeader("X-Sync-Source")
+	if syncSource == "" {
+		syncSource = "scraper"
+	}
+	userID, _ := c.Get("userId")
+	userIDStr, _ := userID.(string)
+	_ = store.InsertSyncLog(body.ComicID, "scrape_apply", syncSource, userIDStr, fields, prevValues)
+
 	c.JSON(200, gin.H{"comic": comic})
 }
 
@@ -839,20 +890,30 @@ func (h *MetadataHandler) Library(c *gin.Context) {
 		Name  string `json:"name"`
 		Color string `json:"color"`
 	}
+	type LibraryItemCategory struct {
+		Slug string `json:"slug"`
+		Name string `json:"name"`
+		Icon string `json:"icon"`
+	}
 	type LibraryItem struct {
-		ID             string           `json:"id"`
-		Title          string           `json:"title"`
-		Filename       string           `json:"filename"`
-		Author         string           `json:"author"`
-		Genre          string           `json:"genre"`
-		Description    string           `json:"description"`
-		Year           *int             `json:"year"`
-		FileSize       int64            `json:"fileSize"`
-		UpdatedAt      string           `json:"updatedAt"`
-		MetadataSource string           `json:"metadataSource"`
-		HasMetadata    bool             `json:"hasMetadata"`
-		ContentType    string           `json:"contentType"`
-		Tags           []LibraryItemTag `json:"tags"`
+		ID             string                `json:"id"`
+		Title          string                `json:"title"`
+		Filename       string                `json:"filename"`
+		Author         string                `json:"author"`
+		Genre          string                `json:"genre"`
+		Description    string                `json:"description"`
+		Year           *int                  `json:"year"`
+		Publisher      string                `json:"publisher"`
+		Language       string                `json:"language"`
+		FileSize       int64                 `json:"fileSize"`
+		UpdatedAt      string                `json:"updatedAt"`
+		MetadataSource string                `json:"metadataSource"`
+		HasMetadata    bool                  `json:"hasMetadata"`
+		ContentType    string                `json:"contentType"`
+		Tags           []LibraryItemTag      `json:"tags"`
+		Rating         *int                  `json:"rating"`
+		IsFavorite     bool                  `json:"isFavorite"`
+		Categories     []LibraryItemCategory `json:"categories"`
 	}
 
 	var items []LibraryItem
@@ -876,6 +937,14 @@ func (h *MetadataHandler) Library(c *gin.Context) {
 			tags = []LibraryItemTag{}
 		}
 
+		var cats []LibraryItemCategory
+		for _, cat := range comic.Categories {
+			cats = append(cats, LibraryItemCategory{Slug: cat.Slug, Name: cat.Name, Icon: cat.Icon})
+		}
+		if cats == nil {
+			cats = []LibraryItemCategory{}
+		}
+
 		items = append(items, LibraryItem{
 			ID:             comic.ID,
 			Title:          comic.Title,
@@ -884,12 +953,17 @@ func (h *MetadataHandler) Library(c *gin.Context) {
 			Genre:          comic.Genre,
 			Description:    comic.Description,
 			Year:           comic.Year,
+			Publisher:      comic.Publisher,
+			Language:       comic.Language,
 			FileSize:       comic.FileSize,
 			UpdatedAt:      comic.UpdatedAt,
 			MetadataSource: comic.MetadataSource,
 			HasMetadata:    hasMeta,
 			ContentType:    ct,
 			Tags:           tags,
+			Rating:         comic.Rating,
+			IsFavorite:     comic.IsFavorite,
+			Categories:     cats,
 		})
 	}
 

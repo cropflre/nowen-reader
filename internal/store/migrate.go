@@ -252,6 +252,27 @@ var Migrations = []Migration{
 			`ALTER TABLE "ComicGroup" ADD COLUMN "autoCreated" BOOLEAN NOT NULL DEFAULT 0;`,
 		}, "\n"),
 	},
+	{
+		Version:     19,
+		Description: "Add MetadataSyncLog table for tracking metadata sync operations",
+		SQL: strings.Join([]string{
+			`CREATE TABLE IF NOT EXISTS "MetadataSyncLog" (
+				"id"         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				"comicId"    TEXT NOT NULL,
+				"action"     TEXT NOT NULL,
+				"source"     TEXT NOT NULL DEFAULT '',
+				"fields"     TEXT NOT NULL DEFAULT '{}',
+				"prevValues" TEXT NOT NULL DEFAULT '{}',
+				"userId"     TEXT NOT NULL DEFAULT '',
+				"createdAt"  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT "MSL_comicId_fkey" FOREIGN KEY ("comicId")
+					REFERENCES "Comic" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+			);`,
+			`CREATE INDEX IF NOT EXISTS "MSL_comicId_idx" ON "MetadataSyncLog"("comicId");`,
+			`CREATE INDEX IF NOT EXISTS "MSL_createdAt_idx" ON "MetadataSyncLog"("createdAt" DESC);`,
+			`CREATE INDEX IF NOT EXISTS "MSL_action_idx" ON "MetadataSyncLog"("action");`,
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.

@@ -25,8 +25,13 @@ import {
   Square,
   RefreshCw,
   Plus,
+  Sparkles,
+  Loader2,
+  GripVertical,
+  Brain,
+  Wand2,
 } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 
 interface TagItem {
@@ -183,6 +188,59 @@ async function apiCreateTag(name: string): Promise<{ ok: boolean; error?: string
   } catch (e) {
     return { ok: false, error: String(e) };
   }
+}
+
+async function apiCreateCategory(name: string, icon: string): Promise<{ ok: boolean; error?: string; category?: CategoryItem }> {
+  try {
+    const res = await fetch("/api/categories/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, icon }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.error || `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return { ok: true, category: data.category };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+async function apiReorderCategories(orders: { slug: string; sortOrder: number }[]): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/categories/reorder", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orders }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.error || `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/** AI 批量标签建议结果项 */
+interface AITagSuggestion {
+  comicId: string;
+  title: string;
+  suggestedTags?: string[];
+  applied?: boolean;
+  error?: string;
+}
+
+/** AI 批量分类建议结果项 */
+interface AICategorySuggestion {
+  comicId: string;
+  title: string;
+  suggestedCategories?: string[];
+  applied?: boolean;
+  error?: string;
 }
 
 /** Resolve a tag color: DB default is "default", treat it as null */
@@ -416,6 +474,23 @@ export default function TagManagerPage() {
 
   // Batch operation loading
   const [batchLoading, setBatchLoading] = useState(false);
+
+  // 分类新建
+  const [showNewCatInput, setShowNewCatInput] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatIcon, setNewCatIcon] = useState("📚");
+
+  // AI 智能生成
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [aiMode, setAiMode] = useState<"tags" | "categories">("tags");
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiProgress, setAiProgress] = useState<{ current: number; total: number } | null>(null);
+  const [aiResults, setAiResults] = useState<(AITagSuggestion | AICategorySuggestion)[]>([]);
+  const [aiAutoApply, setAiAutoApply] = useState(false);
+
+  // 拖拽排序
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Prevent double-submit from onBlur + onKeyDown
   const renamingRef = useRef(false);
@@ -653,6 +728,175 @@ export default function TagManagerPage() {
     }
   };
 
+  // ── 分类新建 ──
+
+  const handleCreateCategory = async () => {
+    if (!newCatName.trim()) return;
+    const result = await apiCreateCategory(newCatName.trim(), newCatIcon.trim() || "📚");
+    if (result.ok) {
+      showToast("分类已创建", "success");
+      setNewCatName("");
+      setNewCatIcon("📚");
+      setShowNewCatInput(false);
+      await loadData();
+    } else {
+      showToast(result.error || "创建失败", "error");
+    }
+  };
+
+  // ── 拖拽排序（分类） ──
+
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = async (targetIndex: number) => {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const newList = [...pagedCategories];
+    const [moved] = newList.splice(dragIndex, 1);
+    newList.splice(targetIndex, 0, moved);
+
+    // 计算新的排序
+    const orders = newList.map((cat, i) => ({
+      slug: cat.slug,
+      sortOrder: (catPage - 1) * pageSize + i,
+    }));
+
+    setDragIndex(null);
+    setDragOverIndex(null);
+
+    const result = await apiReorderCategories(orders);
+    if (result.ok) {
+      await loadData();
+    } else {
+      showToast(result.error || "排序失败", "error");
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  // ── AI 智能生成 ──
+
+  const { locale } = useLocale();
+
+  const handleAIGenerate = useCallback(async () => {
+    if (aiRunning) return;
+    setAiRunning(true);
+    setAiResults([]);
+    setAiProgress(null);
+
+    try {
+      // 获取所有漫画 ID（通过 library API）
+      const libRes = await fetch("/api/library?page=1&pageSize=9999");
+      if (!libRes.ok) {
+        showToast("获取书库列表失败", "error");
+        setAiRunning(false);
+        return;
+      }
+      const libData = await libRes.json();
+      const items = libData.items || [];
+
+      // 过滤出缺少标签/分类的漫画
+      let comicIds: string[];
+      if (aiMode === "tags") {
+        comicIds = items
+          .filter((item: { id: string; tags?: { name: string }[] }) => !item.tags || item.tags.length === 0)
+          .map((item: { id: string }) => item.id);
+      } else {
+        // 对于分类，获取所有漫画（AI 可以重新分类）
+        comicIds = items.map((item: { id: string }) => item.id);
+      }
+
+      if (comicIds.length === 0) {
+        showToast(aiMode === "tags" ? "所有漫画都已有标签" : "没有可处理的漫画", "success");
+        setAiRunning(false);
+        return;
+      }
+
+      // 限制最多 30 个
+      if (comicIds.length > 30) {
+        comicIds = comicIds.slice(0, 30);
+      }
+
+      setAiProgress({ current: 0, total: comicIds.length });
+
+      const endpoint = aiMode === "tags"
+        ? "/api/ai/batch-suggest-tags"
+        : "/api/ai/batch-suggest-category";
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comicIds,
+          targetLang: locale || "zh",
+          apply: aiAutoApply,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "AI 请求失败", "error");
+        setAiRunning(false);
+        return;
+      }
+
+      // SSE 流式读取
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const results: (AITagSuggestion | AICategorySuggestion)[] = [];
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                results.push(data);
+                setAiResults([...results]);
+                setAiProgress({ current: (data.index || 0) + 1, total: data.total || comicIds.length });
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+        }
+      }
+
+      showToast(
+        `AI ${aiMode === "tags" ? "标签" : "分类"}建议完成：${results.filter((r) => !r.error).length} 成功`,
+        "success"
+      );
+      await loadData();
+    } catch (e) {
+      showToast(`AI 生成失败: ${String(e)}`, "error");
+    } finally {
+      setAiRunning(false);
+      setAiProgress(null);
+    }
+  }, [aiRunning, aiMode, aiAutoApply, locale, showToast, loadData]);
+
   // ── Category actions ──
 
   const handleSaveCategory = async (slug: string) => {
@@ -762,6 +1006,20 @@ export default function TagManagerPage() {
             {t.tagManager?.title || "标签与分类管理"}
           </h1>
           <div className="flex-1" />
+          {isAdmin && (
+            <button
+              onClick={() => setShowAIPanel(!showAIPanel)}
+              className={`flex h-8 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all ${
+                showAIPanel
+                  ? "border-purple-500/40 bg-purple-500/10 text-purple-400"
+                  : "border-border/50 text-muted hover:border-purple-500/40 hover:text-purple-400"
+              }`}
+              title="AI 智能生成"
+            >
+              <Brain className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">AI 智能生成</span>
+            </button>
+          )}
           <button
             onClick={() => { loadData(); showToast(t.tagManager?.refreshed || "已刷新", "success"); }}
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-border/50 text-muted transition-all hover:border-accent/40 hover:text-accent"
@@ -794,6 +1052,143 @@ export default function TagManagerPage() {
             {t.tagManager?.categoriesTab || "分类"} ({categories.length})
           </button>
         </div>
+
+        {/* AI 智能生成面板 */}
+        {showAIPanel && isAdmin && (
+          <div className="mb-4 rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-blue-500/5 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-400" />
+                <h3 className="text-sm font-semibold text-foreground">AI 智能生成</h3>
+              </div>
+              <button
+                onClick={() => setShowAIPanel(false)}
+                className="rounded-lg p-1 text-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted">
+              基于书库中的漫画/小说内容，使用 AI 自动分析并推荐合适的标签或分类。
+            </p>
+
+            {/* 模式选择 */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAiMode("tags")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  aiMode === "tags"
+                    ? "bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30"
+                    : "bg-card text-muted hover:text-foreground"
+                }`}
+              >
+                <Tag className="h-3 w-3" />
+                智能标签
+              </button>
+              <button
+                onClick={() => setAiMode("categories")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  aiMode === "categories"
+                    ? "bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30"
+                    : "bg-card text-muted hover:text-foreground"
+                }`}
+              >
+                <Layers className="h-3 w-3" />
+                智能分类
+              </button>
+            </div>
+
+            {/* 选项 */}
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={aiAutoApply}
+                onChange={(e) => setAiAutoApply(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-border accent-purple-500"
+              />
+              <span className="text-xs text-muted">自动应用建议结果</span>
+            </label>
+
+            {/* 进度 */}
+            {aiRunning && aiProgress && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-purple-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>正在分析... {aiProgress.current}/{aiProgress.total}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-purple-500/10 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-purple-500 transition-all duration-300"
+                    style={{ width: `${(aiProgress.current / aiProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 结果列表 */}
+            {aiResults.length > 0 && (
+              <div className="max-h-48 overflow-y-auto space-y-1 rounded-xl border border-border/30 p-2" style={{ scrollbarWidth: "thin" }}>
+                {aiResults.map((r, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg p-2 text-xs ${
+                      r.error
+                        ? "bg-red-500/5 border border-red-500/20"
+                        : "bg-emerald-500/5 border border-emerald-500/20"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-foreground truncate">{r.title || r.comicId}</span>
+                      {r.applied && (
+                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded flex-shrink-0">
+                          已应用
+                        </span>
+                      )}
+                    </div>
+                    {r.error ? (
+                      <div className="text-[11px] text-red-400/70 mt-0.5">{r.error}</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(("suggestedTags" in r ? r.suggestedTags : undefined) || ("suggestedCategories" in r ? r.suggestedCategories : undefined) || []).map((tag) => (
+                          <span key={tag} className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] text-purple-400">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 操作按钮 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAIGenerate}
+                disabled={aiRunning}
+                className="flex items-center gap-1.5 rounded-lg bg-purple-500 px-4 py-2 text-xs font-medium text-white hover:bg-purple-600 transition-colors disabled:opacity-50"
+              >
+                {aiRunning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5" />
+                )}
+                {aiRunning ? "生成中..." : `开始 AI ${aiMode === "tags" ? "标签" : "分类"}生成`}
+              </button>
+              {aiResults.length > 0 && !aiRunning && (
+                <button
+                  onClick={() => setAiResults([])}
+                  className="text-xs text-muted hover:text-foreground"
+                >
+                  清除结果
+                </button>
+              )}
+              <span className="text-[10px] text-muted ml-auto">
+                {aiMode === "tags" ? "将为缺少标签的漫画生成建议（最多30本）" : "将为所有漫画生成分类建议（最多30本）"}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Search + Sort + Actions Bar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -849,6 +1244,17 @@ export default function TagManagerPage() {
                 <span className="hidden sm:inline">{t.tagManager?.createTag || "新建"}</span>
               </button>
             )}
+            {/* Add new category button */}
+            {activeTab === "categories" && isAdmin && (
+              <button
+                onClick={() => setShowNewCatInput(!showNewCatInput)}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-border/50 bg-card px-3 text-xs font-medium text-accent transition-colors hover:bg-accent/5 hover:border-accent/40"
+                title="新建分类"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">新建</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -874,6 +1280,42 @@ export default function TagManagerPage() {
             </button>
             <button
               onClick={() => { setShowNewTagInput(false); setNewTagName(""); }}
+              className="rounded-lg p-1.5 text-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* New category input */}
+        {showNewCatInput && activeTab === "categories" && isAdmin && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-card border border-border/50 p-3">
+            <Layers className="h-4 w-4 text-accent shrink-0" />
+            <input
+              type="text"
+              value={newCatIcon}
+              onChange={(e) => setNewCatIcon(e.target.value)}
+              className="w-10 shrink-0 rounded-lg bg-background px-1 py-1 text-center text-lg outline-none ring-1 ring-border/50 focus:ring-accent/50"
+              placeholder="📚"
+            />
+            <input
+              type="text"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreateCategory(); if (e.key === "Escape") { setShowNewCatInput(false); setNewCatName(""); } }}
+              placeholder="输入新分类名称..."
+              className="flex-1 bg-transparent text-sm text-foreground placeholder-muted/50 outline-none"
+              autoFocus
+            />
+            <button
+              onClick={handleCreateCategory}
+              disabled={!newCatName.trim()}
+              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            >
+              创建
+            </button>
+            <button
+              onClick={() => { setShowNewCatInput(false); setNewCatName(""); setNewCatIcon("📚"); }}
               className="rounded-lg p-1.5 text-muted hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
@@ -1145,15 +1587,25 @@ export default function TagManagerPage() {
                   {search ? (t.tagManager?.noSearchResults || "未找到匹配的分类") : (t.tagManager?.noCategories || "暂无分类")}
                 </div>
               ) : (
-                pagedCategories.map((cat) => (
+                pagedCategories.map((cat, catIdx) => (
                   <div
                     key={cat.id}
+                    draggable={isAdmin && !editingCategory}
+                    onDragStart={() => handleDragStart(catIdx)}
+                    onDragOver={(e) => handleDragOver(e, catIdx)}
+                    onDrop={() => handleDrop(catIdx)}
+                    onDragEnd={handleDragEnd}
                     className={`group flex items-center gap-3 rounded-xl border p-3 transition-colors ${
+                      dragOverIndex === catIdx ? "border-accent/60 bg-accent/10" :
                       selectedCategories.has(cat.slug)
                         ? "border-accent/40 bg-accent/5"
                         : "border-border/40 bg-card hover:border-border/60"
-                    }`}
+                    } ${dragIndex === catIdx ? "opacity-50" : ""}`}
                   >
+                    {/* 拖拽手柄 */}
+                    {isAdmin && !editingCategory && (
+                      <GripVertical className="h-4 w-4 text-muted/30 cursor-grab active:cursor-grabbing shrink-0" />
+                    )}
                     {/* Checkbox for multi-select */}
                     {isAdmin && (
                       <button

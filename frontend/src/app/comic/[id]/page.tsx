@@ -63,6 +63,13 @@ import type { ComicTagWithSource } from "@/api/comics";
 import type { ComicGroupDetail, GroupComicItem } from "@/hooks/useComicTypes";
 import { invalidateSwCache } from "@/lib/pwa";
 import { invalidateComicsCache } from "@/hooks/useComicList";
+import { useSyncEvent } from "@/hooks/useSyncEvent";
+import {
+  emitMetadataUpdated,
+  emitTagsUpdated,
+  emitCategoriesUpdated,
+  emitScrapeApplied,
+} from "@/lib/sync-event";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -114,6 +121,15 @@ export default function ComicDetailPage() {
 
   const { comic, loading, refetch } = useComicDetail(comicId);
   const { categories: allCategories, refetch: refetchCategories, initCategories } = useCategories();
+
+  // 监听来自刮削页面/其他标签页的同步事件，自动刷新数据
+  useSyncEvent(comicId, (event) => {
+    // 收到同步事件时自动刷新详情数据
+    refetch();
+    if (event.type === "categories_updated") {
+      refetchCategories();
+    }
+  }, { ignoreSource: "detail" });
 
   // 查询当前漫画所属的合集
   useEffect(() => {
@@ -283,12 +299,14 @@ export default function ComicDetailPage() {
     await addComicTags(comicId, [newTag.trim()]);
     setNewTag("");
     refetch();
+    emitTagsUpdated(comicId, "detail", { action: "add", tag: newTag.trim() });
   }, [comicId, newTag, refetch]);
 
   const handleRemoveTag = useCallback(
     async (tagName: string) => {
       await removeComicTag(comicId, tagName);
       refetch();
+      emitTagsUpdated(comicId, "detail", { action: "remove", tag: tagName });
     },
     [comicId, refetch]
   );
@@ -298,12 +316,14 @@ export default function ComicDetailPage() {
     setShowCategoryPicker(false);
     refetch();
     refetchCategories();
+    emitCategoriesUpdated(comicId, "detail", { action: "add", slug });
   }, [comicId, refetch, refetchCategories]);
 
   const handleRemoveCategory = useCallback(async (slug: string) => {
     await removeComicCategory(comicId, slug);
     refetch();
     refetchCategories();
+    emitCategoriesUpdated(comicId, "detail", { action: "remove", slug });
   }, [comicId, refetch, refetchCategories]);
 
   // 一键清除所有标签
@@ -312,6 +332,7 @@ export default function ComicDetailPage() {
     if (!window.confirm(t.comicDetail.clearAllTagsConfirm)) return;
     await clearAllComicTags(comicId);
     refetch();
+    emitTagsUpdated(comicId, "detail", { action: "clear_all" });
   }, [comic?.tags, comicId, refetch, t.comicDetail.clearAllTagsConfirm]);
 
   // 一键清除所有分类
@@ -321,6 +342,7 @@ export default function ComicDetailPage() {
     await clearAllComicCategories(comicId);
     refetch();
     refetchCategories();
+    emitCategoriesUpdated(comicId, "detail", { action: "clear_all" });
   }, [comic?.categories, comicId, refetch, refetchCategories, t.comicDetail.clearAllCategoriesConfirm]);
 
   // Cover management handlers
@@ -1750,7 +1772,10 @@ export default function ComicDetailPage() {
                 comicTitle={comic.title}
                 filename={comic.filename}
                 comicType={comic.type}
-                onApplied={() => refetch()}
+                onApplied={() => {
+                  refetch();
+                  emitScrapeApplied(comic.id, "detail");
+                }}
               />
             </div>
 

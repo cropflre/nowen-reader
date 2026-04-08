@@ -49,6 +49,13 @@ export default function NovelReaderPage() {
   const isLoading = apiLoading;
   const totalChapters = apiChapters.length;
 
+  // 如果后端检测到不是小说（如图片为主的 MOBI/AZW3），自动重定向到漫画阅读器
+  useEffect(() => {
+    if (!apiLoading && !isNovel && apiChapters.length === 0) {
+      router.replace(`/reader/${comicId}`);
+    }
+  }, [apiLoading, isNovel, apiChapters.length, comicId, router]);
+
   // State
   const [currentPage, setCurrentPage] = useState(0);
   const [toolbarVisible, setToolbarVisible] = useState(false);

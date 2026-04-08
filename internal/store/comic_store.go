@@ -509,6 +509,61 @@ func DeleteCategory(slug string) error {
 	return err
 }
 
+// CreateCategory 创建自定义分类。
+func CreateCategory(name, slug, icon string) (*CategoryWithCount, error) {
+	// 检查 slug 是否已存在
+	var existID int
+	err := db.QueryRow(`SELECT "id" FROM "Category" WHERE "slug" = ?`, slug).Scan(&existID)
+	if err == nil {
+		return nil, fmt.Errorf("分类 slug '%s' 已存在", slug)
+	}
+
+	// 获取最大 sortOrder
+	var maxSort int
+	_ = db.QueryRow(`SELECT COALESCE(MAX("sortOrder"), 0) FROM "Category"`).Scan(&maxSort)
+
+	res, err := db.Exec(`INSERT INTO "Category" ("name", "slug", "icon", "sortOrder") VALUES (?, ?, ?, ?)`,
+		name, slug, icon, maxSort+1)
+	if err != nil {
+		return nil, err
+	}
+
+	id, _ := res.LastInsertId()
+	return &CategoryWithCount{
+		ID:    int(id),
+		Name:  name,
+		Slug:  slug,
+		Icon:  icon,
+		Count: 0,
+	}, nil
+}
+
+// GenerateCategorySlug 根据分类名称生成 slug。
+func GenerateCategorySlug(name string) string {
+	// 简单处理：将中文名转为拼音首字母或直接使用小写英文
+	slug := strings.ToLower(strings.TrimSpace(name))
+	slug = strings.ReplaceAll(slug, " ", "-")
+	// 移除非字母数字和连字符的字符
+	var result []byte
+	for i := 0; i < len(slug); i++ {
+		c := slug[i]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
+			result = append(result, c)
+		}
+	}
+	if len(result) == 0 {
+		// 对于纯中文名，使用 "custom-" 前缀 + 时间戳
+		return fmt.Sprintf("custom-%d", time.Now().UnixMilli())
+	}
+	return string(result)
+}
+
+// UpdateCategorySortOrder 更新分类的排序顺序。
+func UpdateCategorySortOrder(slug string, sortOrder int) error {
+	_, err := db.Exec(`UPDATE "Category" SET "sortOrder" = ? WHERE "slug" = ?`, sortOrder, slug)
+	return err
+}
+
 // ============================================================
 // 辅助函数
 // ============================================================

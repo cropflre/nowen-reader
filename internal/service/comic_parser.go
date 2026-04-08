@@ -195,8 +195,19 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 	isNovel := archive.IsNovelType(archiveType)
 	if archive.IsEbookType(archiveType) {
 		comic, dbErr := store.GetComicByID(comicID)
-		if dbErr == nil && comic != nil && comic.ComicType == "comic" {
-			isNovel = false // 数据库中标记为漫画，覆盖默认的小说判断
+		if dbErr == nil && comic != nil {
+			if comic.ComicType == "comic" {
+				isNovel = false // 数据库中标记为漫画，覆盖默认的小说判断
+			} else if comic.ComicType == "novel" && (archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3) {
+				// MOBI/AZW3 文件默认被标记为 novel，但可能实际是图片为主的漫画
+				// 在首次打开时进行实时检测，如果是图片为主则自动修正类型
+				epubPath, convErr := archive.ConvertToEpub(fp)
+				if convErr == nil && epubPath != "" && archive.IsImageHeavyEpub(epubPath) {
+					log.Printf("[pages] Auto-detected image-heavy %s, reclassifying as comic: %s", archiveType, comic.Filename)
+					_ = store.UpdateComicType(comicID, "comic")
+					isNovel = false
+				}
+			}
 		}
 	}
 

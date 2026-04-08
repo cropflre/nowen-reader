@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { Search, Download, Check, Loader2, BookOpen, FileSearch, Filter } from "lucide-react";
+import { emitScrapeApplied } from "@/lib/sync-event";
 
 interface MetadataResult {
   title?: string;
@@ -135,6 +136,8 @@ export function MetadataSearch({ comicId, comicTitle, filename, comicType, onApp
       if (!res.ok) throw new Error(data.error);
       if (data.source && data.source !== "none") {
         setApplied(-1);
+        // 广播同步事件：扫描结果已应用
+        emitScrapeApplied(comicId, "scraper", { source: data.source });
         onApplied?.();
       } else {
         setError(data.message || (isNovel
@@ -159,6 +162,12 @@ export function MetadataSearch({ comicId, comicTitle, filename, comicType, onApp
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setApplied(index);
+      // 广播同步事件：刮削结果已应用
+      emitScrapeApplied(comicId, "scraper", {
+        title: results[index].title,
+        author: results[index].author,
+        source: results[index].source,
+      });
       onApplied?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Apply failed");

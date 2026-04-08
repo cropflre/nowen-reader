@@ -93,3 +93,52 @@ func (h *CategoryHandler) DeleteCategory(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// POST /api/categories/create — 创建自定义分类
+func (h *CategoryHandler) CreateCategory(c *gin.Context) {
+	var body struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+		Icon string `json:"icon"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		return
+	}
+	if body.Icon == "" {
+		body.Icon = "📚"
+	}
+	// 自动生成 slug
+	if body.Slug == "" {
+		body.Slug = store.GenerateCategorySlug(body.Name)
+	}
+
+	cat, err := store.CreateCategory(body.Name, body.Slug, body.Icon)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "category": cat})
+}
+
+// PUT /api/categories/reorder — 批量更新分类排序
+func (h *CategoryHandler) ReorderCategories(c *gin.Context) {
+	var body struct {
+		Orders []struct {
+			Slug      string `json:"slug"`
+			SortOrder int    `json:"sortOrder"`
+		} `json:"orders"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.Orders) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "orders array is required"})
+		return
+	}
+
+	for _, o := range body.Orders {
+		if err := store.UpdateCategorySortOrder(o.Slug, o.SortOrder); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reorder categories"})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

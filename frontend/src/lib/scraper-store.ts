@@ -57,6 +57,12 @@ export interface LibraryItemTag {
   color: string;
 }
 
+export interface LibraryItemCategory {
+  slug: string;
+  name: string;
+  icon: string;
+}
+
 export interface LibraryItem {
   id: string;
   title: string;
@@ -65,12 +71,17 @@ export interface LibraryItem {
   genre: string;
   description: string;
   year: number | null;
+  publisher: string;
+  language: string;
   fileSize: number;
   updatedAt: string;
   metadataSource: string;
   hasMetadata: boolean;
   contentType: string;
   tags: LibraryItemTag[];
+  rating: number | null;
+  isFavorite: boolean;
+  categories: LibraryItemCategory[];
 }
 
 export type LibrarySortBy = "title" | "fileSize" | "updatedAt" | "metaStatus";

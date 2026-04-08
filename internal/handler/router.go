@@ -157,6 +157,8 @@ func SetupRoutes(r *gin.Engine) {
 	catAdmin.Use(middleware.AdminRequired())
 	{
 		catAdmin.POST("", cat.InitCategories)
+		catAdmin.POST("/create", cat.CreateCategory)
+		catAdmin.PUT("/reorder", cat.ReorderCategories)
 		catAdmin.PUT("/:slug", cat.UpdateCategory)
 		catAdmin.DELETE("/:slug", cat.DeleteCategory)
 	}
@@ -494,5 +496,19 @@ func SetupRoutes(r *gin.Engine) {
 		logGroup.GET("/stats", logH.GetErrorLogStats)
 		logGroup.GET("/export", logH.ExportErrorLogs)
 		logGroup.DELETE("", logH.ClearErrorLogs)
+	}
+
+	// ============================================================
+	// Metadata Sync (元数据同步) — requires admin
+	// ============================================================
+	syncH := NewSyncHandler()
+	syncGroup := api.Group("/sync")
+	syncGroup.Use(middleware.AdminRequired())
+	{
+		syncGroup.GET("/status", syncH.Status)
+		syncGroup.GET("/history", syncH.History)
+		syncGroup.GET("/diff/:id", syncH.Diff)
+		syncGroup.POST("/push", syncH.Push)
+		syncGroup.POST("/revert", syncH.Revert)
 	}
 }
