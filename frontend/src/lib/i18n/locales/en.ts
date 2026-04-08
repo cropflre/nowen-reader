@@ -198,6 +198,7 @@ const en: Translations = {
     confirm: "Confirm",
     deleteSuccess: "Deleted",
     deleteError: "Delete failed: {{error}}",
+    favorite: "Favorite",
   },
 
   // Stats Page

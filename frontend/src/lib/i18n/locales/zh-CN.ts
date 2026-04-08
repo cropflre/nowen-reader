@@ -194,6 +194,7 @@ const zhCN = {
     confirm: "确认",
     deleteSuccess: "已删除",
     deleteError: "删除失败：{{error}}",
+    favorite: "收藏",
   },
 
   // Stats Page
@@ -1305,6 +1306,7 @@ export interface Translations {
     confirm?: string;
     deleteSuccess?: string;
     deleteError?: string;
+    favorite?: string;
   };
   stats: {
     title: string;
