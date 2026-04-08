@@ -40,6 +40,7 @@ type ComicGroupWithCount struct {
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 	ComicCount  int    `json:"comicCount"`
+	ContentType string `json:"contentType"` // 系列主要内容类型: "comic" | "novel"
 }
 
 // ComicGroupDetail 包含系列详情和所属漫画列表。
@@ -155,7 +156,14 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 		       g."author", g."description", g."tags", g."year",
 		       g."publisher", g."language", g."genre", g."status",
 		       g."createdAt", g."updatedAt",
-		       COUNT(gi."comicId") as comicCount
+		       COUNT(gi."comicId") as comicCount,
+		       COALESCE((
+		         SELECT CASE WHEN SUM(CASE WHEN c_ct."type" = 'novel' THEN 1 ELSE 0 END) > COUNT(*) / 2
+		                     THEN 'novel' ELSE 'comic' END
+		         FROM "ComicGroupItem" gi_ct
+		         JOIN "Comic" c_ct ON c_ct."id" = gi_ct."comicId"
+		         WHERE gi_ct."groupId" = g."id"
+		       ), 'comic') as contentType
 		FROM "ComicGroup" g
 		`+joinClause+`
 	`+whereClause+`
@@ -174,7 +182,7 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 		if err := rows.Scan(&g.ID, &g.Name, &g.CoverURL, &g.SortOrder,
 			&g.Author, &g.Description, &g.Tags, &g.Year,
 			&g.Publisher, &g.Language, &g.Genre, &g.Status,
-			&createdAt, &updatedAt, &g.ComicCount); err != nil {
+			&createdAt, &updatedAt, &g.ComicCount, &g.ContentType); err != nil {
 			continue
 		}
 		g.CreatedAt = createdAt.UTC().Format(time.RFC3339)

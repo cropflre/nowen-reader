@@ -273,6 +273,7 @@ export interface ScraperState {
   scraperGroupSortBy: GroupSortBy;
   scraperGroupSortAsc: boolean;
   scraperGroupSearch: string;
+  scraperGroupContentType: string; // "" | "comic" | "novel" — 系列内容类型筛选
   // 系列分页
   groupPage: number;
   groupPageSize: number;
@@ -316,6 +317,7 @@ export interface ScraperGroup {
   language: string;
   updatedAt: string;
   hasMetadata: boolean;
+  contentType: string; // "comic" | "novel" — 系列内容类型
 }
 
 export type GroupMetaFilter = "all" | "hasMeta" | "missingMeta";
@@ -463,6 +465,7 @@ let state: ScraperState = {
   scraperGroupSortBy: "name",
   scraperGroupSortAsc: true,
   scraperGroupSearch: "",
+  scraperGroupContentType: "", // 默认不筛选
   // 系列分页
   groupPage: 1,
   groupPageSize: 20,
@@ -1960,7 +1963,13 @@ export async function loadScraperGroups() {
   state.scraperGroupsLoading = true;
   notify();
   try {
-    const res = await fetch("/api/groups");
+    // 支持按内容类型过滤
+    const params = new URLSearchParams();
+    if (state.scraperGroupContentType) {
+      params.set("contentType", state.scraperGroupContentType);
+    }
+    const url = params.toString() ? `/api/groups?${params}` : "/api/groups";
+    const res = await fetch(url);
     if (!res.ok) throw new Error("Failed to load groups");
     const data = await res.json();
     const groups = data.groups || data || [];
@@ -1979,6 +1988,7 @@ export async function loadScraperGroups() {
       language: (g.language as string) || "",
       updatedAt: (g.updatedAt as string) || "",
       hasMetadata: !!(g.author || g.description || g.genre),
+      contentType: (g.contentType as string) || "comic",
     }));
   } catch {
     state.scraperGroups = [];
@@ -1995,10 +2005,17 @@ export function setScraperGroupFocusedId(id: number | null) {
 
 export function setScraperGroupSearch(search: string) {
   state.scraperGroupSearch = search;
-  state.groupPage = 1; // 搜索时重置到第1页
+  state.groupPage = 1; // 搜索时重置到1页
   notify();
 }
 
+export function setScraperGroupContentType(contentType: string) {
+  state.scraperGroupContentType = contentType;
+  state.groupPage = 1; // 切换类型时重置到1页
+  notify();
+  // 重新加载数据（后端按 contentType 过滤）
+  loadScraperGroups();
+}
 export function setScraperGroupMetaFilter(filter: GroupMetaFilter) {
   state.scraperGroupMetaFilter = filter;
   state.groupPage = 1; // 筛选时重置到第1页
@@ -2210,6 +2227,7 @@ export async function previewGroupBatchScrape(groupIds: number[]) {
         syncToVolumes: state.groupBatchScrapeSyncToVolumes,
         autoApply: false,
         dryRun: true,
+        contentType: state.scraperGroupContentType || "", // 传递内容类型，为空时后端自动检测
       }),
     });
     if (res.ok) {
@@ -2245,6 +2263,7 @@ export async function applyGroupBatchScrape(groupIds: number[]) {
         syncToVolumes: state.groupBatchScrapeSyncToVolumes,
         autoApply: true,
         dryRun: false,
+        contentType: state.scraperGroupContentType || "", // 传递内容类型，为空时后端自动检测
       }),
     });
     if (res.ok) {

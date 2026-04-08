@@ -140,6 +140,7 @@ import {
   loadScraperGroups,
   setScraperGroupFocusedId,
   setScraperGroupSearch,
+  setScraperGroupContentType,
   setScraperGroupMetaFilter,
   setScraperGroupSortBy,
   toggleSelectGroup,
@@ -174,6 +175,8 @@ import {
 } from "@/lib/scraper-store";
 import type { MetaFilter, LibraryItem, BatchEditNameEntry, LibrarySortBy, AIChatMessage, CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion, MetadataFolderNode, MetadataFolderFile, ViewMode, ScraperGroup, GroupMetaFilter, GroupSortBy, GroupDirtyIssue, GroupCleanupResult, BatchScrapePreviewItem, BatchScrapeResultSummary } from "@/lib/scraper-store";
 import { FolderOpen, FolderPlus, Layers, Plus, Minus, FolderTree, Folder, List } from "lucide-react";
+import { useResizablePanel } from "@/hooks/useResizablePanel";
+import { ResizeDivider } from "@/components/ResizeDivider";
 
 /* ── 文件夹树搜索/筛选辅助函数 ── */
 function filterMetadataFolderTree(
@@ -2362,6 +2365,7 @@ export default function ScraperPage() {
     scraperGroupSortBy,
     scraperGroupSortAsc,
     scraperGroupSearch,
+    scraperGroupContentType,
     // 系列分页
     groupPage,
     groupPageSize,
@@ -2484,6 +2488,20 @@ export default function ScraperPage() {
   // 滚动引用
   const listRef = useRef<HTMLDivElement>(null);
 
+  // 右侧面板可拖拽宽度
+  const {
+    width: rightPanelWidth,
+    isDragging: isResizing,
+    handleMouseDown: handleResizeMouseDown,
+    resetWidth: resetRightPanelWidth,
+  } = useResizablePanel({
+    storageKey: "scraper-right-panel-width",
+    defaultWidth: 520,
+    minWidth: 360,
+    maxWidth: 800,
+    side: "right",
+  });
+
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* ═══════════ Header ═══════════ */}
@@ -2550,7 +2568,7 @@ export default function ScraperPage() {
       {/* ═══════════ 主体：左右分栏 ═══════════ */}
       <div className="flex-1 flex overflow-hidden">
         {/* ── 左侧面板：书库列表 ── */}
-        <div className="flex-1 flex flex-col min-w-0 border-r border-border/30">
+        <div className={`flex-1 flex flex-col min-w-0 ${isResizing ? '' : 'border-r border-border/30'}`}>
           {/* 搜索 & 筛选 */}
           <div data-guide="filter-bar" className="flex-shrink-0 p-3 sm:p-4 space-y-3 border-b border-border/20 bg-card/30">
             {/* 视图模式切换 + 搜索框 */}
@@ -2783,6 +2801,23 @@ export default function ScraperPage() {
                       }`}
                     >
                       {f === "all" ? "全部" : f === "hasMeta" ? "✓ 已有" : "⚠ 缺失"}
+                    </button>
+                  ))}
+                  {/* 内容类型筛选 */}
+                  <div className="h-3 w-px bg-border/40 mx-0.5" />
+                  {(["", "comic", "novel"] as string[]).map((ct) => (
+                    <button
+                      key={ct || "all-ct"}
+                      onClick={() => setScraperGroupContentType(ct)}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        scraperGroupContentType === ct
+                          ? ct === "novel" ? "bg-emerald-500/20 text-emerald-400"
+                            : ct === "comic" ? "bg-blue-500/20 text-blue-400"
+                            : "bg-accent/20 text-accent"
+                          : "text-muted/60 hover:text-foreground hover:bg-white/5"
+                      }`}
+                    >
+                      {ct === "" ? "全部类型" : ct === "comic" ? "📖 漫画" : "📚 小说"}
                     </button>
                   ))}
                   <div className="flex-1" />
@@ -3086,6 +3121,9 @@ export default function ScraperPage() {
                                 <span className="text-[11px] text-muted/60 truncate max-w-[100px]">{group.author}</span>
                               )}
                               <span className="text-[10px] text-muted/40">{group.comicCount} 卷</span>
+                              {group.contentType === "novel" && (
+                                <span className="text-[10px] text-emerald-400/70">📚</span>
+                              )}
                               {group.genre && (
                                 <span className="text-[10px] text-purple-400/60 truncate max-w-[80px]">{group.genre}</span>
                               )}
@@ -3489,8 +3527,17 @@ export default function ScraperPage() {
         </>)}
         </div>
 
+        {/* ── 可拖拽分隔条 ── */}
+        <div className="hidden md:flex h-full">
+          <ResizeDivider
+            isDragging={isResizing}
+            onMouseDown={handleResizeMouseDown}
+            onReset={resetRightPanelWidth}
+          />
+        </div>
+
         {/* ── 右侧面板：详情 / 刮削控制 / 进度 / AI聊天 / 帮助 ── */}
-        <div data-guide="scrape-panel" className="w-[480px] xl:w-[560px] flex-shrink-0 hidden md:flex flex-col bg-card/20 overflow-hidden">
+        <div data-guide="scrape-panel" className="flex-shrink-0 hidden md:flex flex-col bg-card/20 overflow-hidden" style={{ width: rightPanelWidth }}>
           {helpPanelOpen ? (
             /* ── 帮助面板 ── */
             <HelpPanel
@@ -3576,6 +3623,14 @@ export default function ScraperPage() {
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1.5">
+                      {/* 内容类型标签 */}
+                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                        focusedGroup.contentType === "novel"
+                          ? "bg-emerald-500/10 text-emerald-400"
+                          : "bg-blue-500/10 text-blue-400"
+                      }`}>
+                        {focusedGroup.contentType === "novel" ? "📚 小说" : "📖 漫画"}
+                      </span>
                       <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-400">
                         <Layers className="h-3 w-3" />
                         {focusedGroup.comicCount} 卷
@@ -3667,6 +3722,7 @@ export default function ScraperPage() {
                     key={focusedGroup.id}
                     groupId={focusedGroup.id}
                     groupName={focusedGroup.name}
+                    contentType={focusedGroup.contentType}
                     onApplied={async (success) => {
                       if (success) {
                         // 刷新系列列表

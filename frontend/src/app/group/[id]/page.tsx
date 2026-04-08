@@ -780,11 +780,8 @@ export default function GroupDetailPage() {
         <div className="mx-auto flex max-w-[1200px] items-center gap-3 px-4 py-3">
           <button
             onClick={() => {
-              if (window.history.length > 1) {
-                router.back();
-              } else {
-                router.push("/");
-              }
+              // 直接返回首页，避免 back() 可能回到阅读页面导致循环
+              router.push("/");
             }}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card hover:text-foreground"
           >
@@ -1807,6 +1804,13 @@ export default function GroupDetailPage() {
               <GroupMetadataSearch
                 groupId={group.id}
                 groupName={group.name}
+                contentType={
+                  // 根据系列内漫画的类型自动检测：超过一半是小说则为 novel
+                  group.comics.length > 0 &&
+                  group.comics.filter((c) => c.type === "novel").length > group.comics.length / 2
+                    ? "novel"
+                    : "comic"
+                }
                 onApplied={async (success, message) => {
                   if (success) {
                     await loadGroup();

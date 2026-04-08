@@ -850,16 +850,17 @@ func (h *GroupHandler) ScrapeMetadata(c *gin.Context) {
 		query = group.Name
 	}
 
+	// 自动检测系列内容类型：优先使用前端传入的 contentType，否则根据系列内漫画的文件类型自动判断
 	ct := body.ContentType
 	if ct == "" {
-		ct = "comic"
+		ct = detectGroupContentType(group)
 	}
 
 	results := service.SearchMetadata(query, body.Sources, body.Lang, ct)
 	if results == nil {
 		results = []service.ComicMetadata{}
 	}
-	c.JSON(http.StatusOK, gin.H{"results": results})
+	c.JSON(http.StatusOK, gin.H{"results": results, "detectedContentType": ct})
 }
 
 // POST /api/groups/:id/apply-metadata — 将刮削结果应用到系列元数据
@@ -1173,6 +1174,29 @@ func (h *GroupHandler) AIRecognize(c *gin.Context) {
 	})
 }
 
+// detectGroupContentType 根据系列内漫画的文件类型自动检测内容类型。
+// 如果系列内大多数文件是小说格式（epub/txt/mobi/azw3），返回 "novel"，否则返回 "comic"。
+func detectGroupContentType(group *store.ComicGroupDetail) string {
+	if group == nil || len(group.Comics) == 0 {
+		return "comic"
+	}
+	novelCount := 0
+	for _, c := range group.Comics {
+		// 优先使用数据库中的 type 字段
+		if c.ComicType == "novel" {
+			novelCount++
+		} else if c.ComicType == "" && service.IsNovelFilename(c.Filename) {
+			// fallback: 根据文件名判断
+			novelCount++
+		}
+	}
+	// 如果超过一半的文件是小说格式，认为是小说系列
+	if novelCount > len(group.Comics)/2 {
+		return "novel"
+	}
+	return "comic"
+}
+
 // splitAndTrim 分割逗号分隔的字符串并去除空白。
 func splitAndTrim(s string) []string {
 	parts := strings.Split(s, ",")
@@ -1332,7 +1356,8 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 		SyncTags      bool     `json:"syncTags"`
 		SyncToVolumes bool     `json:"syncToVolumes"`
 		AutoApply     bool     `json:"autoApply"`
-		DryRun        bool     `json:"dryRun"` // 预览模式，不实际应用
+		DryRun        bool     `json:"dryRun"`      // 预览模式，不实际应用
+		ContentType   string   `json:"contentType"` // 可选："comic" | "novel"，为空时自动检测
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
@@ -1351,7 +1376,16 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 	if body.Lang == "" {
 		body.Lang = "zh"
 	}
-	if len(body.Sources) == 0 {
+	// 如果未指定数据源，根据 contentType 自动选择默认数据源
+	// 注意：如果 contentType 为空，将在每个系列处理时自动检测
+	if len(body.Sources) == 0 && body.ContentType != "" {
+		if body.ContentType == "novel" {
+			body.Sources = []string{"googlebooks", "anilist_novel", "bangumi_novel"}
+		} else {
+			body.Sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
+		}
+	} else if len(body.Sources) == 0 {
+		// 未指定 contentType 时使用漫画源作为默认（后续会按系列自动检测）
 		body.Sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
 	}
 
@@ -1374,8 +1408,22 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 		result.GroupName = group.Name
 		result.Volumes = len(group.Comics)
 
-		// 搜索元数据
-		metaResults := service.SearchMetadata(group.Name, body.Sources, body.Lang, "comic")
+		// 自动检测系列内容类型，选择对应的数据源和搜索策略
+		groupCT := body.ContentType
+		if groupCT == "" {
+			groupCT = detectGroupContentType(group)
+		}
+		// 根据内容类型选择数据源
+		sources := body.Sources
+		if body.ContentType == "" {
+			// 未指定全局 contentType 时，按每个系列的类型自动选择数据源
+			if groupCT == "novel" {
+				sources = []string{"googlebooks", "anilist_novel", "bangumi_novel"}
+			} else {
+				sources = []string{"anilist", "bangumi", "mangadex", "mangaupdates", "kitsu"}
+			}
+		}
+		metaResults := service.SearchMetadata(group.Name, sources, body.Lang, groupCT)
 		if len(metaResults) == 0 {
 			result.Error = "未找到匹配的元数据"
 			results = append(results, result)

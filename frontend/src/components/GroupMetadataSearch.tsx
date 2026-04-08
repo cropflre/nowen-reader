@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import {
   Search,
@@ -36,14 +36,25 @@ const COMIC_SOURCES = [
   { id: "kitsu", name: "Kitsu", icon: "🦊" },
 ] as const;
 
+// 小说数据源
+const NOVEL_SOURCES = [
+  { id: "googlebooks", name: "Google Books", icon: "📚" },
+  { id: "bangumi_novel", name: "Bangumi", icon: "🅱" },
+  { id: "anilist_novel", name: "AniList", icon: "🅰" },
+] as const;
+
 const DEFAULT_COMIC_SOURCES = COMIC_SOURCES.map((s) => s.id);
+const DEFAULT_NOVEL_SOURCES = NOVEL_SOURCES.map((s) => s.id);
 
 const SOURCE_COLORS: Record<string, string> = {
   anilist: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  anilist_novel: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   bangumi: "bg-pink-500/15 text-pink-600 dark:text-pink-400",
+  bangumi_novel: "bg-pink-500/15 text-pink-600 dark:text-pink-400",
   mangadex: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
   mangaupdates: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
   kitsu: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  googlebooks: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
 };
 
 // 可选择应用的字段
@@ -62,12 +73,19 @@ const APPLICABLE_FIELDS = [
 interface Props {
   groupId: number;
   groupName: string;
+  contentType?: string; // "comic" | "novel" — 系列内容类型，影响数据源选择
   onApplied?: (success: boolean, message?: string) => void;
 }
 
-export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
+export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied }: Props) {
   const t = useTranslation();
   const { locale } = useLocale();
+
+  // 根据内容类型选择数据源
+  const isNovel = contentType === "novel";
+  const availableSources = isNovel ? NOVEL_SOURCES : COMIC_SOURCES;
+  const defaultSources = isNovel ? DEFAULT_NOVEL_SOURCES : DEFAULT_COMIC_SOURCES;
+  const effectiveContentType = isNovel ? "novel" : "comic";
 
   const getSourceName = (id: string) => {
     return (t.metadata?.sources as Record<string, string>)?.[id] || id;
@@ -79,11 +97,16 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
   const [applying, setApplying] = useState<number | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [enabledSources, setEnabledSources] = useState<string[]>(DEFAULT_COMIC_SOURCES as unknown as string[]);
+  const [enabledSources, setEnabledSources] = useState<string[]>(defaultSources as unknown as string[]);
   const [showSourceFilter, setShowSourceFilter] = useState(false);
   const [overwrite, setOverwrite] = useState(true);
   const [syncTags, setSyncTags] = useState(true);
   const [syncToVolumes, setSyncToVolumes] = useState(true);
+
+  // 当内容类型变化时重置数据源
+  useEffect(() => {
+    setEnabledSources(defaultSources as unknown as string[]);
+  }, [contentType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 选择性字段应用（标题字段默认不选中，避免意外覆盖系列名称）
   const [selectedFields, setSelectedFields] = useState<Set<string>>(
@@ -132,7 +155,7 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
           query,
           sources: enabledSources,
           lang: locale,
-          contentType: "comic",
+          contentType: effectiveContentType,
         }),
       });
       const data = await res.json();
@@ -289,7 +312,10 @@ export function GroupMetadataSearch({ groupId, groupName, onApplied }: Props) {
       {/* 数据源筛选 */}
       {showSourceFilter && (
         <div className="flex flex-wrap gap-1.5 p-2 bg-card border border-border rounded-lg">
-          {COMIC_SOURCES.map((src) => (
+          {isNovel && (
+            <span className="text-[10px] text-muted/60 self-center mr-1">📚 小说源</span>
+          )}
+          {availableSources.map((src) => (
             <button
               key={src.id}
               onClick={() => toggleSource(src.id)}

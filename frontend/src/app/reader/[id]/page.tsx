@@ -317,7 +317,12 @@ export default function ReaderPage() {
         } else if (isFullscreen) {
           document.exitFullscreen?.();
         } else {
-          router.back();
+          // 与工具栏返回按钮保持一致：优先 replace 到系列详情页，避免历史栈循环
+          if (seriesGroupId) {
+            router.replace(`/group/${seriesGroupId}`);
+          } else {
+            router.back();
+          }
         }
       } else if (e.key === "f") {
         toggleFullscreen();
@@ -325,7 +330,7 @@ export default function ReaderPage() {
         setShowInfoPanel((v) => !v);
       }
     },
-    [direction, mode, pages.length, isFullscreen, router, showInfoPanel, showOptionsPanel, currentPage, handleBoundaryReached]
+    [direction, mode, pages.length, isFullscreen, router, showInfoPanel, showOptionsPanel, currentPage, handleBoundaryReached, seriesGroupId]
   );
 
   useEffect(() => {
@@ -645,8 +650,9 @@ export default function ReaderPage() {
         readerTheme={readerTheme}
         onBack={() => {
           // 智能返回：优先回到合集详情页，否则回首页
+          // 使用 replace 避免 reader → group → back → reader 的历史栈循环
           if (seriesGroupId) {
-            router.push(`/group/${seriesGroupId}`);
+            router.replace(`/group/${seriesGroupId}`);
           } else {
             router.back();
           }
