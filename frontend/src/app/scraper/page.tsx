@@ -138,8 +138,17 @@ import {
   // 系列模式
   loadScraperGroups,
   setScraperGroupFocusedId,
+  setScraperGroupSearch,
+  setScraperGroupMetaFilter,
+  setScraperGroupSortBy,
+  toggleSelectGroup,
+  selectAllVisibleGroups,
+  clearGroupSelection,
+  startGroupBatchScrape,
+  cancelGroupBatchScrape,
+  clearGroupBatchDone,
 } from "@/lib/scraper-store";
-import type { MetaFilter, LibraryItem, BatchEditNameEntry, LibrarySortBy, AIChatMessage, CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion, MetadataFolderNode, MetadataFolderFile, ViewMode, ScraperGroup } from "@/lib/scraper-store";
+import type { MetaFilter, LibraryItem, BatchEditNameEntry, LibrarySortBy, AIChatMessage, CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion, MetadataFolderNode, MetadataFolderFile, ViewMode, ScraperGroup, GroupMetaFilter, GroupSortBy } from "@/lib/scraper-store";
 import { FolderOpen, FolderPlus, Layers, Plus, Minus, FolderTree, Folder, List } from "lucide-react";
 
 /* ── 文件夹树搜索/筛选辅助函数 ── */
@@ -2324,6 +2333,14 @@ export default function ScraperPage() {
     scraperGroups,
     scraperGroupsLoading,
     scraperGroupFocusedId,
+    scraperGroupSelectedIds,
+    scraperGroupMetaFilter,
+    scraperGroupSortBy,
+    scraperGroupSortAsc,
+    scraperGroupSearch,
+    groupBatchRunning,
+    groupBatchProgress,
+    groupBatchDone,
   } = useScraperStore();
 
   const isAdmin = user?.role === "admin";
@@ -2379,6 +2396,40 @@ export default function ScraperPage() {
   const focusedGroup = scraperGroupFocusedId
     ? scraperGroups.find((g) => g.id === scraperGroupFocusedId) ?? null
     : null;
+
+  // 系列列表筛选 + 排序
+  const getFilteredSortedGroups = useCallback(() => {
+    let list = [...scraperGroups];
+    // 搜索过滤
+    if (scraperGroupSearch) {
+      const q = scraperGroupSearch.toLowerCase();
+      list = list.filter((g) =>
+        g.name.toLowerCase().includes(q) ||
+        g.author.toLowerCase().includes(q) ||
+        g.genre.toLowerCase().includes(q) ||
+        g.tags.toLowerCase().includes(q)
+      );
+    }
+    // 元数据状态过滤
+    if (scraperGroupMetaFilter === "hasMeta") {
+      list = list.filter((g) => g.hasMetadata);
+    } else if (scraperGroupMetaFilter === "missingMeta") {
+      list = list.filter((g) => !g.hasMetadata);
+    }
+    // 排序
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (scraperGroupSortBy === "name") {
+        cmp = a.name.localeCompare(b.name, "zh");
+      } else if (scraperGroupSortBy === "updatedAt") {
+        cmp = (a.updatedAt || "").localeCompare(b.updatedAt || "");
+      } else if (scraperGroupSortBy === "comicCount") {
+        cmp = a.comicCount - b.comicCount;
+      }
+      return scraperGroupSortAsc ? cmp : -cmp;
+    });
+    return list;
+  }, [scraperGroups, scraperGroupSearch, scraperGroupMetaFilter, scraperGroupSortBy, scraperGroupSortAsc]);
 
   // 滚动引用
   const listRef = useRef<HTMLDivElement>(null);
@@ -2498,10 +2549,10 @@ export default function ScraperPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
                 <input
                   type="text"
-                  value={viewMode === "folder" ? folderSearch : librarySearch}
-                  onChange={(e) => viewMode === "folder" ? setFolderSearch(e.target.value) : setLibrarySearch(e.target.value)}
+                  value={viewMode === "folder" ? folderSearch : viewMode === "group" ? scraperGroupSearch : librarySearch}
+                  onChange={(e) => viewMode === "folder" ? setFolderSearch(e.target.value) : viewMode === "group" ? setScraperGroupSearch(e.target.value) : setLibrarySearch(e.target.value)}
                   onKeyDown={viewMode === "list" ? handleSearchKeyDown : undefined}
-                  placeholder={viewMode === "folder" ? "搜索文件夹或文件名..." : (scraperT.libSearchPlaceholder || "搜索书名、文件名...")}
+                  placeholder={viewMode === "folder" ? "搜索文件夹或文件名..." : viewMode === "group" ? "搜索系列名称..." : (scraperT.libSearchPlaceholder || "搜索书名、文件名...")}
                   className="w-full rounded-xl bg-card-hover/50 pl-10 pr-4 py-2 text-sm text-foreground placeholder-muted/50 outline-none border border-border/40 focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
                 />
               </div>
@@ -2664,38 +2715,177 @@ export default function ScraperPage() {
             </div>
           ) : viewMode === "group" ? (
             /* ── 系列列表视图 ── */
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+              {/* 系列筛选/排序/批量操作栏 */}
+              <div className="flex-shrink-0 border-b border-border/20 px-3 py-2 space-y-2">
+                {/* 元数据状态筛选 + 排序 */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {(["all", "hasMeta", "missingMeta"] as GroupMetaFilter[]).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setScraperGroupMetaFilter(f)}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        scraperGroupMetaFilter === f
+                          ? f === "hasMeta" ? "bg-emerald-500/20 text-emerald-400"
+                            : f === "missingMeta" ? "bg-amber-500/20 text-amber-400"
+                            : "bg-accent/20 text-accent"
+                          : "text-muted hover:text-foreground hover:bg-white/5"
+                      }`}
+                    >
+                      {f === "all" ? "全部" : f === "hasMeta" ? "✓ 已有" : "⚠ 缺失"}
+                    </button>
+                  ))}
+                  <div className="flex-1" />
+                  {/* 排序 */}
+                  {(["name", "updatedAt", "comicCount"] as GroupSortBy[]).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setScraperGroupSortBy(s)}
+                      className={`flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[10px] transition-colors ${
+                        scraperGroupSortBy === s ? "text-accent" : "text-muted/60 hover:text-muted"
+                      }`}
+                      title={s === "name" ? "按名称排序" : s === "updatedAt" ? "按更新时间排序" : "按卷数排序"}
+                    >
+                      {s === "name" ? "名称" : s === "updatedAt" ? "更新" : "卷数"}
+                      {scraperGroupSortBy === s && (
+                        scraperGroupSortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {/* 批量操作栏 */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const visibleIds = getFilteredSortedGroups().map((g) => g.id);
+                        selectAllVisibleGroups(visibleIds);
+                      }}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted hover:text-foreground hover:bg-white/5 transition-colors"
+                    >
+                      <CheckSquare className="h-3 w-3" />
+                      {scraperGroupSelectedIds.size > 0
+                        ? `已选 ${scraperGroupSelectedIds.size}`
+                        : "全选"}
+                    </button>
+                    {scraperGroupSelectedIds.size > 0 && (
+                      <>
+                        <button
+                          onClick={() => clearGroupSelection()}
+                          className="rounded-md px-2 py-1 text-[11px] text-muted hover:text-foreground hover:bg-white/5 transition-colors"
+                        >
+                          取消
+                        </button>
+                        <button
+                          onClick={() => startGroupBatchScrape(Array.from(scraperGroupSelectedIds))}
+                          disabled={groupBatchRunning}
+                          className="flex items-center gap-1 rounded-md bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-400 hover:bg-purple-500/30 transition-colors disabled:opacity-50"
+                        >
+                          <Brain className="h-3 w-3" />
+                          AI 批量刮削 ({scraperGroupSelectedIds.size})
+                        </button>
+                      </>
+                    )}
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => loadScraperGroups()}
+                      disabled={scraperGroupsLoading}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted hover:text-foreground hover:bg-white/5 transition-colors"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${scraperGroupsLoading ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+                )}
+                {/* 批量刮削进度 */}
+                {groupBatchRunning && groupBatchProgress && (
+                  <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-purple-400 font-medium flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        AI 刮削中... {groupBatchProgress.current}/{groupBatchProgress.total}
+                      </span>
+                      <button
+                        onClick={() => cancelGroupBatchScrape()}
+                        className="rounded px-2 py-0.5 text-[10px] text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        取消
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-muted truncate">正在处理: {groupBatchProgress.currentName}</div>
+                    <div className="h-1 rounded-full bg-purple-500/20 overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 transition-all duration-300"
+                        style={{ width: `${(groupBatchProgress.current / groupBatchProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* 批量刮削完成 */}
+                {groupBatchDone && (
+                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 flex items-center justify-between">
+                    <span className="text-[11px] text-emerald-400">
+                      ✓ 刮削完成: {groupBatchDone.success}/{groupBatchDone.total} 成功
+                      {groupBatchDone.failed > 0 && <span className="text-amber-400 ml-1">({groupBatchDone.failed} 失败)</span>}
+                    </span>
+                    <button
+                      onClick={() => clearGroupBatchDone()}
+                      className="rounded p-0.5 text-muted hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* 系列列表 */}
               {scraperGroupsLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-accent" />
                 </div>
               ) : scraperGroups.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted">暂无系列数据，请先在主页创建系列</div>
-              ) : (
-                <div className="divide-y divide-border/10">
-                  {scraperGroups
-                    .filter((g) => !librarySearch || g.name.toLowerCase().includes(librarySearch.toLowerCase()))
-                    .map((group) => {
+              ) : (() => {
+                const filtered = getFilteredSortedGroups();
+                return filtered.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-muted">没有匹配的系列</div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto divide-y divide-border/10">
+                    {filtered.map((group) => {
                       const isFocused = scraperGroupFocusedId === group.id;
+                      const isSelected = scraperGroupSelectedIds.has(group.id);
                       return (
                         <div
                           key={group.id}
                           className={`flex items-center gap-2.5 px-3 sm:px-4 py-2.5 transition-colors cursor-pointer ${
                             isFocused
                               ? "bg-purple-500/10 border-l-2 border-l-purple-500"
-                              : "hover:bg-card-hover/30 border-l-2 border-l-transparent"
+                              : isSelected
+                                ? "bg-purple-500/5 border-l-2 border-l-purple-500/40"
+                                : "hover:bg-card-hover/30 border-l-2 border-l-transparent"
                           }`}
                           onClick={() => setScraperGroupFocusedId(isFocused ? null : group.id)}
                         >
+                          {/* 多选框 */}
+                          {isAdmin && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSelectGroup(group.id); }}
+                              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                isSelected
+                                  ? "border-purple-500 bg-purple-500 text-white"
+                                  : "border-border/40 text-transparent hover:border-muted"
+                              }`}
+                            >
+                              {isSelected && <CheckCircle className="h-3 w-3" />}
+                            </button>
+                          )}
                           {/* 封面 */}
-                          <div className="relative h-11 w-8 flex-shrink-0 overflow-hidden rounded-lg border border-border/30 bg-muted/10">
+                          <div className="relative h-12 w-9 flex-shrink-0 overflow-hidden rounded-lg border border-border/30 bg-muted/10">
                             {group.coverUrl ? (
                               <Image
                                 src={group.coverUrl}
                                 alt=""
                                 fill
                                 className="object-cover"
-                                sizes="32px"
+                                sizes="36px"
                                 unoptimized
                               />
                             ) : (
@@ -2704,18 +2894,22 @@ export default function ScraperPage() {
                               </div>
                             )}
                           </div>
-
                           {/* 信息 */}
                           <div className="flex-1 min-w-0">
-                            <div className="text-[13px] font-medium text-foreground leading-tight overflow-x-auto whitespace-nowrap scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }} title={group.name}>{group.name}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[13px] font-medium text-foreground leading-tight truncate" title={group.name}>{group.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                               {group.author && (
-                                <span className="text-[11px] text-muted/60 truncate max-w-[120px]">{group.author}</span>
+                                <span className="text-[11px] text-muted/60 truncate max-w-[100px]">{group.author}</span>
                               )}
                               <span className="text-[10px] text-muted/40">{group.comicCount} 卷</span>
+                              {group.genre && (
+                                <span className="text-[10px] text-purple-400/60 truncate max-w-[80px]">{group.genre}</span>
+                              )}
+                              {group.updatedAt && (
+                                <span className="text-[10px] text-muted/30">{new Date(group.updatedAt).toLocaleDateString()}</span>
+                              )}
                             </div>
                           </div>
-
                           {/* 元数据状态 */}
                           <div className="flex-shrink-0">
                             {group.hasMetadata ? (
@@ -2727,8 +2921,9 @@ export default function ScraperPage() {
                         </div>
                       );
                     })}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
             </div>
           ) : (<>
           {/* 书库列表 */}
@@ -3055,29 +3250,87 @@ export default function ScraperPage() {
                   <div className="flex-1 min-w-0 space-y-2">
                     <h4 className="text-base font-bold text-foreground leading-tight line-clamp-2">{focusedGroup.name}</h4>
                     {focusedGroup.author && (
-                      <p className="text-xs text-muted/60">{focusedGroup.author}</p>
+                      <p className="text-xs text-muted/60 flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {focusedGroup.author}
+                      </p>
                     )}
-                    <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-400">
-                      <Layers className="h-3 w-3" />
-                      {focusedGroup.comicCount} 卷
-                    </span>
-                    {focusedGroup.hasMetadata ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-                        <CheckCircle className="h-3.5 w-3.5" />
-                        已有元数据
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-400">
+                        <Layers className="h-3 w-3" />
+                        {focusedGroup.comicCount} 卷
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        缺失元数据
-                      </span>
-                    )}
+                      {focusedGroup.hasMetadata ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                          <CheckCircle className="h-3 w-3" />
+                          已有元数据
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+                          <AlertCircle className="h-3 w-3" />
+                          缺失元数据
+                        </span>
+                      )}
+                      {focusedGroup.status && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-400">
+                          {focusedGroup.status}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* 元数据详情 */}
+                {(focusedGroup.genre || focusedGroup.year || focusedGroup.publisher || focusedGroup.language) && (
+                  <div className="rounded-xl bg-card-hover/30 p-3 space-y-1.5">
+                    {focusedGroup.genre && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted/50 w-12 flex-shrink-0">类型</span>
+                        <span className="text-foreground/70">{focusedGroup.genre}</span>
+                      </div>
+                    )}
+                    {focusedGroup.year && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted/50 w-12 flex-shrink-0">年份</span>
+                        <span className="text-foreground/70">{focusedGroup.year}</span>
+                      </div>
+                    )}
+                    {focusedGroup.publisher && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted/50 w-12 flex-shrink-0">出版社</span>
+                        <span className="text-foreground/70">{focusedGroup.publisher}</span>
+                      </div>
+                    )}
+                    {focusedGroup.language && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted/50 w-12 flex-shrink-0">语言</span>
+                        <span className="text-foreground/70">{focusedGroup.language}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 标签 */}
+                {focusedGroup.tags && (
+                  <div className="flex flex-wrap gap-1">
+                    {focusedGroup.tags.split(",").map((tag) => tag.trim()).filter(Boolean).map((tag) => (
+                      <span key={tag} className="rounded-md bg-accent/10 px-2 py-0.5 text-[11px] text-accent">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {focusedGroup.description && (
                   <div className="rounded-xl bg-card-hover/30 p-3">
-                    <p className="text-xs text-foreground/70 leading-relaxed line-clamp-4">{focusedGroup.description}</p>
+                    <p className="text-xs text-foreground/70 leading-relaxed line-clamp-6">{focusedGroup.description}</p>
+                  </div>
+                )}
+
+                {focusedGroup.updatedAt && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted/40">
+                    <Clock className="h-3 w-3" />
+                    最后更新: {new Date(focusedGroup.updatedAt).toLocaleString()}
                   </div>
                 )}
 
@@ -3100,6 +3353,19 @@ export default function ScraperPage() {
                       }
                     }}
                   />
+                </div>
+
+                {/* 快捷操作 */}
+                <div className="flex gap-2">
+                  <a
+                    href={`/group/${focusedGroup.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg bg-card-hover/50 px-3 py-2 text-xs text-muted hover:text-foreground transition-colors"
+                  >
+                    <BookOpen className="h-3.5 w-3.5" />
+                    查看系列详情
+                  </a>
                 </div>
               </div>
             </div>

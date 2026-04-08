@@ -268,6 +268,15 @@ export interface ScraperState {
   scraperGroups: ScraperGroup[];
   scraperGroupsLoading: boolean;
   scraperGroupFocusedId: number | null;
+  scraperGroupSelectedIds: Set<number>;
+  scraperGroupMetaFilter: GroupMetaFilter;
+  scraperGroupSortBy: GroupSortBy;
+  scraperGroupSortAsc: boolean;
+  scraperGroupSearch: string;
+  // 系列批量刮削
+  groupBatchRunning: boolean;
+  groupBatchProgress: { current: number; total: number; currentName: string } | null;
+  groupBatchDone: { total: number; success: number; failed: number } | null;
 }
 
 /* ── 系列模式相关类型 ── */
@@ -276,10 +285,20 @@ export interface ScraperGroup {
   name: string;
   coverUrl: string;
   comicCount: number;
-  author?: string;
-  description?: string;
+  author: string;
+  description: string;
+  genre: string;
+  status: string;
+  tags: string;
+  year: number | null;
+  publisher: string;
+  language: string;
+  updatedAt: string;
   hasMetadata: boolean;
 }
+
+export type GroupMetaFilter = "all" | "hasMeta" | "missingMeta";
+export type GroupSortBy = "name" | "updatedAt" | "comicCount";
 
 /* ── 模块级状态 ── */
 let state: ScraperState = {
@@ -357,6 +376,15 @@ let state: ScraperState = {
   scraperGroups: [],
   scraperGroupsLoading: false,
   scraperGroupFocusedId: null,
+  scraperGroupSelectedIds: new Set<number>(),
+  scraperGroupMetaFilter: "all",
+  scraperGroupSortBy: "name",
+  scraperGroupSortAsc: true,
+  scraperGroupSearch: "",
+  // 系列批量刮削
+  groupBatchRunning: false,
+  groupBatchProgress: null,
+  groupBatchDone: null,
 };
 
 let abortController: AbortController | null = null;
@@ -1830,14 +1858,22 @@ export async function loadScraperGroups() {
     const res = await fetch("/api/groups");
     if (!res.ok) throw new Error("Failed to load groups");
     const data = await res.json();
-    state.scraperGroups = (data || []).map((g: Record<string, unknown>) => ({
+    const groups = data.groups || data || [];
+    state.scraperGroups = (groups as Record<string, unknown>[]).map((g) => ({
       id: g.id as number,
-      name: g.name as string,
-      coverUrl: g.coverUrl as string || "",
-      comicCount: g.comicCount as number || 0,
-      author: g.author as string || "",
-      description: g.description as string || "",
-      hasMetadata: !!(g.author || g.description),
+      name: (g.name as string) || "",
+      coverUrl: (g.coverUrl as string) || "",
+      comicCount: (g.comicCount as number) || 0,
+      author: (g.author as string) || "",
+      description: (g.description as string) || "",
+      genre: (g.genre as string) || "",
+      status: (g.status as string) || "",
+      tags: (g.tags as string) || "",
+      year: (g.year as number | null) ?? null,
+      publisher: (g.publisher as string) || "",
+      language: (g.language as string) || "",
+      updatedAt: (g.updatedAt as string) || "",
+      hasMetadata: !!(g.author || g.description || g.genre),
     }));
   } catch {
     state.scraperGroups = [];
@@ -1849,5 +1885,113 @@ export async function loadScraperGroups() {
 
 export function setScraperGroupFocusedId(id: number | null) {
   state.scraperGroupFocusedId = id;
+  notify();
+}
+
+export function setScraperGroupSearch(search: string) {
+  state.scraperGroupSearch = search;
+  notify();
+}
+
+export function setScraperGroupMetaFilter(filter: GroupMetaFilter) {
+  state.scraperGroupMetaFilter = filter;
+  notify();
+}
+
+export function setScraperGroupSortBy(sortBy: GroupSortBy) {
+  if (state.scraperGroupSortBy === sortBy) {
+    state.scraperGroupSortAsc = !state.scraperGroupSortAsc;
+  } else {
+    state.scraperGroupSortBy = sortBy;
+    state.scraperGroupSortAsc = true;
+  }
+  notify();
+}
+
+export function toggleSelectGroup(id: number) {
+  const s = new Set(state.scraperGroupSelectedIds);
+  if (s.has(id)) s.delete(id); else s.add(id);
+  state.scraperGroupSelectedIds = s;
+  notify();
+}
+
+export function selectAllVisibleGroups(ids: number[]) {
+  const allSelected = ids.every((id) => state.scraperGroupSelectedIds.has(id));
+  if (allSelected) {
+    state.scraperGroupSelectedIds = new Set<number>();
+  } else {
+    state.scraperGroupSelectedIds = new Set(ids);
+  }
+  notify();
+}
+
+export function clearGroupSelection() {
+  state.scraperGroupSelectedIds = new Set<number>();
+  notify();
+}
+
+// 系列批量刮削（逐个AI识别）
+let groupBatchAbort: AbortController | null = null;
+
+export async function startGroupBatchScrape(groupIds: number[]) {
+  if (state.groupBatchRunning || groupIds.length === 0) return;
+  state.groupBatchRunning = true;
+  state.groupBatchProgress = { current: 0, total: groupIds.length, currentName: "" };
+  state.groupBatchDone = null;
+  groupBatchAbort = new AbortController();
+  notify();
+
+  let success = 0;
+  let failed = 0;
+
+  for (let i = 0; i < groupIds.length; i++) {
+    if (groupBatchAbort?.signal.aborted) break;
+
+    const gid = groupIds[i];
+    const group = state.scraperGroups.find((g) => g.id === gid);
+    state.groupBatchProgress = {
+      current: i + 1,
+      total: groupIds.length,
+      currentName: group?.name || `#${gid}`,
+    };
+    notify();
+
+    try {
+      const res = await fetch(`/api/groups/${gid}/ai-recognize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLang: "zh", autoApply: true }),
+        signal: groupBatchAbort?.signal,
+      });
+      if (res.ok) {
+        success++;
+      } else {
+        failed++;
+      }
+    } catch {
+      if (groupBatchAbort?.signal.aborted) break;
+      failed++;
+    }
+  }
+
+  state.groupBatchRunning = false;
+  state.groupBatchProgress = null;
+  state.groupBatchDone = { total: groupIds.length, success, failed };
+  groupBatchAbort = null;
+  notify();
+
+  // 刷新数据
+  loadScraperGroups();
+  loadStats();
+}
+
+export function cancelGroupBatchScrape() {
+  groupBatchAbort?.abort();
+  state.groupBatchRunning = false;
+  notify();
+}
+
+export function clearGroupBatchDone() {
+  state.groupBatchDone = null;
   notify();
 }
