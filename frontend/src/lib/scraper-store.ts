@@ -273,6 +273,9 @@ export interface ScraperState {
   scraperGroupSortBy: GroupSortBy;
   scraperGroupSortAsc: boolean;
   scraperGroupSearch: string;
+  // 系列分页
+  groupPage: number;
+  groupPageSize: number;
   // 系列批量刮削
   groupBatchRunning: boolean;
   groupBatchProgress: { current: number; total: number; currentName: string } | null;
@@ -405,6 +408,9 @@ let state: ScraperState = {
   scraperGroupSortBy: "name",
   scraperGroupSortAsc: true,
   scraperGroupSearch: "",
+  // 系列分页
+  groupPage: 1,
+  groupPageSize: 20,
   // 系列批量刮削
   groupBatchRunning: false,
   groupBatchProgress: null,
@@ -1920,11 +1926,13 @@ export function setScraperGroupFocusedId(id: number | null) {
 
 export function setScraperGroupSearch(search: string) {
   state.scraperGroupSearch = search;
+  state.groupPage = 1; // 搜索时重置到第1页
   notify();
 }
 
 export function setScraperGroupMetaFilter(filter: GroupMetaFilter) {
   state.scraperGroupMetaFilter = filter;
+  state.groupPage = 1; // 筛选时重置到第1页
   notify();
 }
 
@@ -1935,6 +1943,18 @@ export function setScraperGroupSortBy(sortBy: GroupSortBy) {
     state.scraperGroupSortBy = sortBy;
     state.scraperGroupSortAsc = true;
   }
+  state.groupPage = 1; // 排序时重置到第1页
+  notify();
+}
+
+export function setGroupPage(page: number) {
+  state.groupPage = page;
+  notify();
+}
+
+export function setGroupPageSize(size: number) {
+  state.groupPageSize = size;
+  state.groupPage = 1; // 切换每页条数时重置到第1页
   notify();
 }
 

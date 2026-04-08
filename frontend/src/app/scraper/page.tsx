@@ -148,6 +148,9 @@ import {
   startGroupBatchScrape,
   cancelGroupBatchScrape,
   clearGroupBatchDone,
+  // 系列分页
+  setGroupPage,
+  setGroupPageSize,
   // 脏数据检测与清理
   detectDirtyData,
   runCleanup,
@@ -2345,6 +2348,9 @@ export default function ScraperPage() {
     scraperGroupSortBy,
     scraperGroupSortAsc,
     scraperGroupSearch,
+    // 系列分页
+    groupPage,
+    groupPageSize,
     groupBatchRunning,
     groupBatchProgress,
     groupBatchDone,
@@ -2410,8 +2416,8 @@ export default function ScraperPage() {
     ? scraperGroups.find((g) => g.id === scraperGroupFocusedId) ?? null
     : null;
 
-  // 系列列表筛选 + 排序
-  const getFilteredSortedGroups = useCallback(() => {
+  // 系列列表筛选 + 排序 + 分页
+  const getFilteredSortedGroups = useCallback((): { items: ScraperGroup[]; total: number; totalPages: number } => {
     let list = [...scraperGroups];
     // 搜索过滤
     if (scraperGroupSearch) {
@@ -2441,8 +2447,13 @@ export default function ScraperPage() {
       }
       return scraperGroupSortAsc ? cmp : -cmp;
     });
-    return list;
-  }, [scraperGroups, scraperGroupSearch, scraperGroupMetaFilter, scraperGroupSortBy, scraperGroupSortAsc]);
+    // 分页
+    const total = list.length;
+    const totalPages = Math.max(1, Math.ceil(total / groupPageSize));
+    const start = (groupPage - 1) * groupPageSize;
+    const items = list.slice(start, start + groupPageSize);
+    return { items, total, totalPages };
+  }, [scraperGroups, scraperGroupSearch, scraperGroupMetaFilter, scraperGroupSortBy, scraperGroupSortAsc, groupPage, groupPageSize]);
 
   // 滚动引用
   const listRef = useRef<HTMLDivElement>(null);
@@ -2771,7 +2782,7 @@ export default function ScraperPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
-                        const visibleIds = getFilteredSortedGroups().map((g) => g.id);
+                        const visibleIds = getFilteredSortedGroups().items.map((g) => g.id);
                         selectAllVisibleGroups(visibleIds);
                       }}
                       className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted hover:text-foreground hover:bg-white/5 transition-colors"
@@ -2982,10 +2993,11 @@ export default function ScraperPage() {
               ) : scraperGroups.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted">暂无系列数据，请先在主页创建系列</div>
               ) : (() => {
-                const filtered = getFilteredSortedGroups();
+                const { items: filtered, total: groupTotal, totalPages: groupTotalPages } = getFilteredSortedGroups();
                 return filtered.length === 0 ? (
                   <div className="py-12 text-center text-sm text-muted">没有匹配的系列</div>
                 ) : (
+                  <>
                   <div className="flex-1 overflow-y-auto divide-y divide-border/10">
                     {filtered.map((group) => {
                       const isFocused = scraperGroupFocusedId === group.id;
@@ -3060,6 +3072,142 @@ export default function ScraperPage() {
                       );
                     })}
                   </div>
+                  {/* 系列分页 */}
+                  {groupTotalPages >= 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-border/20 px-3 sm:px-4 py-2.5 flex-shrink-0">
+                      {/* 左侧: 总数 + 每页条数 */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] text-muted whitespace-nowrap">
+                          共 {groupTotal} 个系列
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-muted whitespace-nowrap">每页</span>
+                          <select
+                            value={groupPageSize}
+                            onChange={(e) => setGroupPageSize(Number(e.target.value))}
+                            className="rounded-md border border-border/40 bg-card-hover/50 px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-accent/50 transition-colors cursor-pointer"
+                          >
+                            {[20, 50, 100].map((size) => (
+                              <option key={size} value={size}>{size}</option>
+                            ))}
+                          </select>
+                          <span className="text-[11px] text-muted whitespace-nowrap">条</span>
+                        </div>
+                      </div>
+
+                      {/* 右侧: 页码导航 + 跳转 */}
+                      <div className="flex items-center gap-1">
+                        {/* 首页 */}
+                        <button
+                          disabled={groupPage <= 1}
+                          onClick={() => setGroupPage(1)}
+                          className="flex h-7 items-center justify-center rounded-lg px-1.5 text-[11px] text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30 transition-colors"
+                          title="首页"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                          <ChevronLeft className="h-3.5 w-3.5 -ml-2" />
+                        </button>
+                        {/* 上一页 */}
+                        <button
+                          disabled={groupPage <= 1}
+                          onClick={() => setGroupPage(groupPage - 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30 transition-colors"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+
+                        {/* 页码按钮 */}
+                        {(() => {
+                          const pages: (number | string)[] = [];
+                          const total = groupTotalPages;
+                          const current = groupPage;
+
+                          if (total <= 7) {
+                            for (let i = 1; i <= total; i++) pages.push(i);
+                          } else {
+                            pages.push(1);
+                            if (current > 3) pages.push("...");
+                            const start = Math.max(2, current - 1);
+                            const end = Math.min(total - 1, current + 1);
+                            for (let i = start; i <= end; i++) pages.push(i);
+                            if (current < total - 2) pages.push("...");
+                            pages.push(total);
+                          }
+
+                          return pages.map((p, idx) =>
+                            typeof p === "string" ? (
+                              <span key={`g-ellipsis-${idx}`} className="flex h-7 w-5 items-center justify-center text-[11px] text-muted">
+                                ···
+                              </span>
+                            ) : (
+                              <button
+                                key={p}
+                                onClick={() => setGroupPage(p)}
+                                className={`flex h-7 min-w-[28px] items-center justify-center rounded-lg px-1 text-[11px] font-medium transition-all ${
+                                  p === current
+                                    ? "bg-accent text-white shadow-sm"
+                                    : "text-muted hover:bg-card-hover hover:text-foreground"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            )
+                          );
+                        })()}
+
+                        {/* 下一页 */}
+                        <button
+                          disabled={groupPage >= groupTotalPages}
+                          onClick={() => setGroupPage(groupPage + 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30 transition-colors"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                        {/* 末页 */}
+                        <button
+                          disabled={groupPage >= groupTotalPages}
+                          onClick={() => setGroupPage(groupTotalPages)}
+                          className="flex h-7 items-center justify-center rounded-lg px-1.5 text-[11px] text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30 transition-colors"
+                          title="末页"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                          <ChevronRight className="h-3.5 w-3.5 -ml-2" />
+                        </button>
+
+                        {/* 分隔 */}
+                        <div className="h-4 w-px bg-border/30 mx-1" />
+
+                        {/* 页码跳转 */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-muted whitespace-nowrap">跳至</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={groupTotalPages}
+                            defaultValue={groupPage}
+                            key={`gp-${groupPage}`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const val = parseInt((e.target as HTMLInputElement).value, 10);
+                                if (!isNaN(val) && val >= 1 && val <= groupTotalPages) {
+                                  setGroupPage(val);
+                                }
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val) && val >= 1 && val <= groupTotalPages && val !== groupPage) {
+                                setGroupPage(val);
+                              }
+                            }}
+                            className="w-12 rounded-md border border-border/40 bg-card-hover/50 px-1.5 py-0.5 text-center text-[11px] text-foreground outline-none focus:border-accent/50 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <span className="text-[11px] text-muted whitespace-nowrap">页</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  </>
                 );
               })()}
             </div>
