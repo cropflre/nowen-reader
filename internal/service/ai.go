@@ -299,7 +299,8 @@ func CallCloudLLM(cfg AIConfig, systemPrompt, userPrompt string, opts *LLMCallOp
 		// 某些错误不需要重试（如认证失败、请求无效）
 		errStr := err.Error()
 		if strings.Contains(errStr, "401") || strings.Contains(errStr, "403") ||
-			strings.Contains(errStr, "invalid") || strings.Contains(errStr, "not configured") {
+			strings.Contains(errStr, "invalid_api_key") || strings.Contains(errStr, "not configured") ||
+			strings.Contains(errStr, "does not support vision") {
 			return "", err
 		}
 	}
@@ -435,7 +436,11 @@ func callOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt string,
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &data); err != nil {
-		return "", tokenUsage{}, err
+		preview := string(respBody)
+		if len(preview) > 500 {
+			preview = preview[:500]
+		}
+		return "", tokenUsage{}, fmt.Errorf("failed to parse OpenAI API response: %w\nResponse body: %s", err, preview)
 	}
 	if len(data.Choices) == 0 {
 		return "", tokenUsage{}, fmt.Errorf("no response from LLM")
@@ -1104,6 +1109,8 @@ Rules:
 		return nil, err
 	}
 
+	log.Printf("[AI] recognize_content raw response (len=%d): %.500s", len(content), content)
+
 	// 清理 markdown 代码块
 	content = strings.ReplaceAll(content, "```json", "")
 	content = strings.ReplaceAll(content, "```", "")
@@ -1114,11 +1121,23 @@ Rules:
 	end := strings.LastIndex(content, "}")
 	if start >= 0 && end > start {
 		content = content[start : end+1]
+	} else {
+		// AI 返回的内容中没有找到 JSON 对象
+		preview := content
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		return nil, fmt.Errorf("AI 返回内容中未包含有效的 JSON 对象，原始响应: %s", preview)
 	}
 
 	var recognized RecognizedContent
 	if err := json.Unmarshal([]byte(content), &recognized); err != nil {
-		return nil, fmt.Errorf("failed to parse AI content recognition response: %w", err)
+		// 记录解析失败的内容，方便调试
+		preview := content
+		if len(preview) > 300 {
+			preview = preview[:300]
+		}
+		return nil, fmt.Errorf("failed to parse AI content recognition response: %w\nContent: %s", err, preview)
 	}
 	return &recognized, nil
 }

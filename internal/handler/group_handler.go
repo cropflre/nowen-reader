@@ -994,11 +994,18 @@ func (h *GroupHandler) AIRecognize(c *gin.Context) {
 	}
 
 	var body struct {
-		Lang string `json:"lang"`
+		Lang       string `json:"lang"`
+		TargetLang string `json:"targetLang"`
+		AutoApply  bool   `json:"autoApply"`
 	}
 	_ = c.ShouldBindJSON(&body)
-	if body.Lang == "" {
-		body.Lang = "zh"
+	// 兼容 targetLang 和 lang 两种字段名
+	lang := body.Lang
+	if lang == "" {
+		lang = body.TargetLang
+	}
+	if lang == "" {
+		lang = "zh"
 	}
 
 	cfg := service.LoadAIConfig()
@@ -1027,13 +1034,13 @@ func (h *GroupHandler) AIRecognize(c *gin.Context) {
 		}
 	}
 
-	recognized, err := service.AIRecognizeComicContent(cfg, coverData, pageImages, body.Lang)
+	recognized, err := service.AIRecognizeComicContent(cfg, coverData, pageImages, lang)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 识别失败: " + err.Error()})
 		return
 	}
 
-	meta, _ := service.AICompleteMetadata(cfg, firstComic.Filename, group.Name, coverData, body.Lang)
+	meta, _ := service.AICompleteMetadata(cfg, firstComic.Filename, group.Name, coverData, lang)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,
