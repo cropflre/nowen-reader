@@ -1,13 +1,10 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
+
 	"github.com/nowen-reader/nowen-reader/internal/archive"
 )
 

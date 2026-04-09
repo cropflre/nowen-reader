@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -109,4 +108,3 @@ func SearchMangaUpdates(query, lang string) []ComicMetadata {
 	}
 	return results
 }
-

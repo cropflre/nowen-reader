@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -103,4 +102,3 @@ func SearchGoogleBooks(query, lang string) []ComicMetadata {
 	}
 	return results
 }
-

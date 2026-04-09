@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -99,4 +98,3 @@ func SearchKitsu(query, lang string) []ComicMetadata {
 	}
 	return results
 }
-
