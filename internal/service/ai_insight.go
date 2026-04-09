@@ -3,8 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"strings"
 )
 
 // ============================================================
@@ -52,4 +50,3 @@ Sections to cover (pick the most relevant):
 		MaxTokens: 1200,
 	}, callback)
 }
-

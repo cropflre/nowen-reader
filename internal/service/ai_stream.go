@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -291,4 +290,3 @@ func streamGemini(cfg AIConfig, apiURL, systemPrompt, userPrompt string, maxToke
 	callback(StreamChunk{Done: true})
 	return scanner.Err()
 }
-

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -412,4 +411,3 @@ func callGemini(cfg AIConfig, apiURL, systemPrompt, userPrompt string, maxTokens
 	}
 	return "", usage, fmt.Errorf("no response from Gemini")
 }
-

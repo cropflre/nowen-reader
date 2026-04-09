@@ -1,10 +1,8 @@
 package service
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -129,4 +127,3 @@ Rules:
 
 	return &result, nil
 }
-

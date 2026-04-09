@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -123,4 +122,3 @@ func ResetAIUsageStats() {
 	defer usageMu.Unlock()
 	usageRecords = nil
 }
-

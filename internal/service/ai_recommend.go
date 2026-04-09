@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -146,4 +145,3 @@ type RecommendationItem struct {
 	Genre   string   `json:"genre"`
 	Author  string   `json:"author"`
 }
-

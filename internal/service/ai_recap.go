@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -93,4 +92,3 @@ Response format:
 	}
 	return &recap, nil
 }
-

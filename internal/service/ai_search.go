@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -126,4 +125,3 @@ If no candidates match, return an empty array: []`, langName)
 
 	return results, nil
 }
-
