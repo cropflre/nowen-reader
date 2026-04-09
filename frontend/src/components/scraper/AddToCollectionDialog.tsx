@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Plus, Search, Loader2, Check } from "lucide-react";
+import { X, Plus, Search, Loader2, Check, Layers } from "lucide-react";
+import Image from "next/image";
 import { loadCollectionGroups, addComicsToCollection, createCollection, closeAddToGroupDialog } from "@/lib/scraper-store";
 import type { CollectionGroup } from "@/lib/scraper-store";
 

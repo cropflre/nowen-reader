@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { X, Pencil, Undo2, Save, Wand2, Copy, Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { X, Pencil, Undo2, Save, Wand2, Copy, Loader2, CheckCircle, XCircle, AlertCircle, Brain, ChevronUp, ChevronDown, FileText } from "lucide-react";
 import { setBatchEditName, applyNameToAll, undoBatchEditNames, saveBatchRename, aiRename, exitBatchEditMode } from "@/lib/scraper-store";
 import type { BatchEditNameEntry, BatchRenameResult } from "@/lib/scraper-store";
 

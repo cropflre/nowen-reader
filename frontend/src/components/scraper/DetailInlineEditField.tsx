@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, Loader2, Save } from "lucide-react";
 
 export function DetailInlineEditField({
   label,

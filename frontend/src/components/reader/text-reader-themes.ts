@@ -2,6 +2,8 @@
  * 小说阅读器 — 主题色卡配置
  */
 
+import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+
 // ============ 主题色卡配置 ============
 export interface ThemeColors {
   bg: string;

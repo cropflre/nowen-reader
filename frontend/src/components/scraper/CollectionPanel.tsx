@@ -5,6 +5,7 @@ import Image from "next/image";
 import {
   X, Plus, Trash2, Loader2, Search, ChevronRight, Layers, FolderPlus,
   Sparkles, CheckCircle, AlertCircle, Pencil, Check, ArrowUpDown,
+  ArrowLeft, Play, ChevronUp, ChevronDown, Minus, Zap, FolderOpen,
 } from "lucide-react";
 import {
   loadCollectionGroups,
@@ -20,6 +21,9 @@ import {
   setCollectionEditingId,
   setCollectionEditingName,
   setCollectionCreateDialog,
+  toggleSelectItem,
+  closeCollectionPanel,
+  startBatchSelected,
 } from "@/lib/scraper-store";
 import type { CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion } from "@/lib/scraper-store";
 
@@ -121,7 +125,7 @@ export function CollectionPanel({
                 if (!selectedIds.has(id)) toggleSelectItem(id);
               });
               closeCollectionPanel();
-              startBatchSelectedAction();
+              startBatchSelected();
             }}
             className="flex items-center gap-1.5 rounded-lg bg-accent/10 px-2.5 py-1.5 text-[11px] font-medium text-accent transition-all hover:bg-accent/20"
           >

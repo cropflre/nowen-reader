@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import {
   X, User, Globe, Bookmark, Tag, Clock, Calendar, Languages, FileText,
   Star, Heart, Pencil, CheckCircle, AlertCircle, Loader2, Search,
   Trash2, Plus, ImagePlus, Download, Eye, RefreshCw, Sparkles,
-  ChevronDown, ChevronUp, BookOpen,
+  ChevronDown, ChevronUp, BookOpen, Layers, Database, Brain,
 } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, useLocale } from "@/lib/i18n";
+import { useAIStatus } from "@/hooks/useAIStatus";
 import { MetadataSearch } from "@/components/MetadataSearch";
 import {
   updateComicMetadata,

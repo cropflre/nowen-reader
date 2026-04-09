@@ -128,7 +128,7 @@ import {
   clearCleanupResult,
   clearDirtyIssues,
 } from "@/lib/scraper-store";
-import type { LibraryItem, BatchEditNameEntry, AIChatMessage, CollectionGroup, CollectionGroupDetail, MetadataFolderNode, ViewMode, ScraperGroup, GroupMetaFilter, GroupSortBy, GroupDirtyIssue, GroupCleanupResult, BatchScrapePreviewItem, BatchScrapeResultSummary } from "@/lib/scraper-store";
+import type { LibraryItem, BatchEditNameEntry, AIChatMessage, CollectionGroup, CollectionGroupDetail, MetadataFolderNode, ViewMode, ScraperGroup, GroupMetaFilter, GroupSortBy, GroupDirtyIssue, GroupCleanupResult, BatchScrapePreviewItem, BatchScrapeResultSummary, MetaFilter, LibrarySortBy } from "@/lib/scraper-store";
 import { FolderOpen, FolderPlus, Layers, Plus, Minus, FolderTree, Folder, List } from "lucide-react";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { ResizeDivider } from "@/components/ResizeDivider";
