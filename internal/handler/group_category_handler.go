@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
+	"net/http"
 	"strconv"
-	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"

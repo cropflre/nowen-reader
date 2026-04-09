@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/service"
+	"github.com/nowen-reader/nowen-reader/internal/store"
 )
-
 
 func (h *AIHandler) GenerateRecommendationReasons(c *gin.Context) {
 	var body struct {
@@ -99,4 +98,3 @@ func (h *AIHandler) ResetPromptTemplates(c *gin.Context) {
 		"defaults": service.GetDefaultPromptTemplates(),
 	})
 }
-
