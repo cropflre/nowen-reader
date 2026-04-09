@@ -1,11 +1,10 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ============================================================
@@ -134,4 +133,3 @@ func ClearChapterSummaryCache(comicID string) {
 		}
 	}
 }
-

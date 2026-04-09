@@ -1,9 +1,11 @@
 package service
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 )
 
@@ -732,7 +734,7 @@ Return ONLY a valid JSON object with these fields:
 
 // encodeBase64 将字节数组编码为 base64 字符串
 func encodeBase64(data []byte) string {
-	return base64Std.EncodeToString(data)
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 // ============================================================

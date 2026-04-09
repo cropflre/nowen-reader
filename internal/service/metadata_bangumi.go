@@ -4,8 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"strconv"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -213,4 +212,3 @@ func extractInfoboxValue(value interface{}) string {
 	}
 	return ""
 }
-

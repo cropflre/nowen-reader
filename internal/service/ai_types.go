@@ -14,20 +14,4 @@ type ImageContent struct {
 	MimeType string `json:"mimeType,omitempty"`
 }
 
-// ============================================================
-// Cloud LLM Unified Caller (增强版)
-// ============================================================
-
-// LLMCallOptions 调用选项
-type LLMCallOptions struct {
-	// 场景标识，用于统计（如 translate, summary, tag, chat）
-	Scenario string
-	// 覆盖 config 的 MaxTokens（0 表示使用 config 的值）
-	MaxTokens int
-	// 覆盖 config 的 Temperature（nil 表示使用默认 0.3）
-	Temperature *float64
-	// 图片列表（多模态）
-	Images []ImageContent
-}
-
 // CallCloudLLM 调用云端 LLM，支持重试和 token 统计。
