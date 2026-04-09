@@ -2,9 +2,7 @@ package store
 
 import (
 	"fmt"
-	"log"
 	"strings"
-	"time"
 )
 
 // ============================================================
@@ -175,4 +173,3 @@ func BatchCreateGroups(groups []AutoDetectGroup, autoInherit bool, userID ...str
 	}
 	return created, nil
 }
-

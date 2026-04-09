@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"log"
 )
 
@@ -193,4 +192,3 @@ func SyncGroupCategoriesToVolumes(groupID int) (totalVolumes, syncedVolumes int,
 
 	return
 }
-

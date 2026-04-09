@@ -3,7 +3,6 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -568,4 +567,3 @@ func GetGroupedComicIDs() (map[string][]int, error) {
 	}
 	return result, nil
 }
-

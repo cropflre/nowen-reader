@@ -1,10 +1,8 @@
 package store
 
 import (
-	"fmt"
 	"log"
 	"path"
-	"sort"
 	"strings"
 	"unicode"
 )
@@ -600,4 +598,3 @@ func isNumericTitle(title string) bool {
 	}
 	return true
 }
-
