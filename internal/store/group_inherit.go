@@ -3,8 +3,6 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"strings"
 )
 
 // ============================================================
@@ -228,4 +226,3 @@ func InheritMetadataToAllVolumes(groupID int) error {
 
 	return nil
 }
-
