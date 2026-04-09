@@ -1,24 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
-	"github.com/gin-gonic/gin"
-	"github.com/nowen-reader/nowen-reader/internal/service"
-)
-
-package handler
-
-import (
-	"encoding/json"
-	"fmt"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/service"
-	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
 type AIHandler struct{}
@@ -155,4 +141,3 @@ func (h *AIHandler) TestConnection(c *gin.Context) {
 		"reply":   result,
 	})
 }
-
