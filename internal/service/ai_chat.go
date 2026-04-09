@@ -1,9 +1,7 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -109,4 +107,3 @@ Rules:
 
 	return CallCloudLLMStream(cfg, systemPrompt, fullUserMsg, opts, callback)
 }
-

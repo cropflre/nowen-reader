@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -162,4 +161,3 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 	}
 	return results
 }
-

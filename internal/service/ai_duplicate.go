@@ -1,10 +1,8 @@
 package service
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -111,4 +109,3 @@ The array should have exactly one element representing the overall group verdict
 
 	return results, nil
 }
-

@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -99,4 +98,3 @@ Example response: ["action", "shounen", "adventure"]`
 
 	return validSlugs, nil
 }
-

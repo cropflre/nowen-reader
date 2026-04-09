@@ -1,10 +1,8 @@
 package service
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -105,4 +103,3 @@ If you cannot determine a field with reasonable confidence, omit it.`, langName,
 	}
 	return &meta, nil
 }
-

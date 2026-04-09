@@ -1,6 +1,7 @@
 package service
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -91,4 +92,3 @@ func BuildSearchQuery(title, filename string) string {
 	// 回退：从文件名提取
 	return ExtractSearchQuery(filename)
 }
-
