@@ -337,12 +337,25 @@ export default function Home() {
     }
   }, [contentType, selectedCategory, selectedTags, showGroupView, refetchGroupCategories]);
 
+  // 搜索过滤系列（前端过滤，匹配名称、作者、描述、标签）
+  const filteredGroups = useMemo(() => {
+    if (!debouncedSearch) return groups;
+    const q = debouncedSearch.toLowerCase();
+    return groups.filter((g) =>
+      g.name?.toLowerCase().includes(q) ||
+      g.author?.toLowerCase().includes(q) ||
+      g.description?.toLowerCase().includes(q) ||
+      g.tags?.toLowerCase().includes(q) ||
+      g.publisher?.toLowerCase().includes(q)
+    );
+  }, [groups, debouncedSearch]);
+
   // 分组视图分页计算
-  const groupTotalPages = Math.max(1, Math.ceil(groups.length / GROUP_PAGE_SIZE));
+  const groupTotalPages = Math.max(1, Math.ceil(filteredGroups.length / GROUP_PAGE_SIZE));
   const pagedGroups = useMemo(() => {
     const start = (groupPage - 1) * GROUP_PAGE_SIZE;
-    return groups.slice(start, start + GROUP_PAGE_SIZE);
-  }, [groups, groupPage, GROUP_PAGE_SIZE]);
+    return filteredGroups.slice(start, start + GROUP_PAGE_SIZE);
+  }, [filteredGroups, groupPage, GROUP_PAGE_SIZE]);
 
   useEffect(() => {
     loadGroups();
@@ -597,8 +610,8 @@ export default function Home() {
 
   const handleSelectAll = useCallback(() => {
     const allComicIds = new Set(sortedComics.map((c) => c.id));
-    const allGroupIds = showGroupView && currentPage === 1 && !debouncedSearch
-      ? new Set(groups.map((g) => g.id))
+    const allGroupIds = showGroupView && currentPage === 1
+      ? new Set(filteredGroups.map((g) => g.id))
       : new Set<number>();
     const allComicsSelected = selectedIds.size === allComicIds.size;
     const allGroupsSelected = allGroupIds.size === 0 || selectedGroupIds.size === allGroupIds.size;
@@ -609,7 +622,7 @@ export default function Home() {
       setSelectedIds(allComicIds);
       setSelectedGroupIds(allGroupIds);
     }
-  }, [sortedComics, selectedIds.size, selectedGroupIds.size, groups, showGroupView, currentPage, debouncedSearch]);
+  }, [sortedComics, selectedIds.size, selectedGroupIds.size, filteredGroups, showGroupView, currentPage]);
 
   const exitBatchMode = useCallback(() => {
     setBatchMode(false);
@@ -1007,8 +1020,8 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             {/* Stats + Sort Controls */}
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
               <StatsBar
-                totalComics={showGroupView ? groups.length : apiTotal}
-                filteredCount={showGroupView ? groups.length : apiTotal}
+                totalComics={showGroupView ? filteredGroups.length : apiTotal}
+                filteredCount={showGroupView ? filteredGroups.length : apiTotal}
               />
 
               {/* Sort & Filter Controls — horizontally scrollable on mobile */}
@@ -1069,7 +1082,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                     onClick={handleSelectAll}
                     className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
                       selectedIds.size === sortedComics.length && sortedComics.length > 0 &&
-                      (!showGroupView || !groups.length || selectedGroupIds.size === groups.length)
+                      (!showGroupView || !filteredGroups.length || selectedGroupIds.size === filteredGroups.length)
                         ? "bg-accent/20 text-accent"
                         : "bg-card text-muted hover:text-foreground"
                     }`}
@@ -1197,7 +1210,7 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
             {/* Comics Grid */}
             <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
             {/* 分组视图模式：只显示分组卡片 */}
-            {showGroupView && !debouncedSearch ? (
+            {showGroupView ? (
               pagedGroups.length > 0 ? (
                 <div
                   className={
@@ -1230,10 +1243,14 @@ accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
                     <Layers className="h-10 w-10 text-muted/30" />
                   </div>
                   <h3 className="mb-2 text-lg font-medium text-foreground/80">
-                    {t.comicGroup?.noGroups || "还没有分组"}
+                    {debouncedSearch
+                      ? (t.common?.noSearchResults || "未找到匹配的系列")
+                      : (t.comicGroup?.noGroups || "还没有分组")}
                   </h3>
                   <p className="max-w-sm text-sm text-muted mb-5">
-                    {t.comicGroup?.noGroupsHint || "可以通过智能分组或批量选择漫画来创建分组"}
+                    {debouncedSearch
+                      ? (t.common?.tryDifferentKeywords || "试试其他关键词")
+                      : (t.comicGroup?.noGroupsHint || "可以通过智能分组或批量选择漫画来创建分组")}
                   </p>
                 </div>
               )
