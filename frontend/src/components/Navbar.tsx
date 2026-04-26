@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Search,
   Upload,
@@ -13,13 +13,15 @@ import {
   Layers,
   RefreshCw,
   Tag,
+  MoreVertical,
+  Settings,
+  LogOut,
 } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useAuth } from "@/lib/auth-context";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import { UserMenu } from "@/components/UserMenu";
 import { useScraperStore } from "@/hooks/useScraperStore";
 
 interface NavbarProps {
@@ -109,7 +111,7 @@ export default function Navbar({
 
         {/* Right Actions */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Upload — 仅管理员可见（移动端隐藏） */}
+          {/* Upload — 仅管理员可见（桌面端保留主按钮，移动端收入菜单） */}
           {isAdmin && (
           <button
             onClick={onUpload}
@@ -125,83 +127,209 @@ export default function Navbar({
           </button>
           )}
 
-          {/* Scan Library — 手动扫描文库（仅管理员可见，移动端保留） */}
-          {isAdmin && onScanLibrary && (
-            <button
-              onClick={onScanLibrary}
-              disabled={scanning}
-              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-accent/40 hover:text-accent hover:bg-accent/5 disabled:opacity-50"
-              title={t.navbar?.scanLibrary || "扫描文库"}
-            >
-              <RefreshCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
-            </button>
-          )}
-
-          {/* Collections — 合集管理（仅管理员可见，移动端保留） */}
-          {isAdmin && (
-          <Link
-            href="/collections"
-            className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-accent/40 hover:text-accent hover:bg-accent/5"
-            title={((t as any).collections?.title) || "合集管理"}
-          >
-            <Layers className="h-4 w-4" />
-          </Link>
-          )}
-
-          {/* Tag & Category Manager — 标签与分类管理（仅管理员可见，移动端隐藏） */}
-          {isAdmin && (
-          <Link
-            href="/tag-manager"
-            className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-accent/40 hover:text-accent hover:bg-accent/5"
-            title={((t as any).tagManager?.title) || "标签与分类管理"}
-          >
-            <Tag className="h-4 w-4" />
-          </Link>
-          )}
-
-          {/* Metadata Scraper — 仅管理员可见（移动端隐藏） */}
-          {isAdmin && (
-            <Link
-              href="/scraper"
-              className={`relative hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-colors duration-200 ${
-                batchRunning
-                  ? "border-purple-500/50 text-purple-500 bg-purple-500/5"
-                  : "border-border/60 text-muted hover:border-purple-500/40 hover:text-purple-500 hover:bg-purple-500/5"
-              }`}
-              title={scraperT.navEntry || "元数据刮削"}
-            >
-              <Database className={`h-4 w-4 ${batchRunning ? "animate-pulse" : ""}`} />
-              {batchRunning && (
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500" />
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Theme Toggle — 日夜间模式（移动端保留） */}
-          <button
-            onClick={toggleTheme}
-            className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
-            title={theme === "dark" ? (t.readerToolbar?.dayMode || "Day") : (t.readerToolbar?.nightMode || "Night")}
-          >
-            {theme === "dark" ? (
-              <Sun className="h-4 w-4" />
-            ) : (
-              <Moon className="h-4 w-4" />
-            )}
-          </button>
-
-          {/* Language Switcher — 移动端隐藏 */}
-          <div className="hidden sm:block">
-            <LanguageSwitcher />
-          </div>
-
-          {/* User Menu */}
-          <UserMenu />
+          {/* More Menu */}
+          <MoreMenu
+            isAdmin={isAdmin}
+            onUpload={onUpload}
+            uploading={uploading}
+            onScanLibrary={onScanLibrary}
+            scanning={scanning}
+            batchRunning={batchRunning}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            t={t}
+            scraperT={scraperT}
+          />
         </div>
       </div>
     </nav>
+  );
+}
+
+// ============================================================
+// MoreMenu — 右侧下拉菜单
+// ============================================================
+
+interface MoreMenuProps {
+  isAdmin: boolean;
+  onUpload?: () => void;
+  uploading?: boolean;
+  onScanLibrary?: () => void;
+  scanning?: boolean;
+  batchRunning: boolean;
+  theme: string;
+  toggleTheme: () => void;
+  t: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  scraperT: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+
+function MoreMenu({
+  isAdmin,
+  onUpload,
+  uploading,
+  onScanLibrary,
+  scanning,
+  batchRunning,
+  theme,
+  toggleTheme,
+  t,
+  scraperT,
+}: MoreMenuProps) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const { user, logout } = useAuth();
+
+  // 点击外部关闭
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleAction = (fn?: () => void) => {
+    setOpen(false);
+    fn?.();
+  };
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
+        title="Menu"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-56 bg-card border border-border rounded-xl shadow-xl shadow-black/20 z-50 overflow-hidden backdrop-blur-xl">
+          {/* 管理员操作 */}
+          {isAdmin && (
+            <>
+              {/* 上传 — 移动端显示 */}
+              <button
+                onClick={() => handleAction(onUpload)}
+                disabled={uploading}
+                className="sm:hidden w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5 disabled:opacity-50"
+              >
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {uploading ? t.navbar.uploading : t.navbar.upload}
+              </button>
+
+              {/* 扫描文库 */}
+              {onScanLibrary && (
+                <button
+                  onClick={() => handleAction(onScanLibrary)}
+                  disabled={scanning}
+                  className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
+                  {t.navbar?.scanLibrary || "扫描文库"}
+                </button>
+              )}
+
+              {/* 合集管理 */}
+              <button
+                onClick={() => handleAction(() => router.push("/collections"))}
+                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+              >
+                <Layers className="h-4 w-4" />
+                {((t as any).collections?.title) || "合集管理"}
+              </button>
+
+              {/* 标签与分类管理 */}
+              <button
+                onClick={() => handleAction(() => router.push("/tag-manager"))}
+                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+              >
+                <Tag className="h-4 w-4" />
+                {((t as any).tagManager?.title) || "标签与分类管理"}
+              </button>
+
+              {/* 元数据刮削 */}
+              <button
+                onClick={() => handleAction(() => router.push("/scraper"))}
+                className={`w-full px-3 py-2.5 text-left text-sm flex items-center gap-2.5 ${
+                  batchRunning
+                    ? "text-purple-500 bg-purple-500/5 hover:bg-purple-500/10"
+                    : "text-muted hover:bg-card-hover hover:text-foreground"
+                }`}
+              >
+                <Database className={`h-4 w-4 ${batchRunning ? "animate-pulse" : ""}`} />
+                {scraperT.navEntry || "元数据刮削"}
+                {batchRunning && (
+                  <span className="ml-auto flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-purple-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500" />
+                  </span>
+                )}
+              </button>
+
+              {/* 分隔线 */}
+              <div className="my-1 border-t border-border/50" />
+            </>
+          )}
+
+          {/* 主题切换 */}
+          <button
+            onClick={() => handleAction(toggleTheme)}
+            className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {theme === "dark" ? (t.readerToolbar?.dayMode || "日间模式") : (t.readerToolbar?.nightMode || "夜间模式")}
+          </button>
+
+          {/* 语言切换 */}
+          <div className="px-3 py-2.5 flex items-center gap-2.5 text-sm text-muted">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+            <LanguageSwitcher />
+          </div>
+
+          {/* 分隔线 */}
+          <div className="my-1 border-t border-border/50" />
+
+          {/* 用户信息 & 操作 */}
+          {user && (
+            <>
+              <div className="px-3 py-2 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <span className="text-xs font-bold">{(user.nickname || user.username)[0]?.toUpperCase()}</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-foreground truncate">{user.nickname || user.username}</div>
+                  <div className="text-[10px] text-muted">@{user.username}</div>
+                </div>
+                {user.role === "admin" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-500 font-medium">admin</span>
+                )}
+              </div>
+              <button
+                onClick={() => handleAction(() => router.push("/settings"))}
+                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+              >
+                <Settings className="h-4 w-4" />
+                {t.auth?.settings || "设置"}
+              </button>
+              <button
+                onClick={() => { setOpen(false); logout(); }}
+                className="w-full px-3 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/5 flex items-center gap-2.5"
+              >
+                <LogOut className="h-4 w-4" />
+                {t.auth?.logout || "退出登录"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
