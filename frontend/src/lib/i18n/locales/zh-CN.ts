@@ -12,6 +12,8 @@ const zhCN = {
     close: "关闭",
     more: "更多",
     collapse: "收起",
+    noSearchResults: "未找到匹配结果",
+    tryDifferentKeywords: "试试其他关键词",
   },
 
   // Navbar
@@ -1141,6 +1143,8 @@ export interface Translations {
     close: string;
     more: string;
     collapse: string;
+    noSearchResults: string;
+    tryDifferentKeywords: string;
   };
   navbar: {
     searchPlaceholder: string;

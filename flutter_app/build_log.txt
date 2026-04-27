@@ -1,5 +1,606 @@
-Running Gradle task 'assembleRelease'...                        
-Expected to find fonts for (packages/cupertino_icons/CupertinoIcons, MaterialIcons), but found (MaterialIcons). This usually means you are referring to font families in an IconData class but not including them in the assets section of your pubspec.yaml, are missing the package that would include them, or are missing "uses-material-design: true".
-Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 11200 bytes (99.3% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
-Running Gradle task 'assembleRelease'...                           92.9s
-√ Built build\app\outputs\flutter-apk\app-release.apk (52.1MB)
+﻿[ +708 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[        ] executing: [C:\flutter/] git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[  +49 ms] Exit code 0 from: git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[        ] 2026-04-15 21:21:08 -0700
+[   +7 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +21 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[  +39 ms] Skipping pub get: version match.
+[  +77 ms] Found plugin url_launcher at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[   +2 ms] Found plugin url_launcher_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +2 ms] Found plugin url_launcher_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.2\
+[   +1 ms] Found plugin url_launcher_macos at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[   +2 ms] Found plugin url_launcher_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[   +1 ms] Found plugin url_launcher_ios at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.4.1\
+[   +1 ms] Found plugin url_launcher_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[   +2 ms] Found plugin shared_preferences at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[        ] Found plugin shared_preferences_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +1 ms] Found plugin path_provider_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +2 ms] Found plugin shared_preferences_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] Found plugin shared_preferences_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] Found plugin path_provider_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin shared_preferences_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] Found plugin shared_preferences_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.21\
+[   +1 ms] Found plugin path_provider at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.6.0\
+[   +2 ms] Found plugin path_provider_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +9 ms] Found plugin sqflite at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +2 ms] Found plugin sqflite_darwin at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[        ] Found plugin sqflite_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+3\
+[  +53 ms] Found plugin url_launcher at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[        ] Found plugin url_launcher_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +1 ms] Found plugin url_launcher_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.2\
+[   +1 ms] Found plugin url_launcher_macos at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[        ] Found plugin url_launcher_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[        ] Found plugin url_launcher_ios at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.4.1\
+[        ] Found plugin url_launcher_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[   +2 ms] Found plugin shared_preferences at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[        ] Found plugin shared_preferences_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +1 ms] Found plugin path_provider_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +2 ms] Found plugin shared_preferences_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] Found plugin shared_preferences_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] Found plugin path_provider_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin shared_preferences_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] Found plugin shared_preferences_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.21\
+[   +1 ms] Found plugin path_provider at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.6.0\
+[   +2 ms] Found plugin path_provider_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +6 ms] Found plugin sqflite at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +2 ms] Found plugin sqflite_darwin at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[        ] Found plugin sqflite_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+3\
+[   +5 ms] Skipping generating web_plugin_registrant.dart because it is up-to-date.
+[  +39 ms] Found plugin url_launcher at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[        ] Found plugin url_launcher_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +1 ms] Found plugin url_launcher_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.2\
+[        ] Found plugin url_launcher_macos at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[        ] Found plugin url_launcher_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[        ] Found plugin url_launcher_ios at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.4.1\
+[        ] Found plugin url_launcher_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[   +1 ms] Found plugin shared_preferences at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[        ] Found plugin shared_preferences_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[        ] Found plugin path_provider_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +1 ms] Found plugin shared_preferences_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] Found plugin shared_preferences_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] Found plugin path_provider_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin shared_preferences_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] Found plugin shared_preferences_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.21\
+[   +1 ms] Found plugin path_provider at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.6.0\
+[   +2 ms] Found plugin path_provider_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +5 ms] Found plugin sqflite at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +1 ms] Found plugin sqflite_darwin at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[        ] Found plugin sqflite_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+3\
+[   +3 ms] Generating C:\UGit\nowen-reader\flutter_app\android\app\src\main\java\io\flutter\plugins\GeneratedPluginRegistrant.java
+[        ] Skipping generating GeneratedPluginRegistrant.java because it is up-to-date.
+[   +2 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[        ] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[        ] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[        ] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[        ] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.h because it is up-to-date.
+[        ] Skipping generating GeneratedPluginRegistrant.m because it is up-to-date.
+[        ] Skipping generating GeneratedPluginRegistrant.swift because it is up-to-date.
+[  +29 ms] executing: C:\Program Files\Android\Android Studio\jbr\bin\java -version
+[ +193 ms] Exit code 0 from: C:\Program Files\Android\Android Studio\jbr\bin\java -version
+[        ] openjdk version "21.0.9" 2025-10-21
+           OpenJDK Runtime Environment (build 21.0.9+-14787801-b1163.94)
+           OpenJDK 64-Bit Server VM (build 21.0.9+-14787801-b1163.94, mixed mode)
+[   +5 ms] Top-level Gradle build file not found, skipping migration of task "clean".
+[   +1 ms] executing: C:\Program Files\Android\Android Studio\jbr\bin\java --version
+[  +87 ms] Exit code 0 from: C:\Program Files\Android\Android Studio\jbr\bin\java --version
+[        ] openjdk 21.0.9 2025-10-21
+           OpenJDK Runtime Environment (build 21.0.9+-14787801-b1163.94)
+           OpenJDK 64-Bit Server VM (build 21.0.9+-14787801-b1163.94, mixed mode)
+[   +1 ms] Version of Java is different than impacted version, no migration attempted.
+[   +9 ms] CMake project not found, skipping support Android 15 16k page size migration.
+[   +2 ms] Using gradle from C:\UGit\nowen-reader\flutter_app\android\gradlew.bat.
+[   +5 ms] LocalFile: 'C:\UGit\nowen-reader\flutter_app\android\build.gradle.kts' doesn't provide an AGP version. Checking settings.
+[        ] LocalFile: 'C:\UGit\nowen-reader\flutter_app\android\settings.gradle.kts' provides AGP version: 8.11.1
+[  +12 ms] Running Gradle task 'assembleRelease'...
+[        ] executing: [C:\UGit\nowen-reader\flutter_app\android/] C:\UGit\nowen-reader\flutter_app\android\gradlew.bat --full-stacktrace --info -Pverbose=true -Ptarget-platform=android-arm,android-arm64,android-x64 -Ptarget=lib\main.dart -Pbase-application-name=android.app.Application -Pdart-defines=RkxVVFRFUl9WRVJTSU9OPTMuNDEuNw==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049Y2MwNzM0YWM3MQ==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049NTlhYTU4NGZkZg==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMS41 -Pdart-obfuscation=false -Ptrack-widget-creation=true -Ptree-shake-icons=true assembleRelease
+[ +474 ms] Initialized native services in: C:\Users\v_zzzliang\.gradle\native
+[        ] Initialized jansi services in: C:\Users\v_zzzliang\.gradle\native
+[ +216 ms] Found daemon DaemonInfo{pid=44444, address=[053c38bd-a76d-4217-a27c-6868f4dfd5ab port:63844, addresses:[/127.0.0.1]], state=Idle, lastBusy=1777281608164, context=DefaultDaemonContext[uid=474dd0d9-0de7-4d88-98b7-6249eb5e0529,javaHome=C:\Users\v_zzzliang\.vscode\extensions\redhat.java-1.54.0-win32-x64\jre\21.0.10-win32-x86_64,javaVersion=21,javaVendor=Eclipse Adoptium,daemonRegistryDir=C:\Users\v_zzzliang\.gradle\daemon,pid=44444,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]} however its context does not match the desired criteria.
+[        ] JVM is incompatible.
+[        ] Wanted: DaemonRequestContext{jvmCriteria=C:\Program Files\Android\Android Studio\jbr (no JDK specified, using current Java home), daemonOpts=[-XX:MaxMetaspaceSize=4G, -XX:ReservedCodeCacheSize=512m, -XX:+HeapDumpOnOutOfMemoryError, -Xmx8G, -Dfile.encoding=UTF-8, -Duser.country=CN, -Duser.language=zh, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+[        ] Actual: DefaultDaemonContext[uid=474dd0d9-0de7-4d88-98b7-6249eb5e0529,javaHome=C:\Users\v_zzzliang\.vscode\extensions\redhat.java-1.54.0-win32-x64\jre\21.0.10-win32-x86_64,javaVersion=21,javaVendor=Eclipse Adoptium,daemonRegistryDir=C:\Users\v_zzzliang\.gradle\daemon,pid=44444,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]
+[        ]   Looking for a different daemon...
+[ +106 ms] The client will now receive all logging from the daemon (pid: 57660). The daemon log file: C:\Users\v_zzzliang\.gradle\daemon\8.14\daemon-57660.out.log
+[        ] Starting 3rd build in daemon [uptime: 1 mins 46.008 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 8 GiB, non-heap usage: 8% of 4 GiB]
+[        ] Using 28 worker leases.
+[        ] Now considering [C:\UGit\nowen-reader\flutter_app\android, C:\flutter\packages\flutter_tools\gradle] as hierarchies to watch
+[        ] Watching the file system is configured to be enabled if available
+[        ] File system watching is active
+[        ] Starting Build
+[        ] Now considering [C:\flutter\packages\flutter_tools\gradle, C:\UGit\nowen-reader\flutter_app\android] as hierarchies to watch
+[  +91 ms] > Configure project :gradle
+[        ] Evaluating project ':gradle' using build file 'C:\flutter\packages\flutter_tools\gradle\build.gradle.kts'.
+[        ] Resolved plugin [id: 'org.gradle.java-gradle-plugin']
+[        ] Resolved plugin [id: 'org.gradle.groovy']
+[        ] Resolved plugin [id: 'org.gradle.kotlin.kotlin-dsl', version: '5.2.0']
+[        ] Resolved plugin [id: 'org.jetbrains.kotlin.jvm', version: '1.9.20']
+[        ] Using Kotlin Gradle Plugin gradle85 variant
+[        ] kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+[        ] kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[        ] file or directory 'C:\flutter\packages\flutter_tools\gradle\src\main\java', not found
+[        ] Resolved plugin [id: 'dev.flutter.flutter-plugin-loader', version: '1.0.0']
+[        ] Resolved plugin [id: 'com.android.application', version: '8.11.1', apply: false]
+[        ] Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.2.20', apply: false]
+[        ] Resolve mutations for :gradle:checkKotlinGradlePluginConfigurationErrors (Thread[#851,Execution worker Thread 2,5,main]) started.
+[        ] :gradle:checkKotlinGradlePluginConfigurationErrors (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:checkKotlinGradlePluginConfigurationErrors SKIPPED
+[        ] Skipping task ':gradle:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+[        ] Resolve mutations for :gradle:compileKotlin (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:compileKotlin (Thread[#865,Execution worker Thread 16,5,main]) started.
+[  +90 ms] > Task :gradle:compileKotlin UP-TO-DATE
+[        ] Caching disabled for task ':gradle:compileKotlin' because:
+[        ]   Build cache is disabled
+[        ] Skipping task ':gradle:compileKotlin' as it is up-to-date.
+[        ] Resolve mutations for :gradle:compileJava (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:compileJava (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:compileJava NO-SOURCE
+[        ] Skipping task ':gradle:compileJava' as it has no source files and no previous output files.
+[        ] Resolve mutations for :gradle:compileGroovy (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:compileGroovy (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:compileGroovy NO-SOURCE
+[        ] Skipping task ':gradle:compileGroovy' as it has no source files and no previous output files.
+[        ] Resolve mutations for :gradle:pluginDescriptors (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:pluginDescriptors (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:pluginDescriptors UP-TO-DATE
+[        ] Caching disabled for task ':gradle:pluginDescriptors' because:
+[        ]   Build cache is disabled
+[        ]   Not worth caching
+[        ] Skipping task ':gradle:pluginDescriptors' as it is up-to-date.
+[        ] Resolve mutations for :gradle:processResources (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:processResources (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:processResources UP-TO-DATE
+[        ] Caching disabled for task ':gradle:processResources' because:
+[        ]   Build cache is disabled
+[        ]   Not worth caching
+[        ] Skipping task ':gradle:processResources' as it is up-to-date.
+[        ] Resolve mutations for :gradle:classes (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:classes (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:classes UP-TO-DATE
+[        ] Skipping task ':gradle:classes' as it has no actions.
+[        ] Resolve mutations for :gradle:jar (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] :gradle:jar (Thread[#865,Execution worker Thread 16,5,main]) started.
+[        ] > Task :gradle:jar UP-TO-DATE
+[        ] Caching disabled for task ':gradle:jar' because:
+[        ]   Build cache is disabled
+[        ]   Not worth caching
+[        ] Skipping task ':gradle:jar' as it is up-to-date.
+[ +197 ms] Settings evaluated using settings file 'C:\UGit\nowen-reader\flutter_app\android\settings.gradle.kts'.
+[        ] Projects loaded. Root project using build file 'C:\UGit\nowen-reader\flutter_app\android\build.gradle.kts'.
+[        ] Included projects: [root project 'android', project ':app', project ':path_provider_android', project ':shared_preferences_android', project ':sqflite_android', project ':url_launcher_android']
+[ +201 ms] > Configure project :app
+[        ] Evaluating project ':app' using build file 'C:\UGit\nowen-reader\flutter_app\android\app\build.gradle.kts'.
+[        ] Resolved plugin [id: 'com.android.application']
+[        ] Resolved plugin [id: 'kotlin-android']
+[        ] Resolved plugin [id: 'dev.flutter.flutter-gradle-plugin']
+[        ] Using default execution profile
+[        ] Build 8e8cc568-437e-4977-a09b-c72664737cec is started
+[        ] Using Kotlin Gradle Plugin gradle813 variant
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] C/C++: android.ndkVersion from module build.gradle is [28.2.13676358]
+[        ] C/C++: android.ndkPath from module build.gradle is not set
+[        ] C/C++: ndk.dir in local.properties is not set
+[        ] C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+[        ] C/C++: sdkFolder is C:\Users\v_zzzliang\AppData\Local\Android\sdk
+[        ] > Configure project :
+[        ] Evaluating root project 'android' using build file 'C:\UGit\nowen-reader\flutter_app\android\build.gradle.kts'.
+[  +94 ms] > Configure project :path_provider_android
+[        ] Evaluating project ':path_provider_android' using build file 'C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\android\build.gradle'.
+[        ] Using default execution profile
+[  +93 ms] > Configure project :shared_preferences_android
+[        ] Evaluating project ':shared_preferences_android' using build file 'C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.21\android\build.gradle'.
+[        ] Using default execution profile
+[        ] Using Kotlin Gradle Plugin gradle813 variant
+[ +106 ms] > Configure project :sqflite_android
+[        ] Evaluating project ':sqflite_android' using build file 'C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+3\android\build.gradle'.
+[        ] Using default execution profile
+[        ] > Configure project :url_launcher_android
+[        ] Evaluating project ':url_launcher_android' using build file 'C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\android\build.gradle'.
+[        ] Using default execution profile
+[        ] All projects evaluated.
+[  +91 ms] Task name matched 'assembleRelease'
+[        ] Selected primary task 'assembleRelease' from project :
+[ +109 ms] Tasks to be executed: [task ':app:ReleaseMinSdkCheck', task ':app:compileFlutterBuildRelease', task ':app:packJniLibsflutterBuildRelease', task ':app:preBuild', task ':app:preReleaseBuild', task ':app:configureCMakeRelease[arm64-v8a]', task ':app:buildCMakeRelease[arm64-v8a]', task ':app:configureCMakeRelease[armeabi-v7a]', task ':app:buildCMakeRelease[armeabi-v7a]', task ':app:configureCMakeRelease[x86_64]', task ':app:buildCMakeRelease[x86_64]', task ':app:mergeReleaseJniLibFolders', task ':path_provider_android:preBuild', task ':path_provider_android:preReleaseBuild', task ':path_provider_android:mergeReleaseJniLibFolders', task ':path_provider_android:mergeReleaseNativeLibs', task ':path_provider_android:copyReleaseJniLibsProjectOnly', task ':shared_preferences_android:preBuild', task ':shared_preferences_android:preReleaseBuild', task ':shared_preferences_android:mergeReleaseJniLibFolders', task ':shared_preferences_android:mergeReleaseNativeLibs', task ':shared_preferences_android:copyReleaseJniLibsProjectOnly', task ':sqflite_android:preBuild', task ':sqflite_android:preReleaseBuild', task ':sqflite_android:mergeReleaseJniLibFolders', task ':sqflite_android:mergeReleaseNativeLibs', task ':sqflite_android:copyReleaseJniLibsProjectOnly', task ':url_launcher_android:preBuild', task ':url_launcher_android:preReleaseBuild', task ':url_launcher_android:mergeReleaseJniLibFolders', task ':url_launcher_android:mergeReleaseNativeLibs', task ':url_launcher_android:copyReleaseJniLibsProjectOnly', task ':app:mergeReleaseNativeLibs', task ':app:stripReleaseDebugSymbols', task ':app:extractReleaseNativeSymbolTables', task ':app:mergeReleaseNativeDebugMetadata', task ':path_provider_android:generateReleaseResValues', task ':path_provider_android:generateReleaseResources', task ':path_provider_android:packageReleaseResources', task ':path_provider_android:parseReleaseLocalResources', task ':path_provider_android:generateReleaseRFile', task ':path_provider_android:javaPreCompileRelease', task ':path_provider_android:compileReleaseJavaWithJavac', task ':path_provider_android:mergeReleaseGeneratedProguardFiles', task ':path_provider_android:exportReleaseConsumerProguardFiles', task ':shared_preferences_android:checkKotlinGradlePluginConfigurationErrors', task ':shared_preferences_android:generateReleaseResValues', task ':shared_preferences_android:generateReleaseResources', task ':shared_preferences_android:packageReleaseResources', task ':shared_preferences_android:parseReleaseLocalResources', task ':shared_preferences_android:generateReleaseRFile', task ':shared_preferences_android:compileReleaseKotlin', task ':shared_preferences_android:javaPreCompileRelease', task ':shared_preferences_android:compileReleaseJavaWithJavac', task ':shared_preferences_android:mergeReleaseGeneratedProguardFiles', task ':shared_preferences_android:exportReleaseConsumerProguardFiles', task ':sqflite_android:generateReleaseResValues', task ':sqflite_android:generateReleaseResources', task ':sqflite_android:packageReleaseResources', task ':sqflite_android:parseReleaseLocalResources', task ':sqflite_android:generateReleaseRFile', task ':sqflite_android:javaPreCompileRelease', task ':sqflite_android:compileReleaseJavaWithJavac', task ':sqflite_android:mergeReleaseGeneratedProguardFiles', task ':sqflite_android:exportReleaseConsumerProguardFiles', task ':url_launcher_android:generateReleaseBuildConfig', task ':url_launcher_android:generateReleaseResValues', task ':url_launcher_android:generateReleaseResources', task ':url_launcher_android:packageReleaseResources', task ':url_launcher_android:parseReleaseLocalResources', task ':url_launcher_android:generateReleaseRFile', task ':url_launcher_android:javaPreCompileRelease', task ':url_launcher_android:compileReleaseJavaWithJavac', task ':url_launcher_android:mergeReleaseGeneratedProguardFiles', task ':url_launcher_android:exportReleaseConsumerProguardFiles', task ':app:buildKotlinToolingMetadata', task ':app:checkReleaseDuplicateClasses', task ':app:checkKotlinGradlePluginConfigurationErrors', task ':path_provider_android:writeReleaseAarMetadata', task ':shared_preferences_android:writeReleaseAarMetadata', task ':sqflite_android:writeReleaseAarMetadata', task ':url_launcher_android:writeReleaseAarMetadata', task ':app:checkReleaseAarMetadata', task ':app:cleanMergeReleaseAssets', task ':app:mergeReleaseShaders', task ':app:compileReleaseShaders', task ':app:generateReleaseAssets', task ':path_provider_android:mergeReleaseShaders', task ':path_provider_android:compileReleaseShaders', task ':path_provider_android:generateReleaseAssets', task ':path_provider_android:mergeReleaseAssets', task ':shared_preferences_android:mergeReleaseShaders', task ':shared_preferences_android:compileReleaseShaders', task ':shared_preferences_android:generateReleaseAssets', task ':shared_preferences_android:mergeReleaseAssets', task ':sqflite_android:mergeReleaseShaders', task ':sqflite_android:compileReleaseShaders', task ':sqflite_android:generateReleaseAssets', task ':sqflite_android:mergeReleaseAssets', task ':url_launcher_android:mergeReleaseShaders', task ':url_launcher_android:compileReleaseShaders', task ':url_launcher_android:generateReleaseAssets', task ':url_launcher_android:mergeReleaseAssets', task ':app:mergeReleaseAssets', task ':app:copyFlutterAssetsRelease', task ':app:generateReleaseResValues', task ':app:mapReleaseSourceSetPaths', task ':app:generateReleaseResources', task ':app:mergeReleaseResources', task ':app:packageReleaseResources', task ':app:parseReleaseLocalResources', task ':app:createReleaseCompatibleScreenManifests', task ':app:extractDeepLinksRelease', task ':path_provider_android:extractDeepLinksRelease', task ':path_provider_android:processReleaseManifest', task ':shared_preferences_android:extractDeepLinksRelease', task ':shared_preferences_android:processReleaseManifest', task ':sqflite_android:extractDeepLinksRelease', task ':sqflite_android:processReleaseManifest', task ':url_launcher_android:extractDeepLinksRelease', task ':url_launcher_android:processReleaseManifest', task ':app:processReleaseMainManifest', task ':app:outputReleaseAppLinkSettings', task ':app:processReleaseManifest', task ':app:processReleaseManifestForPackage', task ':app:processReleaseResources', task ':path_provider_android:bundleLibCompileToJarRelease', task ':shared_preferences_android:bundleLibCompileToJarRelease', task ':sqflite_android:bundleLibCompileToJarRelease', task ':url_launcher_android:bundleLibCompileToJarRelease', task ':app:compileReleaseKotlin', task ':app:javaPreCompileRelease', task ':app:compileReleaseJavaWithJavac', task ':path_provider_android:prepareReleaseArtProfile', task ':shared_preferences_android:prepareReleaseArtProfile', task ':sqflite_android:prepareReleaseArtProfile', task ':url_launcher_android:prepareReleaseArtProfile', task ':app:mergeReleaseArtProfile', task ':path_provider_android:bundleLibRuntimeToJarRelease', task ':shared_preferences_android:bundleLibRuntimeToJarRelease', task ':sqflite_android:bundleLibRuntimeToJarRelease', task ':url_launcher_android:bundleLibRuntimeToJarRelease', task ':app:expandReleaseArtProfileWildcards', task ':app:extractProguardFiles', task ':app:mergeReleaseGeneratedProguardFiles', task ':app:processReleaseJavaRes', task ':path_provider_android:processReleaseJavaRes', task ':shared_preferences_android:processReleaseJavaRes', task ':sqflite_android:processReleaseJavaRes', task ':url_launcher_android:processReleaseJavaRes', task ':app:mergeReleaseJavaResource', task ':app:mergeReleaseStartupProfile', task ':app:minifyReleaseWithR8', task ':app:compileReleaseArtProfile', task ':app:compressReleaseAssets', task ':app:extractReleaseVersionControlInfo', task ':path_provider_android:createFullJarRelease', task ':path_provider_android:extractProguardFiles', task ':path_provider_android:generateReleaseLintModel', task ':path_provider_android:prepareLintJarForPublish', task ':shared_preferences_android:createFullJarRelease', task ':shared_preferences_android:extractProguardFiles', task ':shared_preferences_android:generateReleaseLintModel', task ':shared_preferences_android:prepareLintJarForPublish', task ':sqflite_android:createFullJarRelease', task ':sqflite_android:extractProguardFiles', task ':sqflite_android:generateReleaseLintModel', task ':sqflite_android:prepareLintJarForPublish', task ':url_launcher_android:createFullJarRelease', task ':url_launcher_android:extractProguardFiles', task ':url_launcher_android:generateReleaseLintModel', task ':url_launcher_android:prepareLintJarForPublish', task ':app:generateReleaseLintVitalReportModel', task ':path_provider_android:stripReleaseDebugSymbols', task ':path_provider_android:copyReleaseJniLibsProjectAndLocalJars', task ':path_provider_android:extractDeepLinksForAarRelease', task ':path_provider_android:extractReleaseAnnotations', task ':path_provider_android:mergeReleaseConsumerProguardFiles', task ':path_provider_android:mergeReleaseJavaResource', task ':path_provider_android:syncReleaseLibJars', task ':path_provider_android:bundleReleaseLocalLintAar', task ':shared_preferences_android:stripReleaseDebugSymbols', task ':shared_preferences_android:copyReleaseJniLibsProjectAndLocalJars', task ':shared_preferences_android:extractDeepLinksForAarRelease', task ':shared_preferences_android:extractReleaseAnnotations', task ':shared_preferences_android:mergeReleaseConsumerProguardFiles', task ':shared_preferences_android:mergeReleaseJavaResource', task ':shared_preferences_android:syncReleaseLibJars', task ':shared_preferences_android:bundleReleaseLocalLintAar', task ':sqflite_android:stripReleaseDebugSymbols', task ':sqflite_android:copyReleaseJniLibsProjectAndLocalJars', task ':sqflite_android:extractDeepLinksForAarRelease', task ':sqflite_android:extractReleaseAnnotations', task ':sqflite_android:mergeReleaseConsumerProguardFiles', task ':sqflite_android:mergeReleaseJavaResource', task ':sqflite_android:syncReleaseLibJars', task ':sqflite_android:bundleReleaseLocalLintAar', task ':url_launcher_android:stripReleaseDebugSymbols', task ':url_launcher_android:copyReleaseJniLibsProjectAndLocalJars', task ':url_launcher_android:extractDeepLinksForAarRelease', task ':url_launcher_android:extractReleaseAnnotations', task ':url_launcher_android:mergeReleaseConsumerProguardFiles', task ':url_launcher_android:mergeReleaseJavaResource', task ':url_launcher_android:syncReleaseLibJars', task ':url_launcher_android:bundleReleaseLocalLintAar', task ':path_provider_android:lintVitalAnalyzeRelease', task ':path_provider_android:writeReleaseLintModelMetadata', task ':shared_preferences_android:lintVitalAnalyzeRelease', task ':shared_preferences_android:writeReleaseLintModelMetadata', task ':sqflite_android:lintVitalAnalyzeRelease', task ':sqflite_android:writeReleaseLintModelMetadata', task ':url_launcher_android:lintVitalAnalyzeRelease', task ':url_launcher_android:writeReleaseLintModelMetadata', task ':app:lintVitalAnalyzeRelease', task ':path_provider_android:generateReleaseLintVitalModel', task ':shared_preferences_android:generateReleaseLintVitalModel', task ':sqflite_android:generateReleaseLintVitalModel', task ':url_launcher_android:generateReleaseLintVitalModel', task ':app:lintVitalReportRelease', task ':app:lintVitalRelease', task ':app:convertShrunkResourcesToBinaryRelease', task ':app:optimizeReleaseResources', task ':app:collectReleaseDependencies', task ':app:sdkReleaseDependencyData', task ':app:validateSigningRelease', task ':app:writeReleaseAppMetadata', task ':app:writeReleaseSigningConfigVersions', task ':app:packageRelease', task ':app:createReleaseApkListingFileRedirect', task ':app:assembleRelease', task ':path_provider_android:bundleReleaseAar', task ':path_provider_android:mapReleaseSourceSetPaths', task ':path_provider_android:mergeReleaseResources', task ':path_provider_android:verifyReleaseResources', task ':path_provider_android:assembleRelease', task ':shared_preferences_android:bundleReleaseAar', task ':shared_preferences_android:mapReleaseSourceSetPaths', task ':shared_preferences_android:mergeReleaseResources', task ':shared_preferences_android:verifyReleaseResources', task ':shared_preferences_android:assembleRelease', task ':sqflite_android:bundleReleaseAar', task ':sqflite_android:mapReleaseSourceSetPaths', task ':sqflite_android:mergeReleaseResources', task ':sqflite_android:verifyReleaseResources', task ':sqflite_android:assembleRelease', task ':url_launcher_android:bundleReleaseAar', task ':url_launcher_android:mapReleaseSourceSetPaths', task ':url_launcher_android:mergeReleaseResources', task ':url_launcher_android:verifyReleaseResources', task ':url_launcher_android:assembleRelease']
+[        ] Tasks that were excluded: []
+[  +91 ms] work action Parameters of FilterShrinkerRulesTransform (Thread[#866,Execution worker Thread 17,5,main]) started.
+[        ] work action Parameters of ExtractAarTransform (Thread[#866,Execution worker Thread 17,5,main]) started.
+[        ] Resolve mutations for :app:ReleaseMinSdkCheck (Thread[#866,Execution worker Thread 17,5,main]) started.
+[        ] :app:ReleaseMinSdkCheck (Thread[#868,Execution worker Thread 19,5,main]) started.
+[        ] > Task :app:ReleaseMinSdkCheck
+[        ] Caching disabled for task ':app:ReleaseMinSdkCheck' because:
+[        ]   Build cache is disabled
+[        ] Task ':app:ReleaseMinSdkCheck' is not up-to-date because:
+[        ]   Task has not declared any outputs despite executing actions.
+[        ] Resolve mutations for :app:compileFlutterBuildRelease (Thread[#868,Execution worker Thread 19,5,main]) started.
+[        ] :app:compileFlutterBuildRelease (Thread[#868,Execution worker Thread 19,5,main]) started.
+[+2000 ms] > Task :app:compileFlutterBuildRelease
+[        ] Caching disabled for task ':app:compileFlutterBuildRelease' because:
+[        ]   Build cache is disabled
+[        ]   Caching has not been enabled for the task
+[        ] Task ':app:compileFlutterBuildRelease' is not up-to-date because:
+[        ]   Value of input property 'verbose' has changed for task ':app:compileFlutterBuildRelease'
+[        ] Starting process 'command 'C:\flutter\bin\flutter.bat''. Working directory: C:\UGit\nowen-reader\flutter_app Command: C:\flutter\bin\flutter.bat --verbose assemble --no-version-check --depfile C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release/flutter_build.d --output C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release -dTargetFile=lib\main.dart -dTargetPlatform=android -dBuildMode=release -dTrackWidgetCreation=true -dTreeShakeIcons=true --DartDefines=RkxVVFRFUl9WRVJTSU9OPTMuNDEuNw==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049Y2MwNzM0YWM3MQ==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049NTlhYTU4NGZkZg==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMS41 -dFlavor= -dAndroidArchs=android-arm android-arm64 android-x64 -dMinSdkVersion=24 android_aot_bundle_release_android-arm android_aot_bundle_release_android-arm64 android_aot_bundle_release_android-x64
+[        ] Successfully started process 'command 'C:\flutter\bin\flutter.bat''
+[        ] [ +744 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[        ] [   +6 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] [   +1 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] [  +33 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] [   +1 ms] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] [        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[        ] [  +19 ms] Initializing file store
+[        ] [  +26 ms] Skipping target: gen_localizations
+[        ] [   +2 ms] gen_dart_plugin_registrant: Starting due to {InvalidatedReasonKind.inputChanged: The following inputs have updated contents: C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json}
+[        ] [   +2 ms] dart_build: Starting due to {}
+[        ] [  +84 ms] Building native assets for android_arm, android_arm64, android_x64.
+[        ] [  +29 ms] Running `C:\flutter\bin\cache\dart-sdk\bin\dart compile kernel --packages=C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json --output=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\4dbb8a47fa\hook.dill --depfile=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\4dbb8a47fa\hook.dill.d C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\objective_c-9.3.0\hook\build.dart`.
+[        ] [  +47 ms] Found plugin url_launcher at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[        ] [   +2 ms] Found plugin url_launcher_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[        ] [   +2 ms] Found plugin url_launcher_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.2\
+[        ] [   +2 ms] Found plugin url_launcher_macos at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[        ] [   +1 ms] Found plugin url_launcher_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[        ] [   +1 ms] Found plugin url_launcher_ios at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.4.1\
+[        ] [   +1 ms] Found plugin url_launcher_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[        ] [   +3 ms] Found plugin shared_preferences at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[        ] [   +1 ms] Found plugin shared_preferences_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[        ] [   +1 ms] Found plugin path_provider_windows at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[        ] [   +3 ms] Found plugin shared_preferences_web at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] [        ] Found plugin shared_preferences_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] [   +1 ms] Found plugin path_provider_linux at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[        ] [   +1 ms] Found plugin shared_preferences_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] [        ] Found plugin shared_preferences_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.21\
+[        ] [   +1 ms] Found plugin path_provider at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] [        ] Found plugin path_provider_foundation at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.6.0\
+[        ] [   +4 ms] Found plugin path_provider_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[        ] [   +9 ms] Found plugin sqflite at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[        ] [   +3 ms] Found plugin sqflite_darwin at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[        ] [        ] Found plugin sqflite_android at C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+3\
+[        ] [  +14 ms] gen_dart_plugin_registrant: Complete
+[        ] [   +2 ms] kernel_snapshot_program: Starting due to {}
+[        ] [   +7 ms] C:\flutter\bin\cache\dart-sdk\bin\dartaotruntime.exe C:\flutter\bin\cache\dart-sdk\bin\snapshots\frontend_server_aot.dart.snapshot --sdk-root C:\flutter\bin\cache\artifacts\engine\common\flutter_patched_sdk_product/ --target=flutter --no-print-incremental-dependencies -DFLUTTER_VERSION=3.41.7 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=cc0734ac71 -DFLUTTER_ENGINE_REVISION=59aa584fdf -DFLUTTER_DART_VERSION=3.11.5 -DFLUTTER_APP_FLAVOR= -Ddart.vm.profile=false -Ddart.vm.product=true --delete-tostring-package-uri=dart:ui --delete-tostring-package-uri=package:flutter --aot --tfa --target-os android --packages C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json --output-dill C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\app.dill --depfile C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\kernel_snapshot_program.d --source file:///C:/UGit/nowen-reader/flutter_app/.dart_tool/flutter_build/dart_plugin_registrant.dart --source package:flutter/src/dart_plugin_registrant.dart -Dflutter.dart_plugin_registrant=file:///C:/UGit/nowen-reader/flutter_app/.dart_tool/flutter_build/dart_plugin_registrant.dart --verbosity=error package:nowen_reader/main.dart
+[+1387 ms] [+1787 ms] input.json contents:
+[        ]            {
+[        ]              "assets": {},
+[        ]              "config": {
+[        ]                "build_asset_types": [
+[        ]                  "code_assets/code"
+[        ]                ],
+[        ]                "extensions": {
+[        ]                  "code_assets": {
+[        ]                    "android": {
+[        ]                      "target_ndk_api": 24
+[        ]                    },
+[        ]                    "c_compiler": {
+[        ]                      "ar": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\llvm-ar.exe",
+[        ]                      "cc": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+[        ]                      "ld": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\ld.lld.exe"
+[        ]                    },
+[        ]                    "link_mode_preference": "dynamic",
+[        ]                    "target_architecture": "arm",
+[        ]                    "target_os": "android"
+[        ]                  }
+[        ]                },
+[        ]                "linking_enabled": true
+[        ]              },
+[        ]              "out_dir_shared": "C:\\UGit\\nowen-reader\\flutter_app\\.dart_tool\\hooks_runner\\shared\\objective_c\\build\\",
+[        ]              "out_file": "C:\\UGit\\nowen-reader\\flutter_app\\.dart_tool\\hooks_runner\\objective_c\\4dbb8a47fa\\output.json",
+[        ]              "package_name": "objective_c",
+[        ]              "package_root": "C:\\Users\\v_zzzliang\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\objective_c-9.3.0\\",
+[        ]              "user_defines": {}
+[        ]            }
+[        ] [   +2 ms] Running `(cd C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\objective_c-9.3.0\; PATH=C:\Program Files\Android\Android Studio\jbr\bin;C:\flutter\bin\;c:\Users\v_zzzliang\AppData\Roaming\Code\User\globalStorage\github.copilot-chat\debugCommand;c:\Users\v_zzzliang\AppData\Roaming\Code\User\globalStorage\github.copilot-chat\copilotCli;C:\Program Files\Amazon Corretto\jdk21.0.10_7\bin;C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot\bin;C:\windows\system32;C:\windows;C:\windows\System32\Wbem;C:\windows\System32\WindowsPowerShell\v1.0\;C:\windows\System32\OpenSSH\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Users\v_zzzliang\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Users\v_zzzliang\AppData\Local\nvm\v24.14.0;C:\Program Files\Go\bin;C:\Program Files\Calibre2\;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\ffmpeg\bin;C:\Program Files\Git\cmd;C:\Users\v_zzzliang\AppData\Local\Python\bin;C:\Users\v_zzzliang\AppData\Local\Programs\Python\Python313\Scripts\;C:\Users\v_zzzliang\AppData\Local\Programs\Python\Python313\;C:\Users\v_zzzliang\AppData\Local\Microsoft\WindowsApps;C:\Users\v_zzzliang\AppData\Local\Programs\CodeBuddy CN\bin;C:\Users\v_zzzliang\go\bin;C:\Users\v_zzzliang\AppData\Local\Programs\Microsoft VS Code\bin;C:\flutter\bin;C:\Users\v_zzzliang\AppData\Local\Microsoft\WinGet\Links;C:\Users\v_zzzliang\AppData\Local\UGit\app-5.47.1\resources\app\git\cmd;C:\Users\v_zzzliang\AppData\Local\UGit\bin;c:\Users\v_zzzliang\.vscode\extensions\vscjava.vscode-java-debug-0.59.0\bundled\scripts\noConfigScriptsc:\Users\v_zzzliang\.vscode\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundled\scripts\noConfigScripts PROGRAMDATA=C:\ProgramData SYSTEMDRIVE=C: SYSTEMROOT=C:\windows TEMP=C:\Users\V_ZZZL~1\AppData\Local\Temp TMP=C:\Users\V_ZZZL~1\AppData\Local\Temp USERPROFILE=C:\Users\v_zzzliang WINDIR=C:\windows C:\flutter\bin\cache\dart-sdk\bin\dart --packages=C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\4dbb8a47fa\hook.dill --config=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\4dbb8a47fa\input.json )`.
+[ +106 ms] [ +154 ms] output.json contents:
+[        ]            {
+[        ]              "assets_for_linking": {},
+[        ]              "status": "success",
+[        ]              "timestamp": "2026-04-27 18:30:39.000"
+[        ]            }
+[  +90 ms] [  +41 ms] Running `C:\flutter\bin\cache\dart-sdk\bin\dart compile kernel --packages=C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json --output=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\5988187173\hook.dill --depfile=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\5988187173\hook.dill.d C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\objective_c-9.3.0\hook\build.dart`.
+[+1999 ms] [+2013 ms] input.json contents:
+[        ]            {
+[        ]              "assets": {},
+[        ]              "config": {
+[        ]                "build_asset_types": [
+[        ]                  "code_assets/code"
+[        ]                ],
+[        ]                "extensions": {
+[        ]                  "code_assets": {
+[        ]                    "android": {
+[        ]                      "target_ndk_api": 24
+[        ]                    },
+[        ]                    "c_compiler": {
+[        ]                      "ar": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\llvm-ar.exe",
+[        ]                      "cc": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+[        ]                      "ld": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\ld.lld.exe"
+[        ]                    },
+[        ]                    "link_mode_preference": "dynamic",
+[        ]                    "target_architecture": "arm64",
+[        ]                    "target_os": "android"
+[        ]                  }
+[        ]                },
+[        ]                "linking_enabled": true
+[        ]              },
+[        ]              "out_dir_shared": "C:\\UGit\\nowen-reader\\flutter_app\\.dart_tool\\hooks_runner\\shared\\objective_c\\build\\",
+[        ]              "out_file": "C:\\UGit\\nowen-reader\\flutter_app\\.dart_tool\\hooks_runner\\objective_c\\5988187173\\output.json",
+[        ]              "package_name": "objective_c",
+[        ]              "package_root": "C:\\Users\\v_zzzliang\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\objective_c-9.3.0\\",
+[        ]              "user_defines": {}
+[        ]            }
+[        ] [   +1 ms] Running `(cd C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\objective_c-9.3.0\; PATH=C:\Program Files\Android\Android Studio\jbr\bin;C:\flutter\bin\;c:\Users\v_zzzliang\AppData\Roaming\Code\User\globalStorage\github.copilot-chat\debugCommand;c:\Users\v_zzzliang\AppData\Roaming\Code\User\globalStorage\github.copilot-chat\copilotCli;C:\Program Files\Amazon Corretto\jdk21.0.10_7\bin;C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot\bin;C:\windows\system32;C:\windows;C:\windows\System32\Wbem;C:\windows\System32\WindowsPowerShell\v1.0\;C:\windows\System32\OpenSSH\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Users\v_zzzliang\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Users\v_zzzliang\AppData\Local\nvm\v24.14.0;C:\Program Files\Go\bin;C:\Program Files\Calibre2\;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\ffmpeg\bin;C:\Program Files\Git\cmd;C:\Users\v_zzzliang\AppData\Local\Python\bin;C:\Users\v_zzzliang\AppData\Local\Programs\Python\Python313\Scripts\;C:\Users\v_zzzliang\AppData\Local\Programs\Python\Python313\;C:\Users\v_zzzliang\AppData\Local\Microsoft\WindowsApps;C:\Users\v_zzzliang\AppData\Local\Programs\CodeBuddy CN\bin;C:\Users\v_zzzliang\go\bin;C:\Users\v_zzzliang\AppData\Local\Programs\Microsoft VS Code\bin;C:\flutter\bin;C:\Users\v_zzzliang\AppData\Local\Microsoft\WinGet\Links;C:\Users\v_zzzliang\AppData\Local\UGit\app-5.47.1\resources\app\git\cmd;C:\Users\v_zzzliang\AppData\Local\UGit\bin;c:\Users\v_zzzliang\.vscode\extensions\vscjava.vscode-java-debug-0.59.0\bundled\scripts\noConfigScriptsc:\Users\v_zzzliang\.vscode\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundled\scripts\noConfigScripts PROGRAMDATA=C:\ProgramData SYSTEMDRIVE=C: SYSTEMROOT=C:\windows TEMP=C:\Users\V_ZZZL~1\AppData\Local\Temp TMP=C:\Users\V_ZZZL~1\AppData\Local\Temp USERPROFILE=C:\Users\v_zzzliang WINDIR=C:\windows C:\flutter\bin\cache\dart-sdk\bin\dart --packages=C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\5988187173\hook.dill --config=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\5988187173\input.json )`.
+[ +198 ms] [ +187 ms] output.json contents:
+[        ]            {
+[        ]              "assets_for_linking": {},
+[        ]              "status": "success",
+[        ]              "timestamp": "2026-04-27 18:30:41.000"
+[        ]            }
+[        ] [   +8 ms] Running `C:\flutter\bin\cache\dart-sdk\bin\dart compile kernel --packages=C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json --output=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\1cefa45c9d\hook.dill --depfile=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\1cefa45c9d\hook.dill.d C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\objective_c-9.3.0\hook\build.dart`.
+[+1901 ms] [+1934 ms] input.json contents:
+[        ]            {
+[        ]              "assets": {},
+[        ]              "config": {
+[        ]                "build_asset_types": [
+[        ]                  "code_assets/code"
+[        ]                ],
+[        ]                "extensions": {
+[        ]                  "code_assets": {
+[        ]                    "android": {
+[        ]                      "target_ndk_api": 24
+[        ]                    },
+[        ]                    "c_compiler": {
+[        ]                      "ar": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\llvm-ar.exe",
+[        ]                      "cc": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+[        ]                      "ld": "C:\\Users\\v_zzzliang\\AppData\\Local\\Android\\sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\ld.lld.exe"
+[        ]                    },
+[        ]                    "link_mode_preference": "dynamic",
+[        ]                    "target_architecture": "x64",
+[        ]                    "target_os": "android"
+[        ]                  }
+[        ]                },
+[        ]                "linking_enabled": true
+[        ]              },
+[        ]              "out_dir_shared": "C:\\UGit\\nowen-reader\\flutter_app\\.dart_tool\\hooks_runner\\shared\\objective_c\\build\\",
+[        ]              "out_file": "C:\\UGit\\nowen-reader\\flutter_app\\.dart_tool\\hooks_runner\\objective_c\\1cefa45c9d\\output.json",
+[        ]              "package_name": "objective_c",
+[        ]              "package_root": "C:\\Users\\v_zzzliang\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\objective_c-9.3.0\\",
+[        ]              "user_defines": {}
+[        ]            }
+[        ] [   +1 ms] Running `(cd C:\Users\v_zzzliang\AppData\Local\Pub\Cache\hosted\pub.dev\objective_c-9.3.0\; PATH=C:\Program Files\Android\Android Studio\jbr\bin;C:\flutter\bin\;c:\Users\v_zzzliang\AppData\Roaming\Code\User\globalStorage\github.copilot-chat\debugCommand;c:\Users\v_zzzliang\AppData\Roaming\Code\User\globalStorage\github.copilot-chat\copilotCli;C:\Program Files\Amazon Corretto\jdk21.0.10_7\bin;C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot\bin;C:\windows\system32;C:\windows;C:\windows\System32\Wbem;C:\windows\System32\WindowsPowerShell\v1.0\;C:\windows\System32\OpenSSH\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Users\v_zzzliang\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Users\v_zzzliang\AppData\Local\nvm\v24.14.0;C:\Program Files\Go\bin;C:\Program Files\Calibre2\;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\ffmpeg\bin;C:\Program Files\Git\cmd;C:\Users\v_zzzliang\AppData\Local\Python\bin;C:\Users\v_zzzliang\AppData\Local\Programs\Python\Python313\Scripts\;C:\Users\v_zzzliang\AppData\Local\Programs\Python\Python313\;C:\Users\v_zzzliang\AppData\Local\Microsoft\WindowsApps;C:\Users\v_zzzliang\AppData\Local\Programs\CodeBuddy CN\bin;C:\Users\v_zzzliang\go\bin;C:\Users\v_zzzliang\AppData\Local\Programs\Microsoft VS Code\bin;C:\flutter\bin;C:\Users\v_zzzliang\AppData\Local\Microsoft\WinGet\Links;C:\Users\v_zzzliang\AppData\Local\UGit\app-5.47.1\resources\app\git\cmd;C:\Users\v_zzzliang\AppData\Local\UGit\bin;c:\Users\v_zzzliang\.vscode\extensions\vscjava.vscode-java-debug-0.59.0\bundled\scripts\noConfigScriptsc:\Users\v_zzzliang\.vscode\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundled\scripts\noConfigScripts PROGRAMDATA=C:\ProgramData SYSTEMDRIVE=C: SYSTEMROOT=C:\windows TEMP=C:\Users\V_ZZZL~1\AppData\Local\Temp TMP=C:\Users\V_ZZZL~1\AppData\Local\Temp USERPROFILE=C:\Users\v_zzzliang WINDIR=C:\windows C:\flutter\bin\cache\dart-sdk\bin\dart --packages=C:\UGit\nowen-reader\flutter_app\.dart_tool\package_config.json C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\1cefa45c9d\hook.dill --config=C:\UGit\nowen-reader\flutter_app\.dart_tool\hooks_runner\objective_c\1cefa45c9d\input.json )`.
+[ +197 ms] [ +179 ms] output.json contents:
+[        ]            {
+[        ]              "assets_for_linking": {},
+[        ]              "status": "success",
+[        ]              "timestamp": "2026-04-27 18:30:43.000"
+[        ]            }
+[        ] [   +1 ms] Building native assets for android_arm, android_arm64, android_x64 done.
+[        ] [   +2 ms] dart_build: Complete
+[ +109 ms] [  +23 ms] install_code_assets: Starting due to {}
+[        ] [   +2 ms] Writing native assets json to file:///C:/UGit/nowen-reader/flutter_app/.dart_tool/flutter_build/d8bc9df72c80ca95f752894c70d31b3f/native_assets.json.
+[        ] [   +1 ms] Writing C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\native_assets.json done.
+[        ] [   +1 ms] install_code_assets: Complete
+[+2895 ms] [+2945 ms] kernel_snapshot_program: Complete
+[ +605 ms] [ +603 ms] android_aot_release_android-arm: Starting due to {}
+[        ] [   +2 ms] targetingApplePlatform = false
+[        ] [        ] extractAppleDebugSymbols = true
+[        ] [        ] Will strip AOT snapshot during build.
+[        ] [        ] executing: C:\flutter\bin\cache\artifacts\engine\android-arm-release\windows-x64\gen_snapshot --deterministic --snapshot_kind=app-aot-elf --elf=C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\armeabi-v7a\app.so --strip --no-sim-use-hardfp --no-use-integer-division C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\app.dill
+[        ] [        ] aot_android_asset_bundle: Starting due to {}
+[        ] [   +1 ms] android_aot_release_android-arm64: Starting due to {}
+[        ] [        ] targetingApplePlatform = false
+[        ] [        ] extractAppleDebugSymbols = true
+[        ] [        ] Will strip AOT snapshot during build.
+[        ] [        ] executing: C:\flutter\bin\cache\artifacts\engine\android-arm64-release\windows-x64\gen_snapshot --deterministic --snapshot_kind=app-aot-elf --elf=C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\arm64-v8a\app.so --strip C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\app.dill
+[        ] [        ] android_aot_release_android-x64: Starting due to {}
+[        ] [        ] targetingApplePlatform = false
+[        ] [        ] extractAppleDebugSymbols = true
+[        ] [        ] Will strip AOT snapshot during build.
+[        ] [        ] executing: C:\flutter\bin\cache\artifacts\engine\android-x64-release\windows-x64\gen_snapshot --deterministic --snapshot_kind=app-aot-elf --elf=C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\x86_64\app.so --strip C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\app.dill
+[  +92 ms] [ +116 ms] Manifest contained wildcard assets. Inserting missing file into build graph to force rerun. for more information see #56466.
+[        ] [   +5 ms] shaderc command: [C:\flutter\bin\cache\artifacts\engine\windows-x64\impellerc.exe, --sksl, --runtime-stage-gles, --runtime-stage-gles3, --runtime-stage-vulkan, --iplr, --sl=C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release\flutter_assets\shaders/ink_sparkle.frag, --spirv=C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release\flutter_assets\shaders/ink_sparkle.frag.spirv, --input=C:\flutter\packages\flutter\lib\src\material\shaders\ink_sparkle.frag, --input-type=frag, --include=C:\flutter\packages\flutter\lib\src\material\shaders, --include=C:\flutter\bin\cache\artifacts\engine\windows-x64\shader_lib]
+[        ] [        ] shaderc command: [C:\flutter\bin\cache\artifacts\engine\windows-x64\impellerc.exe, --sksl, --runtime-stage-gles, --runtime-stage-gles3, --runtime-stage-vulkan, --iplr, --sl=C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release\flutter_assets\shaders/stretch_effect.frag, --spirv=C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release\flutter_assets\shaders/stretch_effect.frag.spirv, --input=C:\flutter\packages\flutter\lib\src\material\shaders\stretch_effect.frag, --input-type=frag, --include=C:\flutter\packages\flutter\lib\src\material\shaders, --include=C:\flutter\bin\cache\artifacts\engine\windows-x64\shader_lib]
+[ +200 ms] [ +213 ms] Running command: C:\flutter\bin\cache\dart-sdk\bin\dart.exe C:\flutter\bin\cache\artifacts\engine\windows-x64\const_finder.dart.snapshot --kernel-file C:\UGit\nowen-reader\flutter_app\.dart_tool\flutter_build\d8bc9df72c80ca95f752894c70d31b3f\app.dill --class-library-uri package:flutter/src/widgets/icon_data.dart --class-name IconData --annotation-class-name _StaticIconProvider --annotation-class-library-uri package:flutter/src/widgets/icon_data.dart
+[ +805 ms] [ +769 ms] Expected to find fontFamily for constant IconData with codepoint: 128842, but found fontFamily: null. This usually means you are relying on the system font. Alternatively, font families in an IconData class can be provided in the assets section of your pubspec.yaml, or you are missing "uses-material-design: true".
+[        ] [   +1 ms] Expected to find fonts for (packages/cupertino_icons/CupertinoIcons, MaterialIcons), but found (MaterialIcons). This usually means you are referring to font families in an IconData class but not including them in the assets section of your pubspec.yaml, are missing the package that would include them, or are missing "uses-material-design: true".
+[        ] [        ] Running font-subset: C:\flutter\bin\cache\artifacts\engine\windows-x64\font-subset.exe C:\UGit\nowen-reader\flutter_app\build\app\intermediates\flutter\release\flutter_assets\fonts/MaterialIcons-Regular.otf C:\flutter\bin\cache\artifacts\material_fonts\MaterialIcons-Regular.otf, using codepoints 57490 62832 57706 58332 57502 57501 57657 57704 58372 58370 57531 57686 63668 58519 61112 58289 62624 62625 61396 57504 57495 58627 58628 59061 58090 58834 57415 58727 61783 58221 57695 58460 57787 57947 57948 58333 57535 58873 58874 57984 61728 61183 57791 58889 57402 57723 58162 61792 57842 984310 57912 57857 983712 58513 57627 57634 58214 57672 58173 58704 57689 57990 58644 57690 984413 57616 58492 58571 58751 57585 61152 57588 57785 58646 58728 58886 59077 58244 58953 57694 58978 58240 58132 61515 61773 61286 58291 58917 61703 58136 62283 61116 57548 62318 62538 61103 61890 61239 58211 57882 58475 57687 57688 58335 58208 58019 58195 58198 58363 59011
+[  +92 ms] [  +74 ms] Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 13820 bytes (99.2% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+[        ] [   +1 ms] aot_android_asset_bundle: Complete

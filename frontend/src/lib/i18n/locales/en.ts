@@ -14,6 +14,8 @@ const en: Translations = {
     close: "Close",
     more: "more",
     collapse: "Collapse",
+    noSearchResults: "No matching results",
+    tryDifferentKeywords: "Try different keywords",
   },
 
   // Navbar
