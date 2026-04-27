@@ -80,6 +80,15 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push('/favorites'),
           ),
 
+          // 合集管理
+          ListTile(
+            leading: const Icon(Icons.layers_outlined),
+            title: const Text('合集管理'),
+            subtitle: const Text('管理系列分组与合集'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/collections'),
+          ),
+
           // 标签与分类管理（管理员可见）
           if (isAdmin)
             ListTile(
