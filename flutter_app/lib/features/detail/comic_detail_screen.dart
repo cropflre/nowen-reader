@@ -307,7 +307,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                             const SizedBox(width: 10),
                             Text(
                               comic.lastReadPage > 0
-                                  ? '继续阅读 (${comic.lastReadPage + 1}/${comic.pageCount})'
+                                  ? '继续阅读 (${comic.lastReadPage + 1}/${comic.pageCount}${comic.isNovel ? "章" : "页"})'
                                   : '开始阅读',
                               style: const TextStyle(
                                 color: Colors.white,
@@ -546,7 +546,13 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     final cs = Theme.of(context).colorScheme;
     final items = <_InfoItem>[];
 
-    items.add(_InfoItem(Icons.description_outlined, '页数', '${comic.pageCount}'));
+    if (comic.pageCount > 0) {
+      items.add(_InfoItem(
+        Icons.description_outlined,
+        comic.isNovel ? '章节' : '页数',
+        '${comic.pageCount}',
+      ));
+    }
     if (comic.fileSize > 0) {
       final mb = (comic.fileSize / 1024 / 1024).toStringAsFixed(1);
       items.add(_InfoItem(Icons.folder_outlined, '大小', '${mb}MB'));

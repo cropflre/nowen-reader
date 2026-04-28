@@ -172,14 +172,17 @@ class ComicListTile extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                           ],
-                          Text(
-                            '${comic.pageCount}页',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant.withOpacity(0.5),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
+                          if (comic.pageCount > 0)
+                            Text(
+                              comic.isNovel
+                                  ? '${comic.pageCount}章'
+                                  : '${comic.pageCount}页',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant.withOpacity(0.5),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
                           if (comic.rating != null && comic.rating! > 0) ...[
                             const SizedBox(width: 8),
                             Icon(Icons.star_rounded,

@@ -11,6 +11,7 @@ import '../../data/providers/auth_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/reader_settings_panel.dart';
 import 'novel_reader_screen.dart';
+import 'pdf_reader_screen.dart';
 
 /// 漫画阅读器
 class ComicReaderScreen extends ConsumerStatefulWidget {
@@ -102,6 +103,23 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
               builder: (_) => NovelReaderScreen(
                 comicId: widget.comicId,
                 initialChapter: widget.initialPage,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 如果是 PDF 类型，跳转到 PDF 阅读器（客户端直接渲染，无需后端安装渲染工具）
+      final isPdf = data['isPdf'] == true;
+      if (isPdf) {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => PdfReaderScreen(
+                comicId: widget.comicId,
+                initialPage: widget.initialPage,
               ),
             ),
           );

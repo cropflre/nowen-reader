@@ -489,11 +489,14 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                     ),
                   ),
                   // 页数
-                  Text(
-                    '${comic.pageCount} 页',
-                    style: TextStyle(
-                        fontSize: 10, color: cs.onSurfaceVariant),
-                  ),
+                  if (comic.pageCount > 0)
+                    Text(
+                      comic.isNovel
+                          ? '${comic.pageCount} 章'
+                          : '${comic.pageCount} 页',
+                      style: TextStyle(
+                          fontSize: 10, color: cs.onSurfaceVariant),
+                    ),
                 ],
               ),
             );
@@ -579,7 +582,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                             Row(
                               children: [
                                 Text(
-                                  '${comic.pageCount}页',
+                                  comic.pageCount > 0
+                                      ? (comic.isNovel
+                                          ? '${comic.pageCount}章'
+                                          : '${comic.pageCount}页')
+                                      : '',
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: cs.onSurfaceVariant),

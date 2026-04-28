@@ -282,7 +282,9 @@ class _ContinueReadingCard extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    '${comic.lastReadPage + 1}/${comic.pageCount}',
+                                    comic.pageCount > 0
+                                        ? '${comic.lastReadPage + 1}/${comic.pageCount}'
+                                        : '${comic.lastReadPage + 1}',
                                     style: const TextStyle(
                                       color: Colors.white60,
                                       fontSize: 9,
