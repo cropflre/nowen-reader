@@ -560,6 +560,14 @@ const zhCN = {
     restartHint: "部分设置需要重启后生效",
     scraperEnabled: "启用内容刮削",
     scraperEnabledDesc: "开启后允许系统从在线数据源（AniList、Bangumi 等）自动获取封面、简介、标签等元数据。关闭时所有自动内容获取和更新操作将被禁止。",
+    ebookTypeAutoDetect: "电子书类型识别策略",
+    ebookTypeAutoDetectDesc: "EPUB/MOBI/AZW3 文件可能既是图文教材也可能是漫画。该选项决定系统如何判断它们是漫画还是小说。",
+    ebookDetectComicsOnly: "仅漫画目录里的电子书做内容识别（推荐）",
+    ebookDetectComicsOnlyDesc: "放在小说目录里的文件一律视为小说，避免图文教材被误判为漫画。",
+    ebookDetectOff: "完全按目录区分",
+    ebookDetectOffDesc: "严格按文件所在目录决定类型，不做任何内容分析。最快也最可控。",
+    ebookDetectAll: "对所有电子书都做内容识别（旧版行为）",
+    ebookDetectAllDesc: "无论文件位于哪个目录，只要图片占比高就归类为漫画。可能将图文教材误判为漫画。",
   },
 
   // AI
@@ -1653,6 +1661,14 @@ export interface Translations {
     restartHint: string;
     scraperEnabled: string;
     scraperEnabledDesc: string;
+    ebookTypeAutoDetect: string;
+    ebookTypeAutoDetectDesc: string;
+    ebookDetectComicsOnly: string;
+    ebookDetectComicsOnlyDesc: string;
+    ebookDetectOff: string;
+    ebookDetectOffDesc: string;
+    ebookDetectAll: string;
+    ebookDetectAllDesc: string;
   };
   ai: {
     title: string;

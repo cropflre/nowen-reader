@@ -420,7 +420,71 @@ func GetNovelsNeedingTypeRedetect() ([]struct {
 	return result, nil
 }
 
-// FixComicTypesBySource 根据文件来源目录修正已有记录的 type 字段。
+// GetEbookComicsByType 返回所有 type 等于指定值的电子书记录（epub/mobi/azw3）。
+// 用于按文件实际目录回滚被错误识别的电子书类型（例如把放在小说目录里、
+// 但因 image-heavy 检测被标为 comic 的教材回滚为 novel）。
+func GetEbookComicsByType(comicType string) ([]struct {
+	ID       string
+	Filename string
+}, error) {
+	rows, err := db.Query(`
+		SELECT "id", "filename" FROM "Comic"
+		WHERE "type" = ?
+		AND (LOWER("filename") LIKE '%.epub'
+			OR LOWER("filename") LIKE '%.mobi'
+			OR LOWER("filename") LIKE '%.azw3')
+	`, comicType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []struct {
+		ID       string
+		Filename string
+	}
+	for rows.Next() {
+		var c struct {
+			ID       string
+			Filename string
+		}
+		if rows.Scan(&c.ID, &c.Filename) == nil {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
+
+// GetFolderComics 返回所有"图片文件夹漫画"记录（filename 以 "/" 结尾）。
+// 用于排查并修复被错误折叠为文件夹漫画的目录（例如全是 .txt 的小说目录混入封面图）。
+func GetFolderComics() ([]struct {
+	ID       string
+	Filename string
+}, error) {
+	rows, err := db.Query(`
+		SELECT "id", "filename" FROM "Comic"
+		WHERE "filename" LIKE '%/'
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []struct {
+		ID       string
+		Filename string
+	}
+	for rows.Next() {
+		var c struct {
+			ID       string
+			Filename string
+		}
+		if rows.Scan(&c.ID, &c.Filename) == nil {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
 // 漫画库目录的文件强制为 "comic"，电子书目录的文件强制为 "novel"。
 // 只修正类型不匹配的记录，避免不必要的写入。
 func FixComicTypesBySource(fileSourceMap map[string]string) {

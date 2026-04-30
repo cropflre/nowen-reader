@@ -192,8 +192,10 @@ type diskFile struct {
 }
 
 // walkDirRecursive 递归遍历目录中的所有支持文件。
-// 同时识别图片文件夹漫画：如果某个子目录直接包含图片文件，则将该目录作为一个漫画入库。
-func walkDirRecursive(root string) []diskFile {
+// 当 enableImageFolder=true 时，会识别"图片文件夹漫画"：如果某个子目录直接包含
+// 多张图片，则将整个目录作为一个漫画入库。novels 目录应当传入 false，避免把
+// "全是 .txt 但混入封面图"的小说目录折叠成单条漫画。
+func walkDirRecursive(root string, enableImageFolder bool) []diskFile {
 	var files []diskFile
 	// 记录已被识别为图片文件夹漫画的目录，避免其子文件被重复处理
 	imageFolderDirs := make(map[string]bool)
@@ -214,8 +216,8 @@ func walkDirRecursive(root string) []diskFile {
 			if imageFolderDirs[parent] {
 				return filepath.SkipDir
 			}
-			// 检查该目录是否直接包含图片文件（不递归子目录）
-			if isImageFolderDirect(path) {
+			// 仅当启用了"图片文件夹漫画"识别时才检查
+			if enableImageFolder && isImageFolderDirect(path) {
 				imageFolderDirs[path] = true
 				// 将该目录作为一个漫画入库
 				relPath, err := filepath.Rel(root, path)
@@ -273,7 +275,14 @@ func walkDirRecursive(root string) []diskFile {
 }
 
 // isImageFolderDirect 检查目录是否直接包含图片文件（不递归子目录）。
-// 条件：目录中至少有一个图片文件，且不包含其他支持的归档文件。
+// 条件：
+//  1. 目录中没有任何归档文件（.zip/.cbz/.rar/.pdf/...）
+//  2. 目录中没有任何小说文件（.txt/.epub/.mobi/.azw3/.html/...）—— 这些应被视为
+//     独立小说，不应折叠成一个文件夹漫画
+//  3. 目录中至少存在一个图片文件
+//
+// 注意：第 2 条非常重要——如果不加这个判定，一个全是 .txt 的小说文件夹只要混入
+// 一张封面图，就会被错误折叠成"文件夹漫画"，导致里面的 .txt 全部消失。
 func isImageFolderDirect(dirPath string) bool {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -281,6 +290,7 @@ func isImageFolderDirect(dirPath string) bool {
 	}
 
 	hasImage := false
+	imageCount := 0
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -290,13 +300,21 @@ func isImageFolderDirect(dirPath string) bool {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		// 如果目录中有归档文件，则不视为图片文件夹漫画
+		// 如果目录中有归档文件或小说文件，则不视为图片文件夹漫画
 		if config.IsSupportedArchive(name) {
+			return false
+		}
+		if config.IsNovelFile(name) {
 			return false
 		}
 		if config.IsImageFile(name) {
 			hasImage = true
+			imageCount++
 		}
+	}
+	// 至少要有 2 张图片才算漫画文件夹（避免单张封面图就吞掉一个普通目录）
+	if imageCount < 2 {
+		return false
 	}
 	return hasImage
 }
@@ -330,9 +348,9 @@ func quickSync() (added, removed int) {
 	}
 	var filesOnDisk []diskFile
 
-	// 扫描漫画目录
+	// 扫描漫画目录（启用图片文件夹漫画识别）
 	for _, dir := range allDirs {
-		files := walkDirRecursive(dir)
+		files := walkDirRecursive(dir, true)
 		for i := range files {
 			files[i].Source = "comics"
 		}
@@ -352,7 +370,9 @@ func quickSync() (added, removed int) {
 		if alreadyScanned {
 			continue
 		}
-		files := walkDirRecursive(dir)
+		// 电子书目录禁用图片文件夹漫画识别——避免全是 .txt 的小说子目录
+		// 因为混入了一张封面图就被错误折叠成"文件夹漫画"
+		files := walkDirRecursive(dir, false)
 		for i := range files {
 			files[i].Source = "novels"
 		}
@@ -543,8 +563,10 @@ func fullSync() {
 					}
 
 					// 对 epub/mobi/azw3 文件检测内容类型：如果以图片为主则标记为漫画
+					// 注意：默认仅对"漫画目录"中的电子书做该检测，避免图文混排教材
+					// 被错误识别为漫画。可通过 ScannerConfig.EbookTypeAutoDetect 调整。
 					archiveType := archive.DetectType(item.Path)
-					if archive.IsEbookType(archiveType) {
+					if archive.IsEbookType(archiveType) && shouldAutoDetectEbookType(item.Path) {
 						if archiveType == archive.TypeEpub {
 							if archive.IsImageHeavyEpub(item.Path) {
 								log.Printf("[full-sync] Detected image-heavy EPUB, marking as comic: %s", item.Filename)
@@ -715,24 +737,174 @@ func md5Sync() {
 // 重新检测 mobi/azw3 文件的内容类型
 // ============================================================
 
-// RedetectEbookTypes 对所有 type="novel" 的 mobi/azw3 文件重新检测内容类型。
-// 如果检测到文件以图片为主（漫画），则将 type 更新为 "comic"。
-// 返回重新分类的数量。
-func RedetectEbookTypes() int {
-	comics, err := store.GetNovelsNeedingTypeRedetect()
-	if err != nil || len(comics) == 0 {
-		if err != nil {
-			log.Printf("[redetect] Error querying novels: %v", err)
-		}
-		return 0
+// shouldAutoDetectEbookType 根据 ScannerConfig.EbookTypeAutoDetect 与文件实际所在目录，
+// 决定是否对该电子书做"image-heavy → comic"的自动识别。
+//
+//	mode = "off"     永远不做（严格按目录决定类型）
+//	mode = "comics"  仅对位于"漫画目录"中的文件做（默认；保护小说目录里的图文教材不被误判）
+//	mode = "all"     对所有电子书都做（旧版行为，可能误把图文教材当漫画）
+func shouldAutoDetectEbookType(absPath string) bool {
+	mode := config.GetSiteConfig().ScannerConfig.EbookAutoDetectMode()
+	switch mode {
+	case "off":
+		return false
+	case "all":
+		return true
+	default: // "comics"
+		return config.ClassifyPathSource(absPath) == "comics"
+	}
+}
+
+// repairMisclassifiedFolderComics 修复历史上被错误折叠为"图片文件夹漫画"
+// 的目录条目。判定为"误折叠"的条件（满足任一即删除该目录条目）：
+//  1. 目录实际位于"电子书目录"中——这类目录下的 .txt/.epub 应作为独立小说入库
+//  2. 目录在磁盘上不再存在
+//  3. 目录里实际包含 novel 文件（.txt/.epub/.mobi/.azw3/.html）——
+//     说明里面是小说而非图片漫画，被早期版本错误吞并
+//
+// 删除的只是数据库条目，不会触碰磁盘文件。删除后下次 quickSync 会把目录里的
+// 小说文件重新加回来（每个 .txt 一条记录）。
+func repairMisclassifiedFolderComics() {
+	folders, err := store.GetFolderComics()
+	if err != nil {
+		log.Printf("[repair-folder] 查询文件夹漫画失败: %v", err)
+		return
+	}
+	if len(folders) == 0 {
+		return
 	}
 
-	log.Printf("[redetect] Found %d mobi/azw3 files with type=novel, checking content...", len(comics))
-
 	allDirs := config.GetAllScanDirs()
-	reclassified := 0
+	deleted := 0
 
-	for _, c := range comics {
+	for _, c := range folders {
+		// 还原磁盘路径：filename 形如 "TXT格式/1/"，需要拼接到某个根目录下
+		rel := strings.TrimSuffix(c.Filename, "/")
+		var foundPath string
+		for _, dir := range allDirs {
+			candidate := filepath.Join(dir, rel)
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				foundPath = candidate
+				break
+			}
+		}
+
+		shouldDelete := false
+		reason := ""
+		if foundPath == "" {
+			// 磁盘上找不到——可能用户已经移走或重命名，旧记录无意义
+			shouldDelete = true
+			reason = "directory not found on disk"
+		} else if config.ClassifyPathSource(foundPath) == "novels" {
+			// 位于电子书目录——绝不应该是"图片文件夹漫画"
+			shouldDelete = true
+			reason = "directory is in novels source"
+		} else if dirContainsNovelFiles(foundPath) {
+			// 目录里实际包含小说文件——之前被错误吞并
+			shouldDelete = true
+			reason = "directory contains novel files"
+		}
+
+		if shouldDelete {
+			if err := store.DeleteComic(c.ID, allDirs, false); err == nil {
+				deleted++
+				log.Printf("[repair-folder] 删除误折叠目录条目: %s (%s)", c.Filename, reason)
+			}
+		}
+	}
+
+	if deleted > 0 {
+		log.Printf("[repair-folder] 共修复 %d 个误折叠的目录条目，下次同步将重新展开里面的小说文件", deleted)
+	}
+}
+
+// dirContainsNovelFiles 检查目录顶层是否直接包含小说文件（.txt/.epub/.mobi/...）。
+// 不递归子目录。
+func dirContainsNovelFiles(dirPath string) bool {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if config.IsNovelFile(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// RedetectEbookTypes 重新核对已入库的电子书（EPUB/MOBI/AZW3）类型：
+//  1. 把"位于小说目录但被标记为 comic"的电子书回滚为 novel —— 解决历史上图文教材
+//     被 image-heavy 检测误识别为漫画的问题（自愈）。
+//  2. 在配置允许的范围内，对位于漫画目录的 mobi/azw3 重新做内容检测，
+//     若图片占比高则升级为 comic。
+//
+// 返回总共修正的记录数。
+func RedetectEbookTypes() int {
+	mode := config.GetSiteConfig().ScannerConfig.EbookAutoDetectMode()
+	allDirs := config.GetAllScanDirs()
+	fixed := 0
+
+	// ---------------------------------------------------------
+	// 阶段 1：回滚误判 —— 把"在小说目录里却被标为 comic"的电子书改回 novel
+	// 该阶段在所有 mode 下都执行（包括 off / all），以"目录"作为最高权威修正历史脏数据。
+	// ---------------------------------------------------------
+	comicEbooks, err := store.GetEbookComicsByType("comic")
+	if err != nil {
+		log.Printf("[redetect] Error querying comic ebooks: %v", err)
+	} else if len(comicEbooks) > 0 {
+		for _, c := range comicEbooks {
+			var foundPath string
+			for _, dir := range allDirs {
+				candidate := filepath.Join(dir, c.Filename)
+				if _, err := os.Stat(candidate); err == nil {
+					foundPath = candidate
+					break
+				}
+			}
+			if foundPath == "" {
+				continue
+			}
+			if config.ClassifyPathSource(foundPath) == "novels" {
+				log.Printf("[redetect] ↩ Reverting ebook in novels dir back to novel: %s", c.Filename)
+				if err := store.UpdateComicType(c.ID, "novel"); err == nil {
+					fixed++
+				}
+			}
+		}
+	}
+
+	// ---------------------------------------------------------
+	// 阶段 2：把"小说目录的电子书 type=novel，但 mode=all 时仍可升级"——
+	// 仅在 mode != "off" 时进行，并且每个文件还要通过 shouldAutoDetectEbookType 二次校验。
+	// ---------------------------------------------------------
+	if mode == "off" {
+		if fixed > 0 {
+			log.Printf("[redetect] mode=off, only reverted %d misclassified ebook(s)", fixed)
+		}
+		return fixed
+	}
+
+	novelMobi, err := store.GetNovelsNeedingTypeRedetect()
+	if err != nil {
+		log.Printf("[redetect] Error querying novels: %v", err)
+		return fixed
+	}
+	if len(novelMobi) == 0 {
+		return fixed
+	}
+
+	log.Printf("[redetect] Found %d mobi/azw3 files with type=novel, checking content (mode=%s)...", len(novelMobi), mode)
+
+	reclassified := 0
+	for _, c := range novelMobi {
 		// 查找文件路径
 		var foundPath string
 		for _, dir := range allDirs {
@@ -744,6 +916,11 @@ func RedetectEbookTypes() int {
 		}
 		if foundPath == "" {
 			log.Printf("[redetect] File not found on disk: %s", c.Filename)
+			continue
+		}
+
+		// 跟随用户配置：默认仅对漫画目录里的电子书升级为 comic
+		if !shouldAutoDetectEbookType(foundPath) {
 			continue
 		}
 
@@ -765,11 +942,11 @@ func RedetectEbookTypes() int {
 	}
 
 	if reclassified > 0 {
-		log.Printf("[redetect] Reclassified %d/%d mobi/azw3 files from novel to comic", reclassified, len(comics))
+		log.Printf("[redetect] Reclassified %d/%d mobi/azw3 files from novel to comic", reclassified, len(novelMobi))
 	} else {
-		log.Printf("[redetect] No files reclassified (checked %d files)", len(comics))
+		log.Printf("[redetect] No files reclassified (checked %d files)", len(novelMobi))
 	}
-	return reclassified
+	return fixed + reclassified
 }
 
 // ============================================================
@@ -809,6 +986,10 @@ func SyncComicsToDatabase() {
 		syncInProgress = false
 		syncMu.Unlock()
 	}()
+
+	// 修复历史脏数据：把被错误折叠为"图片文件夹漫画"的小说目录条目删除，
+	// 让紧接着的 quickSync 重新把里面的 .txt/.epub 等小说文件作为独立条目加回来。
+	repairMisclassifiedFolderComics()
 
 	added, _ := quickSync()
 	updateDirMtimes()

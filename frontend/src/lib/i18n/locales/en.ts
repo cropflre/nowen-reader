@@ -563,6 +563,14 @@ const en: Translations = {
     restartHint: "Some settings require a restart to take effect",
     scraperEnabled: "Enable Content Scraping",
     scraperEnabledDesc: "When enabled, the system can automatically fetch covers, descriptions, tags and other metadata from online sources (AniList, Bangumi, etc.). When disabled, all automatic content fetching and update operations are prohibited.",
+    ebookTypeAutoDetect: "Ebook Type Detection Strategy",
+    ebookTypeAutoDetectDesc: "EPUB/MOBI/AZW3 files may be either image-rich textbooks or comics. This option controls how the system decides between comic and novel.",
+    ebookDetectComicsOnly: "Only ebooks in comic directories (recommended)",
+    ebookDetectComicsOnlyDesc: "Files placed in novel directories are always treated as novels, preventing image-rich textbooks from being misclassified as comics.",
+    ebookDetectOff: "Strict directory-based",
+    ebookDetectOffDesc: "Type is decided strictly by the file's directory; no content analysis. Fastest and most predictable.",
+    ebookDetectAll: "Detect for all ebooks (legacy behavior)",
+    ebookDetectAllDesc: "Regardless of directory, any ebook with a high image ratio is treated as a comic. May misclassify illustrated textbooks as comics.",
   },
 
   // AI

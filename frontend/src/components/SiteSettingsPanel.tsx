@@ -21,6 +21,7 @@ interface SiteConfig {
   pageSize: number;
   language: string;
   scraperEnabled: boolean;
+  ebookTypeAutoDetect: "off" | "comics" | "all";
 }
 
 interface ThumbnailStats {
@@ -315,7 +316,12 @@ export function SiteSettingsPanel() {
     fetch("/api/site-settings")
       .then((r) => r.json())
       .then((data) => {
-        setConfig({ extraComicsDirs: [], extraNovelsDirs: [], ...data });
+        setConfig({
+          extraComicsDirs: [],
+          extraNovelsDirs: [],
+          ebookTypeAutoDetect: "comics",
+          ...data,
+        });
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -747,6 +753,62 @@ export function SiteSettingsPanel() {
           >
             <Plus className="h-4 w-4" />
           </button>
+        </div>
+      </div>
+
+      {/* Ebook Type Auto Detect */}
+      <div className="space-y-3 rounded-xl bg-background p-4">
+        <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+          <BookOpen className="h-3.5 w-3.5 text-accent" />
+          {siteT?.ebookTypeAutoDetect || "电子书类型识别策略"}
+        </div>
+        <p className="text-[11px] text-muted">
+          {siteT?.ebookTypeAutoDetectDesc ||
+            "EPUB/MOBI/AZW3 文件可能既是图文教材也可能是漫画。该选项决定系统如何判断它们是漫画还是小说。"}
+        </p>
+        <div className="space-y-2">
+          {([
+            {
+              key: "comics",
+              label: siteT?.ebookDetectComicsOnly || "仅漫画目录里的电子书做内容识别（推荐）",
+              desc: siteT?.ebookDetectComicsOnlyDesc ||
+                "放在小说目录里的文件一律视为小说，避免图文教材被误判为漫画。",
+            },
+            {
+              key: "off",
+              label: siteT?.ebookDetectOff || "完全按目录区分",
+              desc: siteT?.ebookDetectOffDesc ||
+                "严格按文件所在目录决定类型，不做任何内容分析。最快也最可控。",
+            },
+            {
+              key: "all",
+              label: siteT?.ebookDetectAll || "对所有电子书都做内容识别（旧版行为）",
+              desc: siteT?.ebookDetectAllDesc ||
+                "无论文件位于哪个目录，只要图片占比高就归类为漫画。可能将图文教材误判为漫画。",
+            },
+          ] as const).map((opt) => (
+            <label
+              key={opt.key}
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 transition-colors ${
+                config.ebookTypeAutoDetect === opt.key
+                  ? "border-accent/50 bg-accent/10"
+                  : "border-border hover:border-border/80 hover:bg-card-hover"
+              }`}
+            >
+              <input
+                type="radio"
+                name="ebookTypeAutoDetect"
+                value={opt.key}
+                checked={config.ebookTypeAutoDetect === opt.key}
+                onChange={() => update("ebookTypeAutoDetect", opt.key)}
+                className="mt-0.5 accent-accent"
+              />
+              <div className="flex-1">
+                <div className="text-xs font-medium text-foreground">{opt.label}</div>
+                <div className="mt-0.5 text-[11px] text-muted leading-relaxed">{opt.desc}</div>
+              </div>
+            </label>
+          ))}
         </div>
       </div>
 

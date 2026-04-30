@@ -19,18 +19,19 @@ func NewSettingsHandler() *SettingsHandler {
 
 // SiteConfigResponse is the full settings response.
 type SiteConfigResponse struct {
-	SiteName         string   `json:"siteName"`
-	ComicsDir        string   `json:"comicsDir"`
-	ExtraComicsDirs  []string `json:"extraComicsDirs"`
-	NovelsDir        string   `json:"novelsDir"`
-	ExtraNovelsDirs  []string `json:"extraNovelsDirs"`
-	ThumbnailWidth   int      `json:"thumbnailWidth"`
-	ThumbnailHeight  int      `json:"thumbnailHeight"`
-	PageSize         int      `json:"pageSize"`
-	Language         string   `json:"language"`
-	Theme            string   `json:"theme"`
-	RegistrationMode string   `json:"registrationMode"`
-	ScraperEnabled   bool     `json:"scraperEnabled"`
+	SiteName            string   `json:"siteName"`
+	ComicsDir           string   `json:"comicsDir"`
+	ExtraComicsDirs     []string `json:"extraComicsDirs"`
+	NovelsDir           string   `json:"novelsDir"`
+	ExtraNovelsDirs     []string `json:"extraNovelsDirs"`
+	ThumbnailWidth      int      `json:"thumbnailWidth"`
+	ThumbnailHeight     int      `json:"thumbnailHeight"`
+	PageSize            int      `json:"pageSize"`
+	Language            string   `json:"language"`
+	Theme               string   `json:"theme"`
+	RegistrationMode    string   `json:"registrationMode"`
+	ScraperEnabled      bool     `json:"scraperEnabled"`
+	EbookTypeAutoDetect string   `json:"ebookTypeAutoDetect"` // off | comics | all
 }
 
 // GET /api/site-settings — Get site settings
@@ -70,18 +71,19 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 	}
 
 	resp := SiteConfigResponse{
-		SiteName:         config.GetSiteName(),
-		ComicsDir:        comicsDir,
-		ExtraComicsDirs:  extraDirs,
-		NovelsDir:        novelsDir,
-		ExtraNovelsDirs:  extraNovelsDirs,
-		ThumbnailWidth:   config.GetThumbnailWidth(),
-		ThumbnailHeight:  config.GetThumbnailHeight(),
-		PageSize:         config.GetPageSize(),
-		Language:         cfg.Language,
-		Theme:            cfg.Theme,
-		RegistrationMode: config.GetRegistrationMode(),
-		ScraperEnabled:   config.IsScraperEnabled(),
+		SiteName:            config.GetSiteName(),
+		ComicsDir:           comicsDir,
+		ExtraComicsDirs:     extraDirs,
+		NovelsDir:           novelsDir,
+		ExtraNovelsDirs:     extraNovelsDirs,
+		ThumbnailWidth:      config.GetThumbnailWidth(),
+		ThumbnailHeight:     config.GetThumbnailHeight(),
+		PageSize:            config.GetPageSize(),
+		Language:            cfg.Language,
+		Theme:               cfg.Theme,
+		RegistrationMode:    config.GetRegistrationMode(),
+		ScraperEnabled:      config.IsScraperEnabled(),
+		EbookTypeAutoDetect: cfg.ScannerConfig.EbookAutoDetectMode(),
 	}
 
 	if resp.Language == "" {
@@ -97,18 +99,19 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 // PUT /api/site-settings — Update site settings
 func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	var body struct {
-		SiteName         *string  `json:"siteName"`
-		ComicsDir        *string  `json:"comicsDir"`
-		ExtraComicsDirs  []string `json:"extraComicsDirs"`
-		NovelsDir        *string  `json:"novelsDir"`
-		ExtraNovelsDirs  []string `json:"extraNovelsDirs"`
-		ThumbnailWidth   *int     `json:"thumbnailWidth"`
-		ThumbnailHeight  *int     `json:"thumbnailHeight"`
-		PageSize         *int     `json:"pageSize"`
-		Language         *string  `json:"language"`
-		Theme            *string  `json:"theme"`
-		RegistrationMode *string  `json:"registrationMode"`
-		ScraperEnabled   *bool    `json:"scraperEnabled"`
+		SiteName            *string  `json:"siteName"`
+		ComicsDir           *string  `json:"comicsDir"`
+		ExtraComicsDirs     []string `json:"extraComicsDirs"`
+		NovelsDir           *string  `json:"novelsDir"`
+		ExtraNovelsDirs     []string `json:"extraNovelsDirs"`
+		ThumbnailWidth      *int     `json:"thumbnailWidth"`
+		ThumbnailHeight     *int     `json:"thumbnailHeight"`
+		PageSize            *int     `json:"pageSize"`
+		Language            *string  `json:"language"`
+		Theme               *string  `json:"theme"`
+		RegistrationMode    *string  `json:"registrationMode"`
+		ScraperEnabled      *bool    `json:"scraperEnabled"`
+		EbookTypeAutoDetect *string  `json:"ebookTypeAutoDetect"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -156,6 +159,15 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 	if body.ScraperEnabled != nil {
 		current.ScraperEnabled = body.ScraperEnabled
+	}
+	if body.EbookTypeAutoDetect != nil {
+		mode := *body.EbookTypeAutoDetect
+		if mode == "off" || mode == "comics" || mode == "all" {
+			if current.ScannerConfig == nil {
+				current.ScannerConfig = &config.ScannerConfig{}
+			}
+			current.ScannerConfig.EbookTypeAutoDetect = mode
+		}
 	}
 
 	if err := config.SaveSiteConfig(&current); err != nil {

@@ -34,6 +34,25 @@ type ScannerConfig struct {
 	QuickSyncIntervalSec int `json:"quickSyncIntervalSec,omitempty"`
 	FullSyncIntervalSec  int `json:"fullSyncIntervalSec,omitempty"`
 	MD5Workers           int `json:"md5Workers,omitempty"` // MD5 计算并发数，网盘场景建议设为 1-2
+
+	// EbookTypeAutoDetect 控制电子书（EPUB/MOBI/AZW3）的内容类型自动识别策略：
+	//   "off"       完全关闭，文件类型严格按所在目录决定（漫画目录=comic，小说目录=novel）
+	//   "comics"    仅对位于"漫画目录"中的电子书做 image-heavy 检测；放在小说目录的文件锁定为 novel（默认，避免图文教材被误识别为漫画）
+	//   "all"       对所有电子书都做 image-heavy 检测（旧版行为，可能把图文混排教材误识别为漫画）
+	EbookTypeAutoDetect string `json:"ebookTypeAutoDetect,omitempty"`
+}
+
+// EbookAutoDetectMode 返回电子书内容类型自动识别策略，缺省返回 "comics"。
+func (c *ScannerConfig) EbookAutoDetectMode() string {
+	if c == nil {
+		return "comics"
+	}
+	switch c.EbookTypeAutoDetect {
+	case "off", "comics", "all":
+		return c.EbookTypeAutoDetect
+	default:
+		return "comics"
+	}
 }
 
 var (
@@ -206,6 +225,55 @@ func GetAllScanDirs() []string {
 		}
 	}
 	return allDirs
+}
+
+// ClassifyPathSource 根据文件的绝对路径判断它属于哪类来源目录：
+//   - "comics" : 位于任一漫画目录之内
+//   - "novels" : 位于任一电子书目录之内（且不在漫画目录中）
+//   - ""       : 不属于任何已配置目录
+//
+// 当同一目录同时配置在 comics 与 novels 中时，优先视为 comics（与扫描器去重逻辑一致）。
+func ClassifyPathSource(absPath string) string {
+	if absPath == "" {
+		return ""
+	}
+	clean := filepath.Clean(absPath)
+
+	// 漫画目录优先
+	for _, d := range GetAllComicsDirs() {
+		if d == "" {
+			continue
+		}
+		if pathHasPrefix(clean, filepath.Clean(d)) {
+			return "comics"
+		}
+	}
+	for _, d := range GetAllNovelsDirs() {
+		if d == "" {
+			continue
+		}
+		if pathHasPrefix(clean, filepath.Clean(d)) {
+			return "novels"
+		}
+	}
+	return ""
+}
+
+// pathHasPrefix 判断 path 是否在 prefix 目录之内（按路径分隔符严格匹配，避免
+// "/data/novels-extra" 误命中 "/data/novels"）。
+func pathHasPrefix(path, prefix string) bool {
+	if prefix == "" {
+		return false
+	}
+	if path == prefix {
+		return true
+	}
+	// 统一带末尾分隔符再前缀比较
+	pfx := prefix
+	if !strings.HasSuffix(pfx, string(filepath.Separator)) {
+		pfx += string(filepath.Separator)
+	}
+	return strings.HasPrefix(path, pfx)
 }
 
 // GetThumbnailsDir returns the thumbnails cache directory.
