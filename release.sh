@@ -59,6 +59,9 @@ DO_PULL=1
 DO_LATEST=1
 DO_GIT_TAG=1
 DRY_RUN=0
+# 发布前是否自动清理未跟踪文件（如缓存、日志等残留目录）
+# 默认开启：发布服务器一般只拉代码 + 构建，残留的未跟踪文件几乎都是可丢弃的临时产物
+DO_AUTO_CLEAN=1
 # 多架构相关
 PLATFORMS="$DEFAULT_PLATFORMS"
 MULTIARCH=1
@@ -82,6 +85,8 @@ usage() {
       --no-pull            不执行 git pull
       --no-latest          不打 :latest tag
       --no-git-tag         不打 git tag / 不推送到 GitHub
+      --auto-clean         自动清理工作区未跟踪文件（git clean -fd，已跟踪的修改仍会拦截）
+      --no-auto-clean      关闭自动清理，遇到脏工作区直接报错（CI 严格模式）
       --no-multiarch       只构建本机架构（单架构 + 本地 load，不走 buildx push）
       --amd64-only         只构建 linux/amd64（仍用 buildx 推送）
       --arm64-only         只构建 linux/arm64（仍用 buildx 推送）
@@ -108,6 +113,8 @@ while [ $# -gt 0 ]; do
         --no-pull)      DO_PULL=0; shift ;;
         --no-latest)    DO_LATEST=0; EXPLICIT_LATEST=1; shift ;;
         --no-git-tag)   DO_GIT_TAG=0; EXPLICIT_GIT_TAG=1; shift ;;
+        --auto-clean)   DO_AUTO_CLEAN=1; shift ;;
+        --no-auto-clean) DO_AUTO_CLEAN=0; shift ;;
         --no-multiarch) MULTIARCH=0; EXPLICIT_MULTIARCH=1; shift ;;
         --amd64-only)   MULTIARCH=1; PLATFORMS="linux/amd64"; EXPLICIT_MULTIARCH=1; EXPLICIT_PLATFORM=1; shift ;;
         --arm64-only)   MULTIARCH=1; PLATFORMS="linux/arm64"; EXPLICIT_MULTIARCH=1; EXPLICIT_PLATFORM=1; shift ;;
@@ -186,11 +193,40 @@ if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
     fi
 fi
 
-# 工作区脏检查（包含未跟踪文件）
-if [ -n "$(git status --porcelain)" ]; then
-    warn "工作区有未提交的改动或未跟踪文件："
-    git status --short | head -20
-    die "请先提交/stash/忽略后再发布"
+# 工作区脏检查（区分：已跟踪的修改 vs 未跟踪的残留）
+#   - 已跟踪的修改：一律拦截，必须用户手动 commit / stash，避免误丢工作成果
+#   - 未跟踪的文件/目录：视为临时残留（缓存、日志等），在 DO_AUTO_CLEAN=1 时自动清理
+TRACKED_DIRTY="$(git status --porcelain --untracked-files=no)"
+UNTRACKED_DIRTY="$(git ls-files --others --exclude-standard)"
+
+if [ -n "$TRACKED_DIRTY" ]; then
+    warn "工作区有已跟踪文件的未提交改动（脚本不会自动处理，避免误删你的工作成果）："
+    echo "$TRACKED_DIRTY" | head -20
+    die "请先 commit / stash 后再发布"
+fi
+
+if [ -n "$UNTRACKED_DIRTY" ]; then
+    warn "检测到工作区存在未跟踪文件/目录："
+    echo "$UNTRACKED_DIRTY" | sed 's/^/  ?? /' | head -20
+
+    if [ "$DO_AUTO_CLEAN" != "1" ]; then
+        die "请先提交/忽略这些文件，或使用 --auto-clean 让脚本自动清理"
+    fi
+
+    # 默认自动清理，但非 -y 模式下给用户一次反悔机会
+    if [ "$ASSUME_YES" != "1" ]; then
+        echo
+        warn "即将执行：git clean -fd  （不可恢复地删除以上未跟踪文件/目录）"
+        read -r -p "继续清理？[Y/n]（默认 Y）: " clean_ans
+        case "${clean_ans:-y}" in
+            [yY]|[yY][eE][sS]) ;;
+            *) die "已取消（可加 --no-auto-clean 关闭自动清理）" ;;
+        esac
+    fi
+
+    info "清理未跟踪文件：git clean -fd"
+    run_argv git clean -fd
+    ok "未跟踪文件已清理"
 fi
 
 # 暂存区检查
