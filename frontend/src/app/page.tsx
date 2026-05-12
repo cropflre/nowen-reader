@@ -573,7 +573,9 @@ export default function Home() {
 
       setUploading(true);
       try {
-        const result = await uploadComics(files);
+        // 把当前页面（漫画/电子书）作为类别提示传给后端，
+        // 后端会按文件扩展名自动分流，仅在歧义扩展名（如 .azw3）时使用此提示。
+        const result = await uploadComics(files, contentType);
         if (result.success) {
           // 触发后端扫描，确保新文件入库
           try {
@@ -595,7 +597,7 @@ export default function Home() {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [refetch, toast, t]
+    [refetch, toast, t, contentType]
   );
 
   // Batch selection handlers
@@ -886,12 +888,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Hidden file input for upload */}
+      {/* Hidden file input for upload — accept 跟随当前页面切换 */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
-accept=".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf,.txt,.epub,.mobi,.azw3,.html,.htm"
+        accept={
+          contentType === "novel"
+            ? ".txt,.epub,.mobi,.azw3,.html,.htm"
+            : ".zip,.cbz,.cbr,.rar,.7z,.cb7,.pdf"
+        }
         className="hidden"
         onChange={handleFileChange}
       />
