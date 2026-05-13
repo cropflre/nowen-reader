@@ -85,6 +85,41 @@ On first visit you'll be prompted to register an admin account. Place manga in `
 | [FAQ](./docs/FAQ.md) | Common questions about deployment, permissions, thumbnails, PDF, AI, OPDS |
 | [Flutter Client](./flutter_app/README.md) | Mobile development & build instructions |
 
+## 📸 Screenshots
+
+### Desktop
+
+<table>
+  <tr>
+    <td align="center"><b>List View (Light)</b></td>
+    <td align="center"><b>Grid View (Light)</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/桌面端1.png" alt="Desktop - List View (Light)" /></td>
+    <td><img src="./docs/桌面端2.png" alt="Desktop - Grid View (Light)" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Grid View (Dark)</b></td>
+    <td align="center"><b>List View (Dark)</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/桌面端夜间模式.png" alt="Desktop - Grid View (Dark)" /></td>
+    <td><img src="./docs/桌面端夜间模式%20(2).png" alt="Desktop - List View (Dark)" /></td>
+  </tr>
+</table>
+
+### Admin Panel
+
+<p align="center">
+  <img src="./docs/桌面端后台.png" alt="Admin Panel - File Statistics" width="90%" />
+</p>
+
+### Mobile / PWA
+
+<p align="center">
+  <img src="./docs/移动端1.png" alt="Mobile PWA UI" width="40%" />
+</p>
+
 ## 🏗️ Architecture
 
 ```

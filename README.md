@@ -87,6 +87,41 @@ docker compose -f docker-compose.prod.yml up -d
 | [常见问题](./docs/FAQ.md) | 部署、权限、缩略图、PDF、AI、OPDS 等常见问题 |
 | [Flutter 客户端](./flutter_app/README.md) | 移动端开发与构建说明 |
 
+## 📸 界面预览
+
+### 桌面端
+
+<table>
+  <tr>
+    <td align="center"><b>列表视图（浅色）</b></td>
+    <td align="center"><b>网格视图（浅色）</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/桌面端1.png" alt="桌面端 - 列表视图（浅色）" /></td>
+    <td><img src="./docs/桌面端2.png" alt="桌面端 - 网格视图（浅色）" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>网格视图（深色）</b></td>
+    <td align="center"><b>列表视图（深色）</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/桌面端夜间模式.png" alt="桌面端 - 网格视图（深色）" /></td>
+    <td><img src="./docs/桌面端夜间模式%20(2).png" alt="桌面端 - 列表视图（深色）" /></td>
+  </tr>
+</table>
+
+### 后台管理
+
+<p align="center">
+  <img src="./docs/桌面端后台.png" alt="后台管理 - 文件统计" width="90%" />
+</p>
+
+### 移动端 / PWA
+
+<p align="center">
+  <img src="./docs/移动端1.png" alt="移动端 PWA 界面" width="40%" />
+</p>
+
 ## 🏗️ 架构概览
 
 ```
