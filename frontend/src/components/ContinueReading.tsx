@@ -74,7 +74,7 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
           c.lastReadPage > 0 &&
           (c.pageCount === 0 || c.lastReadPage < c.pageCount)
       );
-      if (process.env.NODE_ENV !== "production") {
+      if (import.meta.env.MODE !== "production") {
         // eslint-disable-next-line no-console
         console.debug(
           "[ContinueReading] fetched",
