@@ -25,6 +25,14 @@ type SiteConfig struct {
 	RegistrationMode string           `json:"registrationMode,omitempty"` // "open" | "invite" | "closed"，默认 "open"
 	ScraperEnabled   *bool            `json:"scraperEnabled,omitempty"`   // 是否启用内容刮削功能，默认 false
 	ScanRules        *ScanRulesConfig `json:"scanRules,omitempty"`        // 扫描期统一规则（AI 识别 + 自动归类等）
+
+	// PdfRendererPath 指定 PDF 渲染外部工具所在目录或具体可执行文件路径。
+	// 接受三种写法：
+	//   1. 目录：例如 "D:/tools/mupdf"，会在该目录下查找 mutool/pdftoppm/pdfinfo/convert
+	//   2. 单个可执行文件：例如 "D:/tools/mupdf/mutool.exe"，仅在调用同名工具时生效
+	//   3. 多路径：用 ; (Windows) 或 : (Linux) 分隔，逐个尝试
+	// 留空时回退到系统 PATH 查找。
+	PdfRendererPath string `json:"pdfRendererPath,omitempty"`
 }
 
 // ScanRulesConfig 描述扫描入库后自动执行的"规则流水线"。
@@ -407,6 +415,83 @@ func IsScraperEnabled() bool {
 		return *cfg.ScraperEnabled
 	}
 	return false
+}
+
+// GetPdfRendererPath 返回用户配置的 PDF 渲染工具路径（目录或可执行文件）。
+// 优先级：环境变量 PDF_RENDERER > site-config.json > 空字符串
+func GetPdfRendererPath() string {
+	if p := strings.TrimSpace(os.Getenv("PDF_RENDERER")); p != "" {
+		return p
+	}
+	return strings.TrimSpace(loadSiteConfig().PdfRendererPath)
+}
+
+// ResolvePdfTool 在用户配置的目录/文件中查找指定 PDF 工具的可执行路径。
+// 找不到时返回空字符串（调用方可继续 fallback 到 exec.LookPath）。
+//
+// name: 工具名（不带扩展名），例如 "mutool"、"pdftoppm"、"pdfinfo"、"convert"。
+func ResolvePdfTool(name string) string {
+	if name == "" {
+		return ""
+	}
+	raw := GetPdfRendererPath()
+	if raw == "" {
+		return ""
+	}
+
+	sep := ":"
+	if filepath.Separator == '\\' {
+		sep = ";"
+	}
+	candidates := strings.Split(raw, sep)
+
+	// Windows 下尝试加 .exe 扩展
+	exeExts := []string{""}
+	if filepath.Separator == '\\' {
+		exeExts = []string{"", ".exe", ".bat", ".cmd"}
+	}
+
+	for _, c := range candidates {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+
+		info, err := os.Stat(c)
+		if err == nil && !info.IsDir() {
+			// 直接指向文件：仅当文件名（去扩展）匹配 name 时返回
+			base := strings.ToLower(strings.TrimSuffix(filepath.Base(c), filepath.Ext(c)))
+			if base == strings.ToLower(name) {
+				return c
+			}
+			continue
+		}
+
+		// 当作目录处理（即便 stat 失败也尝试拼接，让 os.Stat 给出最终判断）
+		for _, ext := range exeExts {
+			candidate := filepath.Join(c, name+ext)
+			if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+// LookPdfTool 在用户配置目录优先查找指定 PDF 工具，找不到再回退 exec.LookPath。
+// 注意：本函数定义在 config 包，避免 archive 包反向依赖；调用方传入查询结果即可。
+// 返回 (路径, 是否找到)。
+func LookPdfTool(name string, lookPath func(string) (string, error)) (string, bool) {
+	if p := ResolvePdfTool(name); p != "" {
+		return p, true
+	}
+	if lookPath == nil {
+		return "", false
+	}
+	if p, err := lookPath(name); err == nil && p != "" {
+		return p, true
+	}
+	return "", false
 }
 
 // DatabaseURL returns the SQLite database path.

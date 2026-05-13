@@ -794,8 +794,8 @@ func GetPdfPageCount(fp string) (int, error) {
 // pdfPageCountByMutool 用 `mutool info` 获取 PDF 页数。
 // 输出形如：`Pages: 23`
 func pdfPageCountByMutool(fp string) (int, bool) {
-	bin, err := exec.LookPath("mutool")
-	if err != nil {
+	bin, ok := config.LookPdfTool("mutool", exec.LookPath)
+	if !ok {
 		return 0, false
 	}
 	cmd := exec.Command(bin, "info", fp)
@@ -820,8 +820,8 @@ func pdfPageCountByMutool(fp string) (int, bool) {
 // pdfPageCountByPdfinfo 用 poppler 的 `pdfinfo` 获取 PDF 页数。
 // 输出形如：`Pages:          23`
 func pdfPageCountByPdfinfo(fp string) (int, bool) {
-	bin, err := exec.LookPath("pdfinfo")
-	if err != nil {
+	bin, ok := config.LookPdfTool("pdfinfo", exec.LookPath)
+	if !ok {
 		return 0, false
 	}
 	cmd := exec.Command(bin, fp)
@@ -850,8 +850,8 @@ func pdfPageCountByPdfinfo(fp string) (int, bool) {
 //
 //	Wrong page range given: the first page (99999) can not be after the last page (23).
 func pdfPageCountByPdftoppm(fp string) (int, bool) {
-	bin, err := exec.LookPath("pdftoppm")
-	if err != nil {
+	bin, ok := config.LookPdfTool("pdftoppm", exec.LookPath)
+	if !ok {
 		return 0, false
 	}
 	// 故意请求一个不可能存在的大页码，让其报错
@@ -1062,7 +1062,7 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	dpiLadder := []int{200, 120, 96}
 
 	// Method 1: mutool (from MuPDF — best quality)
-	if mutool, err := exec.LookPath("mutool"); err == nil {
+	if mutool, ok := config.LookPdfTool("mutool", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
 			cmd := exec.Command(mutool, "draw", "-o", "-", "-F", "png", "-r", fmt.Sprintf("%d", dpi), fp, fmt.Sprintf("%d", pageNum))
 			out, runErr := cmd.Output()
@@ -1094,7 +1094,7 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	}
 
 	// Method 2: pdftoppm (from poppler)
-	if pdftoppm, err := exec.LookPath("pdftoppm"); err == nil {
+	if pdftoppm, ok := config.LookPdfTool("pdftoppm", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
 			cmd := exec.Command(pdftoppm, "-png", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
 			out, runErr := cmd.Output()
@@ -1125,7 +1125,7 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 
 	// Method 3: convert from ImageMagick
 	// Windows 系统下 system32\convert.exe 是 FAT->NTFS 转换工具，必须排除
-	if convert, err := exec.LookPath("convert"); err == nil && !isWindowsSystemConvert(convert) {
+	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok && !isWindowsSystemConvert(convert) {
 		for _, dpi := range dpiLadder {
 			cmd := exec.Command(convert, "-density", fmt.Sprintf("%d", dpi), fmt.Sprintf("%s[%d]", fp, pageIndex), "png:-")
 			out, runErr := cmd.Output()

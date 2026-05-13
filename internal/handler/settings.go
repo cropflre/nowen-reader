@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/config"
@@ -32,6 +33,7 @@ type SiteConfigResponse struct {
 	RegistrationMode    string   `json:"registrationMode"`
 	ScraperEnabled      bool     `json:"scraperEnabled"`
 	EbookTypeAutoDetect string   `json:"ebookTypeAutoDetect"` // off | comics | all
+	PdfRendererPath     string   `json:"pdfRendererPath"`     // PDF 渲染外部工具路径
 }
 
 // GET /api/site-settings — Get site settings
@@ -84,6 +86,7 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 		RegistrationMode:    config.GetRegistrationMode(),
 		ScraperEnabled:      config.IsScraperEnabled(),
 		EbookTypeAutoDetect: cfg.ScannerConfig.EbookAutoDetectMode(),
+		PdfRendererPath:     cfg.PdfRendererPath,
 	}
 
 	if resp.Language == "" {
@@ -112,6 +115,7 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		RegistrationMode    *string  `json:"registrationMode"`
 		ScraperEnabled      *bool    `json:"scraperEnabled"`
 		EbookTypeAutoDetect *string  `json:"ebookTypeAutoDetect"`
+		PdfRendererPath     *string  `json:"pdfRendererPath"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -168,6 +172,9 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 			}
 			current.ScannerConfig.EbookTypeAutoDetect = mode
 		}
+	}
+	if body.PdfRendererPath != nil {
+		current.PdfRendererPath = strings.TrimSpace(*body.PdfRendererPath)
 	}
 
 	if err := config.SaveSiteConfig(&current); err != nil {
