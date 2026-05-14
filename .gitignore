@@ -3,7 +3,10 @@ nowen-reader
 nowen-reader.exe
 nowen-reader-linux-*
 *.exe
-server
+# 只忽略根目录下的 Go 二进制 server / server.exe，
+# 而不是任何路径下叫 server 的目录（否则会误伤 flutter_app/lib/features/server/ 这类源码目录）
+/server
+/server.exe
 
 # Data
 *.db
