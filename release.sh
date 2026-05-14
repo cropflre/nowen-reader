@@ -216,6 +216,34 @@ if [ "$DO_ANDROID" = "1" ]; then
         warn "  • 设置完后运行：   flutter doctor --android-licenses"
         die "请先安装 Flutter SDK 后重试"
     fi
+    # WSL 场景：拒绝使用 Windows 挂载点（/mnt/c, /mnt/d ...）下的 flutter SDK
+    # 原因：Windows 版 SDK 的 shell 脚本是 CRLF 行尾，bash 解析报 $'\r'；
+    #       且其内部 gradle/sdkmanager 走 cmd.exe，无法在 WSL 内正确构建 APK
+    FLUTTER_BIN_PATH="$(command -v flutter)"
+    FLUTTER_REAL_PATH="$(readlink -f "$FLUTTER_BIN_PATH" 2>/dev/null || echo "$FLUTTER_BIN_PATH")"
+    case "$FLUTTER_REAL_PATH" in
+        /mnt/[a-z]/*)
+            warn "检测到当前 flutter 来自 Windows 挂载点：$FLUTTER_REAL_PATH"
+            warn "  Windows 版 Flutter SDK 在 WSL 中无法用于 Android 打包（CRLF 行尾会导致 \$'\\r' 报错）"
+            warn ""
+            warn "  推荐：在 WSL 内单独安装 Linux 版 Flutter（一次配置，长期受益）："
+            warn "    sudo apt update"
+            warn "    sudo apt install -y curl git unzip xz-utils zip libglu1-mesa openjdk-17-jdk"
+            warn "    git clone -b stable https://github.com/flutter/flutter.git \$HOME/flutter"
+            warn "    echo 'export PATH=\"\$HOME/flutter/bin:\$PATH\"' >> ~/.bashrc"
+            warn "    source ~/.bashrc"
+            warn "    flutter --version          # 验证：确认 which flutter 指向 \$HOME/flutter/bin/flutter"
+            warn "    flutter doctor --android-licenses"
+            die "请先在 WSL 内安装 Linux 版 Flutter SDK 后重试"
+            ;;
+    esac
+    # 实际拉一次 flutter --version，验证 SDK 真正可用（防止假成功）
+    FLUTTER_VERSION_OUT="$(flutter --version 2>&1 || true)"
+    if ! printf '%s' "$FLUTTER_VERSION_OUT" | grep -qE '^Flutter [0-9]+\.[0-9]+'; then
+        warn "flutter --version 输出异常，疑似 SDK 不可用："
+        printf '%s\n' "$FLUTTER_VERSION_OUT" | sed 's/^/    /'
+        die "Flutter SDK 不可用，请检查安装（建议参考上方 WSL Linux 版 Flutter 安装步骤）"
+    fi
     if [ ! -d "$REPO_ROOT/$FLUTTER_APP_DIR" ]; then
         die "Flutter 项目目录不存在: $REPO_ROOT/$FLUTTER_APP_DIR"
     fi
