@@ -293,15 +293,77 @@ if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
 fi
 
 # 工作区脏检查（区分：已跟踪的修改 vs 未跟踪的残留）
-#   - 已跟踪的修改：一律拦截，必须用户手动 commit / stash，避免误丢工作成果
+#   - 已跟踪的修改：默认拦截，要求用户手动 commit / stash，避免误丢工作成果
+#     例外：Flutter 工具链每次 pub get 都会重写的"自动生成"文件
+#         （linux/windows 的 generated_plugin_registrant.* / generated_plugins.cmake
+#          macOS 的 GeneratedPluginRegistrant.swift / iOS 的 Generated.xcconfig 等）
+#         即便它们误被 git 追踪过，也会出现"假阳性"脏改动，
+#         脚本会自动 git checkout 还原后继续，不打断发布。
 #   - 未跟踪的文件/目录：视为临时残留（缓存、日志等），在 DO_AUTO_CLEAN=1 时自动清理
 TRACKED_DIRTY="$(git status --porcelain --untracked-files=no)"
 UNTRACKED_DIRTY="$(git ls-files --others --exclude-standard)"
 
+# Flutter 工具链生成文件白名单：每次 flutter pub get 都会重写，可安全丢弃
+FLUTTER_AUTOGEN_FILES=(
+    "flutter_app/linux/flutter/generated_plugin_registrant.cc"
+    "flutter_app/linux/flutter/generated_plugin_registrant.h"
+    "flutter_app/linux/flutter/generated_plugins.cmake"
+    "flutter_app/windows/flutter/generated_plugin_registrant.cc"
+    "flutter_app/windows/flutter/generated_plugin_registrant.h"
+    "flutter_app/windows/flutter/generated_plugins.cmake"
+    "flutter_app/macos/Flutter/GeneratedPluginRegistrant.swift"
+    "flutter_app/ios/Flutter/Generated.xcconfig"
+    "flutter_app/ios/Runner/GeneratedPluginRegistrant.h"
+    "flutter_app/ios/Runner/GeneratedPluginRegistrant.m"
+)
+
+# 判断 path 是否在 Flutter 自动生成白名单内
+is_flutter_autogen() {
+    local p="$1"
+    for w in "${FLUTTER_AUTOGEN_FILES[@]}"; do
+        [ "$p" = "$w" ] && return 0
+    done
+    return 1
+}
+
 if [ -n "$TRACKED_DIRTY" ]; then
-    warn "工作区有已跟踪文件的未提交改动（脚本不会自动处理，避免误删你的工作成果）："
-    echo "$TRACKED_DIRTY" | head -20
-    die "请先 commit / stash 后再发布"
+    # 把脏改动拆成 (autogen, real) 两组：
+    #   - autogen : 全部都是 Flutter 自动生成文件 → 自动 checkout 还原后继续
+    #   - real    : 含真实业务改动 → 仍然拦截
+    AUTOGEN_DIRTY_LIST=()
+    REAL_DIRTY_LIST=()
+    while IFS= read -r line; do
+        # porcelain 格式: "XY <path>" 或 "XY <old> -> <new>"（重命名）
+        # 取第 2 段及以后作为路径，并去掉可能的 " -> " 重命名箭头左半部分
+        path_part="${line:3}"
+        case "$path_part" in
+            *' -> '*) path_part="${path_part##* -> }" ;;
+        esac
+        if is_flutter_autogen "$path_part"; then
+            AUTOGEN_DIRTY_LIST+=( "$path_part" )
+        else
+            REAL_DIRTY_LIST+=( "$path_part" )
+        fi
+    done <<< "$TRACKED_DIRTY"
+
+    if [ "${#REAL_DIRTY_LIST[@]}" -gt 0 ]; then
+        warn "工作区有已跟踪文件的未提交改动（脚本不会自动处理，避免误删你的工作成果）："
+        printf '   M %s\n' "${REAL_DIRTY_LIST[@]}" | head -20
+        if [ "${#AUTOGEN_DIRTY_LIST[@]}" -gt 0 ]; then
+            warn "（另有 ${#AUTOGEN_DIRTY_LIST[@]} 个 Flutter 自动生成文件可被脚本自动还原，但因还有真实改动，本轮不处理）"
+        fi
+        die "请先 commit / stash 后再发布"
+    fi
+
+    if [ "${#AUTOGEN_DIRTY_LIST[@]}" -gt 0 ]; then
+        info "检测到 ${#AUTOGEN_DIRTY_LIST[@]} 个 Flutter 自动生成文件被工具链改写（pub get 副作用）："
+        printf '   ~ %s\n' "${AUTOGEN_DIRTY_LIST[@]}"
+        info "自动 git checkout 还原它们（不影响业务代码）"
+        for f in "${AUTOGEN_DIRTY_LIST[@]}"; do
+            run_argv git checkout -- "$f"
+        done
+        ok "已自动还原 Flutter 工具链生成文件，继续发布"
+    fi
 fi
 
 if [ -n "$UNTRACKED_DIRTY" ]; then
