@@ -268,12 +268,12 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 
 	default:
 		reader, err := getPooledReader(fp)
-		if err \!= nil {
+		if err != nil {
 			return nil, err
 		}
 		// E-book archives in comic mode: treat embedded images as pages
 		// (epub/mobi/azw3 readers return chapter entries, not image files)
-		if archive.IsEbookType(archiveType) && \!isNovel {
+		if archive.IsEbookType(archiveType) && !isNovel {
 			entries = archive.ListEpubEmbeddedImages(reader)
 		} else {
 			entries = archive.GetImageEntries(reader)
@@ -521,14 +521,14 @@ func getArchivePageImage(comicID, fp string, pageIndex int) (*PageImage, error) 
 
 	if archive.IsEbookType(archiveType) {
 		imgData, imgMime, err := archive.GetEpubEmbeddedImageData(reader, entryName)
-		if err \!= nil {
+		if err != nil {
 			return nil, fmt.Errorf("extract page %d: %w", pageIndex, err)
 		}
 		data = imgData
 		mimeType = imgMime
 	} else {
 		data, err = reader.ExtractEntry(entryName)
-		if err \!= nil {
+		if err != nil {
 			return nil, fmt.Errorf("extract page %d: %w", pageIndex, err)
 		}
 		mimeType = archive.GetMimeType(entryName)
