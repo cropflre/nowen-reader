@@ -1220,3 +1220,28 @@ func GetMobiCoverImage(r Reader) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("not a MOBI reader")
 }
+
+// CountMobiEmbeddedImages 返回 MOBI 内嵌图片数量。
+func CountMobiEmbeddedImages(r Reader) int {
+	if mr, ok := r.(*mobiReader); ok && mr.book != nil {
+		return len(mr.book.images)
+	}
+	return 0
+}
+
+// GetMobiEmbeddedImageData 按索引提取 MOBI 内嵌图片。
+func GetMobiEmbeddedImageData(r Reader, index int) ([]byte, string, error) {
+	mr, ok := r.(*mobiReader)
+	if !ok || mr.book == nil {
+		return nil, "", fmt.Errorf("not a MOBI reader")
+	}
+	if index < 0 || index >= len(mr.book.images) {
+		return nil, "", fmt.Errorf("image index %d out of range (0-%d)", index, len(mr.book.images)-1)
+	}
+	img := mr.book.images[index]
+	mime := img.mimeType
+	if mime == "" {
+		mime = "image/jpeg"
+	}
+	return img.data, mime, nil
+}

@@ -27,6 +27,144 @@ func FilenameToTitle(filename string) string {
 	return strings.TrimSuffix(filename, ext)
 }
 
+// FilenameToSmartTitle 基于"相对路径"推导标题（方案 1：文件夹名做标题主体）：
+//
+//  1. 文件位于根目录（无父文件夹）→ 直接使用文件名（去扩展名）
+//  2. 文件位于子文件夹中 → 以"清洗后的父文件夹名"作为标题主体，文件名作为卷次后缀拼接
+//  3. 若文件名已经包含父文件夹名（前缀或后缀），则不重复拼接
+//  4. 父目录若是分卷词（"第三部"）或纯格式标签（"PDF"/"漫画"），单独使用没有作品
+//     信息，会继续向上查找真正的作品名作为主前缀，分卷词作为中间层保留
+//  5. 父目录通过 cleanDirName 清洗，去除 [汉化组]、[作者] 等噪声
+//
+// 例如：
+//   - "test-comic.cbz"                              → "test-comic"
+//   - "海贼王/01.pdf"                                → "海贼王 01"
+//   - "海贼王/海贼王 第100卷.cbz"                    → "海贼王 第100卷"（避免重复）
+//   - "海贼王/单行本.cbz"                            → "海贼王 单行本"
+//   - "封神纪/第三部/01.PDF"                         → "封神纪 第三部 01"
+//   - "【郑健和 - 封神纪（武庚纪）】 PDF/第三部/01.PDF" → "封神纪（武庚纪） 第三部 01"
+//
+// 注意：传入的 relPath 必须是已转换为正斜杠的"相对扫描根"的相对路径。
+func FilenameToSmartTitle(relPath string) string {
+	// 统一分隔符
+	relPath = strings.ReplaceAll(relPath, "\\", "/")
+	base := filepath.Base(relPath)
+	ext := filepath.Ext(base)
+	baseNoExt := normalizeWhitespace(strings.TrimSuffix(base, ext))
+
+	// 去掉文件名中的扫图组/汉化组前缀（如 "誰在乎版 YongBing-000" → "YongBing-000"）
+	baseNoExt = stripScanGroupPrefix(baseNoExt)
+
+	// 拆分父目录路径
+	dir := filepath.Dir(relPath)
+	dir = strings.ReplaceAll(dir, "\\", "/")
+	var parents []string
+	if dir != "." && dir != "/" && dir != "" {
+		for _, p := range strings.Split(dir, "/") {
+			p = strings.TrimSpace(p)
+			if p == "" || p == "." {
+				continue
+			}
+			parents = append(parents, p)
+		}
+	}
+
+	// 规则 1：根目录下的文件，直接用文件名
+	if len(parents) == 0 {
+		return baseNoExt
+	}
+
+	// 规则 4：从最近的父目录向上找一个"既非分卷词、也非纯格式标签"的目录作为作品名前缀；
+	// 中间所有"分卷词"按从外到内的顺序保留为中间层；纯格式标签（PDF/漫画/...）跳过。
+	var seriesPrefix string
+	var volumeMiddles []string // 由内到外暂存
+	for i := len(parents) - 1; i >= 0; i-- {
+		p := cleanDirName(parents[i])
+		if p == "" {
+			continue
+		}
+		if isFormatTag(p) {
+			continue // 纯格式标签忽略
+		}
+		if isVolumePartName(p) {
+			volumeMiddles = append(volumeMiddles, p)
+			continue
+		}
+		seriesPrefix = p
+		break
+	}
+	// 把中间层翻转回"由外到内"的顺序
+	for i, j := 0, len(volumeMiddles)-1; i < j; i, j = i+1, j-1 {
+		volumeMiddles[i], volumeMiddles[j] = volumeMiddles[j], volumeMiddles[i]
+	}
+
+	// 规则 3：去重 —— 文件名已经包含 seriesPrefix 时不再重复拼前缀
+	if seriesPrefix != "" && titleContainsName(baseNoExt, seriesPrefix) {
+		seriesPrefix = ""
+	}
+
+	parts := make([]string, 0, 2+len(volumeMiddles))
+	if seriesPrefix != "" {
+		parts = append(parts, seriesPrefix)
+	}
+	for _, v := range volumeMiddles {
+		// 中间层若也已包含在文件名中，跳过（如目录就叫"第三部"，文件名是"第三部 番外"）
+		if titleContainsName(baseNoExt, v) {
+			continue
+		}
+		parts = append(parts, v)
+	}
+	parts = append(parts, baseNoExt)
+
+	return normalizeWhitespace(strings.Join(parts, " "))
+}
+
+// titleContainsName 判断 title 中是否已经包含了 name（用于避免拼接时重复）。
+// 比较时去除空白与常见标点，使用大小写不敏感。
+func titleContainsName(title, name string) bool {
+	norm := func(s string) string {
+		s = strings.ToLower(s)
+		// 去掉空白和常见分隔符，让 "海贼王 第1卷" 和 "海贼王" 能匹配
+		s = strings.NewReplacer(
+			" ", "", "\t", "", "_", "", "-", "", ".", "",
+			"(", "", ")", "", "[", "", "]", "",
+			"（", "", "）", "", "【", "", "】", "",
+		).Replace(s)
+		return s
+	}
+	t := norm(title)
+	n := norm(name)
+	if t == "" || n == "" {
+		return false
+	}
+	return strings.Contains(t, n)
+}
+
+// normalizeWhitespace 折叠多余空白字符（含全角空格），并去除首尾空白。
+func normalizeWhitespace(s string) string {
+	if s == "" {
+		return s
+	}
+	// 全角空格转半角
+	s = strings.ReplaceAll(s, "\u3000", " ")
+	// 折叠连续空白为单个空格
+	var b strings.Builder
+	b.Grow(len(s))
+	prevSpace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			if !prevSpace {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		b.WriteRune(r)
+		prevSpace = false
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // ============================================================
 // Comic 变更操作
 // ============================================================
@@ -669,6 +807,10 @@ func extractCoreTitle(title string) string {
 		lp := strings.ToLower(t)
 		// 跳过明显的标签
 		if lp == "comic" || lp == "manga" || lp == "漫画" || lp == "同人" {
+			continue
+		}
+		// 跳过扫图组/汉化组/状态标签（如 "誰在乎版"、"已完结"）
+		if isScanGroupTag(t) || isStatusTag(t) {
 			continue
 		}
 		// 跳过看起来是编号的短字符串

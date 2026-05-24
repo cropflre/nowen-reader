@@ -17,6 +17,7 @@ import {
   Settings,
   LogOut,
   Globe,
+  HardDrive,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
@@ -273,25 +274,55 @@ function MoreMenu({
                 {((t as any).tagManager?.title) || "标签与分类管理"}
               </button>
 
-              {/* 元数据刮削 */}
-              {scraperEnabled && (
+              {/* 数据管理 */}
               <button
-                onClick={() => handleAction(() => router.push("/scraper"))}
-                className={`w-full px-3 py-2.5 text-left text-sm flex items-center gap-2.5 ${
-                  batchRunning
-                    ? "text-purple-500 bg-purple-500/5 hover:bg-purple-500/10"
-                    : "text-muted hover:bg-card-hover hover:text-foreground"
-                }`}
+                onClick={() => handleAction(() => router.push("/data-admin"))}
+                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
               >
-                <Database className={`h-4 w-4 ${batchRunning ? "animate-pulse" : ""}`} />
-                {scraperT.navEntry || "元数据刮削"}
-                {batchRunning && (
-                  <span className="ml-auto relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-purple-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500" />
-                  </span>
-                )}
+                <HardDrive className="h-4 w-4" />
+                {((t as any).dataAdmin?.title) || "数据管理"}
               </button>
+
+              {/* 元数据刮削 — 启用时正常显示；未启用时灰显并跳转到设置 */}
+              {scraperEnabled ? (
+                <button
+                  onClick={() => handleAction(() => router.push("/scraper"))}
+                  className={`w-full px-3 py-2.5 text-left text-sm flex items-center gap-2.5 ${
+                    batchRunning
+                      ? "text-purple-500 bg-purple-500/5 hover:bg-purple-500/10"
+                      : "text-muted hover:bg-card-hover hover:text-foreground"
+                  }`}
+                >
+                  <Database className={`h-4 w-4 ${batchRunning ? "animate-pulse" : ""}`} />
+                  {scraperT.navEntry || "元数据刮削"}
+                  {batchRunning && (
+                    <span className="ml-auto relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-purple-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500" />
+                    </span>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={() =>
+                    handleAction(() =>
+                      router.push("/settings?tab=site&highlight=scraperEnabled#scraperEnabled")
+                    )
+                  }
+                  title={
+                    scraperT.navDisabledTip ||
+                    "内容刮削功能当前已关闭，点击前往设置开启"
+                  }
+                  className="w-full px-3 py-2.5 text-left text-sm flex items-center gap-2.5 text-muted/50 hover:bg-card-hover hover:text-muted cursor-pointer"
+                >
+                  <Database className="h-4 w-4 opacity-60" />
+                  <span className="flex-1 truncate">
+                    {scraperT.navEntry || "元数据刮削"}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/10 text-muted/70 shrink-0">
+                    {scraperT.navDisabledBadge || "未启用"}
+                  </span>
+                </button>
               )}
 
               {/* 分隔线 */}
@@ -339,6 +370,15 @@ function MoreMenu({
                 <Settings className="h-4 w-4" />
                 {t.auth?.settings || "设置"}
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => handleAction(() => router.push("/data-admin"))}
+                  className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+                >
+                  <Database className="h-4 w-4" />
+                  数据管理
+                </button>
+              )}
               <button
                 onClick={() => { setOpen(false); logout(); }}
                 className="w-full px-3 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/5 flex items-center gap-2.5"

@@ -328,21 +328,35 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
 
   /// 双页模式 — 横屏时左右各显示一页，竖屏时自动回退到单页
   Widget _buildDoublePageView(String serverUrl) {
-    // 计算双页对：第1页单独显示（封面），之后每两页一组
+    // 计算双页对：根据 doubleCoverAlone 决定第 1 页是否单独显示
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     if (!isLandscape) {
       // 竖屏回退到单页模式
       return _buildPageView(serverUrl);
     }
 
-    // 构建双页列表：[0], [1,2], [3,4], ...
+    // 构建双页列表
+    //  - doubleCoverAlone=true : [0], [1,2], [3,4], ...   （封面单页，日漫见开页对齐）
+    //  - doubleCoverAlone=false: [0,1], [2,3], [4,5], ... （首页起两两配对，欧美漫合适）
     final List<List<int>> pageGroups = [];
-    pageGroups.add([0]); // 封面单独一页
-    for (int i = 1; i < _totalPages; i += 2) {
-      if (i + 1 < _totalPages) {
-        pageGroups.add([i, i + 1]);
-      } else {
-        pageGroups.add([i]);
+    if (_settings.doubleCoverAlone) {
+      if (_totalPages > 0) {
+        pageGroups.add([0]); // 封面单独一页
+      }
+      for (int i = 1; i < _totalPages; i += 2) {
+        if (i + 1 < _totalPages) {
+          pageGroups.add([i, i + 1]);
+        } else {
+          pageGroups.add([i]);
+        }
+      }
+    } else {
+      for (int i = 0; i < _totalPages; i += 2) {
+        if (i + 1 < _totalPages) {
+          pageGroups.add([i, i + 1]);
+        } else {
+          pageGroups.add([i]);
+        }
       }
     }
 
@@ -396,12 +410,15 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
         final leftUrl = getImageUrl(serverUrl, widget.comicId, page: leftPage);
         final rightUrl = getImageUrl(serverUrl, widget.comicId, page: rightPage);
 
+        // 双页贴合：把左页右对齐、右页左对齐，让两张图在屏幕正中央拼合，去除中间缝
+        final noGap = _settings.doublePageNoGap;
         return Row(
           children: [
             Expanded(
               child: AuthenticatedImage(
                 imageUrl: leftUrl,
                 fit: BoxFit.contain,
+                alignment: noGap ? Alignment.centerRight : Alignment.center,
                 placeholder: const Center(child: CircularProgressIndicator()),
                 errorWidget: const Center(
                   child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
@@ -412,6 +429,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
               child: AuthenticatedImage(
                 imageUrl: rightUrl,
                 fit: BoxFit.contain,
+                alignment: noGap ? Alignment.centerLeft : Alignment.center,
                 placeholder: const Center(child: CircularProgressIndicator()),
                 errorWidget: const Center(
                   child: Icon(Icons.broken_image, color: Colors.white54, size: 48),

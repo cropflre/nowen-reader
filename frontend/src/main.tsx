@@ -30,6 +30,7 @@ import GroupDetail from "@/app/group/[id]/page";
 import Scraper from "@/app/scraper/page";
 import Collections from "@/app/collections/page";
 import TagManager from "@/app/tag-manager/page";
+import DataAdmin from "@/app/data-admin/page";
 
 /** 管理员路由守卫 —— 非管理员用户重定向到首页 */
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -58,6 +59,7 @@ function AnimatedRoutes() {
         <Route path="/group/:id" element={<GroupDetail />} />
         <Route path="/collections" element={<AdminRoute><Collections /></AdminRoute>} />
         <Route path="/tag-manager" element={<AdminRoute><TagManager /></AdminRoute>} />
+        <Route path="/data-admin" element={<AdminRoute><DataAdmin /></AdminRoute>} />
       </Routes>
     </div>
   );

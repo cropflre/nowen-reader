@@ -10,6 +10,7 @@ require (
 	golang.org/x/crypto v0.31.0
 	golang.org/x/text v0.21.0
 	modernc.org/sqlite v1.34.5
+	rsc.io/pdf v0.1.1
 )
 
 require (

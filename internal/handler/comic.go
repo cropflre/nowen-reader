@@ -63,6 +63,7 @@ func (h *ComicHandler) ListComics(c *gin.Context) {
 		ContentType:    contentType,
 		ReadingStatus:  c.Query("readingStatus"),
 		ExcludeGrouped: c.Query("excludeGrouped") == "true",
+		UserID:         getUserID(c),
 	})
 	if err != nil {
 		log.Printf("[API] ListComics error: %v (sortBy=%s, contentType=%s, readingStatus=%s)",

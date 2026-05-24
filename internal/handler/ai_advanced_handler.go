@@ -216,7 +216,7 @@ func (h *AIHandler) RecommendGoal(c *gin.Context) {
 	}
 
 	// 收集阅读统计数据
-	enhancedStats, err := store.GetEnhancedReadingStats()
+	enhancedStats, err := store.GetEnhancedReadingStats(getUserID(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to get reading stats"})
 		return

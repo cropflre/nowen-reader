@@ -12,6 +12,7 @@ import '../data/api/api_client.dart';
 class AuthenticatedImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
+  final AlignmentGeometry alignment;
   final Widget? placeholder;
   final Widget? errorWidget;
   final double? width;
@@ -21,6 +22,7 @@ class AuthenticatedImage extends StatefulWidget {
     super.key,
     required this.imageUrl,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.placeholder,
     this.errorWidget,
     this.width,
@@ -136,6 +138,7 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
     return Image.memory(
       _imageBytes!,
       fit: widget.fit,
+      alignment: widget.alignment,
       width: widget.width,
       height: widget.height,
       errorBuilder: (_, __, ___) =>

@@ -21,6 +21,7 @@ import {
   HardDrive,
   Users,
   UserCog,
+  Wand2,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
@@ -43,6 +44,11 @@ const SiteSettingsPanel = dynamic(
 
 const AISettingsPanel = dynamic(
   () => import("@/components/AISettingsPanel").then((mod) => mod.AISettingsPanel),
+  { loading: LoadingSkeleton }
+);
+
+const ScanRulesPanel = dynamic(
+  () => import("@/components/ScanRulesPanel").then((mod) => mod.ScanRulesPanel),
   { loading: LoadingSkeleton }
 );
 
@@ -76,6 +82,7 @@ type SettingsTab =
   | "account"
   | "site"
   | "ai"
+  | "scan-rules"
   | "users"
   | "stats"
   | "file-stats"
@@ -101,7 +108,7 @@ export default function SettingsPage() {
   const t = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const validTabs: SettingsTab[] = ["account", ...(isAdmin ? ["site" as const, "ai" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const] : []), "about"];
+  const validTabs: SettingsTab[] = ["account", ...(isAdmin ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const] : []), "about"];
   const tabFromUrl = searchParams.get("tab") as SettingsTab | null;
   const [activeTab, setActiveTab] = useState<SettingsTab>(
     tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "account"
@@ -144,6 +151,7 @@ export default function SettingsPage() {
         ...(isAdmin ? [
           { id: "site" as const, label: t.siteSettings?.tab || "站点设置", icon: <Globe className="h-[18px] w-[18px]" />, desc: "名称、目录、缓存" },
           { id: "ai" as const, label: t.ai?.title || "AI 功能", icon: <Brain className="h-[18px] w-[18px]" />, desc: "智能识别与推荐" },
+          { id: "scan-rules" as const, label: "扫描规则", icon: <Wand2 className="h-[18px] w-[18px]" />, desc: "AI 识别 + 自动归类" },
           { id: "users" as const, label: "用户管理", icon: <Users className="h-[18px] w-[18px]" />, desc: "账号、角色、注册策略" },
         ] : []),
       ],
@@ -280,6 +288,7 @@ export default function SettingsPage() {
             {activeTab === "account" && <AccountPanel />}
             {activeTab === "site" && <SiteSettingsPanel />}
             {activeTab === "ai" && <AISettingsPanel />}
+            {activeTab === "scan-rules" && <ScanRulesPanel />}
             {activeTab === "users" && <UserManagementPanel />}
             {activeTab === "stats" && <StatsPanel />}
             {activeTab === "file-stats" && <FileStatsPanel />}

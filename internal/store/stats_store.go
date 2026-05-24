@@ -7,14 +7,28 @@ import (
 )
 
 // GetEnhancedReadingStats 返回增强版阅读统计数据。
-func GetEnhancedReadingStats() (map[string]interface{}, error) {
+// 传入非空 userID 时仅返回该用户的会话统计；传入空串时返回全局统计（管理员/单用户场景向后兼容）。
+func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
+
+	// 拼接用户过滤条件
+	userCond := ""
+	userArgs := []interface{}{}
+	if len(userID) > 0 && userID[0] != "" {
+		userCond = ` AND rs."userId" = ?`
+		userArgs = append(userArgs, userID[0])
+	}
+	// 主表不带 rs. 别名的查询使用
+	userCondNoAlias := ""
+	if len(userID) > 0 && userID[0] != "" {
+		userCondNoAlias = ` AND "userId" = ?`
+	}
 
 	// 基础统计
 	var totalReadTime, totalSessions, totalComicsRead int
-	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession"`).
+	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession" WHERE 1=1`+userCondNoAlias, userArgs...).
 		Scan(&totalReadTime, &totalSessions)
-	db.QueryRow(`SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"`).
+	db.QueryRow(`SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession" WHERE 1=1`+userCondNoAlias, userArgs...).
 		Scan(&totalComicsRead)
 
 	result["totalReadTime"] = totalReadTime
@@ -23,14 +37,16 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 
 	// 最近 50 条会话
 	recentSessions := []map[string]interface{}{}
+	recentArgs := append([]interface{}{}, userArgs...)
 	rows, err := db.Query(`
 		SELECT rs."id", rs."comicId", c."title", rs."startedAt", rs."endedAt",
 		       rs."duration", rs."startPage", rs."endPage"
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
+		WHERE 1=1`+userCond+`
 		ORDER BY rs."startedAt" DESC
 		LIMIT 50
-	`)
+	`, recentArgs...)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -63,13 +79,14 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 	// 每日统计（最近 90 天）
 	ninetyDaysAgo := time.Now().AddDate(0, 0, -90).UTC().Format(time.RFC3339)
 	dailyStats := []map[string]interface{}{}
+	dailyArgs := append([]interface{}{ninetyDaysAgo}, userArgs...)
 	dailyRows, err := db.Query(`
 		SELECT DATE(rs."startedAt") as d, SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ?
+		WHERE rs."startedAt" >= ?`+userCond+`
 		GROUP BY d
 		ORDER BY d ASC
-	`, ninetyDaysAgo)
+	`, dailyArgs...)
 	if err == nil {
 		defer dailyRows.Close()
 		for dailyRows.Next() {
@@ -89,14 +106,15 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 	// 每月统计（最近 12 个月）
 	twelveMonthsAgo := time.Now().AddDate(-1, 0, 0).UTC().Format(time.RFC3339)
 	monthlyStats := []map[string]interface{}{}
+	monthlyArgs := append([]interface{}{twelveMonthsAgo}, userArgs...)
 	monthlyRows, err := db.Query(`
 		SELECT strftime('%Y-%m', rs."startedAt") as m,
 		       SUM(rs."duration"), COUNT(*), COUNT(DISTINCT rs."comicId")
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ?
+		WHERE rs."startedAt" >= ?`+userCond+`
 		GROUP BY m
 		ORDER BY m ASC
-	`, twelveMonthsAgo)
+	`, monthlyArgs...)
 	if err == nil {
 		defer monthlyRows.Close()
 		for monthlyRows.Next() {
@@ -120,11 +138,11 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 		SELECT c."genre", SUM(rs."duration") as totalTime, COUNT(DISTINCT c."id") as comicCount
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
-		WHERE c."genre" != ''
+		WHERE c."genre" != ''`+userCond+`
 		GROUP BY c."genre"
 		ORDER BY totalTime DESC
 		LIMIT 10
-	`)
+	`, userArgs...)
 	if err == nil {
 		defer genreRows.Close()
 		for genreRows.Next() {
@@ -146,8 +164,9 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 	streakRows, err := db.Query(`
 		SELECT DISTINCT DATE(rs."startedAt") as d
 		FROM "ReadingSession" rs
+		WHERE 1=1`+userCond+`
 		ORDER BY d DESC
-	`)
+	`, userArgs...)
 	if err == nil {
 		defer streakRows.Close()
 		var dates []string
@@ -204,8 +223,8 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 	db.QueryRow(`
 		SELECT COALESCE(SUM(rs."endPage" - rs."startPage"), 0), COALESCE(SUM(rs."duration"), 0)
 		FROM "ReadingSession" rs
-		WHERE rs."duration" > 0 AND rs."endPage" > rs."startPage"
-	`).Scan(&totalPages, &totalDuration)
+		WHERE rs."duration" > 0 AND rs."endPage" > rs."startPage"`+userCond+`
+	`, userArgs...).Scan(&totalPages, &totalDuration)
 
 	if totalDuration > 0 {
 		result["avgPagesPerHour"] = float64(totalPages) / (float64(totalDuration) / 3600.0)
@@ -216,10 +235,10 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 	// 今日阅读时长
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Format(time.RFC3339)
 	var todayReadTime int
+	todayArgs := append([]interface{}{todayStart}, userArgs...)
 	db.QueryRow(`
 		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ?
-	`, todayStart).Scan(&todayReadTime)
+		WHERE "startedAt" >= ?`+userCondNoAlias, todayArgs...).Scan(&todayReadTime)
 	result["todayReadTime"] = todayReadTime
 
 	// 本周阅读时长
@@ -230,10 +249,10 @@ func GetEnhancedReadingStats() (map[string]interface{}, error) {
 	}
 	weekStart := now.AddDate(0, 0, -(weekday - 1)).Truncate(24 * time.Hour).Format(time.RFC3339)
 	var weekReadTime int
+	weekArgs := append([]interface{}{weekStart}, userArgs...)
 	db.QueryRow(`
 		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ?
-	`, weekStart).Scan(&weekReadTime)
+		WHERE "startedAt" >= ?`+userCondNoAlias, weekArgs...).Scan(&weekReadTime)
 	result["weekReadTime"] = weekReadTime
 
 	return result, nil

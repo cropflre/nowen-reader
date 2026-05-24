@@ -265,7 +265,7 @@ func walkDirRecursive(root string, enableImageFolder bool) []diskFile {
 		files = append(files, diskFile{
 			ID:       store.FilenameToID(relPath),
 			Filename: relPath,
-			Title:    store.FilenameToTitle(name),
+			Title:    store.FilenameToSmartTitle(relPath),
 			FileSize: info.Size(),
 		})
 		return nil
@@ -1004,6 +1004,10 @@ func SyncComicsToDatabase() {
 				log.Printf("[auto-group] 自动创建了 %d 个系列", created)
 			}
 		}()
+
+		// 扫描期统一规则：当用户在 site-config.scanRules 启用了规则引擎，
+		// 在新增文件后自动执行（AI 智能识别 + 虚拟归类）。默认关闭，故零侵入。
+		RunScanRulesForNewlyAdded()
 	}
 
 	// 重新检测已入库的 mobi/azw3 文件的内容类型（修正错误分类）

@@ -17,6 +17,10 @@ import '../features/groups/group_detail_screen.dart';
 import '../features/collections/collections_screen.dart';
 import '../features/metadata/metadata_screen.dart';
 import '../features/tag_manager/tag_manager_screen.dart';
+import '../features/upload/upload_screen.dart';
+import '../features/scan_rules/scan_rules_screen.dart';
+import '../features/stats/folder_tree_stats_screen.dart';
+import '../features/settings/site_settings_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -123,6 +127,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/favorites',
         builder: (_, __) => const FavoritesScreen(),
+      ),
+      // 文件上传
+      GoRoute(
+        path: '/upload',
+        builder: (_, __) => const UploadScreen(),
+      ),
+      // 扫描规则管理
+      GoRoute(
+        path: '/scan-rules',
+        builder: (_, __) => const ScanRulesScreen(),
+      ),
+      // 文件夹层级统计
+      GoRoute(
+        path: '/folder-tree-stats',
+        builder: (_, __) => const FolderTreeStatsScreen(),
+      ),
+      // 站点设置
+      GoRoute(
+        path: '/site-settings',
+        builder: (_, __) => const SiteSettingsScreen(),
       ),
     ],
   );

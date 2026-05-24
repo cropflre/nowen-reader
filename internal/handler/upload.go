@@ -36,8 +36,14 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		return
 	}
 
+	// 可选：当前页面的内容类别（"comic" | "novel"），用于消除歧义扩展名（如 .azw3）。
+	// 不传则按扩展名自动判断；漫画归档 → comicsDir；电子书 → novelsDir。
+	categoryHint := strings.ToLower(strings.TrimSpace(c.PostForm("category")))
+
 	comicsDir := config.GetComicsDir()
+	novelsDir := config.GetNovelsDir()
 	_ = os.MkdirAll(comicsDir, 0755)
+	_ = os.MkdirAll(novelsDir, 0755)
 
 	var results []uploadResult
 	for _, fh := range files {
@@ -47,7 +53,10 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 			continue
 		}
 
-		destPath := filepath.Join(comicsDir, fh.Filename)
+		// 按扩展名 + 类别提示选择目标目录
+		destDir := pickUploadDir(fh.Filename, categoryHint, comicsDir, novelsDir)
+
+		destPath := filepath.Join(destDir, fh.Filename)
 		if _, err := os.Stat(destPath); err == nil {
 			results = append(results, uploadResult{Filename: fh.Filename, Error: "File already exists"})
 			continue
@@ -102,4 +111,38 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		"successCount": successCount,
 		"totalCount":   totalCount,
 	})
+}
+
+// pickUploadDir 根据扩展名（以及可选的页面类别提示）决定目标目录。
+//   - 纯漫画归档扩展名（.zip/.cbz/.cbr/.rar/.7z/.cb7/.pdf）→ comicsDir
+//   - 纯电子书扩展名（.txt/.epub/.mobi/.html/.htm）→ novelsDir
+//   - 同属两类的歧义扩展名（.azw3）→ 优先看 categoryHint；为空时默认电子书
+func pickUploadDir(filename, categoryHint, comicsDir, novelsDir string) string {
+	isArchive := config.IsSupportedArchive(filename)
+	isNovel := config.IsNovelFile(filename)
+
+	switch categoryHint {
+	case "novel", "novels", "ebook":
+		if isNovel {
+			return novelsDir
+		}
+		return comicsDir
+	case "comic", "comics", "manga":
+		if isArchive {
+			return comicsDir
+		}
+		return novelsDir
+	}
+
+	// 无 hint：歧义时优先视为电子书（.azw3 多见于 Kindle 电子书）
+	if isNovel && !isArchive {
+		return novelsDir
+	}
+	if isArchive && !isNovel {
+		return comicsDir
+	}
+	if isNovel {
+		return novelsDir
+	}
+	return comicsDir
 }

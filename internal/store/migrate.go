@@ -273,6 +273,28 @@ var Migrations = []Migration{
 			`CREATE INDEX IF NOT EXISTS "MSL_action_idx" ON "MetadataSyncLog"("action");`,
 		}, "\n"),
 	},
+	{
+		Version:     20,
+		Description: "Add ScanRuleOpLog table for unified scan rules pipeline (audit & undo)",
+		SQL: strings.Join([]string{
+			`CREATE TABLE IF NOT EXISTS "ScanRuleOpLog" (
+				"id"        INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				"batchId"   TEXT NOT NULL DEFAULT '',
+				"comicId"   TEXT NOT NULL DEFAULT '',
+				"groupId"   INTEGER NOT NULL DEFAULT 0,
+				"action"    TEXT NOT NULL,
+				"status"    TEXT NOT NULL DEFAULT 'success',
+				"fromValue" TEXT NOT NULL DEFAULT '',
+				"toValue"   TEXT NOT NULL DEFAULT '',
+				"message"   TEXT NOT NULL DEFAULT '',
+				"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`,
+			`CREATE INDEX IF NOT EXISTS "SROL_batchId_idx" ON "ScanRuleOpLog"("batchId");`,
+			`CREATE INDEX IF NOT EXISTS "SROL_comicId_idx" ON "ScanRuleOpLog"("comicId");`,
+			`CREATE INDEX IF NOT EXISTS "SROL_action_idx" ON "ScanRuleOpLog"("action");`,
+			`CREATE INDEX IF NOT EXISTS "SROL_createdAt_idx" ON "ScanRuleOpLog"("createdAt" DESC);`,
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.

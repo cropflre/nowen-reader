@@ -3,6 +3,7 @@ package store
 import (
 	"log"
 	"path"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -274,6 +275,10 @@ func extractSeriesName(title string) string {
 			if lp == "comic" || lp == "manga" || lp == "漫画" {
 				continue
 			}
+			// 跳过扫图组/汉化组/状态/格式标签
+			if isScanGroupTag(part) || isStatusTag(part) || isFormatTag(part) {
+				continue
+			}
 			// 跳过看起来纯编号的部分 (FL063, HMM, DL, 3A等)
 			if isLikelyCode(part) {
 				continue
@@ -290,7 +295,11 @@ func extractSeriesName(title string) string {
 		}
 
 		// 优先从volumeCandidates中选取含CJK的（如 "[佛陀01]" → "佛陀"）
+		// 但要排除扫图组/状态/格式标签
 		for _, c := range volumeCandidates {
+			if isScanGroupTag(c) || isStatusTag(c) || isFormatTag(c) {
+				continue
+			}
 			if containsCJK(c) {
 				return c
 			}
@@ -302,6 +311,9 @@ func extractSeriesName(title string) string {
 		bestName := ""
 		bestNameLen := 0
 		for _, c := range nameCandidates {
+			if isScanGroupTag(c) || isStatusTag(c) || isFormatTag(c) {
+				continue
+			}
 			l := cjkRuneCount(c)
 			if l > bestNameLen {
 				bestName = c
@@ -312,9 +324,12 @@ func extractSeriesName(title string) string {
 			return bestName
 		}
 
-		// 最后兜底：使用非CJK的volumeCandidates（如 NARUTO）
-		if len(volumeCandidates) > 0 {
-			return volumeCandidates[0]
+		// 最后兜底：使用非CJK的volumeCandidates（如 NARUTO），但跳过扫图组等噪声
+		for _, c := range volumeCandidates {
+			if isScanGroupTag(c) || isStatusTag(c) || isFormatTag(c) {
+				continue
+			}
+			return c
 		}
 	}
 
@@ -466,9 +481,10 @@ func isAlphaNumeric(s string) bool {
 
 // buildGroupNameFromPath 从多级目录路径构建可读的组名。
 // 例如：
-//   - "乌龙院/乌龙院前篇" → "乌龙院 / 乌龙院前篇"
+//   - "乌龙院/乌龙院前篇" → "乌龙院前篇"
 //   - "海贼王" → "海贼王"
-//   - "[汉化组]作品名/第一部" → "作品名 / 第一部"
+//   - "[汉化组]作品名/第一部" → "作品名 / 第一部"（最后一级是分卷词时，与上一级拼接）
+//   - "【郑健和 - 封神纪（武庚纪）】 PDF/第三部" → "封神纪（武庚纪） / 第三部"
 func buildGroupNameFromPath(dirPath string) string {
 	parts := strings.Split(dirPath, "/")
 	var cleanParts []string
@@ -489,10 +505,17 @@ func buildGroupNameFromPath(dirPath string) string {
 	if len(cleanParts) == 1 {
 		return cleanParts[0]
 	}
-	// 多级目录：使用最近一级作为主名称
-	// 但如果最近一级名称包含在上级名称中（如 "乌龙院/乌龙院前篇"），
-	// 则使用最近一级即可，因为它已经足够描述
+	// 多级目录：
+	//   - 若最后一级是分卷词（如 "第三部"、"上篇"、"Vol.1"），单独使用它无法描述系列，
+	//     需要与上一级合并展示，例如 "封神纪（武庚纪） / 第三部"。
+	//   - 否则使用最后一级作为主名称（保持原有行为）。
 	lastPart := cleanParts[len(cleanParts)-1]
+	if isVolumePartName(lastPart) && len(cleanParts) >= 2 {
+		parent := cleanParts[len(cleanParts)-2]
+		if parent != "" {
+			return parent + " / " + lastPart
+		}
+	}
 	return lastPart
 }
 
@@ -548,18 +571,26 @@ func cleanDirName(name string) string {
 		outsideParts = append(outsideParts, strings.TrimSpace(current.String()))
 	}
 
-	// 优先使用方括号外的非空内容（更可能是文件夹的主名称）
+	// 优先使用方括号外的非空内容（更可能是文件夹的主名称），
+	// 但如果方括号外只是"格式标签"（如 PDF、ZIP、漫画 等），则降级使用方括号内的内容。
 	for _, p := range outsideParts {
 		p = strings.TrimSpace(p)
-		if p != "" && len([]rune(p)) >= 2 {
-			return p
+		if p == "" || len([]rune(p)) < 2 {
+			continue
 		}
+		if isFormatTag(p) || isStatusTag(p) || isScanGroupTag(p) {
+			continue
+		}
+		return p
 	}
 
-	// 其次使用方括号内CJK字符最多的部分
+	// 其次使用方括号内CJK字符最多的部分（排除扫图组、状态标签、格式标签）
 	bestPart := ""
 	bestCJK := 0
 	for _, p := range bracketParts {
+		if isFormatTag(p) || isStatusTag(p) || isScanGroupTag(p) {
+			continue
+		}
 		c := cjkRuneCount(p)
 		if c > bestCJK {
 			bestPart = p
@@ -570,8 +601,11 @@ func cleanDirName(name string) string {
 		return bestPart
 	}
 
-	// 兜底：使用方括号内最长的部分
+	// 兜底：使用方括号内最长的非噪声部分
 	for _, p := range bracketParts {
+		if isFormatTag(p) || isStatusTag(p) || isScanGroupTag(p) {
+			continue
+		}
 		if len([]rune(p)) > len([]rune(bestPart)) {
 			bestPart = p
 		}
@@ -583,6 +617,147 @@ func cleanDirName(name string) string {
 	// 最终兜底：返回原始名称
 	return name
 }
+
+// isFormatTag 判断字符串是否只是"格式/类型"标签（如 PDF、ZIP、漫画、电子书），
+// 这类字符串本身没有作品名信息，不适合作为组名主体。
+func isFormatTag(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "pdf", "epub", "mobi", "azw3", "azw", "cbz", "cbr", "zip", "rar", "7z", "tar", "txt", "html", "htm",
+		"漫画", "漫畫", "小说", "小說", "电子书", "電子書", "书籍", "書籍",
+		"comic", "manga", "novel", "book", "books", "ebook", "ebooks":
+		return true
+	}
+	return false
+}
+
+// isStatusTag 判断字符串是否是"状态/进度"标签（如 已完结、连载中、完结）。
+// 这类字符串本身不含作品名信息，不适合作为组名主体。
+func isStatusTag(s string) bool {
+	s = strings.TrimSpace(s)
+	switch s {
+	case "已完结", "已完結", "完结", "完結", "完", "完本", "完整版",
+		"连载", "連載", "连载中", "連載中", "未完", "未完结", "未完結",
+		"百度", "百度网盘", "百度雲", "度盘", "度盤":
+		return true
+	}
+	lower := strings.ToLower(s)
+	switch lower {
+	case "complete", "completed", "finished", "end", "ended",
+		"ongoing", "serializing", "serialized":
+		return true
+	}
+	return false
+}
+
+// scanGroupSuffixes 是常见"扫图组/汉化组"标记后缀的小写形式，
+// 出现这些后缀的方括号内容通常是制作组名而非作品名。
+var scanGroupSuffixes = []string{
+	"汉化组", "漢化組", "汉化版", "漢化版", "汉化", "漢化",
+	"扫图组", "掃圖組", "扫图", "掃圖", "扫图版", "掃圖版",
+	"嵌字组", "嵌字組", "嵌字",
+	"翻译组", "翻譯組", "翻译社", "翻譯社", "翻译", "翻譯",
+	"汉译组", "漢譯組",
+	"在乎版", // "誰在乎版" 这类自造扫图版署名
+	"个人汉化", "個人漢化", "個人翻譯", "个人翻译",
+	"重嵌", "重嵌版", "修正版", "重制版", "重製版",
+}
+
+// scanGroupKeywords 是包含即视为扫图组的关键词（小写）。
+var scanGroupKeywords = []string{
+	"scanlation", "scanlations", "scanlator", "scan-team", "scanteam", "scan group",
+	"fansub", "fansubs", "sub group", "subteam",
+}
+
+// isScanGroupTag 判断方括号内的字符串是否是"扫图组/汉化组/翻译组"标签。
+// 例如：[誰在乎版]、[XX汉化组]、[XX scan team]、[百度] 等。
+// 注意：作者名、出版社名（如 [黃玉郎]、[東販]）不应被误判，因此只匹配明确的组别后缀/关键词。
+func isScanGroupTag(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+	for _, kw := range scanGroupKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	for _, suf := range scanGroupSuffixes {
+		if strings.HasSuffix(s, suf) {
+			return true
+		}
+	}
+	// "XX组" / "XX社" 但排除 "出版社" 这类常规词、且要求长度合理
+	if strings.HasSuffix(s, "组") || strings.HasSuffix(s, "組") {
+		runes := []rune(s)
+		if len(runes) >= 2 && len(runes) <= 8 {
+			return true
+		}
+	}
+	return false
+}
+
+// stripScanGroupPrefix 去掉文件名/标题前缀里的扫图组署名。
+// 例如："誰在乎版 YongBing-000" → "YongBing-000"
+//
+//	"[誰在乎版] 海贼王 第1卷" → "海贼王 第1卷"（方括号包裹的扫图组）
+//
+// 仅去掉"开头"的扫图组前缀，避免误删作品名内的合法字符。
+func stripScanGroupPrefix(s string) string {
+	orig := s
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return orig
+	}
+
+	// 形式 1：方括号包裹的前缀，如 "[誰在乎版] xxx" / "【誰在乎版】xxx"
+	for _, pair := range [][2]rune{{'[', ']'}, {'【', '】'}, {'「', '」'}, {'『', '』'}} {
+		if r := []rune(s); len(r) > 0 && r[0] == pair[0] {
+			runes := r
+			closeIdx := -1
+			for i := 1; i < len(runes); i++ {
+				if runes[i] == pair[1] {
+					closeIdx = i
+					break
+				}
+			}
+			if closeIdx > 1 {
+				inside := strings.TrimSpace(string(runes[1:closeIdx]))
+				if isScanGroupTag(inside) {
+					rest := strings.TrimSpace(string(runes[closeIdx+1:]))
+					if rest != "" {
+						return rest
+					}
+				}
+			}
+		}
+	}
+
+	// 形式 2：以扫图组词开头 + 空白 + 其余内容，如 "誰在乎版 YongBing-000"
+	// 找首个空白分隔符，前缀如果命中扫图组规则，则剥掉。
+	runes := []rune(s)
+	for i, r := range runes {
+		if r == ' ' || r == '\t' || r == '_' || r == '-' {
+			prefix := strings.TrimSpace(string(runes[:i]))
+			if prefix != "" && isScanGroupTag(prefix) {
+				rest := strings.TrimSpace(string(runes[i+1:]))
+				if rest != "" {
+					return rest
+				}
+			}
+			// 只检查首个分隔符前缀，再往后无意义
+			break
+		}
+	}
+	return orig
+}
+
+// StripScanGroupPrefix 是 stripScanGroupPrefix 的导出版本，供其他包复用。
+func StripScanGroupPrefix(s string) string { return stripScanGroupPrefix(s) }
+
+// IsScanGroupTag 是 isScanGroupTag 的导出版本，供其他包复用。
+func IsScanGroupTag(s string) bool { return isScanGroupTag(s) }
 
 // isNumericTitle 判断标题是否为纯数字命名（如 "1"、"02"、"123"）。
 // 用于辅助路径分组：如果文件名是纯数字，说明系列信息只在文件夹名中。
@@ -597,4 +772,42 @@ func isNumericTitle(title string) bool {
 		}
 	}
 	return true
+}
+
+// volumePartPatterns 用于识别"分卷词"——即仅表示分卷/分册位置、本身不含作品名信息的目录或文件名。
+// 这类名字单独存在时无法表达系列含义，需要借助上级目录或同级目录补全上下文。
+var volumePartPatterns = []*regexp.Regexp{
+	// 中文分卷：第一部、第二卷、第3集、第十二话、第二十回、上篇、中篇、下篇、上、中、下、前篇、后篇、外传、番外
+	regexp.MustCompile(`^第\s*[一二三四五六七八九十百零〇两\d]+\s*[部卷集册篇話话章回本辑輯季]$`),
+	regexp.MustCompile(`^[上中下前后]篇$`),
+	regexp.MustCompile(`^[上中下]卷?$`),
+	regexp.MustCompile(`^(外传|番外|特别篇|特典|附录|附錄|完结篇|完結篇)$`),
+	// 英文分卷：Vol.1、Volume 2、Part 3、Book 4、Chapter 5、Season 6
+	regexp.MustCompile(`(?i)^(vol|volume|part|book|chapter|ch|season|s|ep|episode)\s*\.?\s*\d+$`),
+	// 纯数字（如目录直接叫 "1"、"02"）
+	regexp.MustCompile(`^\d{1,4}$`),
+}
+
+// isVolumePartName 判断给定名称是否是单纯的"分卷词"。
+// 用于：
+//  1. 路径分组时识别最后一级是分卷词，需要与上级拼接组名。
+//  2. 智能标题构建时识别文件名只是分卷序号，需要从父目录补全标题。
+//  3. 搜索查询构建时识别父目录是分卷词，需要继续向上查找真正的作品名。
+func isVolumePartName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, re := range volumePartPatterns {
+		if re.MatchString(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsVolumePartNameForQuery 是 isVolumePartName 的导出版本，
+// 供其他包（如 service 层构建搜索查询时）共享同一份分卷词识别规则。
+func IsVolumePartNameForQuery(name string) bool {
+	return isVolumePartName(name)
 }

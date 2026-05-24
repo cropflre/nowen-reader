@@ -740,11 +740,24 @@ function FolderTreeItem({
   searchTerm?: string;
   typeFilter?: "all" | "comic" | "novel";
 }) {
-  const [expanded, setExpanded] = useState(depth < 1);
+  const [expanded, setExpanded] = useState(depth < 1 || forceExpand);
   const [showFiles, setShowFiles] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const hasFiles = node.files && node.files.length > 0;
-  const isExpanded = forceExpand || expanded;
+
+  // 当外部"全部展开/全部折叠"或搜索状态变化时，同步本地 expanded：
+  // - forceExpand=true  → 强制展开本节点（搜索匹配 / 一键展开）
+  // - forceExpand=false → 强制折叠本节点（一键折叠 / 清空搜索）
+  // 同步完成后，用户仍可单独点击节点再次切换（不会被卡住）。
+  useEffect(() => {
+    setExpanded(forceExpand);
+    if (!forceExpand) {
+      // 一键折叠时同时收起"查看文件列表"
+      setShowFiles(false);
+    }
+  }, [forceExpand]);
+
+  const isExpanded = expanded;
 
   const readPercent = node.fileCount > 0 ? Math.round(((node.readCount || 0) / node.fileCount) * 100) : 0;
 

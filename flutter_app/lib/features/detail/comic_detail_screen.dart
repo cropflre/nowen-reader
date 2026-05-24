@@ -475,6 +475,16 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // ─── AI 标题推断 ───
+                SlideAndFade(
+                  delay: const Duration(milliseconds: 550),
+                  child: _AIInferTitleTile(
+                    comicId: comic.id,
+                    onTitleUpdated: () => _loadDetail(),
+                  ),
+                ),
 
                 // ─── 标签 ───
                 if (comic.tags.isNotEmpty) ...[
@@ -675,6 +685,134 @@ class _StatusPill extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// AI 标题推断按钮组件
+class _AIInferTitleTile extends ConsumerStatefulWidget {
+  final String comicId;
+  final VoidCallback onTitleUpdated;
+
+  const _AIInferTitleTile({required this.comicId, required this.onTitleUpdated});
+
+  @override
+  ConsumerState<_AIInferTitleTile> createState() => _AIInferTitleTileState();
+}
+
+class _AIInferTitleTileState extends ConsumerState<_AIInferTitleTile> {
+  bool _inferring = false;
+  String? _result;
+  bool _isError = false;
+
+  Future<void> _inferTitle() async {
+    setState(() { _inferring = true; _result = null; _isError = false; });
+    try {
+      final api = ref.read(comicApiProvider);
+      final data = await api.aiInferTitle(widget.comicId);
+      final title = data['title'] ?? data['inferredTitle'] ?? '';
+      if (title.toString().isNotEmpty) {
+        setState(() { _result = '推断标题: $title'; _isError = false; });
+        widget.onTitleUpdated();
+      } else {
+        setState(() { _result = '未能推断出标题'; _isError = true; });
+      }
+    } catch (e) {
+      setState(() { _result = '推断失败: $e'; _isError = true; });
+    } finally {
+      setState(() => _inferring = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: _inferring ? null : _inferTitle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: _inferring
+                          ? const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_awesome_rounded,
+                              size: 18, color: Colors.deepPurple),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AI 推断标题',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                          Text(
+                            '结合目录与文件名智能推断',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant.withOpacity(0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 20, color: cs.onSurfaceVariant.withOpacity(0.3)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (_result != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _isError
+                      ? cs.errorContainer.withOpacity(0.3)
+                      : cs.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _result!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _isError ? cs.error : cs.primary,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

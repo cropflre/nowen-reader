@@ -12,13 +12,16 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nwaples/rardecode/v2"
+	rscpdf "rsc.io/pdf"
 )
 
 // ============================================================
@@ -733,6 +736,13 @@ func ClearPdfPageCountCache(fp string) {
 
 // GetPdfPageCount returns the number of pages in a PDF file.
 // 结果会被缓存，避免重复解析。
+//
+// 解析顺序（从最可靠到最脆弱）：
+//  1. mutool info  —— 与渲染所用同一引擎，结果最准（需安装 mupdf）
+//  2. pdfinfo      —— poppler 自带，结果可靠（需安装 poppler）
+//  3. pdftoppm -l 99999 -singlefile —— 利用 poppler 报错信息提取真实页数
+//  4. rsc.io/pdf   —— 纯 Go PDF 解析器，无需外部依赖（重要兜底）
+//  5. countPdfPages —— 自实现的文本解析（最后兜底，可能不准）
 func GetPdfPageCount(fp string) (int, error) {
 	// 先查缓存
 	pdfPageCountCacheMu.RLock()
@@ -742,48 +752,153 @@ func GetPdfPageCount(fp string) (int, error) {
 	}
 	pdfPageCountCacheMu.RUnlock()
 
-	// Method 1: Use 7z to list PDF — it reports pages as entries
-	bin := find7za()
-	if bin != "" {
-		cmd := exec.Command(bin, "l", fp)
-		out, err := cmd.Output()
-		if err == nil {
-			// Count image-like entries in 7z output
-			// 7z lists PDF pages as separate entries
-			lines := strings.Split(string(out), "\n")
-			count := 0
-			inListing := false
-			for _, line := range lines {
-				if strings.Contains(line, "---") {
-					inListing = !inListing
-					continue
-				}
-				if inListing && strings.TrimSpace(line) != "" {
-					count++
-				}
-			}
-			if count > 0 {
-				// 写入缓存
-				pdfPageCountCacheMu.Lock()
-				pdfPageCountCache[fp] = count
-				pdfPageCountCacheMu.Unlock()
-				return count, nil
+	cacheAndReturn := func(count int) (int, error) {
+		pdfPageCountCacheMu.Lock()
+		pdfPageCountCache[fp] = count
+		pdfPageCountCacheMu.Unlock()
+		return count, nil
+	}
+
+	// Method 1: mutool info（最准，与渲染引擎一致）
+	if count, ok := pdfPageCountByMutool(fp); ok {
+		return cacheAndReturn(count)
+	}
+
+	// Method 2: pdfinfo（poppler）
+	if count, ok := pdfPageCountByPdfinfo(fp); ok {
+		return cacheAndReturn(count)
+	}
+
+	// Method 3: pdftoppm 错误信息提取
+	if count, ok := pdfPageCountByPdftoppm(fp); ok {
+		return cacheAndReturn(count)
+	}
+
+	// Method 4: 纯 Go 解析器 rsc.io/pdf（无外部依赖，能正确处理对象流/压缩流）
+	if count, ok := pdfPageCountByRscPdf(fp); ok {
+		return cacheAndReturn(count)
+	}
+
+	// Method 5: 自实现文本解析（最后兜底）
+	count, err := countPdfPages(fp)
+	if err != nil {
+		log.Printf("[pdf] All page count methods failed for %s: %v", fp, err)
+		return 0, fmt.Errorf("failed to determine PDF page count: %w", err)
+	}
+	if count <= 0 {
+		return 0, fmt.Errorf("failed to determine PDF page count for %s", fp)
+	}
+	return cacheAndReturn(count)
+}
+
+// pdfPageCountByMutool 用 `mutool info` 获取 PDF 页数。
+// 输出形如：`Pages: 23`
+func pdfPageCountByMutool(fp string) (int, bool) {
+	bin, ok := config.LookPdfTool("mutool", exec.LookPath)
+	if !ok {
+		return 0, false
+	}
+	cmd := exec.Command(bin, "info", fp)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[pdf] mutool info failed for %s: %v", fp, err)
+		return 0, false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		// 兼容 "Pages: 23" / "Pages:    23"
+		if strings.HasPrefix(strings.ToLower(line), "pages:") {
+			rest := strings.TrimSpace(line[len("Pages:"):])
+			if n, err := strconv.Atoi(rest); err == nil && n > 0 {
+				return n, true
 			}
 		}
 	}
+	return 0, false
+}
 
-	// Method 2: Parse the PDF directly for page count
-	count, err := countPdfPages(fp)
-	if err != nil {
-		return 0, err
+// pdfPageCountByPdfinfo 用 poppler 的 `pdfinfo` 获取 PDF 页数。
+// 输出形如：`Pages:          23`
+func pdfPageCountByPdfinfo(fp string) (int, bool) {
+	bin, ok := config.LookPdfTool("pdfinfo", exec.LookPath)
+	if !ok {
+		return 0, false
 	}
+	cmd := exec.Command(bin, fp)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[pdf] pdfinfo failed for %s: %v", fp, err)
+		return 0, false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "pages:") {
+			rest := strings.TrimSpace(line[len("Pages:"):])
+			fields := strings.Fields(rest)
+			if len(fields) > 0 {
+				if n, err := strconv.Atoi(fields[0]); err == nil && n > 0 {
+					return n, true
+				}
+			}
+		}
+	}
+	return 0, false
+}
 
-	// 写入缓存
-	pdfPageCountCacheMu.Lock()
-	pdfPageCountCache[fp] = count
-	pdfPageCountCacheMu.Unlock()
+// pdfPageCountByPdftoppm 触发 pdftoppm 越界报错，从错误信息中提取真实页数。
+// 当请求一个超出范围的页码时，pdftoppm 会输出类似：
+//
+//	Wrong page range given: the first page (99999) can not be after the last page (23).
+func pdfPageCountByPdftoppm(fp string) (int, bool) {
+	bin, ok := config.LookPdfTool("pdftoppm", exec.LookPath)
+	if !ok {
+		return 0, false
+	}
+	// 故意请求一个不可能存在的大页码，让其报错
+	cmd := exec.Command(bin, "-f", "999999", "-l", "999999", "-singlefile", fp)
+	out, _ := cmd.CombinedOutput()
+	text := string(out)
+	// 匹配 "the last page (N)" 或 "to be (1, N)" 之类的错误信息
+	for _, re := range pdftoppmPageRegexps {
+		if m := re.FindStringSubmatch(text); len(m) >= 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
 
-	return count, nil
+var pdftoppmPageRegexps = []*regexp.Regexp{
+	regexp.MustCompile(`last page\s*\(\s*(\d+)\s*\)`),
+	regexp.MustCompile(`document has\s+(\d+)\s+page`),
+}
+
+// pdfPageCountByRscPdf 使用纯 Go 的 rsc.io/pdf 解析器获取页数。
+// 优势：无需外部二进制，能正确处理 PDF 对象流（/ObjStm）等压缩结构，
+// 这对图片型/漫画 PDF 尤其重要——这类 PDF 末尾经常是压缩流，纯文本扫描会失败。
+//
+// 注意：rsc.io/pdf 在遇到极少数特殊结构 PDF 时可能 panic，这里做了 recover 保护。
+func pdfPageCountByRscPdf(fp string) (n int, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[pdf] rsc.io/pdf panicked while parsing %s: %v", fp, r)
+			n, ok = 0, false
+		}
+	}()
+
+	reader, err := rscpdf.Open(fp)
+	if err != nil {
+		log.Printf("[pdf] rsc.io/pdf open failed for %s: %v", fp, err)
+		return 0, false
+	}
+	count := reader.NumPage()
+	if count <= 0 {
+		log.Printf("[pdf] rsc.io/pdf returned non-positive page count (%d) for %s", count, fp)
+		return 0, false
+	}
+	log.Printf("[pdf] rsc.io/pdf detected %d pages for %s", count, fp)
+	return count, true
 }
 
 // countPdfPages 解析PDF文件获取页数。
@@ -854,8 +969,8 @@ func countPdfPages(fp string) (int, error) {
 		return count, nil
 	}
 
-	log.Printf("[pdf] Could not determine page count for %s, defaulting to 1", fp)
-	return 1, nil
+	log.Printf("[pdf] Could not determine page count for %s, all parsers failed", fp)
+	return 0, fmt.Errorf("PDF page count parser failed")
 }
 
 // parsePdfPageCount 从PDF内容片段中查找 /Type /Pages 对象的 /Count 值。
@@ -937,61 +1052,103 @@ func countPdfPageObjects(content string) int {
 
 // RenderPdfPage renders a single PDF page to a PNG image.
 // Uses external tools (mutool, pdftoppm, or convert).
+// 渲染策略：每个工具按 200 -> 120 -> 96 dpi 降级重试，遇到 OOM/signal killed 自动降级，
+// 直到全部失败才进入下一个工具，所有工具全部失败时返回结构化错误。
 func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	pageNum := pageIndex + 1 // External tools use 1-based page numbers
 	var errors []string
 
+	// dpi 降级序列：高质量优先，失败时降低分辨率以节省内存（适配 NAS/低内存环境）
+	dpiLadder := []int{200, 120, 96}
+
 	// Method 1: mutool (from MuPDF — best quality)
-	if mutool, err := exec.LookPath("mutool"); err == nil {
-		cmd := exec.Command(mutool, "draw", "-o", "-", "-F", "png", "-r", "200", fp, fmt.Sprintf("%d", pageNum))
-		out, err := cmd.Output()
-		if err == nil && len(out) > 0 {
-			return out, nil
-		}
-		if err != nil {
-			errDetail := err.Error()
-			if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-				errDetail = string(exitErr.Stderr)
+	if mutool, ok := config.LookPdfTool("mutool", exec.LookPath); ok {
+		for _, dpi := range dpiLadder {
+			cmd := exec.Command(mutool, "draw", "-o", "-", "-F", "png", "-r", fmt.Sprintf("%d", dpi), fp, fmt.Sprintf("%d", pageNum))
+			out, runErr := cmd.Output()
+			if runErr == nil && len(out) > 0 {
+				if dpi != dpiLadder[0] {
+					log.Printf("[pdf] mutool succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
+				}
+				return out, nil
 			}
-			log.Printf("[pdf] mutool failed for %s page %d: %s", fp, pageNum, errDetail)
-			errors = append(errors, fmt.Sprintf("mutool: %s", errDetail))
-		} else {
-			log.Printf("[pdf] mutool returned empty output for %s page %d", fp, pageNum)
-			errors = append(errors, "mutool: empty output")
+			if runErr != nil {
+				errDetail := runErr.Error()
+				if exitErr, ok := runErr.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+					errDetail = strings.TrimSpace(string(exitErr.Stderr))
+				}
+				log.Printf("[pdf] mutool failed (dpi=%d) for %s page %d: %s", dpi, fp, pageNum, errDetail)
+				errors = append(errors, fmt.Sprintf("mutool@%d: %s", dpi, errDetail))
+				// 如果是 OOM/被杀，继续降级 dpi 重试；如果是其它语义错误（密码、损坏等）直接跳出
+				if !isResourceError(runErr, errDetail) {
+					break
+				}
+			} else {
+				log.Printf("[pdf] mutool returned empty output (dpi=%d) for %s page %d", dpi, fp, pageNum)
+				errors = append(errors, fmt.Sprintf("mutool@%d: empty output", dpi))
+				break
+			}
 		}
 	} else {
 		errors = append(errors, "mutool: not installed")
 	}
 
 	// Method 2: pdftoppm (from poppler)
-	if pdftoppm, err := exec.LookPath("pdftoppm"); err == nil {
-		cmd := exec.Command(pdftoppm, "-png", "-r", "200", "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
-		out, err := cmd.Output()
-		if err == nil && len(out) > 0 {
-			return out, nil
-		}
-		if err != nil {
-			log.Printf("[pdf] pdftoppm failed for %s page %d: %v", fp, pageNum, err)
-			errors = append(errors, fmt.Sprintf("pdftoppm: %v", err))
-		} else {
-			errors = append(errors, "pdftoppm: empty output")
+	if pdftoppm, ok := config.LookPdfTool("pdftoppm", exec.LookPath); ok {
+		for _, dpi := range dpiLadder {
+			cmd := exec.Command(pdftoppm, "-png", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
+			out, runErr := cmd.Output()
+			if runErr == nil && len(out) > 0 {
+				if dpi != dpiLadder[0] {
+					log.Printf("[pdf] pdftoppm succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
+				}
+				return out, nil
+			}
+			if runErr != nil {
+				errDetail := runErr.Error()
+				if exitErr, ok := runErr.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+					errDetail = strings.TrimSpace(string(exitErr.Stderr))
+				}
+				log.Printf("[pdf] pdftoppm failed (dpi=%d) for %s page %d: %s", dpi, fp, pageNum, errDetail)
+				errors = append(errors, fmt.Sprintf("pdftoppm@%d: %s", dpi, errDetail))
+				if !isResourceError(runErr, errDetail) {
+					break
+				}
+			} else {
+				errors = append(errors, fmt.Sprintf("pdftoppm@%d: empty output", dpi))
+				break
+			}
 		}
 	} else {
 		errors = append(errors, "pdftoppm: not installed")
 	}
 
 	// Method 3: convert from ImageMagick
-	if convert, err := exec.LookPath("convert"); err == nil {
-		cmd := exec.Command(convert, "-density", "200", fmt.Sprintf("%s[%d]", fp, pageIndex), "png:-")
-		out, err := cmd.Output()
-		if err == nil && len(out) > 0 {
-			return out, nil
-		}
-		if err != nil {
-			log.Printf("[pdf] imagemagick failed for %s page %d: %v", fp, pageNum, err)
-			errors = append(errors, fmt.Sprintf("imagemagick: %v", err))
-		} else {
-			errors = append(errors, "imagemagick: empty output")
+	// Windows 系统下 system32\convert.exe 是 FAT->NTFS 转换工具，必须排除
+	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok && !isWindowsSystemConvert(convert) {
+		for _, dpi := range dpiLadder {
+			cmd := exec.Command(convert, "-density", fmt.Sprintf("%d", dpi), fmt.Sprintf("%s[%d]", fp, pageIndex), "png:-")
+			out, runErr := cmd.Output()
+			if runErr == nil && len(out) > 0 {
+				if dpi != dpiLadder[0] {
+					log.Printf("[pdf] imagemagick succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
+				}
+				return out, nil
+			}
+			if runErr != nil {
+				errDetail := runErr.Error()
+				if exitErr, ok := runErr.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+					errDetail = strings.TrimSpace(string(exitErr.Stderr))
+				}
+				log.Printf("[pdf] imagemagick failed (dpi=%d) for %s page %d: %s", dpi, fp, pageNum, errDetail)
+				errors = append(errors, fmt.Sprintf("imagemagick@%d: %s", dpi, errDetail))
+				if !isResourceError(runErr, errDetail) {
+					break
+				}
+			} else {
+				errors = append(errors, fmt.Sprintf("imagemagick@%d: empty output", dpi))
+				break
+			}
 		}
 	} else {
 		errors = append(errors, "imagemagick: not installed")
@@ -1010,4 +1167,36 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 		return nil, fmt.Errorf("no PDF renderer available (install mutool, pdftoppm, or imagemagick)")
 	}
 	return nil, fmt.Errorf("render PDF page %d failed: %s", pageNum, strings.Join(errors, "; "))
+}
+
+// isResourceError 判断是否是 OOM/被杀/信号中断等资源类错误，这种情况降低 dpi 重试有意义。
+func isResourceError(err error, detail string) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(detail)
+	if strings.Contains(low, "killed") ||
+		strings.Contains(low, "signal") ||
+		strings.Contains(low, "out of memory") ||
+		strings.Contains(low, "cannot allocate") ||
+		strings.Contains(low, "memory") {
+		return true
+	}
+	// exec.ExitError with negative exit code on Unix often means killed by signal
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() == -1 || exitErr.ExitCode() == 137 || exitErr.ExitCode() == 139 {
+			return true
+		}
+	}
+	return false
+}
+
+// isWindowsSystemConvert 检测是否是 Windows 自带的 system32\convert.exe（FAT->NTFS 转换工具，不是 ImageMagick）。
+// Linux/Docker 环境下永远返回 false。
+func isWindowsSystemConvert(path string) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	low := strings.ToLower(filepath.ToSlash(path))
+	return strings.Contains(low, "/windows/system32/") || strings.Contains(low, "/windows/syswow64/")
 }

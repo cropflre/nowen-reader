@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
 func ExtractSearchQuery(filename string) string {
@@ -77,6 +79,10 @@ func CleanTitle(title string) string {
 //  1. 标题不为空且与文件名不同 → 使用清洗后的标题
 //  2. 标题为空或等于文件名 → 从文件名提取
 //  3. 两者都无法得出有效查询 → 返回空字符串
+//
+// 增强：当 basename 是纯数字或分卷词（如 "01.PDF"、"第三部.zip"）时，
+// 单独的 basename 作为搜索词必然搜不到结果，需要回退使用父目录路径中的
+// "非分卷词"作为搜索主体。
 func BuildSearchQuery(title, filename string) string {
 	// 标题去除文件扩展名的比较
 	filenameBase := strings.TrimSuffix(filename, filepath.Ext(filename))
@@ -90,5 +96,64 @@ func BuildSearchQuery(title, filename string) string {
 	}
 
 	// 回退：从文件名提取
-	return ExtractSearchQuery(filename)
+	q := ExtractSearchQuery(filename)
+
+	// 如果提取出来的只是数字或分卷词，说明 basename 没什么搜索价值，
+	// 需要使用父目录补全
+	if q == "" || isQueryWeak(q) {
+		if dirQuery := extractQueryFromParentDirs(filename); dirQuery != "" {
+			return dirQuery
+		}
+	}
+	return q
+}
+
+// isQueryWeak 判断搜索查询是否过于薄弱（纯数字、分卷词等无法独立检索的字符串）。
+func isQueryWeak(q string) bool {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return true
+	}
+	// 全部为数字、空格、分隔符
+	allDigit := true
+	for _, r := range q {
+		if (r >= '0' && r <= '9') || r == ' ' || r == '_' || r == '-' || r == '.' {
+			continue
+		}
+		allDigit = false
+		break
+	}
+	if allDigit {
+		return true
+	}
+	// 整串看起来就是个分卷词
+	return store.IsVolumePartNameForQuery(q)
+}
+
+// extractQueryFromParentDirs 从相对路径的父目录链中找一个"非分卷词"目录，
+// 用 CleanTitle 清洗后作为搜索查询。
+func extractQueryFromParentDirs(filename string) string {
+	rel := strings.ReplaceAll(filename, "\\", "/")
+	dir := filepath.Dir(rel)
+	dir = strings.ReplaceAll(dir, "\\", "/")
+	if dir == "." || dir == "/" || dir == "" {
+		return ""
+	}
+	parts := strings.Split(dir, "/")
+	// 从最近的父目录向上查找
+	for i := len(parts) - 1; i >= 0; i-- {
+		p := strings.TrimSpace(parts[i])
+		if p == "" || p == "." {
+			continue
+		}
+		if store.IsVolumePartNameForQuery(p) {
+			continue
+		}
+		// 用 CleanTitle 把方括号、卷号等噪声清掉
+		cleaned := CleanTitle(p)
+		if cleaned != "" && len(cleaned) >= 2 {
+			return cleaned
+		}
+	}
+	return ""
 }

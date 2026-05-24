@@ -35,6 +35,8 @@ dependencies:
   timeago: ^3.6.1
   url_launcher: ^6.2.5
   path_provider: ^2.1.5
+  # 文件选择（上传功能）
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:

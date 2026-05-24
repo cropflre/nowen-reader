@@ -9,6 +9,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/nowen-reader/nowen-reader/internal/config"
 )
 
 // ============================================================
@@ -890,4 +892,54 @@ func IsImageHeavyEpub(filePath string) bool {
 	}
 
 	return false
+}
+
+// ListEpubEmbeddedImages 返回 EPUB 内嵌的所有图片资源路径（zip 内部的相对路径）。
+// 优先把封面图（如已识别）放在第一位。用于"从内页选择封面"。
+func ListEpubEmbeddedImages(r Reader) []string {
+	er, ok := r.(*epubReader)
+	if !ok || er.rc == nil {
+		return nil
+	}
+	var images []string
+	seen := make(map[string]bool)
+
+	// 把已识别的封面放第一位
+	if er.coverPath != "" && config.IsImageFile(er.coverPath) {
+		images = append(images, er.coverPath)
+		seen[er.coverPath] = true
+	}
+
+	for _, f := range er.rc.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := f.Name
+		base := path.Base(name)
+		if strings.HasPrefix(name, "__MACOSX") || strings.HasPrefix(base, ".") {
+			continue
+		}
+		if !config.IsImageFile(name) {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		images = append(images, name)
+	}
+	return images
+}
+
+// GetEpubEmbeddedImageData 提取 EPUB 内嵌图片数据。
+func GetEpubEmbeddedImageData(r Reader, internalPath string) ([]byte, string, error) {
+	er, ok := r.(*epubReader)
+	if !ok {
+		return nil, "", fmt.Errorf("not an EPUB reader")
+	}
+	data, err := er.readZipFile(internalPath)
+	if err != nil {
+		return nil, "", err
+	}
+	return data, GetMimeType(internalPath), nil
 }

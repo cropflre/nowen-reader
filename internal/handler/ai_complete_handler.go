@@ -63,7 +63,7 @@ func (h *AIHandler) CompleteMetadata(c *gin.Context) {
 	// 如果 apply=true，自动应用到元数据
 	if body.Apply && meta != nil {
 		updates := map[string]interface{}{}
-		if meta.Title != "" && comic.Title == store.FilenameToTitle(comic.Filename) {
+		if meta.Title != "" && (comic.Title == store.FilenameToTitle(comic.Filename) || comic.Title == store.FilenameToSmartTitle(comic.Filename)) {
 			updates["title"] = meta.Title
 		}
 		if meta.Author != "" && comic.Author == "" {

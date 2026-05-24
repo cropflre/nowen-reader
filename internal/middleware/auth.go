@@ -125,15 +125,17 @@ func IsRequestSecure(c *gin.Context) bool {
 }
 
 // SetSessionCookie sets the session cookie on the response.
+// 注意：不设置 Secure 标志，因为：
+// 1. 本项目主要用于局域网/NAS 环境，很多用户通过 HTTP 访问
+// 2. Flutter App (dio_cookie_manager) 在 HTTP 连接时不会发送 Secure Cookie
+// 3. httpOnly=true 已经提供了足够的 XSS 防护
 func SetSessionCookie(c *gin.Context, token string) {
-	secure := IsRequestSecure(c)
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(SessionCookie, token, SessionMaxAge, "/", "", secure, true)
+	c.SetCookie(SessionCookie, token, SessionMaxAge, "/", "", false, true)
 }
 
 // ClearSessionCookie removes the session cookie.
 func ClearSessionCookie(c *gin.Context) {
-	secure := IsRequestSecure(c)
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(SessionCookie, "", -1, "/", "", secure, true)
+	c.SetCookie(SessionCookie, "", -1, "/", "", false, true)
 }

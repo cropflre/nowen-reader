@@ -5,12 +5,21 @@
 
 /**
  * 上传文件到服务器
+ *
+ * @param files    待上传的文件列表
+ * @param category 可选，当前页面的内容类别（"comic" | "novel"）。
+ *                 后端会按文件扩展名自动分流到漫画/电子书目录；
+ *                 此参数仅用于消除歧义扩展名（如 .azw3）。
  */
 export async function uploadComics(
-  files: FileList | File[]
+  files: FileList | File[],
+  category?: "comic" | "novel"
 ): Promise<{ success: boolean; message: string; successCount: number; totalCount: number }> {
   const formData = new FormData();
   Array.from(files).forEach((file) => formData.append("files", file));
+  if (category) {
+    formData.append("category", category);
+  }
 
   const res = await fetch("/api/upload", {
     method: "POST",

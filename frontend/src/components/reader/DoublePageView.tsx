@@ -21,6 +21,10 @@ interface DoublePageViewProps {
   comicId?: string;
   /** 翻页超出边界时触发 */
   onBoundaryReached?: (direction: "next" | "prev") => void;
+  /** 封面单独显示（错页1页），日漫见开页对齐用 */
+  coverAlone?: boolean;
+  /** 双页贴合（去除中间缝），两页在屏幕中央拼接 */
+  noGap?: boolean;
 }
 
 export default function DoublePageView({
@@ -36,6 +40,8 @@ export default function DoublePageView({
   preloadCount = 4,
   comicId,
   onBoundaryReached,
+  coverAlone = false,
+  noGap = true,
 }: DoublePageViewProps) {
   const [loadedLeft, setLoadedLeft] = useState(false);
   const [loadedRight, setLoadedRight] = useState(false);
@@ -71,14 +77,30 @@ export default function DoublePageView({
   // Preload next pages
   useImagePreloader(pages, currentPage, preloadCount, comicId);
 
+  // 计算当前“跨页”起始页索引：
+  //  - coverAlone=false: [0,1] [2,3] [4,5]...   →  spreadIndex 取偶数
+  //  - coverAlone=true : [0]   [1,2] [3,4]...   →  第 0 页单独；其余 (page-1) 取偶 + 1 配对
   const spreadIndex = useMemo(() => {
+    if (coverAlone) {
+      if (currentPage <= 0) return 0;
+      // 第 1 页起，每两页一组，组首页为奇数：1,3,5,...
+      return currentPage % 2 === 1 ? currentPage : currentPage - 1;
+    }
     return currentPage % 2 === 0 ? currentPage : currentPage - 1;
-  }, [currentPage]);
+  }, [currentPage, coverAlone]);
+
+  // 当前是否为“封面单页”状态
+  const isCoverSpread = coverAlone && spreadIndex === 0;
 
   const leftPageIndex = direction === "ltr" ? spreadIndex : spreadIndex + 1;
   const rightPageIndex = direction === "ltr" ? spreadIndex + 1 : spreadIndex;
-  const leftPage = pages[leftPageIndex] ?? null;
-  const rightPage = pages[rightPageIndex] ?? null;
+  // 封面单页时，只渲染一页（视觉上居中），另一侧留空
+  const leftPage = isCoverSpread
+    ? (direction === "ltr" ? pages[0] ?? null : null)
+    : pages[leftPageIndex] ?? null;
+  const rightPage = isCoverSpread
+    ? (direction === "ltr" ? null : pages[0] ?? null)
+    : pages[rightPageIndex] ?? null;
 
   useEffect(() => {
     setLoadedLeft(false);
@@ -99,14 +121,27 @@ export default function DoublePageView({
 
   // 翻页逻辑
   const goForward = useCallback(() => {
-    if (spreadIndex + 2 >= pages.length) onBoundaryReached?.("next");
-    else onPageChange(Math.min(pages.length - 1, spreadIndex + 2));
-  }, [spreadIndex, pages.length, onPageChange, onBoundaryReached]);
+    // 封面单页时，下一组只前进 1 页（[0] -> [1,2]）
+    const step = isCoverSpread ? 1 : 2;
+    const target = spreadIndex + step;
+    if (target >= pages.length) onBoundaryReached?.("next");
+    else onPageChange(Math.min(pages.length - 1, target));
+  }, [spreadIndex, pages.length, onPageChange, onBoundaryReached, isCoverSpread]);
 
   const goBack = useCallback(() => {
-    if (spreadIndex <= 0) onBoundaryReached?.("prev");
-    else onPageChange(Math.max(0, spreadIndex - 2));
-  }, [spreadIndex, onPageChange, onBoundaryReached]);
+    if (spreadIndex <= 0) {
+      onBoundaryReached?.("prev");
+      return;
+    }
+    if (coverAlone) {
+      // 上一组：当前 spreadIndex 是 1,3,5,... 回退到上一组
+      // [1,2] -> [0]（封面单页），[3,4] -> [1,2]，...
+      const target = spreadIndex === 1 ? 0 : spreadIndex - 2;
+      onPageChange(Math.max(0, target));
+    } else {
+      onPageChange(Math.max(0, spreadIndex - 2));
+    }
+  }, [spreadIndex, onPageChange, onBoundaryReached, coverAlone]);
 
   // 触摸事件处理
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -214,12 +249,20 @@ export default function DoublePageView({
     error: boolean,
     setError: (v: boolean) => void,
     keyPrefix: string,
-    imgRef?: React.RefObject<HTMLImageElement | null>
+    imgRef?: React.RefObject<HTMLImageElement | null>,
+    side: "left" | "right" = "left"
   ) => {
     if (!pageUrl) return <div className="flex-1" />;
 
+    // 贴合模式：左页右对齐、右页左对齐，两页在屏幕中央拼接；否则各自居中
+    const justify = noGap
+      ? side === "left"
+        ? "justify-end"
+        : "justify-start"
+      : "justify-center";
+
     return (
-      <div className="relative h-full flex-1 max-w-[50vw] flex items-center justify-center">
+      <div className={`relative h-full flex-1 max-w-[50vw] flex items-center ${justify}`}>
         {!loaded && !error && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className={`h-6 w-6 animate-spin rounded-full border-2 border-t-accent ${
@@ -276,12 +319,14 @@ export default function DoublePageView({
       onTouchEnd={handleTouchEnd}
     >
       <div
-        className="flex h-full items-center justify-center gap-1 p-4"
+        className={`flex h-full items-center justify-center ${noGap ? "gap-0" : "gap-1 p-4"}`}
         style={containerWidth ? { width: containerWidth, maxWidth: "100%", margin: "0 auto" } : undefined}
       >
-        {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, errorLeft, setErrorLeft, "left", leftImgRef)}
-        <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
-        {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right", rightImgRef)}
+        {renderPage(leftPage, leftPageIndex, loadedLeft, setLoadedLeft, errorLeft, setErrorLeft, "left", leftImgRef, "left")}
+        {!noGap && (
+          <div className={`h-[80%] w-px ${readerTheme === "day" ? "bg-gray-300" : "bg-white/5"}`} />
+        )}
+        {renderPage(rightPage, rightPageIndex, loadedRight, setLoadedRight, errorRight, setErrorRight, "right", rightImgRef, "right")}
       </div>
 
       {/* 移动端双页模式提示 */}

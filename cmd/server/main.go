@@ -105,6 +105,11 @@ func main() {
 	service.StartSessionCleanup()
 
 	// ============================================================
+	// Start storage usage sampler (数据管理模块)
+	// ============================================================
+	service.StartStorageSampler(handler.SampleStorageUsage)
+
+	// ============================================================
 	// Setup Gin router
 	// ============================================================
 	mode := os.Getenv("GIN_MODE")

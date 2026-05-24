@@ -48,26 +48,44 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
       const params = new URLSearchParams({
         sortBy: "lastReadAt",
         sortOrder: "desc",
-        pageSize: "10",
+        pageSize: "20",
         page: "1",
       });
       if (contentType) params.set("contentType", contentType);
       const res = await fetch(
-        `/api/comics?${params.toString()}`
+        `/api/comics?${params.toString()}`,
+        { credentials: "include" }
       );
-      if (res.ok) {
-        const data = await res.json();
-        // 只展示有阅读进度且未读完的
-        const comics = (data.comics || []).filter(
-          (c: ApiComic) =>
-            c.lastReadAt &&
-            c.lastReadPage > 0 &&
-            (c.pageCount === 0 || c.lastReadPage < c.pageCount - 1)
+      if (!res.ok) {
+        // 显式打印失败信息，便于定位 500/401 等问题
+        console.warn(
+          "[ContinueReading] fetch failed",
+          res.status,
+          await res.text().catch(() => "")
         );
-        setRecentComics(comics.slice(0, 8));
+        return;
       }
-    } catch {
-      // 静默失败
+      const data = await res.json();
+      const all: ApiComic[] = data.comics || [];
+      // 只展示有阅读进度且未读完的（放宽：lastReadPage < pageCount 即可）
+      const comics = all.filter(
+        (c: ApiComic) =>
+          !!c.lastReadAt &&
+          c.lastReadPage > 0 &&
+          (c.pageCount === 0 || c.lastReadPage < c.pageCount)
+      );
+      if (import.meta.env.MODE !== "production") {
+        // eslint-disable-next-line no-console
+        console.debug(
+          "[ContinueReading] fetched",
+          all.length,
+          "comics, filtered to",
+          comics.length
+        );
+      }
+      setRecentComics(comics.slice(0, 8));
+    } catch (e) {
+      console.warn("[ContinueReading] fetch error", e);
     } finally {
       setLoading(false);
     }

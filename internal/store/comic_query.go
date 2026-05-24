@@ -56,6 +56,7 @@ type ComicListOptions struct {
 	ReadingStatus  string // "want" | "reading" | "finished" | "shelved" | "" (全部)
 	ExcludeGrouped bool   // 是否排除已在分组中的漫画（用于分组视图）
 	MetaFilter     string // "all" | "with" | "missing" — 按元数据状态过滤
+	UserID         string // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -128,7 +129,12 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	}
 
 	if opts.FavoritesOnly {
-		conditions = append(conditions, `c."isFavorite" = 1`)
+		// 多用户：优先按 UserComicState.isFavorite 过滤
+		if opts.UserID != "" {
+			conditions = append(conditions, `COALESCE(ucs."isFavorite", c."isFavorite") = 1`)
+		} else {
+			conditions = append(conditions, `c."isFavorite" = 1`)
+		}
 	}
 
 	// Tag filtering: find comics that have ANY of the specified tags
@@ -184,6 +190,14 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	// 当传入 UserID 时，LEFT JOIN UserComicState 以便取该用户的最近阅读/收藏/评分
+	joinClause := ""
+	joinArgs := []interface{}{}
+	if opts.UserID != "" {
+		joinClause = `LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?`
+		joinArgs = append(joinArgs, opts.UserID)
+	}
+
 	// Sort
 	sortField := "c.\"title\""
 	switch opts.SortBy {
@@ -192,9 +206,17 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	case "updatedAt":
 		sortField = "c.\"updatedAt\""
 	case "lastReadAt":
-		sortField = "c.\"lastReadAt\""
+		if opts.UserID != "" {
+			sortField = `COALESCE(ucs."lastReadAt", c."lastReadAt")`
+		} else {
+			sortField = "c.\"lastReadAt\""
+		}
 	case "rating":
-		sortField = "c.\"rating\""
+		if opts.UserID != "" {
+			sortField = `COALESCE(ucs."rating", c."rating")`
+		} else {
+			sortField = "c.\"rating\""
+		}
 	case "custom":
 		sortField = "c.\"sortOrder\""
 	case "fileSize":
@@ -209,9 +231,10 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	orderClause := fmt.Sprintf("ORDER BY %s %s", sortField, sortDir)
 
 	// Count total
-	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM "Comic" c %s`, whereClause)
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM "Comic" c %s %s`, joinClause, whereClause)
+	countArgs := append(append([]interface{}{}, joinArgs...), args...)
 	var total int
-	if err := db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	if err := db.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("count comics: %w", err)
 	}
 
@@ -223,8 +246,8 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	}
 
 	limitClause := ""
-	paginationArgs := make([]interface{}, len(args))
-	copy(paginationArgs, args)
+	// 主查询参数顺序：joinArgs(UserID) + args(WHERE) + LIMIT/OFFSET
+	paginationArgs := append(append([]interface{}{}, joinArgs...), args...)
 	if pageSize > 0 {
 		offset := (page - 1) * pageSize
 		limitClause = "LIMIT ? OFFSET ?"
@@ -239,8 +262,26 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		pageSize = total
 	}
 
-	// Main query
-	query := fmt.Sprintf(`
+	// Main query — 带 UserID 时优先返回 UserComicState 的字段（COALESCE 回退到 Comic 全局值）
+	var query string
+	if opts.UserID != "" {
+		query = fmt.Sprintf(`
+		SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
+		       c."addedAt", c."updatedAt",
+		       COALESCE(ucs."lastReadPage", c."lastReadPage") AS lrp,
+		       COALESCE(ucs."lastReadAt",   c."lastReadAt")   AS lra,
+		       COALESCE(ucs."isFavorite",   c."isFavorite")   AS isfav,
+		       COALESCE(ucs."rating",       c."rating")       AS rt,
+		       c."sortOrder",
+		       COALESCE(ucs."totalReadTime", c."totalReadTime") AS trt,
+		       c."author", c."publisher", c."year", c."description",
+		       c."language", c."genre", c."metadataSource",
+		       c."readingStatus", c."type", c."coverAspectRatio"
+		FROM "Comic" c
+		%s %s %s %s
+	`, joinClause, whereClause, orderClause, limitClause)
+	} else {
+		query = fmt.Sprintf(`
 		SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt", c."lastReadPage", c."lastReadAt",
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
@@ -250,6 +291,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		FROM "Comic" c
 		%s %s %s
 	`, whereClause, orderClause, limitClause)
+	}
 
 	rows, err := db.Query(query, paginationArgs...)
 	if err != nil {
@@ -261,15 +303,20 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	for rows.Next() {
 		var c ComicListItem
 		var addedAt, updatedAt time.Time
-		var lastReadAt sql.NullTime
+		// 注意：当带 UserID 时，lastReadAt/lastReadPage/isFavorite/rating/totalReadTime
+		// 经过 COALESCE 后 SQLite 驱动会返回 TEXT/INT，与原列的 *time.Time 不兼容，
+		// 因此这里统一用 NullString/NullInt64 接收，再做转换。
+		var lastReadAtStr sql.NullString
+		var lastReadPage sql.NullInt64
+		var isFavRaw sql.NullInt64
 		var rating sql.NullInt64
+		var totalReadTime sql.NullInt64
 		var year sql.NullInt64
-		var isFav int
 
 		if err := rows.Scan(
 			&c.ID, &c.Filename, &c.Title, &c.PageCount, &c.FileSize,
-			&addedAt, &updatedAt, &c.LastReadPage, &lastReadAt,
-			&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
+			&addedAt, &updatedAt, &lastReadPage, &lastReadAtStr,
+			&isFavRaw, &rating, &c.SortOrder, &totalReadTime,
 			&c.Author, &c.Publisher, &year, &c.Description,
 			&c.Language, &c.Genre, &c.MetadataSource,
 			&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
@@ -279,10 +326,20 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 
 		c.AddedAt = addedAt.UTC().Format(time.RFC3339Nano)
 		c.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-		c.IsFavorite = isFav != 0
-		if lastReadAt.Valid {
-			s := lastReadAt.Time.UTC().Format(time.RFC3339Nano)
-			c.LastReadAt = &s
+		c.LastReadPage = int(lastReadPage.Int64)
+		c.IsFavorite = isFavRaw.Valid && isFavRaw.Int64 != 0
+		c.TotalReadTime = int(totalReadTime.Int64)
+		if lastReadAtStr.Valid && lastReadAtStr.String != "" {
+			// SQLite 时间格式不固定（可能是 RFC3339、不带时区，或 'YYYY-MM-DD HH:MM:SS'）
+			s := strings.TrimSpace(lastReadAtStr.String)
+			parsed := parseSQLiteTime(s)
+			if !parsed.IsZero() {
+				v := parsed.UTC().Format(time.RFC3339Nano)
+				c.LastReadAt = &v
+			} else {
+				// 解析失败时退化为原字符串，避免丢失数据
+				c.LastReadAt = &s
+			}
 		}
 		if rating.Valid {
 			v := int(rating.Int64)
@@ -949,4 +1006,33 @@ func GetFavoriteComicTitles(limit int) ([]string, error) {
 		}
 	}
 	return titles, nil
+}
+
+// parseSQLiteTime 尝试用多种格式解析 SQLite 返回的时间字符串。
+// 用于 COALESCE 后驱动会返回 TEXT 而非自动转 time.Time 的场景。
+func parseSQLiteTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05Z",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	// 兜底：把空格替换为 T 再试一次
+	if t, err := time.Parse(time.RFC3339Nano, strings.Replace(s, " ", "T", 1)); err == nil {
+		return t
+	}
+	return time.Time{}
 }

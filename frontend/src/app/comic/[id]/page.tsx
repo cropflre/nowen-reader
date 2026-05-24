@@ -155,6 +155,8 @@ export default function ComicDetailPage() {
   const coverFileRef = useRef<HTMLInputElement>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [coverPickerPages, setCoverPickerPages] = useState<number>(0);
+  const [coverPickerMode, setCoverPickerMode] = useState<"page" | "embedded">("page");
+  const [embeddedImages, setEmbeddedImages] = useState<{ index: number; path: string }[]>([]);
   const [metadataTranslating, setMetadataTranslating] = useState(false);
   const [translateEngine, setTranslateEngine] = useState<string>("");
   const [showEngineMenu, setShowEngineMenu] = useState(false);
@@ -385,18 +387,35 @@ export default function ComicDetailPage() {
 
   const handleOpenCoverPicker = useCallback(async () => {
     setShowCoverMenu(false);
-    // Load page count from pages API
+    const novel = isNovelComic(comic ?? {});
     try {
-      const res = await fetch(`/api/comics/${comicId}/pages`);
-      if (res.ok) {
+      if (novel) {
+        // 小说类型：拉取内嵌图片列表
+        const res = await fetch(`/api/comics/${comicId}/embedded-images`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const imgs: { index: number; path: string }[] = data.images || [];
+        if (imgs.length === 0) {
+          alert((t.comicDetail as any)?.noEmbeddedImages || "该书未检测到内嵌图片");
+          return;
+        }
+        setEmbeddedImages(imgs);
+        setCoverPickerPages(imgs.length);
+        setCoverPickerMode("embedded");
+        setShowCoverPicker(true);
+      } else {
+        // 漫画/PDF：走页面列表
+        const res = await fetch(`/api/comics/${comicId}/pages`);
+        if (!res.ok) return;
         const data = await res.json();
         setCoverPickerPages(data.totalPages || 0);
+        setCoverPickerMode("page");
         setShowCoverPicker(true);
       }
     } catch {
       // ignore
     }
-  }, [comicId]);
+  }, [comicId, comic, t]);
 
   const handleSelectCoverPage = useCallback(async (pageIndex: number) => {
     setCoverLoading(true);
@@ -418,6 +437,51 @@ export default function ComicDetailPage() {
       setCoverLoading(false);
     }
   }, [comicId]);
+
+  const handleSelectEmbeddedImage = useCallback(async (embeddedImageIndex: number) => {
+    setCoverLoading(true);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ embeddedImageIndex }),
+      });
+      if (res.ok) {
+        invalidateSwCache(`/api/comics/${comicId}/thumbnail`);
+        invalidateComicsCache();
+        setCoverKey(Date.now());
+        setShowCoverPicker(false);
+      }
+    } catch (err) {
+      console.error("Cover embedded select failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  }, [comicId]);
+
+  const handleCoverFromFirstPage = useCallback(async () => {
+    setCoverLoading(true);
+    setShowCoverMenu(false);
+    try {
+      const res = await fetch(`/api/comics/${comicId}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useFirstPage: true }),
+      });
+      if (res.ok) {
+        invalidateSwCache(`/api/comics/${comicId}/thumbnail`);
+        invalidateComicsCache();
+        setCoverKey(Date.now());
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert((data && data.error) || ((t.comicDetail as any)?.coverFirstPageFailed || "获取第一张图失败"));
+      }
+    } catch (err) {
+      console.error("Cover first-page failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  }, [comicId, t]);
 
   const handleCoverFromPlatform = useCallback(async () => {
     if (!comic) return;
@@ -851,17 +915,27 @@ export default function ComicDetailPage() {
                       {t.comicDetail.coverFromPlatform || "从漫画平台获取"}
                     </button>
 
-                    {/* Select from archive pages (P4) */}
-                    {!isNovelComic(comic) && (
+                    {/* Use first page/image as cover (一键) */}
+                    <button
+                      onClick={handleCoverFromFirstPage}
+                      disabled={coverLoading}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                    >
+                      <ImagePlus className="h-3.5 w-3.5" />
+                      {(t.comicDetail as any)?.coverUseFirstPage || "使用第一张图"}
+                    </button>
+
+                    {/* Select from archive pages / embedded images */}
                     <button
                       onClick={handleOpenCoverPicker}
                       disabled={coverLoading}
                       className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700/60"
                     >
                       <Layers className="h-3.5 w-3.5" />
-                      {t.comicDetail?.coverFromArchive || "从内页选择"}
+                      {isNovelComic(comic ?? {})
+                        ? ((t.comicDetail as any)?.coverFromEmbedded || "从内嵌图选择")
+                        : (t.comicDetail?.coverFromArchive || "从内页选择")}
                     </button>
-                    )}
 
                     {/* Reset to default */}
                     <button
@@ -1810,7 +1884,9 @@ export default function ComicDetailPage() {
           <div className="fixed inset-4 z-50 flex flex-col rounded-2xl bg-zinc-900 shadow-2xl animate-modal-in sm:inset-8 lg:inset-16">
             <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
               <h3 className="text-base font-semibold text-foreground">
-                {t.comicDetail?.coverFromArchive || "从内页选择封面"}
+                {coverPickerMode === "embedded"
+                  ? ((t.comicDetail as any)?.coverFromEmbedded || "从内嵌图选择封面")
+                  : (t.comicDetail?.coverFromArchive || "从内页选择封面")}
               </h3>
               <button
                 onClick={() => setShowCoverPicker(false)}
@@ -1821,30 +1897,52 @@ export default function ComicDetailPage() {
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                {Array.from({ length: Math.min(coverPickerPages, 50) }, (_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelectCoverPage(i)}
-                    disabled={coverLoading}
-                    className="group relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
-                  >
-                    <img
-                      src={`/api/comics/${comicId}/page/${i}`}
-                      alt={`Page ${i + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
-                      <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-                        {i + 1}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+                {coverPickerMode === "embedded"
+                  ? embeddedImages.slice(0, 50).map((img) => (
+                      <button
+                        key={img.index}
+                        onClick={() => handleSelectEmbeddedImage(img.index)}
+                        disabled={coverLoading}
+                        title={img.path}
+                        className="group relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
+                      >
+                        <img
+                          src={`/api/comics/${comicId}/embedded-image/${img.index}`}
+                          alt={`Image ${img.index + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                          <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                            {img.index + 1}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  : Array.from({ length: Math.min(coverPickerPages, 50) }, (_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSelectCoverPage(i)}
+                        disabled={coverLoading}
+                        className="group relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
+                      >
+                        <img
+                          src={`/api/comics/${comicId}/page/${i}`}
+                          alt={`Page ${i + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                          <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                            {i + 1}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
               </div>
               {coverPickerPages > 50 && (
                 <p className="mt-4 text-center text-xs text-muted">
-                  {t.comicDetail?.coverPickerLimitMsg || `仅显示前 50 页，共 ${coverPickerPages} 页`}
+                  {t.comicDetail?.coverPickerLimitMsg || `仅显示前 50 个，共 ${coverPickerPages} 个`}
                 </p>
               )}
             </div>

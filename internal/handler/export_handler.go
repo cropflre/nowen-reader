@@ -22,7 +22,7 @@ func NewExportHandler() *ExportHandler {
 
 // ExportJSON 导出所有阅读数据为JSON格式。
 func (h *ExportHandler) ExportJSON(c *gin.Context) {
-	data, err := collectExportData()
+	data, err := collectExportData(getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -36,7 +36,7 @@ func (h *ExportHandler) ExportJSON(c *gin.Context) {
 
 // ExportCSV 导出阅读会话数据为CSV格式。
 func (h *ExportHandler) ExportCSV(c *gin.Context) {
-	stats, err := store.GetEnhancedReadingStats()
+	stats, err := store.GetEnhancedReadingStats(getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -161,7 +161,7 @@ func (h *ExportHandler) ExportComicsCSV(c *gin.Context) {
 }
 
 // collectExportData 收集完整的导出数据。
-func collectExportData() (map[string]interface{}, error) {
+func collectExportData(userID string) (map[string]interface{}, error) {
 	data := make(map[string]interface{})
 	data["exportedAt"] = time.Now().UTC().Format(time.RFC3339)
 	data["version"] = "1.0"
@@ -171,6 +171,7 @@ func collectExportData() (map[string]interface{}, error) {
 		Page:     1,
 		PageSize: 0, // 全部
 		SortBy:   "title",
+		UserID:   userID,
 	})
 	if err != nil {
 		return nil, err
@@ -179,7 +180,7 @@ func collectExportData() (map[string]interface{}, error) {
 	data["totalComics"] = result.Total
 
 	// 阅读统计
-	stats, err := store.GetEnhancedReadingStats()
+	stats, err := store.GetEnhancedReadingStats(userID)
 	if err == nil {
 		data["readingStats"] = stats
 	}

@@ -93,7 +93,7 @@ func (h *StatsHandler) EndSession(c *gin.Context) {
 
 // GET /api/stats/enhanced — 增强版阅读统计
 func (h *StatsHandler) GetEnhancedStats(c *gin.Context) {
-	stats, err := store.GetEnhancedReadingStats()
+	stats, err := store.GetEnhancedReadingStats(getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

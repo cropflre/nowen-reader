@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Globe, Save, FolderOpen, Image, Languages, BookOpen,
   CheckCircle, Trash2, RefreshCw, Plus, X, Search, Sparkles,
@@ -271,10 +272,25 @@ function DefaultReadingModeSelect({ siteT }: { siteT: any }) {
 
 export function SiteSettingsPanel() {
   const t = useTranslation();
+  const searchParams = useSearchParams();
   const [config, setConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // 高亮锚点（用于从 Navbar 灰显入口跳转过来时闪烁提示）
+  const scraperRef = useRef<HTMLDivElement>(null);
+  const [highlightScraper, setHighlightScraper] = useState(false);
+  useEffect(() => {
+    if (loading) return;
+    if (searchParams.get("highlight") !== "scraperEnabled") return;
+    const t1 = setTimeout(() => {
+      scraperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightScraper(true);
+    }, 80);
+    const t2 = setTimeout(() => setHighlightScraper(false), 2400);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [loading, searchParams]);
 
   // Cache states
   const [clearingThumbnails, setClearingThumbnails] = useState(false);
@@ -1190,7 +1206,15 @@ export function SiteSettingsPanel() {
       </div>
 
       {/* Scraper Toggle */}
-      <div className="space-y-3 rounded-xl bg-background p-4">
+      <div
+        id="scraperEnabled"
+        ref={scraperRef}
+        className={`space-y-3 rounded-xl bg-background p-4 transition-all duration-500 ${
+          highlightScraper
+            ? "ring-2 ring-accent/70 shadow-lg shadow-accent/20 animate-pulse"
+            : ""
+        }`}
+      >
         <div className="flex items-center gap-2 text-xs font-medium text-foreground">
           <Database className="h-3.5 w-3.5 text-accent" />
           {siteT?.scraperEnabled || "启用内容刮削"}

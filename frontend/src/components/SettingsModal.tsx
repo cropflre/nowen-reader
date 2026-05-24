@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, Info, Brain, Globe, Github, ExternalLink } from "lucide-react";
+import { X, Info, Brain, Globe, Github, ExternalLink, HardDrive } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import dynamic from "next/dynamic";
@@ -20,12 +20,17 @@ const AISettingsPanel = dynamic(
   () => import("@/components/AISettingsPanel").then((mod) => mod.AISettingsPanel),
   { loading: LoadingSkeleton }
 );
+
+const DataAdminPanel = dynamic(
+  () => import("@/components/DataAdminPanel").then((mod) => mod.DataAdminPanel),
+  { loading: LoadingSkeleton }
+);
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-type SettingsTab = "site" | "ai" | "about";
+type SettingsTab = "site" | "ai" | "data" | "about";
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const t = useTranslation();
@@ -67,6 +72,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     ...(isAdmin ? [
       { id: "site" as const, label: t.siteSettings?.tab || "站点", icon: <Globe className="h-4 w-4" /> },
       { id: "ai" as const, label: t.ai?.title || "AI", icon: <Brain className="h-4 w-4" /> },
+      { id: "data" as const, label: "数据", icon: <HardDrive className="h-4 w-4" /> },
     ] : []),
     { id: "about", label: t.settings?.about || "About", icon: <Info className="h-4 w-4" /> },
   ];
@@ -147,6 +153,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {activeTab === "site" && <SiteSettingsPanel />}
             {activeTab === "ai" && <AISettingsPanel />}
+            {activeTab === "data" && <DataAdminPanel />}
             {activeTab === "about" && <AboutPanel />}
           </div>
         </div>

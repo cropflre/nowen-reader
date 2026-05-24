@@ -71,6 +71,9 @@ export function DetailPanel({
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiParseLoading, setAiParseLoading] = useState(false);
   const [aiParsedResult, setAiParsedResult] = useState<Record<string, unknown> | null>(null);
+  // AI 目录级智能识别（结合父目录+同伴文件名推断作品名/作者/扫图组）
+  const [aiInferLoading, setAiInferLoading] = useState(false);
+  const [aiInferResult, setAiInferResult] = useState<Record<string, unknown> | null>(null);
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>([]);
   const [aiSelectedTags, setAiSelectedTags] = useState<Set<string>>(new Set());
@@ -96,6 +99,8 @@ export function DetailPanel({
   const coverFileRef = useRef<HTMLInputElement>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [coverPickerPages, setCoverPickerPages] = useState<number>(0);
+  const [coverPickerMode, setCoverPickerMode] = useState<"page" | "embedded">("page");
+  const [embeddedImages, setEmbeddedImages] = useState<{ index: number; path: string }[]>([]);
 
   // 同步 item 变化
   useEffect(() => { setLocalRating(item.rating || 0); }, [item.rating]);
@@ -274,6 +279,33 @@ export function DetailPanel({
         body: JSON.stringify({ apply: true }),
       });
       if (res.ok) { setAiParsedResult(null); onRefresh(); loadLibrary(); }
+    } catch { /* ignore */ }
+  };
+
+  // AI 目录级智能识别：结合父目录 + 同伴文件名样本，推断作品名/作者/扫图组/版本/状态。
+  // 适用于"【已完结】佣兵天下(潮華版)[黃玉郎][誰在乎版]/誰在乎版 YongBing-000.cbz" 这类扫描误识别场景。
+  const handleAiInferTitle = async () => {
+    if (aiInferLoading) return;
+    setAiInferLoading(true);
+    setAiInferResult(null);
+    try {
+      const res = await fetch(`/api/comics/${item.id}/ai-infer-title`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: false, applyToGroup: false }),
+      });
+      if (res.ok) { const data = await res.json(); setAiInferResult(data.inferred); }
+    } catch { /* ignore */ } finally { setAiInferLoading(false); }
+  };
+
+  const handleAiInferApply = async (applyToGroup: boolean) => {
+    try {
+      const res = await fetch(`/api/comics/${item.id}/ai-infer-title`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: true, applyToGroup }),
+      });
+      if (res.ok) { setAiInferResult(null); onRefresh(); loadLibrary(); }
     } catch { /* ignore */ }
   };
 
@@ -461,11 +493,27 @@ export function DetailPanel({
 
   const handleOpenCoverPicker = async () => {
     setShowCoverMenu(false);
+    const isNovel = item.contentType === "novel";
     try {
-      const res = await fetch(`/api/comics/${item.id}/pages`);
-      if (res.ok) {
+      if (isNovel) {
+        const res = await fetch(`/api/comics/${item.id}/embedded-images`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const imgs: { index: number; path: string }[] = data.images || [];
+        if (imgs.length === 0) {
+          alert((t.comicDetail as any)?.noEmbeddedImages || "该书未检测到内嵌图片");
+          return;
+        }
+        setEmbeddedImages(imgs);
+        setCoverPickerPages(imgs.length);
+        setCoverPickerMode("embedded");
+        setShowCoverPicker(true);
+      } else {
+        const res = await fetch(`/api/comics/${item.id}/pages`);
+        if (!res.ok) return;
         const data = await res.json();
         setCoverPickerPages(data.totalPages || 0);
+        setCoverPickerMode("page");
         setShowCoverPicker(true);
       }
     } catch { /* ignore */ }
@@ -489,6 +537,55 @@ export function DetailPanel({
       }
     } catch (err) {
       console.error("Cover select failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
+  const handleSelectEmbeddedImage = async (embeddedImageIndex: number) => {
+    setCoverLoading(true);
+    try {
+      const res = await fetch(`/api/comics/${item.id}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ embeddedImageIndex }),
+      });
+      if (res.ok) {
+        invalidateSwCache(`/api/comics/${item.id}/thumbnail`);
+        invalidateComicsCache();
+        setCoverKey(Date.now());
+        setShowCoverPicker(false);
+        onRefresh();
+        loadLibrary();
+      }
+    } catch (err) {
+      console.error("Cover embedded select failed:", err);
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
+  const handleCoverFromFirstPage = async () => {
+    setCoverLoading(true);
+    setShowCoverMenu(false);
+    try {
+      const res = await fetch(`/api/comics/${item.id}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useFirstPage: true }),
+      });
+      if (res.ok) {
+        invalidateSwCache(`/api/comics/${item.id}/thumbnail`);
+        invalidateComicsCache();
+        setCoverKey(Date.now());
+        onRefresh();
+        loadLibrary();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert((data && data.error) || ((t.comicDetail as any)?.coverFirstPageFailed || "获取第一张图失败"));
+      }
+    } catch (err) {
+      console.error("Cover first-page failed:", err);
     } finally {
       setCoverLoading(false);
     }
@@ -641,16 +738,24 @@ export function DetailPanel({
                     <Download className="h-3 w-3" />
                     {t.comicDetail?.coverFromPlatform || "从平台获取"}
                   </button>
-                  {item.contentType !== "novel" && (
-                    <button
-                      onClick={handleOpenCoverPicker}
-                      disabled={coverLoading}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] text-zinc-200 transition-colors hover:bg-zinc-700/60"
-                    >
-                      <Layers className="h-3 w-3" />
-                      {t.comicDetail?.coverFromArchive || "从内页选择"}
-                    </button>
-                  )}
+                  <button
+                    onClick={handleCoverFromFirstPage}
+                    disabled={coverLoading}
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                  >
+                    <ImagePlus className="h-3 w-3" />
+                    {(t.comicDetail as any)?.coverUseFirstPage || "使用第一张图"}
+                  </button>
+                  <button
+                    onClick={handleOpenCoverPicker}
+                    disabled={coverLoading}
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] text-zinc-200 transition-colors hover:bg-zinc-700/60"
+                  >
+                    <Layers className="h-3 w-3" />
+                    {item.contentType === "novel"
+                      ? ((t.comicDetail as any)?.coverFromEmbedded || "从内嵌图选择")
+                      : (t.comicDetail?.coverFromArchive || "从内页选择")}
+                  </button>
                   <button
                     onClick={handleCoverReset}
                     disabled={coverLoading}
@@ -946,6 +1051,15 @@ export function DetailPanel({
                   <span>{aiParseLoading ? "解析中..." : (t.comicDetail?.aiParseFilename || "AI 解析")}</span>
                 </button>
                 <button
+                  onClick={handleAiInferTitle}
+                  disabled={aiInferLoading}
+                  className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 disabled:opacity-50"
+                  title="AI 智能识别：结合父目录+同伴文件名推断真实作品名/作者/扫图组"
+                >
+                  {aiInferLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  <span>{aiInferLoading ? "识别中..." : "AI 智能识别"}</span>
+                </button>
+                <button
                   onClick={handleAiAnalyzeCover}
                   disabled={aiCoverLoading}
                   className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 transition-all hover:bg-purple-500/20 disabled:opacity-50"
@@ -965,6 +1079,37 @@ export function DetailPanel({
                 </button>
               </>
             )}
+          </div>
+        )}
+
+        {/* AI 智能识别结果（目录级） */}
+        {aiInferResult && (
+          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-purple-400">
+                <Sparkles className="h-3.5 w-3.5" />
+                AI 智能识别结果
+              </div>
+              <div className="flex gap-1.5">
+                <button onClick={() => handleAiInferApply(false)} className="rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-medium text-purple-300 hover:bg-purple-500/30" title="仅应用到本卷">
+                  应用本卷
+                </button>
+                <button onClick={() => handleAiInferApply(true)} className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300 hover:bg-amber-500/30" title="同时将作品名、作者、状态等写回所属分组（系列）">
+                  应用到系列
+                </button>
+                <button onClick={() => setAiInferResult(null)} className="rounded-md px-1.5 py-0.5 text-[10px] text-muted hover:text-foreground">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-1 text-[11px]">
+              {Object.entries(aiInferResult).filter(([, v]) => v != null && v !== "").map(([key, value]) => (
+                <div key={key} className="flex gap-2">
+                  <span className="w-24 shrink-0 text-muted">{key}:</span>
+                  <span className="text-foreground">{String(value)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1271,7 +1416,9 @@ export function DetailPanel({
           <div className="fixed inset-4 z-50 flex flex-col rounded-2xl bg-zinc-900 shadow-2xl animate-modal-in sm:inset-8 lg:inset-16">
             <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
               <h3 className="text-base font-semibold text-foreground">
-                {t.comicDetail?.coverFromArchive || "从内页选择封面"}
+                {coverPickerMode === "embedded"
+                  ? ((t.comicDetail as any)?.coverFromEmbedded || "从内嵌图选择封面")
+                  : (t.comicDetail?.coverFromArchive || "从内页选择封面")}
               </h3>
               <button
                 onClick={() => setShowCoverPicker(false)}
@@ -1282,30 +1429,52 @@ export function DetailPanel({
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                {Array.from({ length: Math.min(coverPickerPages, 50) }, (_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelectCoverPage(i)}
-                    disabled={coverLoading}
-                    className="group/page relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
-                  >
-                    <img
-                      src={`/api/comics/${item.id}/page/${i}`}
-                      alt={`Page ${i + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/page:bg-black/30">
-                      <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover/page:opacity-100">
-                        {i + 1}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+                {coverPickerMode === "embedded"
+                  ? embeddedImages.slice(0, 50).map((img) => (
+                      <button
+                        key={img.index}
+                        onClick={() => handleSelectEmbeddedImage(img.index)}
+                        disabled={coverLoading}
+                        title={img.path}
+                        className="group/page relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
+                      >
+                        <img
+                          src={`/api/comics/${item.id}/embedded-image/${img.index}`}
+                          alt={`Image ${img.index + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/page:bg-black/30">
+                          <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover/page:opacity-100">
+                            {img.index + 1}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  : Array.from({ length: Math.min(coverPickerPages, 50) }, (_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSelectCoverPage(i)}
+                        disabled={coverLoading}
+                        className="group/page relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
+                      >
+                        <img
+                          src={`/api/comics/${item.id}/page/${i}`}
+                          alt={`Page ${i + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/page:bg-black/30">
+                          <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover/page:opacity-100">
+                            {i + 1}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
               </div>
               {coverPickerPages > 50 && (
                 <p className="mt-4 text-center text-xs text-muted">
-                  {t.comicDetail?.coverPickerLimitMsg || `仅显示前 50 页，共 ${coverPickerPages} 页`}
+                  {t.comicDetail?.coverPickerLimitMsg || `仅显示前 50 个，共 ${coverPickerPages} 个`}
                 </p>
               )}
             </div>

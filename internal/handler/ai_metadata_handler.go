@@ -118,7 +118,7 @@ func (h *AIHandler) ParseFilename(c *gin.Context) {
 	// 如果 apply=true，自动将解析结果写入元数据
 	if body.Apply && parsed != nil {
 		updates := map[string]interface{}{}
-		if parsed.Title != "" && comic.Title == store.FilenameToTitle(comic.Filename) {
+		if parsed.Title != "" && (comic.Title == store.FilenameToTitle(comic.Filename) || comic.Title == store.FilenameToSmartTitle(comic.Filename)) {
 			// 只在标题是从文件名自动生成的情况下才覆盖
 			updates["title"] = parsed.Title
 		}
