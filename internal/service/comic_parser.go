@@ -215,6 +215,11 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 				if archive.IsMobiImageHeavy(fp) {
 					log.Printf("[pages] Auto-detected image-heavy %s, reclassifying as comic: %s", archiveType, comic.Filename)
 					_ = store.UpdateComicType(comicID, "comic")
+					// Recalculate page count: novel mode counts chapters,
+					// comic mode needs image count
+					if imgCount, err := GetArchivePageCount(fp, true); err == nil && imgCount > 0 {
+						_ = store.UpdateComicPageCount(comicID, imgCount)
+					}
 					isNovel = false
 				}
 			}
@@ -722,8 +727,10 @@ func pageExistsInCache(cacheDir string, pageIndex int) bool {
 // ============================================================
 
 // GetArchivePageCount opens an archive and counts image entries (or chapters for novels).
-func GetArchivePageCount(fp string) (int, error) {
+// When isComic is true for ebook formats, it counts embedded images instead of chapters.
+func GetArchivePageCount(fp string, isComic ...bool) (int, error) {
 	archiveType := archive.DetectType(fp)
+	forceComic := len(isComic) > 0 && isComic[0]
 
 	if archiveType == archive.TypePdf {
 		return archive.GetPdfPageCount(fp)
@@ -745,6 +752,12 @@ func GetArchivePageCount(fp string) (int, error) {
 		return 0, err
 	}
 	defer reader.Close()
+
+	// For ebook archives marked as comic, count embedded images
+	if archive.IsEbookType(archiveType) && forceComic {
+		images := archive.ListEpubEmbeddedImages(reader)
+		return len(images), nil
+	}
 
 	// For novel formats, count chapters (non-directory entries)
 	if archive.IsNovelType(archiveType) {

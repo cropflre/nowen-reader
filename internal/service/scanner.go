@@ -571,12 +571,22 @@ func fullSync() {
 							if archive.IsImageHeavyEpub(item.Path) {
 								log.Printf("[full-sync] Detected image-heavy EPUB, marking as comic: %s", item.Filename)
 								_ = store.UpdateComicType(item.ID, "comic")
+								// Recalculate page count: ebook page count is chapters,
+								// but comic mode needs image count
+								if imgCount, err := GetArchivePageCount(item.Path, true); err == nil && imgCount > 0 {
+									_ = store.UpdateComicPageCount(item.ID, imgCount)
+								}
 							}
 						} else if archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3 {
 							// mobi/azw3 使用纯 Go 解析器直接检测内容类型（无需 Calibre）
 							if archive.IsMobiImageHeavy(item.Path) {
 								log.Printf("[full-sync] Detected image-heavy %s, marking as comic: %s", archiveType, item.Filename)
 								_ = store.UpdateComicType(item.ID, "comic")
+								// Recalculate page count: ebook page count is chapters,
+								// but comic mode needs image count
+								if imgCount, err := GetArchivePageCount(item.Path, true); err == nil && imgCount > 0 {
+									_ = store.UpdateComicPageCount(item.ID, imgCount)
+								}
 							}
 						}
 					}
@@ -875,6 +885,10 @@ func RedetectEbookTypes() int {
 			if config.ClassifyPathSource(foundPath) == "novels" {
 				log.Printf("[redetect] ↩ Reverting ebook in novels dir back to novel: %s", c.Filename)
 				if err := store.UpdateComicType(c.ID, "novel"); err == nil {
+					// Recalculate page count: reverting to novel mode, count chapters
+					if novelCount, err := GetArchivePageCount(foundPath); err == nil && novelCount > 0 {
+						_ = store.UpdateComicPageCount(c.ID, novelCount)
+					}
 					fixed++
 				}
 			}
@@ -935,6 +949,11 @@ func RedetectEbookTypes() int {
 		if archive.IsMobiImageHeavy(foundPath) {
 			log.Printf("[redetect] ✓ Detected image-heavy %s, reclassifying as comic: %s", archiveType, c.Filename)
 			_ = store.UpdateComicType(c.ID, "comic")
+			// Recalculate page count: novel mode counts chapters,
+			// comic mode needs image count
+			if imgCount, err := GetArchivePageCount(foundPath, true); err == nil && imgCount > 0 {
+				_ = store.UpdateComicPageCount(c.ID, imgCount)
+			}
 			reclassified++
 		} else {
 			log.Printf("[redetect] ✗ Not image-heavy, keeping as novel: %s", c.Filename)
