@@ -306,8 +306,22 @@ func (r *epubReader) findOPFPath() (string, error) {
 }
 
 func (r *epubReader) readZipFile(name string) ([]byte, error) {
+	// Exact match first
 	for _, f := range r.rc.File {
 		if f.Name == name {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, err
+			}
+			defer rc.Close()
+			return io.ReadAll(rc)
+		}
+	}
+	// Case-insensitive fallback (some EPUBs have case mismatches
+	// between OPF references and actual ZIP entry names)
+	lower := strings.ToLower(name)
+	for _, f := range r.rc.File {
+		if strings.ToLower(f.Name) == lower {
 			rc, err := f.Open()
 			if err != nil {
 				return nil, err
@@ -1026,9 +1040,25 @@ func GetEpubEmbeddedImageData(r Reader, internalPath string) ([]byte, string, er
 	if !ok {
 		return nil, "", fmt.Errorf("not an EPUB reader")
 	}
+	// Try exact path first
 	data, err := er.readZipFile(internalPath)
-	if err != nil {
-		return nil, "", err
+	if err == nil {
+		return data, GetMimeType(internalPath), nil
 	}
-	return data, GetMimeType(internalPath), nil
+	// Fallback: try with common EPUB root prefixes
+	prefixes := []string{"OEBPS/", "OPS/", "EPUB/", "content/"}
+	for _, prefix := range prefixes {
+		if data, err2 := er.readZipFile(prefix + internalPath); err2 == nil {
+			return data, GetMimeType(internalPath), nil
+		}
+	}
+	// Fallback: try stripping known prefixes from the path
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(internalPath, prefix) {
+			if data, err2 := er.readZipFile(strings.TrimPrefix(internalPath, prefix)); err2 == nil {
+				return data, GetMimeType(internalPath), nil
+			}
+		}
+	}
+	return nil, "", fmt.Errorf("resource not found in EPUB: %s", internalPath)
 }

@@ -287,13 +287,14 @@ func BulkDeleteComicsByIDs(ids []string) error {
 	return err
 }
 
-// GetComicsNeedingPageCount 返回 pageCount=0 的漫画（需要全量同步）。
+// GetComicsNeedingPageCount 返回 pageCount=0 或 -1 的漫画（需要全量同步）。
+// pageCount=-1 表示上次同步失败，需要重试。
 func GetComicsNeedingPageCount(limit int) ([]struct {
 	ID       string
 	Filename string
 }, error) {
 	rows, err := db.Query(`
-		SELECT "id", "filename" FROM "Comic" WHERE "pageCount" = 0 LIMIT ?
+		SELECT "id", "filename" FROM "Comic" WHERE "pageCount" = 0 OR "pageCount" = -1 LIMIT ?
 	`, limit)
 	if err != nil {
 		return nil, err

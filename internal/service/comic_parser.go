@@ -874,11 +874,13 @@ func invalidatePageImageCacheIfNeeded(comicID string, entries []string) {
 
 	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
 
-	// Build a fingerprint from the first and last entry names
-	fingerprint := entries[0]
-	if len(entries) > 1 {
-		fingerprint += "|" + entries[len(entries)-1]
-	}
+	// Build a fingerprint from the first, middle, and last entry names + total count.
+	// More robust than just first+last for detecting ordering changes.
+	fingerprint := fmt.Sprintf("%s|%s|%s|%d",
+		entries[0],
+		entries[len(entries)/2],
+		entries[len(entries)-1],
+		len(entries))
 
 	fpPath := filepath.Join(cacheDir, ".order-fp")
 	existing, err := os.ReadFile(fpPath)
