@@ -1245,3 +1245,17 @@ func GetMobiEmbeddedImageData(r Reader, index int) ([]byte, string, error) {
 	}
 	return img.data, mime, nil
 }
+
+// ListMobiEmbeddedImages 返回 MOBI 内嵌图片的虚拟 entry 名称列表。
+// MOBI 的图片按索引访问而非路径，这里用 "mobi-img://0", "mobi-img://1" 格式标识。
+func ListMobiEmbeddedImages(r Reader) []string {
+	mr, ok := r.(*mobiReader)
+	if !ok || mr.book == nil {
+		return nil
+	}
+	images := make([]string, len(mr.book.images))
+	for i := range mr.book.images {
+		images[i] = fmt.Sprintf("mobi-img://%d", i)
+	}
+	return images
+}
