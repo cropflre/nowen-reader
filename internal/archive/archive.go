@@ -92,11 +92,11 @@ func DetectType(fp string) ArchiveType {
 	case ".html", ".htm":
 		return TypeHtml
 	default:
-		// 没有扩展名时，检查是否为目录（图片文件夹漫画）
-		if ext == "" {
-			if info, err := os.Stat(fp); err == nil && info.IsDir() {
-				return TypeImageFolder
-			}
+		// 扩展名不在已知白名单内时，回退检查是否为目录（图片文件夹漫画）。
+		// 注意：不能限制为 ext == ""，因为目录名也可能含 "."（例如 "Ver.48"、
+		// "vol.5"、"v1.0"），path.Ext 会把它们误当作扩展名，从而错过文件夹判断。
+		if info, err := os.Stat(fp); err == nil && info.IsDir() {
+			return TypeImageFolder
 		}
 		return ""
 	}
