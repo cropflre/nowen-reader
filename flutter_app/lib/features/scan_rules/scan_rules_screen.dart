@@ -35,6 +35,12 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
   bool _organizeEnabled = false;
   bool _autoGroupByDir = true;
   bool _inheritMeta = true;
+  // 目录整理
+  bool _directoryOrganizeEnabled = false;
+  String _directoryOrganizeMode = 'hardlink'; // hardlink | move
+  String _directoryOrganizeStrategy = 'smartDir'; // smartDir | flat
+  String _hardlinkTargetDir = '';
+  late final TextEditingController _hardlinkTargetController;
 
   // 进度
   Map<String, dynamic>? _progress;
@@ -44,12 +50,14 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
   @override
   void initState() {
     super.initState();
+    _hardlinkTargetController = TextEditingController();
     _loadRules();
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _hardlinkTargetController.dispose();
     super.dispose();
   }
 
@@ -72,6 +80,13 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
         _organizeEnabled = org['enabled'] ?? false;
         _autoGroupByDir = org['autoGroupByDir'] ?? true;
         _inheritMeta = org['inheritMeta'] ?? true;
+        final dirOrg =
+            rules['directoryOrganize'] as Map<String, dynamic>? ?? {};
+        _directoryOrganizeEnabled = dirOrg['enabled'] ?? false;
+        _directoryOrganizeMode = dirOrg['mode'] ?? 'hardlink';
+        _directoryOrganizeStrategy = dirOrg['strategy'] ?? 'smartDir';
+        _hardlinkTargetDir = dirOrg['hardlinkTargetDir'] ?? '';
+        _hardlinkTargetController.text = _hardlinkTargetDir;
         _running = data['running'] ?? false;
         _loading = false;
       });
@@ -85,43 +100,85 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
     }
   }
 
+  void _applyRecommendedPreset() {
+    setState(() {
+      _enabled = true;
+      _applyOn = 'newOnly';
+      _aiEnabled = true;
+      _aiScope = 'folderGroup';
+      _minConfidence = 'medium';
+      _applyToComic = true;
+      _applyToGroup = true;
+      _overwriteTitle = false;
+      _organizeEnabled = true;
+      _autoGroupByDir = true;
+      _inheritMeta = true;
+      _directoryOrganizeEnabled = true;
+      _directoryOrganizeMode = 'hardlink';
+      _directoryOrganizeStrategy = 'smartDir';
+      _message = '已套用推荐配置，确认后点击保存';
+      _isError = false;
+    });
+  }
+
   Map<String, dynamic> _buildRulesPayload() => {
-    'enabled': _enabled,
-    'applyOn': _applyOn,
-    'concurrency': 2,
-    'aiInfer': {
-      'enabled': _aiEnabled,
-      'scope': _aiScope,
-      'minConfidence': _minConfidence,
-      'applyToComic': _applyToComic,
-      'applyToGroup': _applyToGroup,
-      'overwriteTitle': _overwriteTitle,
-      'fallbackToRule': true,
-    },
-    'organize': {
-      'enabled': _organizeEnabled,
-      'autoGroupByDir': _autoGroupByDir,
-      'inheritMeta': _inheritMeta,
-    },
-    'filters': {},
-  };
+        'enabled': _enabled,
+        'applyOn': _applyOn,
+        'concurrency': 2,
+        'aiInfer': {
+          'enabled': _aiEnabled,
+          'scope': _aiScope,
+          'minConfidence': _minConfidence,
+          'applyToComic': _applyToComic,
+          'applyToGroup': _applyToGroup,
+          'overwriteTitle': _overwriteTitle,
+          'fallbackToRule': true,
+        },
+        'organize': {
+          'enabled': _organizeEnabled,
+          'autoGroupByDir': _autoGroupByDir,
+          'inheritMeta': _inheritMeta,
+        },
+        'directoryOrganize': {
+          'enabled': _directoryOrganizeEnabled,
+          'mode': _directoryOrganizeMode,
+          'strategy': _directoryOrganizeStrategy,
+          'hardlinkTargetDir': _hardlinkTargetController.text.trim(),
+        },
+        'filters': {},
+      };
 
   Future<void> _save() async {
-    setState(() { _saving = true; _message = null; });
+    setState(() {
+      _saving = true;
+      _message = null;
+    });
     try {
       final api = ref.read(comicApiProvider);
       await api.updateScanRules(_buildRulesPayload());
-      setState(() { _saving = false; _message = '已保存'; _isError = false; });
+      setState(() {
+        _saving = false;
+        _message = '已保存';
+        _isError = false;
+      });
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _message = null);
       });
     } catch (e) {
-      setState(() { _saving = false; _message = '保存失败: $e'; _isError = true; });
+      setState(() {
+        _saving = false;
+        _message = '保存失败: $e';
+        _isError = true;
+      });
     }
   }
 
   Future<void> _run({bool dryRun = false, String? scope}) async {
-    setState(() { _running = true; _message = null; _lastResult = null; });
+    setState(() {
+      _running = true;
+      _message = null;
+      _lastResult = null;
+    });
     _startPolling();
     try {
       final api = ref.read(comicApiProvider);
@@ -133,15 +190,20 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
         if (result != null) {
           final inferred = result['inferred'] ?? 0;
           final grouped = result['groupedNew'] ?? 0;
+          final organized = result['directoryOrganized'] ?? 0;
           final failed = result['failed'] ?? 0;
           _message = dryRun
               ? '预览完成（共 ${result['total']} 项）'
-              : '执行完成（识别 $inferred，新建分组 $grouped，失败 $failed）';
+              : '执行完成（识别 $inferred，新建分组 $grouped，目录整理 $organized，失败 $failed）';
           _isError = false;
         }
       });
     } catch (e) {
-      setState(() { _running = false; _message = '执行失败: $e'; _isError = true; });
+      setState(() {
+        _running = false;
+        _message = '执行失败: $e';
+        _isError = true;
+      });
     }
     _pollTimer?.cancel();
     _pollTimer = null;
@@ -149,7 +211,8 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _fetchProgress());
+    _pollTimer =
+        Timer.periodic(const Duration(seconds: 1), (_) => _fetchProgress());
     _fetchProgress();
   }
 
@@ -189,22 +252,32 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [cs.tertiaryContainer, cs.tertiaryContainer.withOpacity(0.5)],
+                  colors: [
+                    cs.tertiaryContainer,
+                    cs.tertiaryContainer.withOpacity(0.5)
+                  ],
                 ),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.auto_fix_high_rounded, size: 32, color: cs.tertiary),
+                  Icon(Icons.auto_fix_high_rounded,
+                      size: 32, color: cs.tertiary),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('扫描期统一规则', style: TextStyle(fontWeight: FontWeight.bold, color: cs.onTertiaryContainer)),
+                        Text('扫描期统一规则',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: cs.onTertiaryContainer)),
                         const SizedBox(height: 4),
-                        Text('AI 智能识别 + 虚拟归类，不修改磁盘文件',
-                          style: TextStyle(fontSize: 11, color: cs.onTertiaryContainer.withOpacity(0.7))),
+                        Text('智能识别 + 自动分组 + 目录整理；推荐硬链接模式，不移动原文件',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color:
+                                    cs.onTertiaryContainer.withOpacity(0.7))),
                       ],
                     ),
                   ),
@@ -215,14 +288,31 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
           const SizedBox(height: 20),
 
           // ─── 进度条 ───
-          if (_progress != null && (_progress!['running'] == true || _progress!['stage'] == 'done'))
+          if (_progress != null &&
+              (_progress!['running'] == true || _progress!['stage'] == 'done'))
             _buildProgressCard(cs),
 
           // ─── 总开关 ───
           _buildSection(cs, '总开关', Icons.power_settings_new_rounded, [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: FilledButton.tonal(
+                onPressed: _applyRecommendedPreset,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.auto_fix_high_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('一键套用推荐配置'),
+                  ],
+                ),
+              ),
+            ),
             SwitchListTile(
               title: const Text('启用扫描规则', style: TextStyle(fontSize: 14)),
-              subtitle: const Text('关闭后所有动作均不会执行', style: TextStyle(fontSize: 11)),
+              subtitle:
+                  const Text('关闭后所有动作均不会执行', style: TextStyle(fontSize: 11)),
               value: _enabled,
               onChanged: (v) => setState(() => _enabled = v),
             ),
@@ -232,11 +322,19 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
                 value: _applyOn,
                 underline: const SizedBox(),
                 items: const [
-                  DropdownMenuItem(value: 'newOnly', child: Text('仅新增', style: TextStyle(fontSize: 12))),
-                  DropdownMenuItem(value: 'all', child: Text('全库', style: TextStyle(fontSize: 12))),
-                  DropdownMenuItem(value: 'manual', child: Text('仅手动', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'newOnly',
+                      child: Text('仅新增', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'all',
+                      child: Text('全库', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'manual',
+                      child: Text('仅手动', style: TextStyle(fontSize: 12))),
                 ],
-                onChanged: (v) { if (v != null) setState(() => _applyOn = v); },
+                onChanged: (v) {
+                  if (v != null) setState(() => _applyOn = v);
+                },
               ),
             ),
           ]),
@@ -246,7 +344,8 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
           _buildSection(cs, 'AI 智能识别', Icons.auto_awesome_rounded, [
             SwitchListTile(
               title: const Text('启用', style: TextStyle(fontSize: 14)),
-              subtitle: const Text('结合父目录与同伴文件名样本推断标题', style: TextStyle(fontSize: 11)),
+              subtitle: const Text('结合父目录与同伴文件名样本推断标题',
+                  style: TextStyle(fontSize: 11)),
               value: _aiEnabled,
               onChanged: (v) => setState(() => _aiEnabled = v),
             ),
@@ -256,10 +355,16 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
                 value: _aiScope,
                 underline: const SizedBox(),
                 items: const [
-                  DropdownMenuItem(value: 'folderGroup', child: Text('按目录', style: TextStyle(fontSize: 12))),
-                  DropdownMenuItem(value: 'file', child: Text('每文件', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'folderGroup',
+                      child: Text('按目录', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'file',
+                      child: Text('每文件', style: TextStyle(fontSize: 12))),
                 ],
-                onChanged: (v) { if (v != null) setState(() => _aiScope = v); },
+                onChanged: (v) {
+                  if (v != null) setState(() => _aiScope = v);
+                },
               ),
             ),
             ListTile(
@@ -268,11 +373,19 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
                 value: _minConfidence,
                 underline: const SizedBox(),
                 items: const [
-                  DropdownMenuItem(value: 'low', child: Text('低', style: TextStyle(fontSize: 12))),
-                  DropdownMenuItem(value: 'medium', child: Text('中', style: TextStyle(fontSize: 12))),
-                  DropdownMenuItem(value: 'high', child: Text('高', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'low',
+                      child: Text('低', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'medium',
+                      child: Text('中', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'high',
+                      child: Text('高', style: TextStyle(fontSize: 12))),
                 ],
-                onChanged: (v) { if (v != null) setState(() => _minConfidence = v); },
+                onChanged: (v) {
+                  if (v != null) setState(() => _minConfidence = v);
+                },
               ),
             ),
             SwitchListTile(
@@ -287,7 +400,8 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
             ),
             SwitchListTile(
               title: const Text('覆盖已有标题', style: TextStyle(fontSize: 14)),
-              subtitle: const Text('默认仅在标题为空时填充', style: TextStyle(fontSize: 11)),
+              subtitle:
+                  const Text('默认仅在标题为空时填充', style: TextStyle(fontSize: 11)),
               value: _overwriteTitle,
               onChanged: (v) => setState(() => _overwriteTitle = v),
             ),
@@ -298,7 +412,8 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
           _buildSection(cs, '虚拟归类（自动分组）', Icons.folder_copy_rounded, [
             SwitchListTile(
               title: const Text('启用', style: TextStyle(fontSize: 14)),
-              subtitle: const Text('按目录结构自动创建/合并分组', style: TextStyle(fontSize: 11)),
+              subtitle:
+                  const Text('按目录结构自动创建/合并分组', style: TextStyle(fontSize: 11)),
               value: _organizeEnabled,
               onChanged: (v) => setState(() => _organizeEnabled = v),
             ),
@@ -313,6 +428,75 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
               onChanged: (v) => setState(() => _inheritMeta = v),
             ),
           ]),
+          const SizedBox(height: 12),
+
+          // ─── 目录整理 ───
+          _buildSection(cs, '目录整理（硬链接 / 移动）', Icons.drive_file_move_rounded, [
+            SwitchListTile(
+              title: const Text('启用目录整理', style: TextStyle(fontSize: 14)),
+              subtitle: const Text('自动识别多层目录结构；推荐硬链接模式',
+                  style: TextStyle(fontSize: 11)),
+              value: _directoryOrganizeEnabled,
+              onChanged: (v) => setState(() => _directoryOrganizeEnabled = v),
+            ),
+            ListTile(
+              title: const Text('处理方式', style: TextStyle(fontSize: 14)),
+              trailing: DropdownButton<String>(
+                value: _directoryOrganizeMode,
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'hardlink',
+                      child: Text('创建硬链接', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'move',
+                      child: Text('改变当前目录', style: TextStyle(fontSize: 12))),
+                ],
+                onChanged: (v) {
+                  if (v != null) setState(() => _directoryOrganizeMode = v);
+                },
+              ),
+            ),
+            ListTile(
+              title: const Text('整理规则', style: TextStyle(fontSize: 14)),
+              trailing: DropdownButton<String>(
+                value: _directoryOrganizeStrategy,
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'smartDir',
+                      child: Text('智能多层', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(
+                      value: 'flat',
+                      child: Text('一级目录', style: TextStyle(fontSize: 12))),
+                ],
+                onChanged: (v) {
+                  if (v != null) setState(() => _directoryOrganizeStrategy = v);
+                },
+              ),
+            ),
+            if (_directoryOrganizeMode == 'hardlink')
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: TextField(
+                  controller: _hardlinkTargetController,
+                  decoration: const InputDecoration(
+                    labelText: '硬链接目标目录',
+                    hintText: '留空使用默认整理目录，不要放在扫描目录内',
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            if (_directoryOrganizeMode == 'move')
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '会直接修改当前扫描目录内的文件路径，建议先预览确认。',
+                  style: TextStyle(fontSize: 11, color: cs.error),
+                ),
+              ),
+          ]),
           const SizedBox(height: 20),
 
           // ─── 操作按钮 ───
@@ -322,7 +506,10 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
                 child: FilledButton.icon(
                   onPressed: _saving ? null : _save,
                   icon: _saving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.save_rounded, size: 18),
                   label: const Text('保存'),
                 ),
@@ -342,14 +529,17 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.tonal(
-                  onPressed: (_running || !_enabled) ? null : () => _run(scope: 'newOnly'),
+                  onPressed: (_running || !_enabled)
+                      ? null
+                      : () => _run(scope: 'newOnly'),
                   child: const Text('执行(新增)'),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.tonal(
-                  onPressed: (_running || !_enabled) ? null : () => _run(scope: 'all'),
+                  onPressed:
+                      (_running || !_enabled) ? null : () => _run(scope: 'all'),
                   child: const Text('执行(全库)'),
                 ),
               ),
@@ -362,7 +552,9 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _isError ? cs.errorContainer.withOpacity(0.5) : cs.primaryContainer.withOpacity(0.5),
+                color: _isError
+                    ? cs.errorContainer.withOpacity(0.5)
+                    : cs.primaryContainer.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -373,7 +565,9 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
                     color: _isError ? cs.error : cs.primary,
                   ),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(_message!, style: TextStyle(fontSize: 12, color: cs.onSurface))),
+                  Expanded(
+                      child: Text(_message!,
+                          style: TextStyle(fontSize: 12, color: cs.onSurface))),
                 ],
               ),
             ),
@@ -388,7 +582,8 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
     );
   }
 
-  Widget _buildSection(ColorScheme cs, String title, IconData icon, List<Widget> children) {
+  Widget _buildSection(
+      ColorScheme cs, String title, IconData icon, List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withOpacity(0.3),
@@ -404,7 +599,11 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
               children: [
                 Icon(icon, size: 18, color: cs.primary),
                 const SizedBox(width: 8),
-                Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface)),
               ],
             ),
           ),
@@ -425,7 +624,9 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: running ? cs.primaryContainer.withOpacity(0.3) : cs.tertiaryContainer.withOpacity(0.3),
+        color: running
+            ? cs.primaryContainer.withOpacity(0.3)
+            : cs.tertiaryContainer.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: cs.primary.withOpacity(0.3)),
       ),
@@ -435,14 +636,25 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
           Row(
             children: [
               if (running)
-                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary))
+                SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: cs.primary))
               else
                 Icon(Icons.check_circle_rounded, size: 16, color: cs.tertiary),
               const SizedBox(width: 8),
               Text(running ? '正在执行...' : '已完成',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface)),
               const Spacer(),
-              Text('$pct%', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
+              Text('$pct%',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary)),
             ],
           ),
           const SizedBox(height: 8),
@@ -462,6 +674,7 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
               _miniStat('总项', '$total', cs),
               _miniStat('已处理', '$current', cs),
               _miniStat('AI识别', '${p['inferred'] ?? 0}', cs),
+              _miniStat('目录整理', '${p['directoryOrganized'] ?? 0}', cs),
               _miniStat('失败', '${p['failed'] ?? 0}', cs),
             ],
           ),
@@ -473,7 +686,9 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
   Widget _miniStat(String label, String value, ColorScheme cs) {
     return Column(
       children: [
-        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+        Text(value,
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
         Text(label, style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
       ],
     );
@@ -491,7 +706,10 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(r['dryRun'] == true ? '预览结果' : '执行结果',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface)),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -499,13 +717,15 @@ class _ScanRulesScreenState extends ConsumerState<ScanRulesScreen> {
               _miniStat('总数', '${r['total'] ?? 0}', cs),
               _miniStat('AI识别', '${r['inferred'] ?? 0}', cs),
               _miniStat('新建分组', '${r['groupedNew'] ?? 0}', cs),
+              _miniStat('目录整理', '${r['directoryOrganized'] ?? 0}', cs),
               _miniStat('跳过', '${r['skipped'] ?? 0}', cs),
               _miniStat('失败', '${r['failed'] ?? 0}', cs),
             ],
           ),
           if (r['durationMs'] != null) ...[
             const SizedBox(height: 8),
-            Text('用时 ${r['durationMs']} ms', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+            Text('用时 ${r['durationMs']} ms',
+                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
           ],
         ],
       ),

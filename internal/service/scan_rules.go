@@ -17,11 +17,11 @@ import (
 )
 
 // ============================================================
-// 扫描期统一规则引擎（A1 阶段：AI 智能识别 + 虚拟归类）
+// 扫描期统一规则引擎（AI 智能识别 + 虚拟归类 + 可选目录整理）
 //
 // 设计原则：
 //   1. 默认全关，用户在设置页主动启用
-//   2. 不动磁盘文件（A1 范围内仅在数据库层面工作）
+//   2. 默认推荐硬链接整理，不改变原始扫描目录；move 模式需用户明确选择
 //   3. 每个动作独立可关闭，失败不影响其他动作
 //   4. 全程写 ScanRuleOpLog，可审计、可观察
 // ============================================================
@@ -37,36 +37,38 @@ type ScanRuleRunOptions struct {
 
 // ScanRuleRunResult 汇总一次执行的结果。
 type ScanRuleRunResult struct {
-	BatchID    string `json:"batchId"`
-	Total      int    `json:"total"`
-	Inferred   int    `json:"inferred"`
-	GroupedNew int    `json:"groupedNew"`
-	Skipped    int    `json:"skipped"`
-	Failed     int    `json:"failed"`
-	DryRun     bool   `json:"dryRun"`
-	Duration   int64  `json:"durationMs"`
+	BatchID            string `json:"batchId"`
+	Total              int    `json:"total"`
+	Inferred           int    `json:"inferred"`
+	GroupedNew         int    `json:"groupedNew"`
+	DirectoryOrganized int    `json:"directoryOrganized"`
+	Skipped            int    `json:"skipped"`
+	Failed             int    `json:"failed"`
+	DryRun             bool   `json:"dryRun"`
+	Duration           int64  `json:"durationMs"`
 }
 
 // ScanRuleProgress 描述一次扫描规则执行的实时进度。
 // 前端通过轮询 GET /api/scan-rules/progress 拉取此结构来渲染进度条。
 type ScanRuleProgress struct {
-	Running    bool   `json:"running"`
-	BatchID    string `json:"batchId,omitempty"`
-	Stage      string `json:"stage"`                // collecting | filtering | ai_infer | organize | done
-	StageLabel string `json:"stageLabel,omitempty"` // 人类可读阶段名
-	Current    int    `json:"current"`              // 已处理项数（按目录桶计数）
-	Total      int    `json:"total"`                // 总项数（目录桶数 + 单文件数）
-	Inferred   int    `json:"inferred"`
-	GroupedNew int    `json:"groupedNew"`
-	Skipped    int    `json:"skipped"`
-	Failed     int    `json:"failed"`
-	DryRun     bool   `json:"dryRun"`
-	CurrentDir string `json:"currentDir,omitempty"` // 当前正在处理的目录
-	StartedAt  int64  `json:"startedAt,omitempty"`  // 毫秒时间戳
-	UpdatedAt  int64  `json:"updatedAt,omitempty"`
-	FinishedAt int64  `json:"finishedAt,omitempty"`
-	Manual     bool   `json:"manual"`
-	Error      string `json:"error,omitempty"`
+	Running            bool   `json:"running"`
+	BatchID            string `json:"batchId,omitempty"`
+	Stage              string `json:"stage"`                // collecting | filtering | ai_infer | organize | directory_organize | done
+	StageLabel         string `json:"stageLabel,omitempty"` // 人类可读阶段名
+	Current            int    `json:"current"`              // 已处理项数（按目录桶计数）
+	Total              int    `json:"total"`                // 总项数（目录桶数 + 单文件数）
+	Inferred           int    `json:"inferred"`
+	GroupedNew         int    `json:"groupedNew"`
+	DirectoryOrganized int    `json:"directoryOrganized"`
+	Skipped            int    `json:"skipped"`
+	Failed             int    `json:"failed"`
+	DryRun             bool   `json:"dryRun"`
+	CurrentDir         string `json:"currentDir,omitempty"` // 当前正在处理的目录
+	StartedAt          int64  `json:"startedAt,omitempty"`  // 毫秒时间戳
+	UpdatedAt          int64  `json:"updatedAt,omitempty"`
+	FinishedAt         int64  `json:"finishedAt,omitempty"`
+	Manual             bool   `json:"manual"`
+	Error              string `json:"error,omitempty"`
 }
 
 // 防止并发执行同一批次
@@ -313,9 +315,17 @@ func RunScanRules(opts ScanRuleRunOptions) (*ScanRuleRunResult, error) {
 		}
 	}
 
+	// 动作 3：物理目录整理（默认硬链接镜像；move 模式才会移动/重命名当前扫描目录）
+	if rules.DirectoryOrganize != nil && rules.DirectoryOrganize.Enabled {
+		organized, skipped, failed := runDirectoryOrganizeAction(opts.BatchID, ids, rules.DirectoryOrganize, opts.DryRun)
+		result.DirectoryOrganized = organized
+		result.Skipped += skipped
+		result.Failed += failed
+	}
+
 	result.Duration = time.Since(startedAt).Milliseconds()
-	log.Printf("[scan-rules] batch=%s done in %dms inferred=%d grouped=%d skipped=%d failed=%d",
-		opts.BatchID, result.Duration, result.Inferred, result.GroupedNew, result.Skipped, result.Failed)
+	log.Printf("[scan-rules] batch=%s done in %dms inferred=%d grouped=%d organized=%d skipped=%d failed=%d",
+		opts.BatchID, result.Duration, result.Inferred, result.GroupedNew, result.DirectoryOrganized, result.Skipped, result.Failed)
 	return result, nil
 }
 

@@ -6,9 +6,10 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../data/api/api_client.dart';
+import '../data/services/cache_service.dart';
 
 /// 带 Cookie 认证的网络图片组件
-/// 使用 Dio + CookieJar 下载图片，解决 CachedNetworkImage 无法携带 session cookie 的问题
+/// 支持离线缓存：优先读取本地缓存，网络不可用时自动降级
 class AuthenticatedImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -17,6 +18,11 @@ class AuthenticatedImage extends StatefulWidget {
   final Widget? errorWidget;
   final double? width;
   final double? height;
+
+  /// 离线缓存参数（可选）
+  final String? comicId;
+  final int? pageIndex;
+  final bool isThumbnail;
 
   const AuthenticatedImage({
     super.key,
@@ -27,6 +33,9 @@ class AuthenticatedImage extends StatefulWidget {
     this.errorWidget,
     this.width,
     this.height,
+    this.comicId,
+    this.pageIndex,
+    this.isThumbnail = false,
   });
 
   @override
@@ -59,7 +68,7 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
   Future<void> _loadImage() async {
     if (!mounted) return;
 
-    // 检查缓存
+    // 1. 检查内存缓存
     final cached = _cache[widget.imageUrl];
     if (cached != null) {
       setState(() {
@@ -75,6 +84,31 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
       _error = false;
     });
 
+    // 2. 尝试读取本地离线缓存
+    if (!kIsWeb && widget.comicId != null) {
+      Uint8List? localBytes;
+      try {
+        await cacheService.init();
+        if (widget.isThumbnail) {
+          localBytes = await cacheService.readCachedThumb(widget.comicId!);
+        } else if (widget.pageIndex != null) {
+          localBytes =
+              await cacheService.readCachedPage(widget.comicId!, widget.pageIndex!);
+        }
+      } catch (_) {}
+
+      if (localBytes != null && mounted) {
+        _cache[widget.imageUrl] = localBytes;
+        setState(() {
+          _imageBytes = localBytes;
+          _loading = false;
+          _error = false;
+        });
+        return;
+      }
+    }
+
+    // 3. 从网络加载
     try {
       final dio = Dio(BaseOptions(
         connectTimeout: const Duration(seconds: 10),
@@ -88,7 +122,7 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
       final response = await dio.get<List<int>>(widget.imageUrl);
       final bytes = Uint8List.fromList(response.data!);
 
-      // 加入缓存（简单 LRU 策略：超过上限清空一半）
+      // 加入内存缓存（简单 LRU 策略：超过上限清空一半）
       if (_cache.length >= _maxCacheSize) {
         final keys = _cache.keys.toList();
         for (int i = 0; i < keys.length ~/ 2; i++) {
@@ -149,10 +183,13 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
 }
 
 /// 带 Cookie 认证的 ImageProvider（用于 PhotoView 等需要 ImageProvider 的场景）
+/// 支持离线缓存：优先读取本地缓存
 class AuthenticatedImageProvider extends ImageProvider<AuthenticatedImageProvider> {
   final String url;
+  final String? comicId;
+  final int? pageIndex;
 
-  const AuthenticatedImageProvider(this.url);
+  const AuthenticatedImageProvider(this.url, {this.comicId, this.pageIndex});
 
   @override
   Future<AuthenticatedImageProvider> obtainKey(ImageConfiguration configuration) {
@@ -168,6 +205,19 @@ class AuthenticatedImageProvider extends ImageProvider<AuthenticatedImageProvide
   }
 
   Future<ui.Codec> _loadAsync(AuthenticatedImageProvider key, ImageDecoderCallback decode) async {
+    // 1. 尝试读取本地离线缓存
+    if (!kIsWeb && comicId != null && pageIndex != null) {
+      try {
+        await cacheService.init();
+        final localBytes = await cacheService.readCachedPage(comicId!, pageIndex!);
+        if (localBytes != null) {
+          final buffer = await ui.ImmutableBuffer.fromUint8List(localBytes);
+          return decode(buffer);
+        }
+      } catch (_) {}
+    }
+
+    // 2. 从网络加载
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 60),

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
 import 'data/api/api_client.dart';
+import 'data/services/cache_service.dart';
 
 void main() async {
   // ============================================================
@@ -32,6 +33,9 @@ void main() async {
 
       // 初始化持久化 CookieJar（登录状态保持）
       await initCookieJar();
+
+      // 初始化离线缓存服务
+      await cacheService.init();
 
       // 适配安卓15 edge-to-edge
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

@@ -7,6 +7,8 @@ import '../../widgets/authenticated_image.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/cache_provider.dart';
+import '../../data/services/cache_service.dart';
 import '../reader/novel_reader_screen.dart';
 import '../../widgets/animations.dart';
 
@@ -485,6 +487,13 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     onTitleUpdated: () => _loadDetail(),
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // ─── 离线缓存 ───
+                SlideAndFade(
+                  delay: const Duration(milliseconds: 600),
+                  child: _CacheBookTile(comic: comic),
+                ),
 
                 // ─── 标签 ───
                 if (comic.tags.isNotEmpty) ...[
@@ -689,6 +698,223 @@ class _StatusPill extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// 离线缓存按钮组件
+// ============================================================
+
+class _CacheBookTile extends ConsumerStatefulWidget {
+  final Comic comic;
+  const _CacheBookTile({required this.comic});
+
+  @override
+  ConsumerState<_CacheBookTile> createState() => _CacheBookTileState();
+}
+
+class _CacheBookTileState extends ConsumerState<_CacheBookTile> {
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final cacheEntry = ref.watch(comicCacheEntryProvider(widget.comic.id));
+    final status = cacheEntry?.status ?? CacheStatus.notCached;
+    final serverUrl = ref.watch(authProvider).serverUrl;
+
+    final isDownloading = status == CacheStatus.downloading;
+    final isCached = cacheEntry?.isComplete ?? false;
+    final isPaused = status == CacheStatus.paused;
+    final isFailed = status == CacheStatus.failed;
+
+    String subtitle;
+    IconData icon;
+    Color iconColor;
+
+    if (isDownloading) {
+      final p = cacheEntry!;
+      subtitle = '下载中 ${p.cachedPages}/${p.totalPages}';
+      icon = Icons.downloading_rounded;
+      iconColor = Colors.blue;
+    } else if (isCached) {
+      subtitle = '已缓存 · ${_formatBytes(cacheEntry!.totalBytes)}';
+      icon = Icons.download_done_rounded;
+      iconColor = Colors.green;
+    } else if (isPaused) {
+      subtitle = '已暂停 · 点击继续';
+      icon = Icons.pause_circle_outline_rounded;
+      iconColor = Colors.orange;
+    } else if (isFailed) {
+      subtitle = '下载失败 · 点击重试';
+      icon = Icons.error_outline_rounded;
+      iconColor = cs.error;
+    } else {
+      subtitle = '下载到本地，离线也能阅读';
+      icon = Icons.download_rounded;
+      iconColor = cs.primary;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _handleTap(context, status, serverUrl),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: iconColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: isDownloading
+                          ? Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                value: cacheEntry?.progress,
+                              ),
+                            )
+                          : Icon(icon, size: 18, color: iconColor),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '离线缓存',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant.withOpacity(0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 已缓存时显示删除按钮
+                    if (isCached || isPaused)
+                      IconButton(
+                        icon: Icon(Icons.delete_outline_rounded,
+                            size: 18, color: cs.error.withOpacity(0.6)),
+                        tooltip: '删除缓存',
+                        onPressed: () => _deleteCache(context),
+                      )
+                    else
+                      Icon(Icons.chevron_right_rounded,
+                          size: 20, color: cs.onSurfaceVariant.withOpacity(0.3)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 下载进度条
+          if (isDownloading && cacheEntry != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: cacheEntry.progress,
+                  backgroundColor: cs.surfaceContainerHighest,
+                  minHeight: 4,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleTap(
+      BuildContext context, CacheStatus status, String serverUrl) async {
+    final notifier = ref.read(cacheEntriesProvider.notifier);
+
+    if (status == CacheStatus.downloading) {
+      // 暂停
+      await notifier.pauseDownload(widget.comic.id);
+    } else if (status == CacheStatus.paused || status == CacheStatus.failed) {
+      // 恢复/重试
+      await notifier.resumeDownload(
+          comicId: widget.comic.id, serverUrl: serverUrl);
+    } else if (status == CacheStatus.notCached) {
+      // 开始缓存
+      if (widget.comic.pageCount <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法获取页数，请先打开书籍')),
+        );
+        return;
+      }
+      await notifier.startCache(
+        comicId: widget.comic.id,
+        title: widget.comic.title,
+        isNovel: widget.comic.isNovel,
+        totalPages: widget.comic.pageCount,
+        serverUrl: serverUrl,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('开始缓存《${widget.comic.title}》'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteCache(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除缓存'),
+        content: Text('确定要删除《${widget.comic.title}》的离线缓存吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await ref.read(cacheEntriesProvider.notifier).deleteCache(widget.comic.id);
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(1)}MB';
+  }
+}
+
+// ============================================================
+// AI 标题推断按钮组件
+// ============================================================
 
 /// AI 标题推断按钮组件
 class _AIInferTitleTile extends ConsumerStatefulWidget {

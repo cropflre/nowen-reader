@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
+import '../../data/providers/cache_provider.dart';
+import '../../data/services/cache_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../metadata/metadata_screen.dart';
 import '../../widgets/animations.dart';
@@ -161,6 +163,7 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: '管理系列分组与合集',
                   onTap: () => context.push('/collections'),
                 ),
+                const _OfflineCacheTile(),
                 if (isAdmin)
                   _SettingsTile(
                     icon: Icons.label_outlined,
@@ -746,6 +749,39 @@ class _ServerRecordTile extends StatelessWidget {
     if (diff.inDays < 1) return '${diff.inHours}小时前';
     if (diff.inDays < 30) return '${diff.inDays}天前';
     return '${time.month}/${time.day}';
+  }
+}
+
+// ============================================================
+// 离线缓存入口
+// ============================================================
+
+class _OfflineCacheTile extends ConsumerWidget {
+  const _OfflineCacheTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entries = ref.watch(cacheEntriesProvider);
+    final cachedCount = entries.where((e) => e.isComplete).length;
+    final downloadingCount =
+        entries.where((e) => e.status == CacheStatus.downloading).length;
+
+    String subtitle;
+    if (downloadingCount > 0) {
+      subtitle = '下载中 $downloadingCount 本';
+    } else if (cachedCount > 0) {
+      subtitle = '已缓存 $cachedCount 本 · ${cacheService.totalCacheSizeStr}';
+    } else {
+      subtitle = '下载书籍到本地，离线也能阅读';
+    }
+
+    return _SettingsTile(
+      icon: Icons.download_rounded,
+      iconColor: Colors.teal,
+      title: '离线缓存',
+      subtitle: subtitle,
+      onTap: () => context.push('/cache'),
+    );
   }
 }
 

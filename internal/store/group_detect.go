@@ -524,6 +524,12 @@ func buildGroupNameFromPath(dirPath string) string {
 //  1. 去除方括号标签（如 [汉化组]、[作者名]），保留核心名称
 //  2. 如果文件夹名本身就是简洁的系列名（如"海贼王"），直接返回
 //  3. 处理嵌套路径时只取最近一级（path.Base 已在调用处完成）
+//
+// CleanDirNameForGrouping 清理目录名称，供 store 外部的扫描规则目录整理复用。
+func CleanDirNameForGrouping(name string) string {
+	return cleanDirName(name)
+}
+
 func cleanDirName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {

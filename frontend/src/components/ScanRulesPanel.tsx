@@ -18,12 +18,14 @@ import {
 } from "lucide-react";
 
 // ============================================================
-// 扫描规则面板（A1：AI 智能识别 + 虚拟归类，不动磁盘）
+// 扫描规则面板：AI 智能识别 + 虚拟归类 + 可选目录整理
 // ============================================================
 
 type ApplyOn = "newOnly" | "all" | "manual";
 type Confidence = "low" | "medium" | "high";
 type AIScope = "file" | "folderGroup";
+type DirectoryOrganizeMode = "hardlink" | "move";
+type DirectoryOrganizeStrategy = "smartDir" | "flat";
 
 interface AIInferRule {
   enabled: boolean;
@@ -41,6 +43,13 @@ interface OrganizeRule {
   inheritMeta: boolean;
 }
 
+interface DirectoryOrganizeRule {
+  enabled: boolean;
+  mode: DirectoryOrganizeMode;
+  strategy: DirectoryOrganizeStrategy;
+  hardlinkTargetDir: string;
+}
+
 interface ScanRuleFilters {
   includeExt?: string[];
   excludeExt?: string[];
@@ -54,6 +63,7 @@ interface ScanRulesConfig {
   concurrency: number;
   aiInfer: AIInferRule;
   organize: OrganizeRule;
+  directoryOrganize: DirectoryOrganizeRule;
   filters: ScanRuleFilters;
 }
 
@@ -75,6 +85,7 @@ interface RunResult {
   total: number;
   inferred: number;
   groupedNew: number;
+  directoryOrganized: number;
   skipped: number;
   failed: number;
   dryRun: boolean;
@@ -90,6 +101,7 @@ interface Progress {
   total: number;
   inferred: number;
   groupedNew: number;
+  directoryOrganized: number;
   skipped: number;
   failed: number;
   dryRun: boolean;
@@ -105,7 +117,8 @@ const STAGE_MAP: Record<string, { label: string; pct?: number }> = {
   collecting: { label: "收集目标文件", pct: 5 },
   filtering: { label: "应用过滤器", pct: 10 },
   ai_infer: { label: "AI 智能识别" },
-  organize: { label: "虚拟归类", pct: 95 },
+  organize: { label: "虚拟归类", pct: 90 },
+  directory_organize: { label: "目录整理" },
   done: { label: "已完成", pct: 100 },
 };
 
@@ -127,8 +140,28 @@ const DEFAULTS: ScanRulesConfig = {
     autoGroupByDir: true,
     inheritMeta: true,
   },
+  directoryOrganize: {
+    enabled: false,
+    mode: "hardlink",
+    strategy: "smartDir",
+    hardlinkTargetDir: "",
+  },
   filters: {},
 };
+
+function normalizeRules(input?: Partial<ScanRulesConfig>): ScanRulesConfig {
+  return {
+    ...DEFAULTS,
+    ...(input || {}),
+    aiInfer: { ...DEFAULTS.aiInfer, ...(input?.aiInfer || {}) },
+    organize: { ...DEFAULTS.organize, ...(input?.organize || {}) },
+    directoryOrganize: {
+      ...DEFAULTS.directoryOrganize,
+      ...(input?.directoryOrganize || {}),
+    },
+    filters: { ...DEFAULTS.filters, ...(input?.filters || {}) },
+  };
+}
 
 export function ScanRulesPanel() {
   const [rules, setRules] = useState<ScanRulesConfig>(DEFAULTS);
@@ -155,7 +188,7 @@ export function ScanRulesPanel() {
       const res = await fetch("/api/scan-rules", { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data?.rules) setRules({ ...DEFAULTS, ...data.rules });
+      if (data?.rules) setRules(normalizeRules(data.rules));
       setRunning(!!data?.running);
     } catch (e) {
       setMessage({ type: "error", text: `加载失败: ${(e as Error).message}` });
@@ -224,6 +257,38 @@ export function ScanRulesPanel() {
     });
   }, [fetchRules, fetchProgress, startPolling]);
 
+  const applyRecommendedPreset = () => {
+    setRules(
+      normalizeRules({
+        ...rules,
+        enabled: true,
+        applyOn: "newOnly",
+        aiInfer: {
+          ...rules.aiInfer,
+          enabled: true,
+          scope: "folderGroup",
+          minConfidence: "medium",
+          applyToComic: true,
+          applyToGroup: true,
+          overwriteTitle: false,
+          fallbackToRule: true,
+        },
+        organize: {
+          enabled: true,
+          autoGroupByDir: true,
+          inheritMeta: true,
+        },
+        directoryOrganize: {
+          ...rules.directoryOrganize,
+          enabled: true,
+          mode: "hardlink",
+          strategy: "smartDir",
+        },
+      })
+    );
+    setMessage({ type: "info", text: "已套用推荐配置：新增入库后自动识别、分组，并用硬链接生成整理目录。确认无误后点击保存。" });
+  };
+
   const save = async () => {
     setSaving(true);
     setMessage(null);
@@ -236,7 +301,7 @@ export function ScanRulesPanel() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data?.rules) setRules({ ...DEFAULTS, ...data.rules });
+      if (data?.rules) setRules(normalizeRules(data.rules));
       setMessage({ type: "success", text: "已保存" });
       setTimeout(() => setMessage(null), 2000);
     } catch (e) {
@@ -275,8 +340,8 @@ export function ScanRulesPanel() {
         setMessage({
           type: "success",
           text: dryRun
-            ? `预览完成（共 ${data.result.total} 项；处理 ${data.result.inferred + data.result.groupedNew} 项）`
-            : `执行完成（识别 ${data.result.inferred}，新建分组 ${data.result.groupedNew}，失败 ${data.result.failed}）`,
+            ? `预览完成（共 ${data.result.total} 项；预计处理 ${data.result.inferred + data.result.groupedNew + data.result.directoryOrganized} 项）`
+            : `执行完成（识别 ${data.result.inferred}，新建分组 ${data.result.groupedNew}，目录整理 ${data.result.directoryOrganized}，失败 ${data.result.failed}）`,
         });
       }
     } catch (e) {
@@ -381,14 +446,24 @@ export function ScanRulesPanel() {
             <Sparkles className="h-6 w-6" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-foreground">扫描期统一规则</h2>
-            <p className="mt-1 text-sm text-muted leading-relaxed">
-              在文库扫描入库后，自动按统一规则执行：AI 智能识别 + 虚拟归类。
-              <br />
-              <span className="text-accent/80 font-medium">
-                安全提示：当前阶段不会修改任何磁盘文件，仅在数据库层面工作。
-              </span>
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">扫描期统一规则</h2>
+                <p className="mt-1 text-sm text-muted leading-relaxed">
+                  新文件入库后可自动完成：智能识别、多层目录归类、整理目录生成。
+                  <br />
+                  <span className="text-accent/80 font-medium">
+                    推荐使用硬链接模式：不移动原文件，只在目标目录生成整理后的镜像。
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={applyRecommendedPreset}
+                className="shrink-0 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/15"
+              >
+                一键套用推荐配置
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -490,8 +565,108 @@ export function ScanRulesPanel() {
         />
       </SectionCard>
 
+      {/* 物理目录整理 */}
+      <SectionCard title="目录整理（硬链接 / 移动）" icon={<FolderTree className="h-4 w-4" />}>
+        <Toggle
+          label="启用目录整理"
+          desc="自动识别多层目录结构，生成更清晰的作品目录；推荐使用硬链接，不改动原始扫描目录"
+          checked={rules.directoryOrganize.enabled}
+          onChange={(v) =>
+            setRules({
+              ...rules,
+              directoryOrganize: { ...rules.directoryOrganize, enabled: v },
+            })
+          }
+        />
+        <FieldRow label="处理方式">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() =>
+                setRules({
+                  ...rules,
+                  directoryOrganize: { ...rules.directoryOrganize, mode: "hardlink" },
+                })
+              }
+              className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                rules.directoryOrganize.mode === "hardlink"
+                  ? "border-accent/60 bg-accent/10 text-accent"
+                  : "border-border/50 hover:bg-card-hover"
+              }`}
+            >
+              <div className="font-medium">创建硬链接（推荐）</div>
+              <div className="mt-0.5 text-muted">原文件不动，目标目录生成整理镜像</div>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setRules({
+                  ...rules,
+                  directoryOrganize: { ...rules.directoryOrganize, mode: "move" },
+                })
+              }
+              className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                rules.directoryOrganize.mode === "move"
+                  ? "border-amber-400/60 bg-amber-400/10 text-amber-300"
+                  : "border-border/50 hover:bg-card-hover"
+              }`}
+            >
+              <div className="font-medium">改变当前目录</div>
+              <div className="mt-0.5 text-muted">直接移动/重命名扫描目录内文件</div>
+            </button>
+          </div>
+        </FieldRow>
+        <FieldRow label="整理规则">
+          <select
+            className="w-full rounded-lg border border-border/50 bg-card px-3 py-1.5 text-sm"
+            value={rules.directoryOrganize.strategy}
+            onChange={(e) =>
+              setRules({
+                ...rules,
+                directoryOrganize: {
+                  ...rules.directoryOrganize,
+                  strategy: e.target.value as DirectoryOrganizeStrategy,
+                },
+              })
+            }
+          >
+            <option value="smartDir">智能保留多层目录（推荐）</option>
+            <option value="flat">仅按作品名生成一级目录</option>
+          </select>
+        </FieldRow>
+        {rules.directoryOrganize.mode === "hardlink" && (
+          <FieldRow label="硬链接目标目录">
+            <div className="space-y-1">
+              <input
+                type="text"
+                placeholder="留空使用默认整理目录，也可填 D:\\Library\\Nowen-Organized"
+                value={rules.directoryOrganize.hardlinkTargetDir || ""}
+                onChange={(e) =>
+                  setRules({
+                    ...rules,
+                    directoryOrganize: {
+                      ...rules.directoryOrganize,
+                      hardlinkTargetDir: e.target.value,
+                    },
+                  })
+                }
+                className="w-full rounded-lg border border-border/50 bg-card px-3 py-1.5 text-sm font-mono"
+              />
+              <p className="text-[11px] text-muted/70">
+                目标目录不要放在任何扫描目录内部，避免下次扫描重复入库。
+              </p>
+            </div>
+          </FieldRow>
+        )}
+        {rules.directoryOrganize.mode === "move" && (
+          <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-amber-200">
+            会直接修改当前扫描目录里的文件/文件夹路径，并同步更新数据库引用。建议先点“预览（试运行）”确认整理结果。
+          </div>
+        )}
+      </SectionCard>
+
       {/* 过滤器 */}
-      <SectionCard title="过滤器" icon={<Filter className="h-4 w-4" />}>
+      <SectionCard title="过滤器（高级，可不填）" icon={<Filter className="h-4 w-4" />}>
         <FieldRow label="包含扩展名（逗号分隔）">
           <input
             type="text"
@@ -679,10 +854,11 @@ export function ScanRulesPanel() {
               </span>
             </h3>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
             <Stat label="目标总数" value={lastResult.total} />
             <Stat label="AI 识别" value={lastResult.inferred} accent />
             <Stat label="新建分组" value={lastResult.groupedNew} accent />
+            <Stat label="目录整理" value={lastResult.directoryOrganized} accent />
             <Stat label="跳过" value={lastResult.skipped} dim />
             <Stat label="失败" value={lastResult.failed} error />
           </div>
@@ -934,6 +1110,9 @@ function ProgressCard({ progress }: { progress: Progress }) {
   } else if (progress.stage === "ai_infer" && progress.total > 0) {
     // AI 阶段占总进度 10% ~ 90%
     pct = 10 + Math.floor((progress.current / progress.total) * 80);
+  } else if (progress.stage === "directory_organize" && progress.total > 0) {
+    // 目录整理阶段占总进度 90% ~ 99%
+    pct = 90 + Math.floor((progress.current / progress.total) * 9);
   } else if (stage.pct !== undefined) {
     pct = stage.pct;
   }
@@ -1004,10 +1183,11 @@ function ProgressCard({ progress }: { progress: Progress }) {
       </div>
 
       {/* 统计 */}
-      <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center text-xs">
+      <div className="mt-3 grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
         <MiniStat label="总项" value={progress.total} />
         <MiniStat label="已处理" value={progress.current} accent />
         <MiniStat label="AI 识别" value={progress.inferred} accent />
+        <MiniStat label="目录整理" value={progress.directoryOrganized} accent />
         <MiniStat label="跳过" value={progress.skipped} dim />
         <MiniStat label="失败" value={progress.failed} error />
       </div>

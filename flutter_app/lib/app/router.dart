@@ -21,6 +21,7 @@ import '../features/upload/upload_screen.dart';
 import '../features/scan_rules/scan_rules_screen.dart';
 import '../features/stats/folder_tree_stats_screen.dart';
 import '../features/settings/site_settings_screen.dart';
+import '../features/cache/cache_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -147,6 +148,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/site-settings',
         builder: (_, __) => const SiteSettingsScreen(),
+      ),
+      // 离线缓存管理
+      GoRoute(
+        path: '/cache',
+        builder: (_, __) => const CacheScreen(),
       ),
     ],
   );

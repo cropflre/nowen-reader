@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"fmt"
 	"io"
@@ -18,11 +19,71 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nwaples/rardecode/v2"
 	rscpdf "rsc.io/pdf"
 )
+
+// ============================================================
+// PDF 渲染并发限流 + 单页超时
+// ============================================================
+//
+// PDF 渲染是资源密集型操作（mutool/pdftoppm 进程会占用大量内存）。
+// 在缓存下载、预热、阅读同时发生时，如果不限制并发，易出现 OOM 导致进程被杀，
+// 进而出现“连续多页 500”的问题。
+var (
+	// 同时进行的 PDF 渲染任务数（可通过环境变量 NOWEN_PDF_RENDER_PARALLEL 调整）
+	pdfRenderSem     chan struct{}
+	pdfRenderSemOnce sync.Once
+)
+
+func acquirePdfRenderSlot() func() {
+	pdfRenderSemOnce.Do(func() {
+		n := 1
+		if s := os.Getenv("NOWEN_PDF_RENDER_PARALLEL"); s != "" {
+			if v, err := strconv.Atoi(s); err == nil && v > 0 && v <= 8 {
+				n = v
+			}
+		}
+		pdfRenderSem = make(chan struct{}, n)
+		log.Printf("[pdf] render parallelism: %d", n)
+	})
+	pdfRenderSem <- struct{}{}
+	return func() { <-pdfRenderSem }
+}
+
+// pdfRenderTimeout 返回单页 PDF 渲染的超时（可通过环境变量 NOWEN_PDF_RENDER_TIMEOUT_SEC 调整）。
+func pdfRenderTimeout() time.Duration {
+	if s := os.Getenv("NOWEN_PDF_RENDER_TIMEOUT_SEC"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v >= 5 && v <= 600 {
+			return time.Duration(v) * time.Second
+		}
+	}
+	return 90 * time.Second
+}
+
+// runPdfTool 在超时控制下执行 PDF 渲染工具。
+// 超时后 cmd.Wait 会返回一个包含“killed”/signal 信号的 ExitError，
+// 被 isResourceError 识别后可进入下一个 dpi/工具进行降级重试。
+func runPdfTool(name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), pdfRenderTimeout())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("pdf tool %s timeout after %s: %s", filepath.Base(name), pdfRenderTimeout(), strings.TrimSpace(stderr.String()))
+	}
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) == 0 && stderr.Len() > 0 {
+			exitErr.Stderr = stderr.Bytes()
+		}
+	}
+	return out, err
+}
 
 // ============================================================
 // Unified Archive Interface
@@ -1058,14 +1119,17 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	pageNum := pageIndex + 1 // External tools use 1-based page numbers
 	var errors []string
 
+	// 并发限流：同时只允许有限个 PDF 渲染进程，避免 OOM
+	release := acquirePdfRenderSlot()
+	defer release()
+
 	// dpi 降级序列：高质量优先，失败时降低分辨率以节省内存（适配 NAS/低内存环境）
 	dpiLadder := []int{200, 120, 96}
 
 	// Method 1: mutool (from MuPDF — best quality)
 	if mutool, ok := config.LookPdfTool("mutool", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
-			cmd := exec.Command(mutool, "draw", "-o", "-", "-F", "png", "-r", fmt.Sprintf("%d", dpi), fp, fmt.Sprintf("%d", pageNum))
-			out, runErr := cmd.Output()
+			out, runErr := runPdfTool(mutool, "draw", "-o", "-", "-F", "png", "-r", fmt.Sprintf("%d", dpi), fp, fmt.Sprintf("%d", pageNum))
 			if runErr == nil && len(out) > 0 {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] mutool succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
@@ -1096,8 +1160,7 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	// Method 2: pdftoppm (from poppler)
 	if pdftoppm, ok := config.LookPdfTool("pdftoppm", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
-			cmd := exec.Command(pdftoppm, "-png", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
-			out, runErr := cmd.Output()
+			out, runErr := runPdfTool(pdftoppm, "-png", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
 			if runErr == nil && len(out) > 0 {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] pdftoppm succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
@@ -1127,8 +1190,7 @@ func RenderPdfPage(fp string, pageIndex int) ([]byte, error) {
 	// Windows 系统下 system32\convert.exe 是 FAT->NTFS 转换工具，必须排除
 	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok && !isWindowsSystemConvert(convert) {
 		for _, dpi := range dpiLadder {
-			cmd := exec.Command(convert, "-density", fmt.Sprintf("%d", dpi), fmt.Sprintf("%s[%d]", fp, pageIndex), "png:-")
-			out, runErr := cmd.Output()
+			out, runErr := runPdfTool(convert, "-density", fmt.Sprintf("%d", dpi), fmt.Sprintf("%s[%d]", fp, pageIndex), "png:-")
 			if runErr == nil && len(out) > 0 {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] imagemagick succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)

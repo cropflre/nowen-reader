@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../utils/tts_service.dart';
 
 import '../../data/api/comic_api.dart';
+import '../../data/services/cache_service.dart';
 import 'novel_settings.dart';
 import 'novel_panels.dart';
 
@@ -426,13 +427,23 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       _currentChapter = index;
     });
     try {
-      final data = await _api.getChapterContent(widget.comicId, index);
+      // 1. 优先读取本地离线缓存
+      Map<String, dynamic>? data;
+      final cachedData = await cacheService.readCachedChapter(widget.comicId, index);
+      if (cachedData != null) {
+        data = cachedData;
+      } else {
+        // 2. 从网络加载
+        data = await _api.getChapterContent(widget.comicId, index);
+      }
       if (!mounted) return;
       final content = data['content'] ?? '';
+      final chapterTitle = data['title'] ?? '第${index + 1}章';
+      final chapterMimeType = data['mimeType'];
       setState(() {
         _chapterContent = content;
-        _chapterTitle = data['title'] ?? '第${index + 1}章';
-        _chapterMimeType = data['mimeType'];
+        _chapterTitle = chapterTitle;
+        _chapterMimeType = chapterMimeType;
         _chapterLoading = false;
       });
       // 缓存内容用于搜索

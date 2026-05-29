@@ -360,6 +360,27 @@ func UpdateComicMD5Hash(comicID string, md5Hash string) error {
 	return err
 }
 
+// ComicFilenameExists 判断指定 filename 是否已被其他漫画占用。
+func ComicFilenameExists(filename, excludeID string) (bool, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "filename" = ? AND "id" <> ?`, filename, excludeID).Scan(&count)
+	return count > 0, err
+}
+
+// UpdateComicIdentityAfterMove 在物理文件移动/重命名后同步更新 Comic 主键与 filename。
+// Comic.id 由 filename 生成；相关外键依赖 ON UPDATE CASCADE 自动级联。
+func UpdateComicIdentityAfterMove(oldID, newID, newFilename, newTitle string) error {
+	fields := []string{`"id" = ?`, `"filename" = ?`, `"updatedAt" = ?`}
+	args := []interface{}{newID, newFilename, time.Now().UTC()}
+	if strings.TrimSpace(newTitle) != "" {
+		fields = append(fields, `"title" = ?`)
+		args = append(args, newTitle)
+	}
+	args = append(args, oldID)
+	_, err := db.Exec(fmt.Sprintf(`UPDATE "Comic" SET %s WHERE "id" = ?`, strings.Join(fields, ", ")), args...)
+	return err
+}
+
 // GetComicsNeedingMD5 返回 md5Hash 为空的漫画（需要计算 MD5）。
 func GetComicsNeedingMD5(limit int) ([]struct {
 	ID       string
@@ -486,6 +507,7 @@ func GetFolderComics() ([]struct {
 	}
 	return result, nil
 }
+
 // 漫画库目录的文件强制为 "comic"，电子书目录的文件强制为 "novel"。
 // 只修正类型不匹配的记录，避免不必要的写入。
 func FixComicTypesBySource(fileSourceMap map[string]string) {

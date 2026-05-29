@@ -47,7 +47,8 @@ type StorageThresholdConfig struct {
 }
 
 // ScanRulesConfig 描述扫描入库后自动执行的"规则流水线"。
-// 设计原则：默认全关，用户主动启用；不动磁盘文件（A1 阶段）。
+// 设计原则：默认全关，用户主动启用；默认采用安全的数据库归类/硬链接镜像，
+// 只有用户明确选择 move 模式时才会修改当前扫描目录。
 type ScanRulesConfig struct {
 	Enabled     bool   `json:"enabled,omitempty"`     // 总开关
 	ApplyOn     string `json:"applyOn,omitempty"`     // newOnly | all | manual（默认 newOnly）
@@ -57,6 +58,8 @@ type ScanRulesConfig struct {
 	AIInfer *AIInferRule `json:"aiInfer,omitempty"`
 	// 虚拟归类（仅创建/合并 ComicGroup，不动磁盘）
 	Organize *OrganizeRule `json:"organize,omitempty"`
+	// 物理目录整理（可选择硬链接镜像或直接移动/重命名当前目录）
+	DirectoryOrganize *DirectoryOrganizeRule `json:"directoryOrganize,omitempty"`
 
 	// 过滤器（决定哪些 Comic 走规则引擎）
 	Filters *ScanRuleFilters `json:"filters,omitempty"`
@@ -78,6 +81,23 @@ type OrganizeRule struct {
 	Enabled        bool `json:"enabled,omitempty"`
 	AutoGroupByDir bool `json:"autoGroupByDir,omitempty"` // 入库后自动按目录创建/合并分组（默认 true）
 	InheritMeta    bool `json:"inheritMeta,omitempty"`    // 创建分组后从首卷继承元数据（默认 true）
+}
+
+// DirectoryOrganizeRule 控制扫描后的物理目录整理。
+// mode:
+//   - hardlink: 默认安全模式，将文件硬链接到目标整理目录，不改变当前扫描目录
+//   - move:     直接移动/重命名当前扫描目录中的文件，数据库 ID 会同步级联更新
+//
+// strategy:
+//   - smartDir: 自动识别多层目录，按"作品名[/分卷层级]"生成整理路径
+//   - flat:     仅按作品名整理为一级目录
+//
+// hardlinkTargetDir 为空时，使用 DataDir()/organized-library 作为默认硬链接目录。
+type DirectoryOrganizeRule struct {
+	Enabled           bool   `json:"enabled,omitempty"`
+	Mode              string `json:"mode,omitempty"`              // hardlink | move
+	Strategy          string `json:"strategy,omitempty"`          // smartDir | flat
+	HardlinkTargetDir string `json:"hardlinkTargetDir,omitempty"` // 自定义硬链接目标目录
 }
 
 // ScanRuleFilters 决定哪些 Comic 受规则引擎影响。
@@ -111,6 +131,18 @@ func (c *SiteConfig) ResolvedScanRules() *ScanRulesConfig {
 	}
 	if r.Organize == nil {
 		r.Organize = &OrganizeRule{}
+	}
+	if r.DirectoryOrganize == nil {
+		r.DirectoryOrganize = &DirectoryOrganizeRule{}
+	}
+	if r.DirectoryOrganize.Mode == "" {
+		r.DirectoryOrganize.Mode = "hardlink"
+	}
+	if r.DirectoryOrganize.Strategy == "" {
+		r.DirectoryOrganize.Strategy = "smartDir"
+	}
+	if strings.TrimSpace(r.DirectoryOrganize.HardlinkTargetDir) == "" {
+		r.DirectoryOrganize.HardlinkTargetDir = DefaultOrganizedLibraryDir()
 	}
 	if r.Filters == nil {
 		r.Filters = &ScanRuleFilters{}
@@ -317,6 +349,19 @@ func GetAllScanDirs() []string {
 		}
 	}
 	return allDirs
+}
+
+// DefaultOrganizedLibraryDir 返回硬链接整理的默认目标目录。
+// 优先放在第一个漫画扫描目录的同级目录，尽量与源文件同盘，降低 Windows 跨盘硬链接失败概率。
+func DefaultOrganizedLibraryDir() string {
+	for _, d := range GetAllComicsDirs() {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		return filepath.Join(filepath.Dir(filepath.Clean(d)), "_nowen_organized")
+	}
+	return filepath.Join(DataDir(), "organized-library")
 }
 
 // ClassifyPathSource 根据文件的绝对路径判断它属于哪类来源目录：
