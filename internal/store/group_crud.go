@@ -92,13 +92,15 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 	var args []interface{}
 	// P0修复：不再按 userId 过滤分组列表，所有用户都能看到所有分组
 	// 旧逻辑会导致成员用户看不到管理员创建的分组
-	// contentType 过滤：只返回至少包含一本指定类型漫画的分组
+	// contentType 过滤：返回包含指定类型漫画的分组，以及尚未添加任何漫画的空分组
 	if opts.ContentType == "comic" || opts.ContentType == "novel" {
-		conditions = append(conditions, `g."id" IN (
+		conditions = append(conditions, `(g."id" IN (
 			SELECT DISTINCT gi2."groupId" FROM "ComicGroupItem" gi2
 			JOIN "Comic" c2 ON c2."id" = gi2."comicId"
 			WHERE c2."type" = ?
-		)`)
+		) OR g."id" NOT IN (
+			SELECT DISTINCT gi3."groupId" FROM "ComicGroupItem" gi3
+		))`)
 		args = append(args, opts.ContentType)
 	}
 
