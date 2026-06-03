@@ -117,6 +117,17 @@ export default function CollectionsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createName, setCreateName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // 创建合集时的漫画/小说选择状态
+  const [createContentType, setCreateContentType] = useState<ContentFilter>("comic");
+  const [createComicSearch, setCreateComicSearch] = useState("");
+  const [createComicPage, setCreateComicPage] = useState(1);
+  const [createComics, setCreateComics] = useState<{ id: string; title: string; coverUrl: string }[]>([]);
+  const [createComicsTotalPages, setCreateComicsTotalPages] = useState(0);
+  const [loadingCreateComics, setLoadingCreateComics] = useState(false);
+  const [selectedComicIds, setSelectedComicIds] = useState<Set<string>>(new Set());
+  const createComicSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [createComicDebouncedSearch, setCreateComicDebouncedSearch] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -126,6 +137,50 @@ export default function CollectionsPage() {
   const tGroup = (t as any).comicGroup || {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tCollections = (t as any).collections || {};
+
+  // 打开创建弹窗时，同步 contentFilter 到 createContentType 并加载漫画列表
+  useEffect(() => {
+    if (showCreateDialog) {
+      setCreateContentType(contentFilter);
+      setCreateComicSearch("");
+      setCreateComicDebouncedSearch("");
+      setCreateComicPage(1);
+      setSelectedComicIds(new Set());
+    }
+  }, [showCreateDialog, contentFilter]);
+
+  // 搜索防抖
+  useEffect(() => {
+    if (createComicSearchTimer.current) clearTimeout(createComicSearchTimer.current);
+    createComicSearchTimer.current = setTimeout(() => {
+      setCreateComicDebouncedSearch(createComicSearch);
+      setCreateComicPage(1);
+    }, 300);
+    return () => { if (createComicSearchTimer.current) clearTimeout(createComicSearchTimer.current); };
+  }, [createComicSearch]);
+
+  // 加载漫画/小说列表（创建弹窗内）
+  useEffect(() => {
+    if (!showCreateDialog) return;
+    let cancelled = false;
+    setLoadingCreateComics(true);
+    const params = new URLSearchParams({
+      page: String(createComicPage),
+      pageSize: "12",
+      contentType: createContentType,
+    });
+    if (createComicDebouncedSearch) params.set("search", createComicDebouncedSearch);
+    fetch(`/api/comics?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setCreateComics((data.comics || []).map((c: { id: string; title: string; coverUrl: string }) => ({ id: c.id, title: c.title, coverUrl: c.coverUrl })));
+        setCreateComicsTotalPages(data.totalPages || 0);
+      })
+      .catch(() => { if (!cancelled) setCreateComics([]); })
+      .finally(() => { if (!cancelled) setLoadingCreateComics(false); });
+    return () => { cancelled = true; };
+  }, [showCreateDialog, createContentType, createComicPage, createComicDebouncedSearch]);
 
   // 挂载保护期结束后解除保护
   useEffect(() => {
@@ -250,17 +305,19 @@ export default function CollectionsPage() {
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      const result = await createGroup(createName.trim());
+      const comicIds = Array.from(selectedComicIds);
+      const result = await createGroup(createName.trim(), comicIds.length > 0 ? comicIds : undefined);
       if (result.success) {
         toast.success(tGroup.createGroup || "分组已创建");
         setShowCreateDialog(false);
         setCreateName("");
+        setSelectedComicIds(new Set());
         loadGroups();
       }
     } finally {
       setCreating(false);
     }
-  }, [createName, loadGroups, toast, tGroup]);
+  }, [createName, selectedComicIds, loadGroups, toast, tGroup]);
 
   // ── 删除分组 ──
   const handleDelete = useCallback(async () => {
@@ -926,44 +983,170 @@ export default function CollectionsPage() {
       {/* ── 手动创建合集弹窗 ── */}
       {showCreateDialog && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 animate-backdrop-in" onClick={() => { setShowCreateDialog(false); setCreateName(""); }}>
-          <div className="w-[90vw] max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl animate-modal-in" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-4">
+          <div className="w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl animate-modal-in" onClick={(e) => e.stopPropagation()}>
+            {/* 标题 */}
+            <div className="flex items-center gap-2 p-6 pb-0">
               <FolderPlus className="h-5 w-5 text-accent" />
               <h3 className="text-lg font-semibold text-foreground">
                 {tCollections.createTitle || "新建合集"}
               </h3>
             </div>
-            <input
-              type="text"
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-              placeholder={tGroup.groupNamePlaceholder || "输入合集名称..."}
-              className="w-full rounded-xl bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted/50 outline-none focus:ring-1 focus:ring-accent/50 mb-5"
-              autoFocus
-            />
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowCreateDialog(false);
-                  setCreateName("");
-                }}
-                className="rounded-lg bg-card px-4 py-2 text-sm text-foreground hover:bg-card-hover"
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={!createName.trim() || creating}
-                className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {creating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="h-4 w-4" />
-                )}
-                {t.common.save || "创建"}
-              </button>
+
+            {/* 内容区域（可滚动） */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* 合集名称 */}
+              <input
+                type="text"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && selectedComicIds.size > 0 && handleCreate()}
+                placeholder={tGroup.groupNamePlaceholder || "输入合集名称..."}
+                className="w-full rounded-xl bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
+                autoFocus
+              />
+
+              {/* 类型切换 */}
+              <div className="flex gap-1 rounded-lg bg-background p-1">
+                {(["comic", "novel"] as ContentFilter[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => { setCreateContentType(type); setCreateComicPage(1); setCreateComicSearch(""); setCreateComicDebouncedSearch(""); setSelectedComicIds(new Set()); }}
+                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      createContentType === type
+                        ? "bg-accent text-white"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {type === "comic" ? (t.contentTab?.comic || "漫画") : (t.contentTab?.novel || "小说")}
+                  </button>
+                ))}
+              </div>
+
+              {/* 搜索 */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted" />
+                <input
+                  type="text"
+                  value={createComicSearch}
+                  onChange={(e) => setCreateComicSearch(e.target.value)}
+                  placeholder={createContentType === "comic" ? "搜索漫画..." : "搜索小说..."}
+                  className="w-full rounded-lg bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
+                />
+              </div>
+
+              {/* 漫画/小说列表 */}
+              {loadingCreateComics ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                </div>
+              ) : createComics.length === 0 ? (
+                <div className="py-8 text-center text-xs text-muted">
+                  {createComicDebouncedSearch ? "未找到匹配结果" : "暂无内容"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {createComics.map((comic) => {
+                    const isSelected = selectedComicIds.has(comic.id);
+                    return (
+                      <button
+                        key={comic.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedComicIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(comic.id)) next.delete(comic.id);
+                            else next.add(comic.id);
+                            return next;
+                          });
+                        }}
+                        className={`group relative flex flex-col items-center rounded-lg border p-1.5 transition-all ${
+                          isSelected
+                            ? "border-accent bg-accent/10"
+                            : "border-border/50 hover:border-accent/30"
+                        }`}
+                      >
+                        {/* 复选框指示器 */}
+                        <div className={`absolute top-1 left-1 z-10 flex h-4 w-4 items-center justify-center rounded-sm text-white text-[10px] transition-colors ${
+                          isSelected ? "bg-accent" : "bg-background/80 border border-border"
+                        }`}>
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </div>
+                        {/* 封面 */}
+                        <div className="relative w-full aspect-[3/4] overflow-hidden rounded-md bg-background mb-1">
+                          {comic.coverUrl ? (
+                            <Image
+                              src={comic.coverUrl}
+                              alt={comic.title}
+                              fill
+                              sizes="80px"
+                              className="object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-muted text-[10px]">无封面</div>
+                          )}
+                        </div>
+                        {/* 标题 */}
+                        <p className="w-full text-[10px] text-foreground truncate text-center" title={comic.title}>
+                          {comic.title}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 分页 */}
+              {createComicsTotalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 text-xs text-muted">
+                  <button
+                    onClick={() => setCreateComicPage((p) => Math.max(1, p - 1))}
+                    disabled={createComicPage <= 1}
+                    className="px-2 py-1 rounded hover:bg-background disabled:opacity-30"
+                  >
+                    ◀
+                  </button>
+                  <span>{createComicPage} / {createComicsTotalPages}</span>
+                  <button
+                    onClick={() => setCreateComicPage((p) => Math.min(createComicsTotalPages, p + 1))}
+                    disabled={createComicPage >= createComicsTotalPages}
+                    className="px-2 py-1 rounded hover:bg-background disabled:opacity-30"
+                  >
+                    ▶
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="flex items-center justify-between border-t border-border px-6 py-4">
+              <span className="text-xs text-muted">
+                {selectedComicIds.size > 0 ? `已选 ${selectedComicIds.size} 本` : ""}
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCreateDialog(false);
+                    setCreateName("");
+                    setSelectedComicIds(new Set());
+                  }}
+                  className="rounded-lg bg-card px-4 py-2 text-sm text-foreground hover:bg-card-hover"
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={!createName.trim() || creating}
+                  className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {creating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  {t.common.save || "创建"}
+                </button>
+              </div>
             </div>
           </div>
           </div>

@@ -337,11 +337,12 @@ export default function Home() {
     }
   }, [contentType, selectedCategory, selectedTags, showGroupView, refetchGroupCategories]);
 
-  // 搜索过滤系列（前端过滤，匹配名称、作者、描述、标签）
+  // 搜索过滤合集（前端过滤，匹配名称、作者、描述、标签；隐藏空合集）
   const filteredGroups = useMemo(() => {
-    if (!debouncedSearch) return groups;
+    const nonEmpty = groups.filter((g) => (g.comicCount ?? 0) > 0);
+    if (!debouncedSearch) return nonEmpty;
     const q = debouncedSearch.toLowerCase();
-    return groups.filter((g) =>
+    return nonEmpty.filter((g) =>
       (g.name?.toLowerCase().includes(q)) ||
       (g.author?.toLowerCase().includes(q)) ||
       (g.description?.toLowerCase().includes(q)) ||
@@ -1051,13 +1052,13 @@ export default function Home() {
                         ? "bg-accent/20 text-accent"
                         : "bg-card text-muted hover:text-foreground"
                     }`}
-                    title={t.comicGroup?.groups || "系列"}
+                    title={t.comicGroup?.groups || "合集"}
                   >
                     <Layers className="h-3.5 w-3.5" />
                     <span className="hidden sm:inline">
                       {filteredGroups.length > 0
-                        ? `${t.comicGroup?.groups || "系列"} (${filteredGroups.length})`
-                        : (t.comicGroup?.groups || "系列")}
+                        ? `${t.comicGroup?.groups || "合集"} (${filteredGroups.length})`
+                        : (t.comicGroup?.groups || "合集")}
                     </span>
                   </button>
 
@@ -1250,7 +1251,7 @@ export default function Home() {
                   </div>
                   <h3 className="mb-2 text-lg font-medium text-foreground/80">
                     {debouncedSearch
-                      ? (t.common?.noSearchResults || "未找到匹配的系列")
+                      ? (t.common?.noSearchResults || "未找到匹配的合集")
                       : (t.comicGroup?.noGroups || "还没有分组")}
                   </h3>
                   <p className="max-w-sm text-sm text-muted mb-5">
@@ -1510,7 +1511,7 @@ export default function Home() {
             <div className="flex items-center gap-2 sm:gap-3">
               <Layers className="h-4 w-4 text-accent" />
               <span className="text-sm font-medium text-foreground">
-                {t.batch.selected} <span className="text-accent">{selectedGroupIds.size}</span> {t.comicGroup?.groups || "系列"}
+                {t.batch.selected} <span className="text-accent">{selectedGroupIds.size}</span> {t.comicGroup?.groups || "合集"}
               </span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
