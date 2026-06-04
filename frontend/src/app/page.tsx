@@ -445,7 +445,7 @@ export default function Home() {
     const looseTotal = groupedCount > 0 ? Math.max(0, apiTotal - groupedCount) : apiTotal;
     const totalItems = filteredGroups.length + looseTotal;
     return Math.max(1, Math.ceil(totalItems / pageSize));
-  }, [showGroupView, groupTotalPages, groupedComicMap, filteredGroups.length, totalPages, apiTotal, pageSize]);
+  }, [showGroupView, groupTotalPages, groupedComicMap, filteredGroups.length, apiTotal, pageSize]);
   // 统一分页操作：分组视图用 groupPage，漫画视图用 currentPage
   const activePage = showGroupView ? groupPage : currentPage;
   const setActivePage = showGroupView ? setGroupPage : setCurrentPage;
@@ -550,10 +550,9 @@ export default function Home() {
 
   // 默认视图下的散本漫画（排除已在合集中的）
   const looseComics = useMemo(() => {
-    if (showGroupView) return sortedComics; // 合集视图不过滤
     if (Object.keys(groupedComicMap).length === 0) return sortedComics; // 无合集不过滤
     return sortedComics.filter((c) => !groupedComicMap[c.id]);
-  }, [sortedComics, groupedComicMap, showGroupView]);
+  }, [sortedComics, groupedComicMap]);
 
   const handleTagToggle = (tag: string) => {
     setSelectedTags((prev) =>

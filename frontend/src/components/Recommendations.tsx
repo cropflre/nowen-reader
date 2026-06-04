@@ -54,7 +54,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
       const map: Record<number, ComicGroup> = {};
       for (const g of groups) map[g.id] = g;
       setGroupsMap(map);
-    });
+    }).catch(() => { /* ignore fetch errors */ });
   }, [contentType]);
 
   useEffect(() => {

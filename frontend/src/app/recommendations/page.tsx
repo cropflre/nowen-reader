@@ -44,7 +44,7 @@ export default function RecommendationsPage() {
       const map: Record<number, ComicGroup> = {};
       for (const g of groups) map[g.id] = g;
       setGroupsMap(map);
-    });
+    }).catch(() => { /* ignore fetch errors */ });
   }, [contentType]);
 
   const fetchRecommendations = useCallback(async () => {
