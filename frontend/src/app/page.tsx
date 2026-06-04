@@ -425,7 +425,7 @@ export default function Home() {
     sortOrder: sortOrder || undefined,
     category: selectedCategory || undefined,
     contentType: contentType || undefined,
-    excludeGrouped: showGroupView || undefined,
+    excludeGrouped: true,
   });
   // 系列视图下加载系列级分类统计
   useEffect(() => {
@@ -1261,7 +1261,7 @@ export default function Home() {
                   </p>
                 </div>
               )
-            ) : sortedComics.length > 0 ? (
+            ) : (filteredGroups.length > 0 || sortedComics.length > 0) ? (
               <div
                 className={
                   viewMode === "grid"
@@ -1269,10 +1269,29 @@ export default function Home() {
                     : "grid grid-cols-1 gap-2 sm:gap-3"
                 }
               >
-                {/* 漫画卡片 */}
-                {sortedComics
-                  .map((comic, index) => (
-                    <ScrollReveal key={comic.id} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
+                {/* 合集卡片（优先展示） */}
+                {filteredGroups.map((group, index) => (
+                  <ScrollReveal key={`group-${group.id}`} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
+                  <GroupCard
+                    group={group}
+                    viewMode={viewMode}
+                    contentType={contentType}
+                    batchMode={batchMode}
+                    isSelected={selectedGroupIds.has(group.id)}
+                    onSelect={toggleGroupSelect}
+                    animationIndex={index < 20 ? index : undefined}
+                    isRemoving={removingGroupIds.has(group.id)}
+                    onContextMenu={(e, g) => {
+                      setGroupContextMenu({ x: e.clientX, y: e.clientY, group: g });
+                    }}
+                  />
+                  </ScrollReveal>
+                ))}
+                {/* 散本漫画卡片（不属于任何合集） */}
+                {sortedComics.map((comic, index) => {
+                  const offset = filteredGroups.length;
+                  return (
+                    <ScrollReveal key={comic.id} disabled={offset + index < 20} delay={offset + index >= 20 ? (offset + index - 20) % 6 * 50 : 0}>
                     <ComicCard
                       key={comic.id}
                       comic={comic}
@@ -1288,14 +1307,15 @@ export default function Home() {
                       isDragOver={dragOverId === comic.id}
                       isDragging={dragId === comic.id}
                       tagData={comic.tagData}
-                      animationIndex={index < 20 ? index : undefined}
+                      animationIndex={offset + index < 20 ? offset + index : undefined}
                       isRemoving={removingIds.has(comic.id)}
                       onContextMenu={(e, c) => {
                         setContextMenu({ x: e.clientX, y: e.clientY, comic: c });
                       }}
                     />
                     </ScrollReveal>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center">
