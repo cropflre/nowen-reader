@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Sparkles, RefreshCw, Brain, Loader2 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
-import { fetchGroupedComicMap } from "@/api/groups";
+import { fetchGroupedComicMap, fetchGroups } from "@/api/groups";
+import type { ComicGroup } from "@/hooks/useComicTypes";
 
 interface RecommendedComic {
   id: string;
@@ -31,11 +32,20 @@ export default function RecommendationsPage() {
   const [loading, setLoading] = useState(true);
   const [aiReasonsLoading, setAiReasonsLoading] = useState(false);
   const [groupedComicMap, setGroupedComicMap] = useState<Record<string, number[]>>({});
+  const [groupsMap, setGroupsMap] = useState<Record<number, ComicGroup>>({});
 
-  // 加载合集映射
+  // 加载合集映射和合集信息
   useEffect(() => {
-    fetchGroupedComicMap().then(setGroupedComicMap);
-  }, []);
+    Promise.all([
+      fetchGroupedComicMap(),
+      fetchGroups(contentType || undefined),
+    ]).then(([comicMap, groups]) => {
+      setGroupedComicMap(comicMap);
+      const map: Record<number, ComicGroup> = {};
+      for (const g of groups) map[g.id] = g;
+      setGroupsMap(map);
+    });
+  }, [contentType]);
 
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
@@ -54,6 +64,41 @@ export default function RecommendationsPage() {
   useEffect(() => {
     fetchRecommendations();
   }, [fetchRecommendations]);
+
+  // 去重：同一合集只显示一次，合集内的漫画替换为合集
+  const displayItems = useMemo(() => {
+    const seenGroups = new Set<number>();
+    const items: { key: string; href: string; title: string; coverUrl: string; reasons: string[]; aiReason?: string; score: number; author?: string }[] = [];
+    for (const comic of recommendations) {
+      const groupIds = groupedComicMap[comic.id];
+      const group = groupIds && groupIds.length > 0 ? groupsMap[groupIds[0]] : null;
+      if (group) {
+        if (seenGroups.has(group.id)) continue;
+        seenGroups.add(group.id);
+        items.push({
+          key: `group-${group.id}`,
+          href: `/group/${group.id}${contentType ? `?contentType=${contentType}` : ""}`,
+          title: group.name,
+          coverUrl: group.coverUrl,
+          reasons: comic.reasons,
+          aiReason: comic.aiReason,
+          score: comic.score,
+        });
+      } else {
+        items.push({
+          key: comic.id,
+          href: `/comic/${comic.id}`,
+          title: comic.title,
+          coverUrl: comic.coverUrl,
+          reasons: comic.reasons,
+          aiReason: comic.aiReason,
+          score: comic.score,
+          author: comic.author,
+        });
+      }
+    }
+    return items;
+  }, [recommendations, groupedComicMap, groupsMap, contentType]);
 
   // AI 推荐理由生成
   const fetchAiReasons = useCallback(async () => {
@@ -153,18 +198,13 @@ export default function RecommendationsPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {recommendations.map((comic) => {
-            const groupIds = groupedComicMap[comic.id];
-            const href = groupIds && groupIds.length > 0
-              ? `/group/${groupIds[0]}${contentType ? `?contentType=${contentType}` : ""}`
-              : `/comic/${comic.id}`;
-            return (
-            <Link key={comic.id} href={href} className="group">
+          {displayItems.map((item) => (
+            <Link key={item.key} href={item.href} className="group">
               <div className="space-y-2">
                 <div className="relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card transition-transform group-hover:scale-[1.03]">
                   <Image
-                    src={comic.coverUrl}
-                    alt={comic.title}
+                    src={item.coverUrl}
+                    alt={item.title}
                     fill
                     unoptimized
                     className="object-cover"
@@ -172,12 +212,12 @@ export default function RecommendationsPage() {
                   />
                   {/* Score badge */}
                   <div className="absolute top-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-amber-400 backdrop-blur-sm">
-                    {Math.round(comic.score)}
+                    {Math.round(item.score)}
                   </div>
                   {/* Reason badges */}
-                  {(comic.reasons || []).length > 0 && (
+                  {item.reasons.length > 0 && (
                     <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
-                      {(comic.reasons || []).slice(0, 2).map((reason) => (
+                      {item.reasons.slice(0, 2).map((reason) => (
                         <span
                           key={reason}
                           className="rounded bg-accent/80 px-1.5 py-0.5 text-[9px] font-medium text-white"
@@ -190,25 +230,24 @@ export default function RecommendationsPage() {
                 </div>
                 <div>
                   <p className="line-clamp-2 text-sm font-medium text-foreground/80 group-hover:text-foreground">
-                    {comic.title}
+                    {item.title}
                   </p>
-                  {comic.author && (
+                  {item.author && (
                     <p className="mt-0.5 line-clamp-1 text-xs text-muted">
-                      {comic.author}
+                      {item.author}
                     </p>
                   )}
                   {/* AI 推荐理由 */}
-                  {comic.aiReason && (
+                  {item.aiReason && (
                     <p className="mt-1 line-clamp-2 text-xs leading-snug text-purple-400">
                       <Brain className="mr-1 inline h-3 w-3" />
-                      {comic.aiReason}
+                      {item.aiReason}
                     </p>
                   )}
                 </div>
               </div>
             </Link>
-          );
-          })}
+          ))}
         </div>
       </main>
     </div>

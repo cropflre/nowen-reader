@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Sparkles, ChevronRight, ChevronUp, ChevronDown, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { fetchGroupedComicMap } from "@/api/groups";
+import { fetchGroupedComicMap, fetchGroups } from "@/api/groups";
+import type { ComicGroup } from "@/hooks/useComicTypes";
 
 interface RecommendedComic {
   id: string;
@@ -27,6 +28,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined);
   const [groupedComicMap, setGroupedComicMap] = useState<Record<string, number[]>>({});
+  const [groupsMap, setGroupsMap] = useState<Record<number, ComicGroup>>({});
 
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
@@ -42,14 +44,52 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
     finally { setLoading(false); }
   }, [contentType]);
 
-  // 加载合集映射，用于判断推荐漫画是否在合集内
+  // 加载合集映射和合集信息，用于判断推荐漫画是否在合集内
   useEffect(() => {
-    fetchGroupedComicMap().then(setGroupedComicMap);
-  }, []);
+    Promise.all([
+      fetchGroupedComicMap(),
+      fetchGroups(contentType || undefined),
+    ]).then(([comicMap, groups]) => {
+      setGroupedComicMap(comicMap);
+      const map: Record<number, ComicGroup> = {};
+      for (const g of groups) map[g.id] = g;
+      setGroupsMap(map);
+    });
+  }, [contentType]);
 
   useEffect(() => {
     fetchRecommendations();
   }, [fetchRecommendations]);
+
+  // 去重：同一合集只显示一次，合集内的漫画替换为合集
+  const displayItems = useMemo(() => {
+    const seenGroups = new Set<number>();
+    const items: { key: string; href: string; title: string; coverUrl: string; reasons: string[] }[] = [];
+    for (const comic of recommendations) {
+      const groupIds = groupedComicMap[comic.id];
+      const group = groupIds && groupIds.length > 0 ? groupsMap[groupIds[0]] : null;
+      if (group) {
+        if (seenGroups.has(group.id)) continue; // 同一合集已添加，跳过
+        seenGroups.add(group.id);
+        items.push({
+          key: `group-${group.id}`,
+          href: `/group/${group.id}${contentType ? `?contentType=${contentType}` : ""}`,
+          title: group.name,
+          coverUrl: group.coverUrl,
+          reasons: comic.reasons,
+        });
+      } else {
+        items.push({
+          key: comic.id,
+          href: `/comic/${comic.id}`,
+          title: comic.title,
+          coverUrl: comic.coverUrl,
+          reasons: comic.reasons,
+        });
+      }
+    }
+    return items;
+  }, [recommendations, groupedComicMap, groupsMap, contentType]);
 
   // Measure content height for smooth animation
   useEffect(() => {
@@ -118,43 +158,37 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
       >
         <div ref={contentRef}>
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-            {recommendations.map((comic) => {
-              const groupIds = groupedComicMap[comic.id];
-              const href = groupIds && groupIds.length > 0
-                ? `/group/${groupIds[0]}${contentType ? `?contentType=${contentType}` : ""}`
-                : `/comic/${comic.id}`;
-              return (
+            {displayItems.map((item) => (
               <Link
-                key={comic.id}
-                href={href}
+                key={item.key}
+                href={item.href}
                 className="group shrink-0"
               >
                 <div className="w-[130px] space-y-2">
                   <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card transition-transform group-hover:scale-105">
                     <Image
-                      src={comic.coverUrl}
-                      alt={comic.title}
+                      src={item.coverUrl}
+                      alt={item.title}
                       fill
                       unoptimized
                       className="object-cover"
                       sizes="130px"
                     />
                     {/* Reason badge */}
-                    {(comic.reasons || []).length > 0 && (
+                    {item.reasons.length > 0 && (
                       <div className="absolute bottom-1 left-1 right-1">
                         <span className="inline-block rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80 backdrop-blur-sm">
-                          {reasonLabels[(comic.reasons || [])[0]] || (comic.reasons || [])[0]}
+                          {reasonLabels[item.reasons[0]] || item.reasons[0]}
                         </span>
                       </div>
                     )}
                   </div>
                   <p className="line-clamp-2 text-xs font-medium text-foreground/80 group-hover:text-foreground">
-                    {comic.title}
+                    {item.title}
                   </p>
                 </div>
               </Link>
-            );
-            })}
+            ))}
 
             {/* See more */}
             <Link
