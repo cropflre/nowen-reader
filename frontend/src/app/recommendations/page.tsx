@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Sparkles, RefreshCw, Brain, Loader2 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { fetchGroupedComicMap } from "@/api/groups";
 
 interface RecommendedComic {
   id: string;
@@ -29,6 +30,12 @@ export default function RecommendationsPage() {
   const [recommendations, setRecommendations] = useState<RecommendedComic[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiReasonsLoading, setAiReasonsLoading] = useState(false);
+  const [groupedComicMap, setGroupedComicMap] = useState<Record<string, number[]>>({});
+
+  // 加载合集映射
+  useEffect(() => {
+    fetchGroupedComicMap().then(setGroupedComicMap);
+  }, []);
 
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
@@ -146,8 +153,13 @@ export default function RecommendationsPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {recommendations.map((comic) => (
-            <Link key={comic.id} href={`/comic/${comic.id}`} className="group">
+          {recommendations.map((comic) => {
+            const groupIds = groupedComicMap[comic.id];
+            const href = groupIds && groupIds.length > 0
+              ? `/group/${groupIds[0]}${contentType ? `?contentType=${contentType}` : ""}`
+              : `/comic/${comic.id}`;
+            return (
+            <Link key={comic.id} href={href} className="group">
               <div className="space-y-2">
                 <div className="relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card transition-transform group-hover:scale-[1.03]">
                   <Image
@@ -195,7 +207,8 @@ export default function RecommendationsPage() {
                 </div>
               </div>
             </Link>
-          ))}
+          );
+          })}
         </div>
       </main>
     </div>

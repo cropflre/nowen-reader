@@ -438,7 +438,14 @@ export default function Home() {
   const effectiveCategories = showGroupView ? groupCategories.filter(c => c.count > 0) : categories.filter(c => c.count > 0);
 
   // 根据当前 contentType 决定分页总页数
-  const effectiveTotalPages = showGroupView ? groupTotalPages : totalPages;
+  // 默认视图下，总页数基于合集数量 + 散本数量
+  const effectiveTotalPages = useMemo(() => {
+    if (showGroupView) return groupTotalPages;
+    const groupedCount = Object.keys(groupedComicMap).length;
+    const looseTotal = groupedCount > 0 ? Math.max(0, apiTotal - groupedCount) : apiTotal;
+    const totalItems = filteredGroups.length + looseTotal;
+    return Math.max(1, Math.ceil(totalItems / pageSize));
+  }, [showGroupView, groupTotalPages, groupedComicMap, filteredGroups.length, totalPages, apiTotal, pageSize]);
   // 统一分页操作：分组视图用 groupPage，漫画视图用 currentPage
   const activePage = showGroupView ? groupPage : currentPage;
   const setActivePage = showGroupView ? setGroupPage : setCurrentPage;

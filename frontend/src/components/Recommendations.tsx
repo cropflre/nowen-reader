@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles, ChevronRight, ChevronUp, ChevronDown, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { fetchGroupedComicMap } from "@/api/groups";
 
 interface RecommendedComic {
   id: string;
@@ -25,6 +26,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined);
+  const [groupedComicMap, setGroupedComicMap] = useState<Record<string, number[]>>({});
 
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
@@ -39,6 +41,11 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [contentType]);
+
+  // 加载合集映射，用于判断推荐漫画是否在合集内
+  useEffect(() => {
+    fetchGroupedComicMap().then(setGroupedComicMap);
+  }, []);
 
   useEffect(() => {
     fetchRecommendations();
@@ -111,10 +118,15 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
       >
         <div ref={contentRef}>
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-            {recommendations.map((comic) => (
+            {recommendations.map((comic) => {
+              const groupIds = groupedComicMap[comic.id];
+              const href = groupIds && groupIds.length > 0
+                ? `/group/${groupIds[0]}${contentType ? `?contentType=${contentType}` : ""}`
+                : `/comic/${comic.id}`;
+              return (
               <Link
                 key={comic.id}
-                href={`/comic/${comic.id}`}
+                href={href}
                 className="group shrink-0"
               >
                 <div className="w-[130px] space-y-2">
@@ -141,7 +153,8 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
                   </p>
                 </div>
               </Link>
-            ))}
+            );
+            })}
 
             {/* See more */}
             <Link
