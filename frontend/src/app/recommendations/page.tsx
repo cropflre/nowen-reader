@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Sparkles, RefreshCw, Brain, Loader2 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
@@ -23,6 +24,8 @@ export default function RecommendationsPage() {
   const t = useTranslation();
   const { locale } = useLocale();
   const { aiConfigured } = useAIStatus();
+  const searchParams = useSearchParams();
+  const contentType = searchParams.get("contentType") || "";
   const [recommendations, setRecommendations] = useState<RecommendedComic[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiReasonsLoading, setAiReasonsLoading] = useState(false);
@@ -30,14 +33,16 @@ export default function RecommendationsPage() {
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/recommendations?limit=30&excludeRead=false");
+      const params = new URLSearchParams({ limit: "30", excludeRead: "false" });
+      if (contentType) params.set("contentType", contentType);
+      const res = await fetch(`/api/recommendations?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setRecommendations((data.recommendations || []).map((c: RecommendedComic) => ({ ...c, aiReason: undefined })));
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, []);
+  }, [contentType]);
 
   useEffect(() => {
     fetchRecommendations();

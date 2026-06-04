@@ -145,7 +145,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
 
             {/* See more */}
             <Link
-              href="/recommendations"
+              href={`/recommendations${contentType ? `?contentType=${contentType}` : ""}`}
               className="flex w-[130px] shrink-0 items-center justify-center rounded-lg border border-border/40 bg-card/30 transition-colors hover:bg-card"
             >
               <div className="flex flex-col items-center gap-1 text-muted">
