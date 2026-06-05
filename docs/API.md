@@ -137,8 +137,8 @@ NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 | GET | `/api/comics/:id/epub-resource/*resourcePath` | EPUB 资源 |
 | GET | `/api/comics/:id/embedded-images` | 嵌入图片列表 |
 | GET | `/api/comics/:id/embedded-image/:index` | 单个嵌入图片 |
-| POST | `/api/comics/:id/warmup` | 页面预热 🔒 |
-| POST | `/api/comics/:id/warmup-done` | 预热完成 🔒 |
+| POST | `/api/comics/:id/warmup` | 页面预热 |
+| POST | `/api/comics/:id/warmup-done` | 预热完成 |
 | POST | `/api/thumbnails/manage` | 缩略图管理 🔒管理员 |
 
 ## 🌐 元数据
@@ -210,8 +210,8 @@ NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 | GET | `/api/stats/files` | 文件统计 |
 | GET | `/api/stats/folder-tree` | 文件夹树统计 |
 | GET | `/api/goals` | 获取目标进度 |
-| POST | `/api/goals` | 设定阅读目标 🔒 |
-| DELETE | `/api/goals` | 删除阅读目标 🔒 |
+| POST | `/api/goals` | 设定阅读目标 🔒管理员 |
+| DELETE | `/api/goals` | 删除阅读目标 🔒管理员 |
 | GET | `/api/export/json` | JSON 全量导出 |
 | GET | `/api/export/csv/sessions` | CSV 会话导出 |
 | GET | `/api/export/csv/comics` | CSV 漫画列表导出 |
