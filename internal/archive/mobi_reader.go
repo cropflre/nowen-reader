@@ -117,6 +117,8 @@ type mobiBook struct {
 	mobiType       uint32
 	encoding       uint32
 	mobiHeaderLen  uint32
+	headerVersion  uint32 // MOBI header version (≥ 8 indicates KF8)
+	isKF8          bool   // whether this is a KF8/AZW3 file
 	firstImageIdx  uint32
 	firstResIdx    uint32 // first non-book record index
 	kf8Boundary    int    // KF8 boundary record index (-1 if not KF8 dual)
@@ -340,8 +342,9 @@ func parseMobi(data []byte, filePath string) (*mobiBook, error) {
 		}
 	}
 
-	log.Printf("[mobi] Parsed %s: type=%d, encoding=%d, chapters=%d, images=%d, title=%q",
-		path.Base(filePath), book.mobiType, book.encoding, len(book.chapters), len(book.images), book.title)
+	log.Printf("[mobi] Parsed %s: type=%d, headerVer=%d, isKF8=%v, encoding=%d, chapters=%d, images=%d, title=%q",
+		path.Base(filePath), book.mobiType, book.headerVersion, book.isKF8, book.encoding,
+		len(book.chapters), len(book.images), book.title)
 
 	return book, nil
 }
@@ -483,6 +486,10 @@ func (book *mobiBook) parseRecord0() error {
 		book.mobiType = binary.BigEndian.Uint32(rec0[mobiStart+8 : mobiStart+12])
 	}
 
+	if len(rec0) >= mobiStart+24 {
+		book.headerVersion = binary.BigEndian.Uint32(rec0[mobiStart+20 : mobiStart+24])
+	}
+
 	if len(rec0) >= mobiStart+16 {
 		book.encoding = binary.BigEndian.Uint32(rec0[mobiStart+12 : mobiStart+16])
 	} else {
@@ -508,22 +515,22 @@ func (book *mobiBook) parseRecord0() error {
 		}
 	}
 
-	// 检查 EXTH 标志（偏移 128 from MOBI header start）
-	hasEXTH := false
-	if len(rec0) >= mobiStart+132 {
-		exthFlags := binary.BigEndian.Uint32(rec0[mobiStart+128 : mobiStart+132])
-		hasEXTH = (exthFlags & 0x40) != 0
+	// 扫描 MOBI header 区间查找 "EXTH" magic（不依赖 flags 字段，兼容 header version 8+）
+	mobiHeaderEnd := mobiStart + int(book.mobiHeaderLen)
+	if mobiHeaderEnd > len(rec0) {
+		mobiHeaderEnd = len(rec0)
+	}
+	if exthOff := findEXTHMagic(rec0[mobiStart:mobiHeaderEnd]); exthOff >= 0 {
+		book.parseEXTH(rec0[mobiStart+exthOff:])
 	}
 
-	// 解析 EXTH 头部
-	if hasEXTH {
-		exthStart := mobiStart + 16 + int(book.mobiHeaderLen) - 16
-		// MOBI header length 包含了 "MOBI" 魔数之后的长度
-		// 实际 EXTH 位置 = 16 (PalmDOC) + mobiHeaderLen
-		exthStart = 16 + int(book.mobiHeaderLen)
-		if exthStart < len(rec0) {
-			book.parseEXTH(rec0[exthStart:])
-		}
+	// KF8 判断：优先看 header version，再看 mobiType，最后看 kf8Boundary
+	if book.headerVersion >= 8 {
+		book.isKF8 = true
+	} else if book.mobiType == mobiTypeKF8 {
+		book.isKF8 = true
+	} else if book.kf8Boundary > 0 {
+		book.isKF8 = true
 	}
 
 	// 如果 PDB 头部名称有内容且 title 为空，使用 PDB 名称
@@ -533,6 +540,16 @@ func (book *mobiBook) parseRecord0() error {
 	}
 
 	return nil
+}
+
+// findEXTHMagic 在数据中扫描 "EXTH" 魔数，返回其偏移量，未找到返回 -1
+func findEXTHMagic(data []byte) int {
+	for i := 0; i+4 <= len(data); i++ {
+		if data[i] == 'E' && data[i+1] == 'X' && data[i+2] == 'T' && data[i+3] == 'H' {
+			return i
+		}
+	}
+	return -1
 }
 
 // parseEXTH 解析 EXTH 扩展头部
