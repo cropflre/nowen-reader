@@ -524,14 +524,9 @@ func (book *mobiBook) parseRecord0() error {
 		book.parseEXTH(rec0[mobiStart+exthOff:])
 	}
 
-	// KF8 判断：优先看 header version，再看 mobiType，最后看 kf8Boundary
-	if book.headerVersion >= 8 {
-		book.isKF8 = true
-	} else if book.mobiType == mobiTypeKF8 {
-		book.isKF8 = true
-	} else if book.kf8Boundary > 0 {
-		book.isKF8 = true
-	}
+	// KF8 判断：基于结构推断，检查是否存在多个 HTML/XHTML 资源记录构成阅读流
+	// kf8Boundary 仅为 hint，headerVersion ≥ 8 不等于一定是 KF8
+	book.isKF8 = book.detectKF8Spine()
 
 	// 如果 PDB 头部名称有内容且 title 为空，使用 PDB 名称
 	if book.title == "" {
@@ -540,6 +535,61 @@ func (book *mobiBook) parseRecord0() error {
 	}
 
 	return nil
+}
+
+// detectKF8Spine 基于结构推断文件是否存在 KF8 spine。
+// 核心判断：资源记录区域是否存在多个 HTML/XHTML 分片（构成阅读流）。
+// kf8Boundary、headerVersion、mobiType 仅作辅助参考，不作为决定性依据。
+func (book *mobiBook) detectKF8Spine() bool {
+	// 确定资源记录起始索引
+	startIdx := -1
+	if book.firstImageIdx > 0 && int(book.firstImageIdx) < len(book.records) {
+		startIdx = int(book.firstImageIdx)
+	} else if book.firstResIdx > 0 && int(book.firstResIdx) < len(book.records) {
+		startIdx = int(book.firstResIdx)
+	} else if book.textRecCount > 0 && int(book.textRecCount)+1 < len(book.records) {
+		startIdx = int(book.textRecCount) + 1
+	}
+	if startIdx <= 0 {
+		return false
+	}
+
+	// 扫描资源记录，统计 HTML/XHTML 内容数量
+	htmlCount := 0
+	for i := startIdx; i < len(book.records) && i < startIdx+2000; i++ {
+		recData, err := book.getRecordData(i)
+		if err != nil || len(recData) < 16 {
+			continue
+		}
+		if isHTMLResource(recData) {
+			htmlCount++
+			if htmlCount >= 3 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isHTMLResource 检测记录数据是否为 HTML/XHTML 内容
+func isHTMLResource(data []byte) bool {
+	if len(data) < 16 {
+		return false
+	}
+	// 跳过前导空白
+	preview := data
+	if len(preview) > 128 {
+		preview = preview[:128]
+	}
+	s := string(preview)
+	// 检查 XML/HTML 标记
+	if strings.HasPrefix(s, "<?xml") || strings.HasPrefix(s, "<html") || strings.HasPrefix(s, "<!DOCTYPE") {
+		return true
+	}
+	if strings.HasPrefix(s, "<") && (strings.Contains(s, "<html") || strings.Contains(s, "<head") || strings.Contains(s, "<body")) {
+		return true
+	}
+	return false
 }
 
 // findEXTHMagic 在数据中扫描 "EXTH" 魔数，返回其偏移量，未找到返回 -1
@@ -637,8 +687,9 @@ func (book *mobiBook) extractText() error {
 		case palmDocPalmDOC:
 			decompressed = palmDocDecompress(recData)
 		case palmDocHuffCDIC:
-			// HuffCDIC 压缩较复杂，尝试直接使用原始数据
-			// 大多数现代 MOBI 文件使用 PalmDOC 压缩
+			if !book.isKF8 {
+				return fmt.Errorf("HuffCDIC compression not supported and no KF8 spine detected (record %d)", i)
+			}
 			log.Printf("[mobi] Warning: HuffCDIC compression not fully supported, attempting raw extraction")
 			decompressed = recData
 		default:
