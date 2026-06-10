@@ -15,6 +15,8 @@ export interface Comic {
   categories?: ComicCategory[];
   author?: string;
   pageCount?: number;
+  fileSize?: number;
+  addedAt?: string;
   lastRead?: string;
   progress?: number; // 0-100
   isFavorite?: boolean;

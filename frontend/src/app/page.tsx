@@ -58,6 +58,8 @@ function apiToComic(api: ApiComic): Comic {
     tags: (api.tags || []).map((t) => t.name),
     tagData: api.tags || [],
     pageCount: api.pageCount,
+    fileSize: api.fileSize,
+    addedAt: api.addedAt || undefined,
     progress:
       api.pageCount > 0
         ? Math.round((api.lastReadPage / api.pageCount) * 100)
@@ -414,15 +416,22 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Fetch real comics from API with pagination + server-side filtering
+  // 统一视图模式：默认视图下合集和漫画混合排序分页
+  const isUnifiedView = !showGroupView;
+
+  // Fetch real comics from API
+  // 统一视图：获取全部漫画（客户端合并排序分页）
+  // 合集视图：排除已分组漫画 + 服务端分页
   const { comics: apiComics, setComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
-    page: currentPage,
-    pageSize,
+    fetchAll: isUnifiedView || undefined,
+    page: isUnifiedView ? undefined : currentPage,
+    pageSize: isUnifiedView ? undefined : pageSize,
     search: debouncedSearch || undefined,
     tags: selectedTags.length > 0 ? selectedTags : undefined,
     favoritesOnly: favoritesOnly || undefined,
-    sortBy: sortBy || undefined,
-    sortOrder: sortOrder || undefined,
+    // 统一视图下客户端排序，不传排序参数；合集视图保持服务端排序
+    sortBy: isUnifiedView ? undefined : (sortBy || undefined),
+    sortOrder: isUnifiedView ? undefined : (sortOrder || undefined),
     category: selectedCategory || undefined,
     contentType: contentType || undefined,
     excludeGrouped: showGroupView || undefined,
@@ -437,15 +446,6 @@ export default function Home() {
   // 只显示有内容的分类（count > 0）
   const effectiveCategories = showGroupView ? groupCategories.filter(c => c.count > 0) : categories.filter(c => c.count > 0);
 
-  // 根据当前 contentType 决定分页总页数
-  // 默认视图下，总页数基于合集数量 + 散本数量
-  const effectiveTotalPages = useMemo(() => {
-    if (showGroupView) return groupTotalPages;
-    const groupedCount = Object.keys(groupedComicMap).length;
-    const looseTotal = groupedCount > 0 ? Math.max(0, apiTotal - groupedCount) : apiTotal;
-    const totalItems = filteredGroups.length + looseTotal;
-    return Math.max(1, Math.ceil(totalItems / pageSize));
-  }, [showGroupView, groupTotalPages, groupedComicMap, filteredGroups.length, apiTotal, pageSize]);
   // 统一分页操作：合集视图用 groupPage，漫画视图用 currentPage
   const activePage = showGroupView ? groupPage : currentPage;
   const setActivePage = showGroupView ? setGroupPage : setCurrentPage;
@@ -553,6 +553,69 @@ export default function Home() {
     if (Object.keys(groupedComicMap).length === 0) return sortedComics; // 无合集不过滤
     return sortedComics.filter((c) => !groupedComicMap[c.id]);
   }, [sortedComics, groupedComicMap]);
+
+  // ── 统一混合列表（合集 + 散本混合排序分页） ──
+  type UnifiedItem = { type: 'group'; data: ComicGroup } | { type: 'comic'; data: Comic };
+
+  // 排序键提取：将 Comic 和 Group 映射到可比较的值
+  const getSortKey = useCallback((item: UnifiedItem): string | number | null => {
+    if (item.type === 'group') {
+      const g = item.data;
+      switch (sortBy) {
+        case 'title': return g.name?.toLowerCase() || '';
+        case 'addedAt': return g.createdAt || '';
+        case 'custom': return g.sortOrder ?? 0;
+        // lastReadAt / rating / fileSize：合集无此字段 → null
+        default: return null;
+      }
+    } else {
+      const c = item.data;
+      switch (sortBy) {
+        case 'title': return c.title?.toLowerCase() || '';
+        case 'addedAt': return c.addedAt || '';
+        case 'lastReadAt': return c.lastRead || null;
+        case 'rating': return c.rating ?? null;
+        case 'custom': return c.sortOrder ?? 0;
+        case 'fileSize': return c.fileSize ?? null;
+        default: return c.title?.toLowerCase() || '';
+      }
+    }
+  }, [sortBy]);
+
+  // 统一混合列表：合集和散本合并排序
+  const unifiedItems = useMemo(() => {
+    if (!isUnifiedView) return [];
+    const groupItems: UnifiedItem[] = filteredGroups.map(g => ({ type: 'group', data: g }));
+    const comicItems: UnifiedItem[] = looseComics.map(c => ({ type: 'comic', data: c }));
+    const all = [...groupItems, ...comicItems];
+
+    const dir = sortOrder === 'desc' ? -1 : 1;
+    all.sort((a, b) => {
+      const keyA = getSortKey(a);
+      const keyB = getSortKey(b);
+      // null 值排到前面（ASC）或后面（DESC）
+      if (keyA === null && keyB === null) return 0;
+      if (keyA === null) return sortOrder === 'desc' ? 1 : -1;
+      if (keyB === null) return sortOrder === 'desc' ? -1 : 1;
+      if (keyA < keyB) return -1 * dir;
+      if (keyA > keyB) return 1 * dir;
+      return 0;
+    });
+    return all;
+  }, [isUnifiedView, filteredGroups, looseComics, getSortKey, sortOrder]);
+
+  // 统一视图客户端分页
+  const unifiedTotalPages = Math.max(1, Math.ceil(unifiedItems.length / pageSize));
+  const pagedUnifiedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return unifiedItems.slice(start, start + pageSize);
+  }, [unifiedItems, currentPage, pageSize]);
+
+  // 根据当前视图模式决定分页总页数
+  const effectiveTotalPages = useMemo(() => {
+    if (showGroupView) return groupTotalPages;
+    return unifiedTotalPages;
+  }, [showGroupView, groupTotalPages, unifiedTotalPages]);
 
   const handleTagToggle = (tag: string) => {
     setSelectedTags((prev) =>
@@ -1274,7 +1337,7 @@ export default function Home() {
                   </p>
                 </div>
               )
-            ) : (filteredGroups.length > 0 || looseComics.length > 0) ? (
+            ) : (pagedUnifiedItems.length > 0) ? (
               <div
                 className={
                   viewMode === "grid"
@@ -1282,53 +1345,49 @@ export default function Home() {
                     : "grid grid-cols-1 gap-2 sm:gap-3"
                 }
               >
-                {/* 合集卡片（优先展示） */}
-                {filteredGroups.map((group, index) => (
-                  <ScrollReveal key={`group-${group.id}`} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
-                  <GroupCard
-                    group={group}
-                    viewMode={viewMode}
-                    contentType={contentType}
-                    batchMode={batchMode}
-                    isSelected={selectedGroupIds.has(group.id)}
-                    onSelect={toggleGroupSelect}
-                    animationIndex={index < 20 ? index : undefined}
-                    isRemoving={removingGroupIds.has(group.id)}
-                    onContextMenu={(e, g) => {
-                      setGroupContextMenu({ x: e.clientX, y: e.clientY, group: g });
-                    }}
-                  />
-                  </ScrollReveal>
-                ))}
-                {/* 散本漫画卡片（不属于任何合集） */}
-                {looseComics.map((comic, index) => {
-                  const offset = filteredGroups.length;
-                  return (
-                    <ScrollReveal key={comic.id} disabled={offset + index < 20} delay={offset + index >= 20 ? (offset + index - 20) % 6 * 50 : 0}>
+                {/* 统一混合渲染：合集和散本按排序交替显示 */}
+                {pagedUnifiedItems.map((item, index) => (
+                  item.type === 'group' ? (
+                    <ScrollReveal key={`group-${item.data.id}`} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
+                    <GroupCard
+                      group={item.data}
+                      viewMode={viewMode}
+                      contentType={contentType}
+                      batchMode={batchMode}
+                      isSelected={selectedGroupIds.has(item.data.id)}
+                      onSelect={toggleGroupSelect}
+                      animationIndex={index < 20 ? index : undefined}
+                      isRemoving={removingGroupIds.has(item.data.id)}
+                      onContextMenu={(e, g) => {
+                        setGroupContextMenu({ x: e.clientX, y: e.clientY, group: g });
+                      }}
+                    />
+                    </ScrollReveal>
+                  ) : (
+                    <ScrollReveal key={item.data.id} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
                     <ComicCard
-                      key={comic.id}
-                      comic={comic}
+                      comic={item.data}
                       isReal={useRealData}
                       viewMode={viewMode}
                       batchMode={batchMode}
-                      isSelected={selectedIds.has(comic.id)}
+                      isSelected={selectedIds.has(item.data.id)}
                       onSelect={toggleSelect}
                       draggable={sortBy === "custom" && !batchMode}
                       onDragStart={handleDragStart}
                       onDragOver={handleDragOver}
                       onDragEnd={handleDragEnd}
-                      isDragOver={dragOverId === comic.id}
-                      isDragging={dragId === comic.id}
-                      tagData={comic.tagData}
-                      animationIndex={offset + index < 20 ? offset + index : undefined}
-                      isRemoving={removingIds.has(comic.id)}
+                      isDragOver={dragOverId === item.data.id}
+                      isDragging={dragId === item.data.id}
+                      tagData={item.data.tagData}
+                      animationIndex={index < 20 ? index : undefined}
+                      isRemoving={removingIds.has(item.data.id)}
                       onContextMenu={(e, c) => {
                         setContextMenu({ x: e.clientX, y: e.clientY, comic: c });
                       }}
                     />
                     </ScrollReveal>
-                  );
-                })}
+                  )
+                ))}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center">

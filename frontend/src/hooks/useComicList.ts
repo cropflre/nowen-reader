@@ -49,6 +49,7 @@ export function useComics(options?: {
   category?: string;
   contentType?: string; // "comic" | "novel" | ""
   excludeGrouped?: boolean; // 排除已在合集中的漫画（合集视图）
+  fetchAll?: boolean; // 获取全部漫画（不分页，用于客户端合并分页）
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,8 +74,11 @@ export function useComics(options?: {
     if (options?.favoritesOnly) params.set("favorites", "true");
     if (options?.sortBy) params.set("sortBy", options.sortBy);
     if (options?.sortOrder) params.set("sortOrder", options.sortOrder);
-    if (options?.page) params.set("page", String(options.page));
-    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+    // fetchAll 模式不传 page/pageSize，后端 pageSize<=0 时不应用 LIMIT
+    if (!options?.fetchAll) {
+      if (options?.page) params.set("page", String(options.page));
+      if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+    }
     if (options?.category) params.set("category", options.category);
     if (options?.contentType) params.set("contentType", options.contentType);
     if (options?.excludeGrouped) params.set("excludeGrouped", "true");
@@ -130,7 +134,7 @@ export function useComics(options?: {
         setFetching(false);
       }
     }
-  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped]);
+  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped, options?.fetchAll]);
 
   useEffect(() => {
     fetchComics();
