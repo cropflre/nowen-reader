@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"github.com/gin-gonic/gin"
@@ -10,11 +10,15 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	// ============================================================
 	comic := NewComicHandler()
 
-	// Comics listing (read-only, no auth needed for browsing)
-	api.GET("/comics", comic.ListComics)
-	api.GET("/comics/duplicates", comic.DetectDuplicates)
+	// Comics read operations — require auth
+	comicsRead := api.Group("/comics")
+	comicsRead.Use(middleware.AuthRequired())
+	{
+		comicsRead.GET("", comic.ListComics)
+		comicsRead.GET("/duplicates", comic.DetectDuplicates)
+	}
 
-	// Comics write ops (require admin — 非管理员只读)
+	// Comics write ops (require admin)
 	comicsWrite := api.Group("/comics")
 	comicsWrite.Use(middleware.AdminRequired())
 	{
@@ -30,13 +34,14 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicsAdmin.POST("/redetect-types", comic.RedetectTypes)
 	}
 
-	// Single comic read operations (no auth)
+	// Single comic read — require auth
 	comicByID := api.Group("/comics/:id")
+	comicByID.Use(middleware.AuthRequired())
 	{
 		comicByID.GET("", comic.GetComic)
 	}
 
-	// Single comic write operations (require admin — 非管理员只读)
+	// Single comic write operations (require admin)
 	comicByIDWrite := api.Group("/comics/:id")
 	comicByIDWrite.Use(middleware.AdminRequired())
 	{
@@ -57,7 +62,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicByIDWrite.PUT("/metadata", comic.UpdateMetadata)
 	}
 
-	// 阅读进度和状态（所有登录用户可用，非管理员也需要保存阅读进度）
+	// 阅读进度和状态（所有登录用户可用）
 	comicByIDAuth := api.Group("/comics/:id")
 	comicByIDAuth.Use(middleware.AuthRequired())
 	{
@@ -65,7 +70,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicByIDAuth.PUT("/reading-status", comic.SetReadingStatus)
 	}
 
-	// 单本漫画管理员操作（删除等危险操作需要管理员权限）
+	// 单本漫画管理员操作（删除等危险操作）
 	comicByIDAdmin := api.Group("/comics/:id")
 	comicByIDAdmin.Use(middleware.AdminRequired())
 	{
@@ -74,31 +79,35 @@ func registerComicRoutes(api *gin.RouterGroup) {
 
 	// ============================================================
 
-
-	// Sync trigger (Phase 2) — requires admin
+	// Sync trigger — requires admin
 	syncTrigger := api.Group("")
 	syncTrigger.Use(middleware.AdminRequired())
 	{
 		syncTrigger.POST("/sync", comic.TriggerSync)
 	}
 
-	// Image serving (Phase 3)
+	// Image serving (Phase 3) — all require auth
 	img := NewImageHandler()
 
 	comicByID.GET("/pages", img.GetPages)
 	comicByID.GET("/thumbnail", img.GetThumbnail)
 	comicByIDWrite.POST("/cover", img.UpdateCover)
-	api.GET("/comics/:id/page/:pageIndex", img.GetPageImage)
-	api.GET("/comics/:id/pdf", img.GetPdfFile)
-	api.GET("/comics/:id/chapter/:chapterIndex", img.GetChapterContent)
-	api.GET("/comics/:id/epub-resource/*resourcePath", img.GetEpubResource)
-	api.GET("/comics/:id/embedded-images", img.GetEmbeddedImages)
-	api.GET("/comics/:id/embedded-image/:index", img.GetEmbeddedImage)
-	api.POST("/comics/:id/warmup", img.WarmupPages)
-	api.POST("/comics/:id/warmup-done", img.WarmupDone)
 
-	// Per-comic metadata translation (requires auth)
+	// Resource serving — require auth (registered on a dedicated group)
+	imgRead := api.Group("/comics/:id")
+	imgRead.Use(middleware.AuthRequired())
+	{
+		imgRead.GET("/page/:pageIndex", img.GetPageImage)
+		imgRead.GET("/pdf", img.GetPdfFile)
+		imgRead.GET("/chapter/:chapterIndex", img.GetChapterContent)
+		imgRead.GET("/epub-resource/*resourcePath", img.GetEpubResource)
+		imgRead.GET("/embedded-images", img.GetEmbeddedImages)
+		imgRead.GET("/embedded-image/:index", img.GetEmbeddedImage)
+		imgRead.POST("/warmup", img.WarmupPages)
+		imgRead.POST("/warmup-done", img.WarmupDone)
+	}
+
+	// Per-comic metadata translation (requires admin)
 	tagTranslate := NewTagTranslateHandler()
 	comicByIDWrite.POST("/translate-metadata", tagTranslate.TranslateMetadata)
-
 }

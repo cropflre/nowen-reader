@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
@@ -57,7 +57,7 @@ export default function CollectionsPage() {
   const t = useTranslation();
   const toast = useToast();
 
-  // 分组数据
+  // 合集数据
   const [groups, setGroups] = useState<ComicGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -195,7 +195,7 @@ export default function CollectionsPage() {
     localStorage.setItem("collections-viewMode", viewMode);
   }, [viewMode]);
 
-  // ── 加载分组数据 ──
+  // ── 加载合集数据 ──
   const loadGroups = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -300,7 +300,7 @@ export default function CollectionsPage() {
     }
   }, [currentPage, collectionsTotalPages, loading]);
 
-  // ── 创建分组 ──
+  // ── 创建合集 ──
   const handleCreate = useCallback(async () => {
     if (!createName.trim()) return;
     setCreating(true);
@@ -308,7 +308,7 @@ export default function CollectionsPage() {
       const comicIds = Array.from(selectedComicIds);
       const result = await createGroup(createName.trim(), comicIds.length > 0 ? comicIds : undefined);
       if (result.success) {
-        toast.success(tGroup.createGroup || "分组已创建");
+        toast.success(tGroup.createGroup || "合集已创建");
         setShowCreateDialog(false);
         setCreateName("");
         setSelectedComicIds(new Set());
@@ -319,14 +319,14 @@ export default function CollectionsPage() {
     }
   }, [createName, selectedComicIds, loadGroups, toast, tGroup]);
 
-  // ── 删除分组 ──
+  // ── 删除合集 ──
   const handleDelete = useCallback(async () => {
     if (deleteConfirmId === null) return;
     setDeleting(true);
     try {
       const ok = await deleteGroup(deleteConfirmId);
       if (ok) {
-        toast.success(tGroup.deleteSuccess || "分组已删除");
+        toast.success(tGroup.deleteSuccess || "合集已删除");
         setGroups((prev) => prev.filter((g) => g.id !== deleteConfirmId));
         setDeleteConfirmId(null);
       }
@@ -475,14 +475,14 @@ export default function CollectionsPage() {
                 </button>
               )}
 
-              {/* 智能分组 */}
+              {/* 智能合集 */}
               {!batchMode && (
                 <button
                   onClick={() => setShowAutoDetect(true)}
                   className="hidden sm:flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/20"
                 >
                   <Wand2 className="h-4 w-4" />
-                  {tGroup.autoDetect || "智能分组"}
+                  {tGroup.autoDetect || "智能合集"}
                 </button>
               )}
 
@@ -531,7 +531,7 @@ export default function CollectionsPage() {
                     toast.error(tCollections.mergeNeedTwo || "至少需要选择两个合集才能合并");
                     return;
                   }
-                  // 使用第一个选中分组的名称作为默认合并名
+                  // 使用第一个选中合集的名称作为默认合并名
                   const firstSelected = groups.find((g) => selectedIds.has(g.id));
                   setMergeName(firstSelected?.name || "");
                   setShowMergeDialog(true);
@@ -749,7 +749,7 @@ export default function CollectionsPage() {
                 : (tCollections.filterNovel || "小说")}
             </button>
           ))}
-          {/* 移动端智能分组按钮 */}
+          {/* 移动端智能合集按钮 */}
           <button
             onClick={() => setShowAutoDetect(true)}
             className="flex items-center justify-center rounded-lg bg-amber-500/10 p-2 text-amber-400"
@@ -782,7 +782,7 @@ export default function CollectionsPage() {
             <p className="mb-6 max-w-sm text-center text-sm text-muted">
               {searchQuery
                 ? (tCollections.emptySearchHint || "尝试其他关键词或清除搜索")
-                : (tCollections.emptyHint || "使用智能分组自动发现同系列作品，或手动创建合集")}
+                : (tCollections.emptyHint || "使用智能合集自动发现同系列作品，或手动创建合集")}
             </p>
             {!searchQuery && (
               <div className="flex items-center gap-3">
@@ -791,7 +791,7 @@ export default function CollectionsPage() {
                   className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-5 py-2.5 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/25"
                 >
                   <Wand2 className="h-4 w-4" />
-                  {tGroup.autoDetect || "智能分组"}
+                  {tGroup.autoDetect || "智能合集"}
                 </button>
                 <button
                   onClick={() => setShowCreateDialog(true)}
@@ -972,7 +972,7 @@ export default function CollectionsPage() {
         )}
       </main>
 
-      {/* ── 智能分组面板 ── */}
+      {/* ── 智能合集面板 ── */}
       <AutoDetectPanel
         open={showAutoDetect}
         onClose={() => setShowAutoDetect(false)}

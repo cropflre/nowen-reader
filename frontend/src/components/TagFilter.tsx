@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Tag, ChevronLeft, ChevronRight, Languages } from "lucide-react";
@@ -151,7 +151,7 @@ export default function TagFilter({
           /* 无标签时：显示空状态提示 */
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted">
-              {t.tagFilter.empty || "暂无标签，可在漫画详情页添加"}
+              {t.tagFilter.empty || "暂无标签，可在标签与分类管理页面添加"}
             </span>
           </div>
         ) : collapsed && allTags.length > FOLD_THRESHOLD ? (

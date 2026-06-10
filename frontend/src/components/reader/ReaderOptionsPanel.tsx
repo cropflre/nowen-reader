@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useTranslation } from "@/lib/i18n";
 import { X, ChevronDown, Monitor, Wrench, Cog } from "lucide-react";
@@ -35,7 +35,7 @@ export default function ReaderOptionsPanel({
     String(options.autoPageInterval)
   );
 
-  // 分组展开状态: 显示默认展开，其余收起
+  // 合集展开状态: 显示默认展开，其余收起
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(["display"])
   );
@@ -187,7 +187,7 @@ export default function ReaderOptionsPanel({
     </div>
   );
 
-  /** 分组区域 */
+  /** 合集区域 */
   const Group = ({
     id,
     icon,

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -1820,7 +1820,7 @@ export default function ScraperPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-foreground">{scraperT.collectionTitle || "合集管理"}</div>
-                    <div className="text-[10px] text-muted">{scraperT.collectionDesc || "管理漫画系列分组与元数据关联"}</div>
+                    <div className="text-[10px] text-muted">{scraperT.collectionDesc || "管理漫画系列合集与元数据关联"}</div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted/40 flex-shrink-0" />
                 </button>

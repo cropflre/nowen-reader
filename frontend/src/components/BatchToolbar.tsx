@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -181,10 +181,10 @@ export default function BatchToolbar({
               <button
                 onClick={onMergeGroup}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
-                title={t.comicGroup?.mergeSelected || "合并为分组"}
+                title={t.comicGroup?.mergeSelected || "合并为合集"}
               >
                 <FolderPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t.comicGroup?.mergeSelected || "合并为分组"}</span>
+                <span className="hidden sm:inline">{t.comicGroup?.mergeSelected || "合并为合集"}</span>
               </button>
             )}
 
@@ -193,10 +193,10 @@ export default function BatchToolbar({
               <button
                 onClick={onAddToGroup}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-muted transition-colors hover:bg-card-hover hover:text-foreground"
-                title={t.comicGroup?.addToGroup || "加入分组"}
+                title={t.comicGroup?.addToGroup || "加入合集"}
               >
                 <FolderInput className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t.comicGroup?.addToGroup || "加入分组"}</span>
+                <span className="hidden sm:inline">{t.comicGroup?.addToGroup || "加入合集"}</span>
               </button>
             )}
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
@@ -1097,7 +1097,7 @@ export function DetailPanel({
                 <button onClick={() => handleAiInferApply(false)} className="rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-medium text-purple-300 hover:bg-purple-500/30" title="仅应用到本卷">
                   应用本卷
                 </button>
-                <button onClick={() => handleAiInferApply(true)} className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300 hover:bg-amber-500/30" title="同时将作品名、作者、状态等写回所属分组（系列）">
+                <button onClick={() => handleAiInferApply(true)} className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300 hover:bg-amber-500/30" title="同时将作品名、作者、状态等写回所属合集（系列）">
                   应用到系列
                 </button>
                 <button onClick={() => setAiInferResult(null)} className="rounded-md px-1.5 py-0.5 text-[10px] text-muted hover:text-foreground">

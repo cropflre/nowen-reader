@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useCallback, useEffect } from "react";
 import Image from "next/image";
@@ -44,7 +44,7 @@ export default function AutoDetectPanel({
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
   const [creating, setCreating] = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
-  // 编辑分组名
+  // 编辑合集名
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   // 自动继承元数据开关
@@ -209,7 +209,7 @@ export default function AutoDetectPanel({
           <div className="flex items-center gap-2">
             <Wand2 className="h-5 w-5 text-accent" />
             <h2 className="text-lg font-semibold text-foreground">
-              {t.comicGroup?.autoDetect || "智能分组"}
+              {t.comicGroup?.autoDetect || "智能合集"}
             </h2>
           </div>
           <button
@@ -229,7 +229,7 @@ export default function AutoDetectPanel({
                 <Wand2 className="h-8 w-8 text-accent" />
               </div>
               <p className="mb-2 text-sm font-medium text-foreground">
-                {t.comicGroup?.autoDetect || "智能分组"}
+                {t.comicGroup?.autoDetect || "智能合集"}
               </p>
               <p className="mb-6 text-xs text-muted text-center max-w-xs">
                 {t.comicGroup?.autoDetectDesc || "自动识别可合并的同系列漫画"}
@@ -289,7 +289,7 @@ export default function AutoDetectPanel({
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-500/10 px-4 py-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <span className="text-sm font-medium text-emerald-400">
-                {(t.comicGroup?.created || "已创建 {count} 个分组").replace(
+                {(t.comicGroup?.created || "已创建 {count} 个合集").replace(
                   "{count}",
                   String(createdCount)
                 )}
@@ -328,7 +328,7 @@ export default function AutoDetectPanel({
                     {t.comicGroup?.autoInheritMetadata || "自动继承首卷元数据"}
                   </span>
                   <p className="text-[10px] text-muted mt-0.5">
-                    {t.comicGroup?.autoInheritMetadataDesc || "创建分组后自动将首卷的作者、出版商等信息继承到系列"}
+                    {t.comicGroup?.autoInheritMetadataDesc || "创建合集后自动将首卷的作者、出版商等信息继承到系列"}
                   </p>
                 </div>
                 <button
@@ -344,7 +344,7 @@ export default function AutoDetectPanel({
                 </button>
               </label>
 
-              {/* 分组建议列表 */}
+              {/* 合集建议列表 */}
               {suggestions.map((suggestion, index) => {
                 const isSelected = selectedIndices.has(index);
                 const isExpanded = expandedIndices.has(index);
@@ -358,7 +358,7 @@ export default function AutoDetectPanel({
                         : "border-border/40 bg-card/50"
                     }`}
                   >
-                    {/* 分组头部 */}
+                    {/* 合集头部 */}
                     <div className="flex items-center gap-3 px-4 py-3">
                       {/* 选择框 */}
                       <button
@@ -372,7 +372,7 @@ export default function AutoDetectPanel({
                         )}
                       </button>
 
-                      {/* 分组图标 */}
+                      {/* 合集图标 */}
                       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10">
                         <Layers className="h-4 w-4 text-accent" />
                       </div>
@@ -400,7 +400,7 @@ export default function AutoDetectPanel({
                             <h3
                               className="truncate text-sm font-medium text-foreground cursor-pointer hover:text-accent transition-colors"
                               onClick={(e) => startEditName(index, e)}
-                              title={locale === "en" ? "Click to edit group name" : "点击编辑分组名称"}
+                              title={locale === "en" ? "Click to edit group name" : "点击编辑合集名称"}
                             >
                               {suggestion.name}
                             </h3>

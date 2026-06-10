@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"github.com/gin-gonic/gin"
@@ -9,7 +9,11 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	// Tags (Phase 2)
 	// ============================================================
 	tag := NewTagHandler()
-	api.GET("/tags", tag.ListTags)
+	tagsRead := api.Group("/tags")
+	tagsRead.Use(middleware.AuthRequired())
+	{
+		tagsRead.GET("", tag.ListTags)
+	}
 
 	tagAdmin := api.Group("/tags")
 	tagAdmin.Use(middleware.AdminRequired())
@@ -24,7 +28,11 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	// Categories (Phase 2)
 	// ============================================================
 	cat := NewCategoryHandler()
-	api.GET("/categories", cat.ListCategories)
+	catsRead := api.Group("/categories")
+	catsRead.Use(middleware.AuthRequired())
+	{
+		catsRead.GET("", cat.ListCategories)
+	}
 
 	catAdmin := api.Group("/categories")
 	catAdmin.Use(middleware.AdminRequired())
@@ -39,21 +47,20 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	// ============================================================
 	// Reading Stats (Phase 2)
 	// ============================================================
-	// 阅读统计会话（所有登录用户可用，非管理员也需要记录阅读时长）
 	stats := NewStatsHandler()
-	api.GET("/stats", stats.GetStats)
-	api.GET("/stats/yearly", stats.GetYearlyReport)
-	api.GET("/stats/enhanced", stats.GetEnhancedStats)
-	api.GET("/stats/files", stats.GetFileStats)
-	api.GET("/stats/folder-tree", stats.GetFolderTreeStats)
-
-	statsAuth := api.Group("/stats")
-	statsAuth.Use(middleware.AuthRequired())
+	statsRead := api.Group("/stats")
+	statsRead.Use(middleware.AuthRequired())
 	{
-		statsAuth.POST("/session", stats.StartSession)
-		statsAuth.PUT("/session", stats.EndSession)
-		statsAuth.POST("/session/end", stats.EndSession) // sendBeacon 兆底（sendBeacon 只支持 POST）
+		statsRead.GET("", stats.GetStats)
+		statsRead.GET("/yearly", stats.GetYearlyReport)
+		statsRead.GET("/enhanced", stats.GetEnhancedStats)
+		statsRead.GET("/files", stats.GetFileStats)
+		statsRead.GET("/folder-tree", stats.GetFolderTreeStats)
+		statsRead.POST("/session", stats.StartSession)
+		statsRead.PUT("/session", stats.EndSession)
+		statsRead.POST("/session/end", stats.EndSession) // sendBeacon 兆底
 	}
+
 	// ============================================================
 	// Upload (Phase 2) — requires admin
 	// ============================================================
@@ -65,11 +72,12 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Site Settings (Phase 2) — read public, write requires admin
+	// Site Settings — public read (前端登录前需要显示站点名/logo)
 	// ============================================================
 	settings := NewSettingsHandler()
 	api.GET("/site-settings", settings.GetSettings)
 	api.GET("/site-settings/icon", settings.GetIcon)
+
 	settingsWrite := api.Group("")
 	settingsWrite.Use(middleware.AdminRequired())
 	{
@@ -79,7 +87,7 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Scan Rules (扫描期统一规则引擎) — 全部需要管理员
+	// Scan Rules — requires admin
 	// ============================================================
 	scanRules := NewScanRulesHandler()
 	scanRulesGroup := api.Group("/scan-rules")
@@ -95,7 +103,7 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Directory Browser (文件夹浏览) — requires admin
+	// Directory Browser — requires admin
 	// ============================================================
 	browse := NewBrowseHandler()
 	browseGroup := api.Group("")
@@ -105,7 +113,7 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Cache management (Phase 3) — requires admin
+	// Cache management — requires admin
 	// ============================================================
 	cache := NewCacheHandler()
 	cacheGroup := api.Group("")
@@ -115,7 +123,7 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// 数据管理（缓存 + 数据库 + 磁盘 + 阈值）— requires admin
+	// 数据管理 — requires admin
 	// ============================================================
 	dataAdmin := NewDataAdminHandler()
 	dataAdminGroup := api.Group("/admin/storage")
@@ -133,7 +141,7 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Thumbnail management (Phase 3) — requires admin
+	// Thumbnail management — requires admin
 	// ============================================================
 	thumb := NewThumbnailHandler()
 	thumbGroup := api.Group("")
@@ -143,10 +151,15 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Reading Goals (阅读目标)
+	// Reading Goals
 	// ============================================================
 	goal := NewGoalHandler()
-	api.GET("/goals", goal.GetGoalProgress)
+	goalsRead := api.Group("/goals")
+	goalsRead.Use(middleware.AuthRequired())
+	{
+		goalsRead.GET("", goal.GetGoalProgress)
+	}
+
 	goalWrite := api.Group("")
 	goalWrite.Use(middleware.AdminRequired())
 	{
@@ -155,12 +168,14 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Data Export (数据导出)
+	// Data Export — require auth
 	// ============================================================
 	export := NewExportHandler()
-	api.GET("/export/json", export.ExportJSON)
-	api.GET("/export/csv/sessions", export.ExportCSV)
-	api.GET("/export/csv/comics", export.ExportComicsCSV)
-
-	// ============================================================
+	exportRead := api.Group("/export")
+	exportRead.Use(middleware.AuthRequired())
+	{
+		exportRead.GET("/json", export.ExportJSON)
+		exportRead.GET("/csv/sessions", export.ExportCSV)
+		exportRead.GET("/csv/comics", export.ExportComicsCSV)
+	}
 }

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ApiComic, ComicsResponse } from "./useComicTypes";
@@ -36,7 +36,7 @@ export function invalidateComicsCache() {
 }
 
 /**
- * Hook: 获取漫画列表（带客户端缓存）
+ * Hook: 获取漫画列表（带客户端缓存 + AbortController）
  */
 export function useComics(options?: {
   search?: string;
@@ -48,7 +48,8 @@ export function useComics(options?: {
   pageSize?: number;
   category?: string;
   contentType?: string; // "comic" | "novel" | ""
-  excludeGrouped?: boolean; // 排除已在分组中的漫画（分组视图）
+  excludeGrouped?: boolean; // 排除已在合集中的漫画（合集视图）
+  fetchAll?: boolean; // 获取全部漫画（不分页，用于客户端合并分页）
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,16 +58,27 @@ export function useComics(options?: {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const initializedRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchComics = useCallback(async () => {
+    // 取消之前的请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     const params = new URLSearchParams();
     if (options?.search) params.set("search", options.search);
     if (options?.tags?.length) params.set("tags", options.tags.join(","));
     if (options?.favoritesOnly) params.set("favorites", "true");
     if (options?.sortBy) params.set("sortBy", options.sortBy);
     if (options?.sortOrder) params.set("sortOrder", options.sortOrder);
-    if (options?.page) params.set("page", String(options.page));
-    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+    // fetchAll 模式不传 page/pageSize，后端 pageSize<=0 时不应用 LIMIT
+    if (!options?.fetchAll) {
+      if (options?.page) params.set("page", String(options.page));
+      if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+    }
     if (options?.category) params.set("category", options.category);
     if (options?.contentType) params.set("contentType", options.contentType);
     if (options?.excludeGrouped) params.set("excludeGrouped", "true");
@@ -94,9 +106,11 @@ export function useComics(options?: {
     setError(null);
 
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: abortController.signal });
       if (!res.ok) throw new Error("Failed to fetch comics");
       const data: ComicsResponse = await res.json();
+      // 检查请求是否被取消
+      if (abortController.signal.aborted) return;
       const safeComics = (data.comics || []).map((c) => ({
         ...c,
         tags: c.tags || [],
@@ -108,23 +122,39 @@ export function useComics(options?: {
       setCachedResponse(cacheKey, { ...data, comics: safeComics });
       initializedRef.current = true;
     } catch (err) {
+      // 忽略取消的请求
+      if (err instanceof Error && err.name === "AbortError") return;
       if (!cached) {
         setError(err instanceof Error ? err.message : "Unknown error");
       }
     } finally {
-      setLoading(false);
-      setFetching(false);
+      // 只有当前请求没有被取消时才更新状态
+      if (!abortController.signal.aborted) {
+        setLoading(false);
+        setFetching(false);
+      }
     }
-  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped]);
+  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped, options?.fetchAll]);
 
   useEffect(() => {
     fetchComics();
+    return () => {
+      // 组件卸载时取消请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchComics]);
 
   const refetch = useCallback(async () => {
+    // 取消之前的请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     invalidateComicsCache();
     return fetchComics();
   }, [fetchComics]);
 
-  return { comics, loading, fetching, error, total, totalPages, refetch };
+  // 导出 setComics 供外部直接更新状态（乐观更新）
+  return { comics, setComics, loading, fetching, error, total, totalPages, refetch };
 }

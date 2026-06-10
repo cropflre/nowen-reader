@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 漫画相关的共享类型定义
  * 被所有 useComic*.ts hooks 和 api/comics.ts 共用
  */
@@ -53,7 +53,7 @@ export interface ApiCategory {
 }
 
 // ============================================================
-// Comic Groups (自定义合并分组)
+// Comic Groups (自定义合并合集)
 // ============================================================
 
 export interface ComicGroup {

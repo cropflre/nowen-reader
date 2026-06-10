@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -79,7 +79,7 @@ export default function GroupContextMenu({
   const menuItems = [
     {
       key: "open",
-      label: t.contextMenu?.openGroup || "打开分组",
+      label: t.contextMenu?.openGroup || "打开合集",
       icon: <FolderOpen className="h-3.5 w-3.5" />,
     },
     // 重命名 — 仅管理员可见
@@ -88,12 +88,12 @@ export default function GroupContextMenu({
       label: t.contextMenu?.renameGroup || "重命名",
       icon: <Pencil className="h-3.5 w-3.5" />,
     }] : []),
-    // 删除分组 — 仅管理员可见
+    // 删除合集 — 仅管理员可见
     ...(isAdmin ? [{
       key: "delete",
       label: confirmDelete
         ? (t.contextMenu?.confirmDelete || "确认删除？")
-        : (t.contextMenu?.deleteGroup || "删除分组"),
+        : (t.contextMenu?.deleteGroup || "删除合集"),
       icon: <Trash2 className="h-3.5 w-3.5" />,
       danger: true,
     }] : []),

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
@@ -286,7 +286,7 @@ export function ScanRulesPanel() {
         },
       })
     );
-    setMessage({ type: "info", text: "已套用推荐配置：新增入库后自动识别、分组，并用硬链接生成整理目录。确认无误后点击保存。" });
+    setMessage({ type: "info", text: "已套用推荐配置：新增入库后自动识别、合集，并用硬链接生成整理目录。确认无误后点击保存。" });
   };
 
   const save = async () => {
@@ -341,7 +341,7 @@ export function ScanRulesPanel() {
           type: "success",
           text: dryRun
             ? `预览完成（共 ${data.result.total} 项；预计处理 ${data.result.inferred + data.result.groupedNew + data.result.directoryOrganized} 项）`
-            : `执行完成（识别 ${data.result.inferred}，新建分组 ${data.result.groupedNew}，目录整理 ${data.result.directoryOrganized}，失败 ${data.result.failed}）`,
+            : `执行完成（识别 ${data.result.inferred}，新建合集 ${data.result.groupedNew}，目录整理 ${data.result.directoryOrganized}，失败 ${data.result.failed}）`,
         });
       }
     } catch (e) {
@@ -530,7 +530,7 @@ export function ScanRulesPanel() {
           onChange={(v) => setRules({ ...rules, aiInfer: { ...rules.aiInfer, applyToComic: v } })}
         />
         <Toggle
-          label="同步到所属分组"
+          label="同步到所属合集"
           desc="把作品名/作者等同步写到 ComicGroup 表"
           checked={rules.aiInfer.applyToGroup}
           onChange={(v) => setRules({ ...rules, aiInfer: { ...rules.aiInfer, applyToGroup: v } })}
@@ -544,7 +544,7 @@ export function ScanRulesPanel() {
       </SectionCard>
 
       {/* 虚拟归类 */}
-      <SectionCard title="虚拟归类（自动分组）" icon={<FolderTree className="h-4 w-4" />}>
+      <SectionCard title="虚拟归类（自动合集）" icon={<FolderTree className="h-4 w-4" />}>
         <Toggle
           label="启用"
           desc="扫描后按目录结构自动创建/合并 ComicGroup（不会移动磁盘文件）"
@@ -552,14 +552,14 @@ export function ScanRulesPanel() {
           onChange={(v) => setRules({ ...rules, organize: { ...rules.organize, enabled: v } })}
         />
         <Toggle
-          label="按文件夹自动分组"
-          desc="同目录文件归为同一分组，多级目录智能命名"
+          label="按文件夹自动合集"
+          desc="同目录文件归为同一合集，多级目录智能命名"
           checked={rules.organize.autoGroupByDir}
           onChange={(v) => setRules({ ...rules, organize: { ...rules.organize, autoGroupByDir: v } })}
         />
         <Toggle
           label="从首卷继承元数据"
-          desc="新创建分组时把首卷的作者/封面等同步到分组"
+          desc="新创建合集时把首卷的作者/封面等同步到合集"
           checked={rules.organize.inheritMeta}
           onChange={(v) => setRules({ ...rules, organize: { ...rules.organize, inheritMeta: v } })}
         />
@@ -857,7 +857,7 @@ export function ScanRulesPanel() {
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
             <Stat label="目标总数" value={lastResult.total} />
             <Stat label="AI 识别" value={lastResult.inferred} accent />
-            <Stat label="新建分组" value={lastResult.groupedNew} accent />
+            <Stat label="新建合集" value={lastResult.groupedNew} accent />
             <Stat label="目录整理" value={lastResult.directoryOrganized} accent />
             <Stat label="跳过" value={lastResult.skipped} dim />
             <Stat label="失败" value={lastResult.failed} error />

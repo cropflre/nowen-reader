@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -36,7 +36,7 @@ const GroupCard = memo(function GroupCard({
   const t = useTranslation();
   const [coverLoaded, setCoverLoaded] = useState(false);
 
-  // 构建分组详情链接（携带 contentType 参数）
+  // 构建合集详情链接（携带 contentType 参数）
   const groupHref = contentType
     ? `/group/${group.id}?contentType=${contentType}`
     : `/group/${group.id}`;
@@ -89,7 +89,7 @@ const GroupCard = memo(function GroupCard({
                   <Layers className="h-5 w-5 text-accent" />
                 </div>
               )}
-              {/* 分组角标 */}
+              {/* 合集角标 */}
               <div className="absolute bottom-0 right-0 rounded-tl-md bg-accent px-1 py-0.5 text-[8px] font-bold text-white">
                 {group.comicCount}
               </div>
@@ -177,7 +177,7 @@ const GroupCard = memo(function GroupCard({
                   <Layers className="h-12 w-12 text-accent/40" />
                 </div>
               )}
-              {/* 分组标识覆盖层 */}
+              {/* 合集标识覆盖层 */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
               <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
                 <span className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-lg">
@@ -220,7 +220,7 @@ const GroupCard = memo(function GroupCard({
                   <Layers className="h-12 w-12 text-accent/40" />
                 </div>
               )}
-              {/* 渐变 + 分组标识 */}
+              {/* 渐变 + 合集标识 */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-80 transition-opacity group-hover:opacity-100" />
               <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
                 <span className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-lg">

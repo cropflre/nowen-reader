@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"github.com/gin-gonic/gin"
@@ -6,7 +6,7 @@ import (
 )
 
 func registerMetadataRoutes(api *gin.RouterGroup) {
-	// Phase 4: Metadata, AI, OPDS, WebDAV, Recommendations, etc.
+	// Phase 4: Metadata, AI, OPDS, Recommendations, etc.
 	// ============================================================
 
 	// Metadata scraping — requires admin + scraper enabled
@@ -53,7 +53,6 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		aiAdmin.GET("/models", ai.Models)
 		aiAdmin.DELETE("/usage", ai.ResetUsageStats)
 		aiAdmin.POST("/test", ai.TestConnection)
-		// AI prompt templates (Phase 2) — 管理员管理
 		aiAdmin.GET("/prompts", ai.GetPromptTemplates)
 		aiAdmin.PUT("/prompts", ai.UpdatePromptTemplates)
 		aiAdmin.DELETE("/prompts", ai.ResetPromptTemplates)
@@ -63,51 +62,37 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 	aiUse := api.Group("/ai")
 	aiUse.Use(middleware.AIRequired())
 	{
-		// AI Chat (Phase 3)
 		aiUse.POST("/chat", ai.Chat)
-		// AI semantic search (Phase 4)
 		aiUse.POST("/semantic-search", ai.SemanticSearch)
-		// AI reading insight (Phase 5)
 		aiUse.POST("/reading-insight", ai.GenerateReadingInsight)
-		// AI batch suggest tags (Phase 5)
 		aiUse.POST("/batch-suggest-tags", ai.BatchSuggestTags)
-		// AI enhanced group detection (Phase 6)
 		aiUse.POST("/enhance-group-detect", ai.EnhanceGroupDetect)
-		// AI suggest category (Phase 6)
 		aiUse.POST("/suggest-category", ai.SuggestCategory)
-		// AI batch suggest category (Phase 6)
 		aiUse.POST("/batch-suggest-category", ai.BatchSuggestCategory)
-		// AI verify duplicates (Phase 7)
 		aiUse.POST("/verify-duplicates", ai.VerifyDuplicates)
-		// AI recommend goal (Phase 7)
 		aiUse.POST("/recommend-goal", ai.RecommendGoal)
 	}
 
-	// AI per-comic features (Phase 1) — 需要 AI 权限
+	// AI per-comic features — require AI access
 	comicByIDAI := api.Group("/comics/:id")
 	comicByIDAI.Use(middleware.AIRequired())
 	{
 		comicByIDAI.POST("/ai-summary", ai.GenerateSummary)
 		comicByIDAI.POST("/ai-parse-filename", ai.ParseFilename)
-		// 目录级智能标题推断（结合父目录名 + 同伴文件名样本）
 		comicByIDAI.POST("/ai-infer-title", ai.InferTitle)
 		comicByIDAI.POST("/ai-suggest-tags", ai.SuggestTags)
-		// Phase 2
 		comicByIDAI.POST("/ai-analyze-cover", ai.AnalyzeCover)
-		// Phase 6
 		comicByIDAI.POST("/ai-complete-metadata", ai.CompleteMetadata)
-		// Phase 7
 		comicByIDAI.POST("/ai-chapter-recap", ai.ChapterRecap)
-		// AI chapter summary (Phase 3)
 		comicByIDAI.POST("/ai-chapter-summary", ai.ChapterSummary)
 		comicByIDAI.POST("/ai-chapter-summaries", ai.BatchChapterSummaries)
-		// AI page translation (Phase 4)
 		comicByIDAI.POST("/ai-translate-page", ai.TranslatePage)
 	}
 
-	// OPDS protocol
+	// OPDS protocol — require auth (cookie or query token)
 	opds := NewOPDSHandler()
 	opdsGroup := api.Group("/opds")
+	opdsGroup.Use(middleware.AuthRequired())
 	{
 		opdsGroup.GET("", opds.Root)
 		opdsGroup.GET("/all", opds.All)
@@ -117,12 +102,16 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		opdsGroup.GET("/download/:id", opds.Download)
 	}
 
-	// Recommendations
+	// Recommendations — require auth
 	rec := NewRecommendationHandler()
-	api.GET("/recommendations", rec.GetRecommendations)
-	api.GET("/recommendations/similar/:id", rec.GetSimilar)
+	recRead := api.Group("/recommendations")
+	recRead.Use(middleware.AuthRequired())
+	{
+		recRead.GET("", rec.GetRecommendations)
+		recRead.GET("/similar/:id", rec.GetSimilar)
+	}
 
-	// AI recommendation reasons (需要 AI 权限)
+	// AI recommendation reasons — require AI access
 	aiRecGroup := api.Group("")
 	aiRecGroup.Use(middleware.AIRequired())
 	{
@@ -137,14 +126,15 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		tagTranslateAdmin.POST("/tags/translate", tagTranslate.TranslateTags)
 	}
 
-
-	// ============================================================
-	// 翻译引擎管理 API
-	// ============================================================
-	api.GET("/translate/engines", tagTranslate.GetEngines)
-	api.GET("/translate/config", tagTranslate.GetTranslateConfig)
-	api.GET("/translate/health", tagTranslate.GetEngineHealth)
-	api.GET("/translate/cache/stats", tagTranslate.GetCacheStats)
+	// 翻译引擎管理 API — read requires auth
+	translateRead := api.Group("/translate")
+	translateRead.Use(middleware.AuthRequired())
+	{
+		translateRead.GET("/engines", tagTranslate.GetEngines)
+		translateRead.GET("/config", tagTranslate.GetTranslateConfig)
+		translateRead.GET("/health", tagTranslate.GetEngineHealth)
+		translateRead.GET("/cache/stats", tagTranslate.GetCacheStats)
+	}
 
 	translateWrite := api.Group("/translate")
 	translateWrite.Use(middleware.AdminRequired())
@@ -155,12 +145,18 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Comic Groups (自定义合并分组)
+	// Comic Groups
 	// ============================================================
 	group := NewGroupHandler()
-	api.GET("/groups", group.ListGroups)
-	api.GET("/groups/comic-map", group.GetComicMap)
-	api.GET("/groups/:id", group.GetGroup)
+
+	// Group read — require auth
+	groupRead := api.Group("/groups")
+	groupRead.Use(middleware.AuthRequired())
+	{
+		groupRead.GET("", group.ListGroups)
+		groupRead.GET("/comic-map", group.GetComicMap)
+		groupRead.GET("/:id", group.GetGroup)
+	}
 
 	groupWrite := api.Group("/groups")
 	groupWrite.Use(middleware.AdminRequired())
@@ -175,22 +171,18 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		groupWrite.POST("/:id/inherit-metadata", group.InheritMetadata)
 		groupWrite.POST("/:id/preview-inherit", group.PreviewInherit)
 		groupWrite.POST("/:id/inherit-to-volumes", group.InheritToVolumes)
-		// P2: 系列级标签管理
 		groupWrite.GET("/:id/tags", group.GetGroupTags)
 		groupWrite.PUT("/:id/tags", group.SetGroupTags)
 		groupWrite.POST("/:id/sync-tags", group.SyncGroupTags)
 		groupWrite.POST("/:id/override-tags", group.OverrideGroupTags)
 		groupWrite.POST("/:id/ai-suggest-tags", group.AISuggestTags)
-		// P5: 系列级分类管理
 		groupWrite.GET("/:id/categories", group.GetGroupCategories)
 		groupWrite.PUT("/:id/categories", group.SetGroupCategories)
 		groupWrite.POST("/:id/sync-categories", group.SyncGroupCategories)
 		groupWrite.POST("/:id/ai-suggest-categories", group.AISuggestCategories)
-		// P4: 系列级元数据刮削 & AI 识别
 		groupWrite.POST("/:id/scrape-metadata", middleware.ScraperRequired(), group.ScrapeMetadata)
 		groupWrite.POST("/:id/apply-metadata", middleware.ScraperRequired(), group.ApplyScrapedMetadata)
 		groupWrite.POST("/:id/ai-recognize", middleware.ScraperRequired(), group.AIRecognize)
-		// P3: 按话/卷自动分组
 		groupWrite.POST("/auto-group-by-dir", group.AutoGroupByDirectory)
 		groupWrite.POST("/auto-detect", group.AutoDetect)
 		groupWrite.POST("/batch-create", group.BatchCreate)
@@ -198,14 +190,13 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		groupWrite.POST("/batch-scrape", middleware.ScraperRequired(), group.BatchScrape)
 		groupWrite.POST("/merge", group.MergeGroups)
 		groupWrite.POST("/export", group.ExportGroups)
-		// 脏数据检测与清理
 		groupWrite.POST("/detect-dirty", group.DetectDirty)
 		groupWrite.POST("/cleanup", group.Cleanup)
 		groupWrite.POST("/fix-name", group.FixName)
 	}
 
 	// ============================================================
-	// Error Logs (错误日志查看) — requires admin
+	// Error Logs — requires admin
 	// ============================================================
 	logH := NewLogHandler()
 	logGroup := api.Group("/logs")
@@ -218,7 +209,7 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Metadata Sync (元数据同步) — requires admin
+	// Metadata Sync — requires admin
 	// ============================================================
 	syncH := NewSyncHandler()
 	syncGroup := api.Group("/sync")

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
@@ -395,13 +395,13 @@ export function SiteSettingsPanel() {
     // Validate file type (不支持 SVG，存在 XSS 风险)
     const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
-      setIconError("不支持的文件格式，请上传 PNG、JPG 或 WebP 格式的图标");
+      setIconError(siteT?.iconTypeError || "不支持的文件格式，请上传 PNG、JPG 或 WebP 格式的图标");
       return;
     }
 
     // Validate file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
-      setIconError("图标文件大小不能超过 2MB");
+      setIconError(siteT?.iconSizeError || "图标文件大小不能超过 2MB");
       return;
     }
 
@@ -690,7 +690,7 @@ export function SiteSettingsPanel() {
           {siteT?.siteIcon || "Site Icon"}
         </div>
         <p className="text-[11px] text-muted">
-          {siteT?.siteIconDesc || "Upload a custom icon for the site logo. Supports PNG, JPG, SVG, WebP formats, max 2MB."}
+          {siteT?.siteIconDesc || "Upload a custom icon for the site logo. Supports PNG, JPG, WebP formats, max 2MB."}
         </p>
 
         <div className="flex items-center gap-4">

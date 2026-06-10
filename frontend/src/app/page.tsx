@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -58,6 +58,8 @@ function apiToComic(api: ApiComic): Comic {
     tags: (api.tags || []).map((t) => t.name),
     tagData: api.tags || [],
     pageCount: api.pageCount,
+    fileSize: api.fileSize,
+    addedAt: api.addedAt || undefined,
     progress:
       api.pageCount > 0
         ? Math.round((api.lastReadPage / api.pageCount) * 100)
@@ -150,7 +152,7 @@ export default function Home() {
   // Duplicate detection
   const [showDuplicates, setShowDuplicates] = useState(false);
 
-  // Comic Groups (自定义合并分组)
+  // Comic Groups (自定义合并合集)
   const [groups, setGroups] = useState<ComicGroup[]>([]);
   const [groupedComicMap, setGroupedComicMap] = useState<Record<string, number[]>>({});
   const [showGroupView, setShowGroupView] = useState<boolean>(() => {
@@ -167,7 +169,7 @@ export default function Home() {
   const [aiTagsLoading, setAiTagsLoading] = useState(false);
   const [aiCategoryLoading, setAiCategoryLoading] = useState(false);
 
-  // 分组视图分页（优先从 sessionStorage 恢复，因为 Next.js 客户端导航后 URL 参数可能丢失）
+  // 合集视图分页（优先从 sessionStorage 恢复，因为 Next.js 客户端导航后 URL 参数可能丢失）
   const [groupPage, setGroupPage] = useState(() => {
     if (typeof window !== "undefined") {
       // 优先从 sessionStorage 恢复（最可靠来源，不受 Next.js 路由影响）
@@ -207,16 +209,16 @@ export default function Home() {
     y: number;
     comic: Comic;
   } | null>(null);
-  // 右键"加入分组"时暂存的漫画ID
+  // 右键"加入合集"时暂存的漫画ID
   const [contextAddToGroupIds, setContextAddToGroupIds] = useState<string[] | null>(null);
 
-  // 分组右键菜单状态
+  // 合集右键菜单状态
   const [groupContextMenu, setGroupContextMenu] = useState<{
     x: number;
     y: number;
     group: ComicGroup;
   } | null>(null);
-  // 分组重命名对话框
+  // 合集重命名对话框
   const [renameGroup, setRenameGroup] = useState<{ id: number; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
@@ -316,14 +318,14 @@ export default function Home() {
     localStorage.setItem("viewMode", viewMode);
   }, [viewMode]);
 
-  // 分组视图持久化
+  // 合集视图持久化
   useEffect(() => {
     localStorage.setItem("showGroupView", String(showGroupView));
   }, [showGroupView]);
 
   const { categories, groupCategories, refetch: refetchCategories, refetchGroupCategories, initCategories } = useCategories();
 
-  // 加载分组数据（按 contentType 过滤）
+  // 加载合集数据（按 contentType 过滤）
   const loadGroups = useCallback(async () => {
     const [grps, gmap] = await Promise.all([
       fetchGroups(contentType || undefined, selectedCategory || undefined, selectedTags.length > 0 ? selectedTags : undefined, favoritesOnly || undefined),
@@ -331,7 +333,7 @@ export default function Home() {
     ]);
     setGroups(grps);
     setGroupedComicMap(gmap);
-    // 分组数据变化后刷新系列级分类统计
+    // 合集数据变化后刷新系列级分类统计
     if (showGroupView) {
       refetchGroupCategories(contentType || undefined);
     }
@@ -351,7 +353,7 @@ export default function Home() {
     );
   }, [groups, debouncedSearch]);
 
-  // 分组视图分页计算
+  // 合集视图分页计算
   const groupTotalPages = Math.max(1, Math.ceil(filteredGroups.length / GROUP_PAGE_SIZE));
   const pagedGroups = useMemo(() => {
     const start = (groupPage - 1) * GROUP_PAGE_SIZE;
@@ -387,7 +389,7 @@ export default function Home() {
     window.history.replaceState(null, "", newUrl);
   }, [currentPage]);
 
-  // 分组视图分页变化时持久化到 sessionStorage 和 URL 参数（确保从分组详情页返回时可恢复）
+  // 合集视图分页变化时持久化到 sessionStorage 和 URL 参数（确保从合集详情页返回时可恢复）
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (groupPage > 1) {
@@ -414,15 +416,22 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Fetch real comics from API with pagination + server-side filtering
-  const { comics: apiComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
-    page: currentPage,
-    pageSize,
+  // 统一视图模式：默认视图下合集和漫画混合排序分页
+  const isUnifiedView = !showGroupView;
+
+  // Fetch real comics from API
+  // 统一视图：获取全部漫画（客户端合并排序分页）
+  // 合集视图：排除已分组漫画 + 服务端分页
+  const { comics: apiComics, setComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
+    fetchAll: isUnifiedView || undefined,
+    page: isUnifiedView ? undefined : currentPage,
+    pageSize: isUnifiedView ? undefined : pageSize,
     search: debouncedSearch || undefined,
     tags: selectedTags.length > 0 ? selectedTags : undefined,
     favoritesOnly: favoritesOnly || undefined,
-    sortBy: sortBy || undefined,
-    sortOrder: sortOrder || undefined,
+    // 统一视图下客户端排序，不传排序参数；合集视图保持服务端排序
+    sortBy: isUnifiedView ? undefined : (sortBy || undefined),
+    sortOrder: isUnifiedView ? undefined : (sortOrder || undefined),
     category: selectedCategory || undefined,
     contentType: contentType || undefined,
     excludeGrouped: showGroupView || undefined,
@@ -437,16 +446,7 @@ export default function Home() {
   // 只显示有内容的分类（count > 0）
   const effectiveCategories = showGroupView ? groupCategories.filter(c => c.count > 0) : categories.filter(c => c.count > 0);
 
-  // 根据当前 contentType 决定分页总页数
-  // 默认视图下，总页数基于合集数量 + 散本数量
-  const effectiveTotalPages = useMemo(() => {
-    if (showGroupView) return groupTotalPages;
-    const groupedCount = Object.keys(groupedComicMap).length;
-    const looseTotal = groupedCount > 0 ? Math.max(0, apiTotal - groupedCount) : apiTotal;
-    const totalItems = filteredGroups.length + looseTotal;
-    return Math.max(1, Math.ceil(totalItems / pageSize));
-  }, [showGroupView, groupTotalPages, groupedComicMap, filteredGroups.length, apiTotal, pageSize]);
-  // 统一分页操作：分组视图用 groupPage，漫画视图用 currentPage
+  // 统一分页操作：合集视图用 groupPage，漫画视图用 currentPage
   const activePage = showGroupView ? groupPage : currentPage;
   const setActivePage = showGroupView ? setGroupPage : setCurrentPage;
 
@@ -462,14 +462,15 @@ export default function Home() {
     safeSetGroupPage(1);
   }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, contentType, safeSetCurrentPage, safeSetGroupPage]);
 
-  // 分组视图切换时重置分组分页（使用受保护的 setter，挂载保护期内不会重置）
+  // 视图模式切换时重置分页（使用受保护的 setter，挂载保护期内不会重置）
   useEffect(() => {
     if (!showGroupViewMountedRef.current) {
       showGroupViewMountedRef.current = true;
       return;
     }
     safeSetGroupPage(1);
-  }, [showGroupView, safeSetGroupPage]);
+    safeSetCurrentPage(1);
+  }, [showGroupView, safeSetGroupPage, safeSetCurrentPage]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -553,6 +554,69 @@ export default function Home() {
     if (Object.keys(groupedComicMap).length === 0) return sortedComics; // 无合集不过滤
     return sortedComics.filter((c) => !groupedComicMap[c.id]);
   }, [sortedComics, groupedComicMap]);
+
+  // ── 统一混合列表（合集 + 散本混合排序分页） ──
+  type UnifiedItem = { type: 'group'; data: ComicGroup } | { type: 'comic'; data: Comic };
+
+  // 排序键提取：将 Comic 和 Group 映射到可比较的值
+  const getSortKey = useCallback((item: UnifiedItem): string | number | null => {
+    if (item.type === 'group') {
+      const g = item.data;
+      switch (sortBy) {
+        case 'title': return g.name?.toLowerCase() || '';
+        case 'addedAt': return g.createdAt || '';
+        case 'custom': return g.sortOrder ?? 0;
+        // lastReadAt / rating / fileSize：合集无此字段 → null
+        default: return null;
+      }
+    } else {
+      const c = item.data;
+      switch (sortBy) {
+        case 'title': return c.title?.toLowerCase() || '';
+        case 'addedAt': return c.addedAt || '';
+        case 'lastReadAt': return c.lastRead || null;
+        case 'rating': return c.rating ?? null;
+        case 'custom': return c.sortOrder ?? 0;
+        case 'fileSize': return c.fileSize ?? null;
+        default: return c.title?.toLowerCase() || '';
+      }
+    }
+  }, [sortBy]);
+
+  // 统一混合列表：合集和散本合并排序
+  const unifiedItems = useMemo(() => {
+    if (!isUnifiedView) return [];
+    const groupItems: UnifiedItem[] = filteredGroups.map(g => ({ type: 'group', data: g }));
+    const comicItems: UnifiedItem[] = looseComics.map(c => ({ type: 'comic', data: c }));
+    const all = [...groupItems, ...comicItems];
+
+    const dir = sortOrder === 'desc' ? -1 : 1;
+    all.sort((a, b) => {
+      const keyA = getSortKey(a);
+      const keyB = getSortKey(b);
+      // null 值排到前面（ASC）或后面（DESC）
+      if (keyA === null && keyB === null) return 0;
+      if (keyA === null) return sortOrder === 'desc' ? 1 : -1;
+      if (keyB === null) return sortOrder === 'desc' ? -1 : 1;
+      if (keyA < keyB) return -1 * dir;
+      if (keyA > keyB) return 1 * dir;
+      return 0;
+    });
+    return all;
+  }, [isUnifiedView, filteredGroups, looseComics, getSortKey, sortOrder]);
+
+  // 统一视图客户端分页
+  const unifiedTotalPages = useMemo(() => Math.max(1, Math.ceil(unifiedItems.length / pageSize)), [unifiedItems.length, pageSize]);
+  const pagedUnifiedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return unifiedItems.slice(start, start + pageSize);
+  }, [unifiedItems, currentPage, pageSize]);
+
+  // 根据当前视图模式决定分页总页数
+  const effectiveTotalPages = useMemo(() => {
+    if (showGroupView) return groupTotalPages;
+    return unifiedTotalPages;
+  }, [showGroupView, groupTotalPages, unifiedTotalPages]);
 
   const handleTagToggle = (tag: string) => {
     setSelectedTags((prev) =>
@@ -646,7 +710,7 @@ export default function Home() {
     setSelectedGroupIds(new Set());
   }, []);
 
-  // 分组批量选择
+  // 合集批量选择
   const toggleGroupSelect = useCallback((id: number) => {
     setSelectedGroupIds((prev) => {
       const next = new Set(prev);
@@ -656,7 +720,7 @@ export default function Home() {
     });
   }, []);
 
-  // 分组批量删除
+  // 合集批量删除
   const handleBatchDeleteGroups = useCallback(async () => {
     const ids = Array.from(selectedGroupIds);
     // 先播放删除动画
@@ -671,7 +735,7 @@ export default function Home() {
       if (deleted > 0) {
         await loadGroups();
         await refetch();
-        toast.success((t.comicGroup?.deleteSuccess || "分组已删除") + ` (${deleted})`);
+        toast.success((t.comicGroup?.deleteSuccess || "合集已删除") + ` (${deleted})`);
       }
       setSelectedGroupIds(new Set());
     }, 400);
@@ -840,14 +904,14 @@ export default function Home() {
     [selectedIds, exitBatchMode, refetch, refetchCategories, refetchGroupCategories, showGroupView, contentType]
   );
 
-  // 合并为分组
+  // 合并为合集
   const handleMergeToGroup = useCallback(
     async (groupName: string) => {
       const ids = Array.from(selectedIds);
       if (ids.length < 2) return;
       const result = await createGroup(groupName, ids);
       if (result.success) {
-        toast.success(t.comicGroup?.created?.replace("{count}", "1") || "已创建 1 个分组");
+        toast.success(t.comicGroup?.created?.replace("{count}", "1") || "已创建 1 个合集");
         exitBatchMode();
         await loadGroups();
         setShowGroupView(true);
@@ -1229,7 +1293,7 @@ export default function Home() {
 
             {/* Comics Grid */}
             <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
-            {/* 分组视图模式：只显示分组卡片 */}
+            {/* 合集视图模式：只显示合集卡片 */}
             {showGroupView ? (
               pagedGroups.length > 0 ? (
                 <div
@@ -1265,16 +1329,16 @@ export default function Home() {
                   <h3 className="mb-2 text-lg font-medium text-foreground/80">
                     {debouncedSearch
                       ? (t.common?.noSearchResults || "未找到匹配的合集")
-                      : (t.comicGroup?.noGroups || "还没有分组")}
+                      : (t.comicGroup?.noGroups || "还没有合集")}
                   </h3>
                   <p className="max-w-sm text-sm text-muted mb-5">
                     {debouncedSearch
                       ? (t.common?.tryDifferentKeywords || "试试其他关键词")
-                      : (t.comicGroup?.noGroupsHint || "可以通过智能分组或批量选择漫画来创建分组")}
+                      : (t.comicGroup?.noGroupsHint || "可以通过智能合集或批量选择漫画来创建合集")}
                   </p>
                 </div>
               )
-            ) : (filteredGroups.length > 0 || looseComics.length > 0) ? (
+            ) : (pagedUnifiedItems.length > 0) ? (
               <div
                 className={
                   viewMode === "grid"
@@ -1282,58 +1346,54 @@ export default function Home() {
                     : "grid grid-cols-1 gap-2 sm:gap-3"
                 }
               >
-                {/* 合集卡片（优先展示） */}
-                {filteredGroups.map((group, index) => (
-                  <ScrollReveal key={`group-${group.id}`} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
-                  <GroupCard
-                    group={group}
-                    viewMode={viewMode}
-                    contentType={contentType}
-                    batchMode={batchMode}
-                    isSelected={selectedGroupIds.has(group.id)}
-                    onSelect={toggleGroupSelect}
-                    animationIndex={index < 20 ? index : undefined}
-                    isRemoving={removingGroupIds.has(group.id)}
-                    onContextMenu={(e, g) => {
-                      setGroupContextMenu({ x: e.clientX, y: e.clientY, group: g });
-                    }}
-                  />
-                  </ScrollReveal>
-                ))}
-                {/* 散本漫画卡片（不属于任何合集） */}
-                {looseComics.map((comic, index) => {
-                  const offset = filteredGroups.length;
-                  return (
-                    <ScrollReveal key={comic.id} disabled={offset + index < 20} delay={offset + index >= 20 ? (offset + index - 20) % 6 * 50 : 0}>
+                {/* 统一混合渲染：合集和散本按排序交替显示 */}
+                {pagedUnifiedItems.map((item, index) => (
+                  item.type === 'group' ? (
+                    <ScrollReveal key={`group-${item.data.id}`} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
+                    <GroupCard
+                      group={item.data}
+                      viewMode={viewMode}
+                      contentType={contentType}
+                      batchMode={batchMode}
+                      isSelected={selectedGroupIds.has(item.data.id)}
+                      onSelect={toggleGroupSelect}
+                      animationIndex={index < 20 ? index : undefined}
+                      isRemoving={removingGroupIds.has(item.data.id)}
+                      onContextMenu={(e, g) => {
+                        setGroupContextMenu({ x: e.clientX, y: e.clientY, group: g });
+                      }}
+                    />
+                    </ScrollReveal>
+                  ) : (
+                    <ScrollReveal key={item.data.id} disabled={index < 20} delay={index >= 20 ? (index - 20) % 6 * 50 : 0}>
                     <ComicCard
-                      key={comic.id}
-                      comic={comic}
+                      comic={item.data}
                       isReal={useRealData}
                       viewMode={viewMode}
                       batchMode={batchMode}
-                      isSelected={selectedIds.has(comic.id)}
+                      isSelected={selectedIds.has(item.data.id)}
                       onSelect={toggleSelect}
                       draggable={sortBy === "custom" && !batchMode}
                       onDragStart={handleDragStart}
                       onDragOver={handleDragOver}
                       onDragEnd={handleDragEnd}
-                      isDragOver={dragOverId === comic.id}
-                      isDragging={dragId === comic.id}
-                      tagData={comic.tagData}
-                      animationIndex={offset + index < 20 ? offset + index : undefined}
-                      isRemoving={removingIds.has(comic.id)}
+                      isDragOver={dragOverId === item.data.id}
+                      isDragging={dragId === item.data.id}
+                      tagData={item.data.tagData}
+                      animationIndex={index < 20 ? index : undefined}
+                      isRemoving={removingIds.has(item.data.id)}
                       onContextMenu={(e, c) => {
                         setContextMenu({ x: e.clientX, y: e.clientY, comic: c });
                       }}
                     />
                     </ScrollReveal>
-                  );
-                })}
+                  )
+                ))}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center">
                 <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-card">
-                  <span className="text-4xl">{apiTotal === 0 ? "📚" : "🔍"}</span>
+                  <span className="text-4xl">{favoritesOnly ? "❤️" : apiTotal === 0 ? "📚" : "🔍"}</span>
                 </div>
                 <h3 className="mb-2 text-lg font-medium text-foreground/80">
                   {apiTotal === 0
@@ -1347,7 +1407,14 @@ export default function Home() {
                 </p>
                 {/* 引导性操作按钮 */}
                 <div className="flex flex-wrap items-center justify-center gap-3">
-                  {apiTotal === 0 ? (
+                  {favoritesOnly ? (
+                    <button
+                      onClick={() => setFavoritesOnly(false)}
+                      className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                    >
+                      ✖ {t.dataExport?.clearFilters || "清除筛选条件"}
+                    </button>
+                  ) : apiTotal === 0 ? (
                     <>
                       <button
                         onClick={handleUpload}
@@ -1535,7 +1602,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* 分组批量操作栏 — 固定在底部，当漫画也被选中时叠在BatchToolbar上方 */}
+      {/* 合集批量操作栏 — 固定在底部，当漫画也被选中时叠在BatchToolbar上方 */}
       {batchMode && selectedGroupIds.size > 0 && (
         <div className={`fixed left-0 right-0 z-50 border-t border-border/50 bg-background/95 px-3 sm:px-6 py-2 sm:py-3 backdrop-blur-xl ${
           selectedIds.size > 0 ? "bottom-[52px] sm:bottom-[56px]" : "bottom-0 safe-bottom"
@@ -1548,14 +1615,14 @@ export default function Home() {
               </span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* 批量删除分组 — 仅管理员可见 */}
+              {/* 批量删除合集 — 仅管理员可见 */}
               {isAdmin && (
               <button
                 onClick={handleBatchDeleteGroups}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t.contextMenu?.deleteGroup || "删除分组"}</span>
+                <span className="hidden sm:inline">{t.contextMenu?.deleteGroup || "删除合集"}</span>
               </button>
               )}
               {/* 仅当没选漫画时显示取消按钮（漫画操作栏有自己的取消按钮） */}
@@ -1615,14 +1682,14 @@ export default function Home() {
             setShowAddToGroup(false);
             exitBatchMode();
             loadGroups();
-            toast.success(t.comicGroup?.addToGroup || "已加入分组");
+            toast.success(t.comicGroup?.addToGroup || "已加入合集");
           }}
         />
       )}
 
 
 
-      {/* 分组右键菜单 */}
+      {/* 合集右键菜单 */}
       {groupContextMenu && (
         <GroupContextMenu
           x={groupContextMenu.x}
@@ -1643,7 +1710,7 @@ export default function Home() {
               setRemovingGroupIds(new Set());
               if (ok) {
                 await loadGroups();
-                toast.success(t.comicGroup?.deleteSuccess || "分组已删除");
+                toast.success(t.comicGroup?.deleteSuccess || "合集已删除");
                 await refetch();
               }
             }, 400);
@@ -1652,7 +1719,7 @@ export default function Home() {
         />
       )}
 
-      {/* 分组重命名对话框 */}
+      {/* 合集重命名对话框 */}
       {renameGroup && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-backdrop-in" onClick={() => setRenameGroup(null)}>
           <div
@@ -1660,7 +1727,7 @@ export default function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-4 text-lg font-semibold text-foreground">
-              {t.contextMenu?.renameGroup || "重命名分组"}
+              {t.contextMenu?.renameGroup || "重命名合集"}
             </h3>
             <input
               autoFocus
@@ -1679,7 +1746,7 @@ export default function Home() {
                 if (e.key === "Escape") setRenameGroup(null);
               }}
               className="w-full rounded-xl border border-border/60 bg-background px-4 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-accent/50 focus:ring-1 focus:ring-accent/30"
-              placeholder={t.comicGroup?.groupName || "分组名称"}
+              placeholder={t.comicGroup?.groupName || "合集名称"}
             />
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -1755,7 +1822,7 @@ export default function Home() {
         />
       )}
 
-      {/* 右键菜单“加入分组”弹窗 */}
+      {/* 右键菜单“加入合集”弹窗 */}
       {contextAddToGroupIds && (
         <AddToGroupDialog
           comicIds={contextAddToGroupIds}
@@ -1764,7 +1831,7 @@ export default function Home() {
           onDone={() => {
             setContextAddToGroupIds(null);
             loadGroups();
-            toast.success(t.comicGroup?.addToGroup || "已加入分组");
+            toast.success(t.comicGroup?.addToGroup || "已加入合集");
           }}
         />
       )}

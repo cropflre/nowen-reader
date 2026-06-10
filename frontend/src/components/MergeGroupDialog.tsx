@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { FolderPlus, X } from "lucide-react";
@@ -26,7 +26,7 @@ export default function MergeGroupDialog({
           <div className="flex items-center gap-2">
             <FolderPlus className="h-5 w-5 text-accent" />
             <h3 className="text-lg font-semibold text-foreground">
-              {t.comicGroup?.mergeSelected || "合并为分组"}
+              {t.comicGroup?.mergeSelected || "合并为合集"}
             </h3>
           </div>
           <button
@@ -38,7 +38,7 @@ export default function MergeGroupDialog({
         </div>
 
         <p className="mb-4 text-sm text-muted">
-          将选中的 <span className="font-medium text-accent">{selectedCount}</span> 本漫画合并为一个分组
+          将选中的 <span className="font-medium text-accent">{selectedCount}</span> 本漫画合并为一个合集
         </p>
 
         <input
@@ -50,7 +50,7 @@ export default function MergeGroupDialog({
               onConfirm(name.trim());
             }
           }}
-          placeholder={t.comicGroup?.groupNamePlaceholder || "输入分组名称..."}
+          placeholder={t.comicGroup?.groupNamePlaceholder || "输入合集名称..."}
           className="w-full rounded-xl bg-background px-4 py-3 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-2 focus:ring-accent/30"
           autoFocus
         />
@@ -69,7 +69,7 @@ export default function MergeGroupDialog({
             disabled={!name.trim()}
             className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            {t.comicGroup?.createGroup || "创建分组"}
+            {t.comicGroup?.createGroup || "创建合集"}
           </button>
         </div>
       </div>

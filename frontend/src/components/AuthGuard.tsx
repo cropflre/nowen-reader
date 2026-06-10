@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
-import { User, Lock, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
+import { User, Lock, Eye, EyeOff, LogIn, UserPlus, BookMarked } from "lucide-react";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading, needsSetup } = useAuth();
@@ -31,7 +31,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 function SetupPage() {
   const { register } = useAuth();
   const t = useTranslation();
-  const { siteName } = useSiteSettings();
+  const { siteName, siteIcon } = useSiteSettings();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
@@ -56,6 +56,13 @@ function SetupPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
+          {siteIcon ? (
+            <img src="/api/site-settings/icon" alt="Site Icon" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
+          ) : (
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent">
+              <BookMarked className="h-8 w-8 text-white" />
+            </div>
+          )}
           <h1 className="text-3xl font-bold text-foreground mb-2">
             {siteName}
           </h1>
@@ -132,7 +139,7 @@ function SetupPage() {
 function LoginPage() {
   const { login, register, registrationMode } = useAuth();
   const t = useTranslation();
-  const { siteName } = useSiteSettings();
+  const { siteName, siteIcon } = useSiteSettings();
   const canRegister = registrationMode === "open";
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState("");
@@ -163,6 +170,13 @@ function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
+          {siteIcon ? (
+            <img src="/api/site-settings/icon" alt="Site Icon" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
+          ) : (
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent">
+              <BookMarked className="h-8 w-8 text-white" />
+            </div>
+          )}
           <h1 className="text-3xl font-bold text-foreground mb-2">
             {siteName}
           </h1>

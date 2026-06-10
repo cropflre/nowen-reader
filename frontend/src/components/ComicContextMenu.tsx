@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -116,7 +116,7 @@ export default function ComicContextMenu({
     },
     {
       key: "addToGroup",
-      label: t.contextMenu?.addToGroup || "加入分组",
+      label: t.contextMenu?.addToGroup || "加入合集",
       icon: <FolderInput className="h-3.5 w-3.5" />,
       hidden: !isAdmin,
     },

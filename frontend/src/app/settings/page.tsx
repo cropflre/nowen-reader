@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -140,7 +140,7 @@ export default function SettingsPage() {
     if (btn) btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [activeTab]);
 
-  /* ── Tab 定义（分组） ── */
+  /* ── Tab 定义（合集） ── */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tAny = t as any;
   const groups: TabGroup[] = [
@@ -234,7 +234,7 @@ export default function SettingsPage() {
         <aside className="hidden sm:flex flex-col w-56 flex-shrink-0 border-r border-border/40 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto p-3 gap-1">
           {groups.map((group, gi) => (
             <div key={gi} className={gi > 0 ? "mt-4" : ""}>
-              {/* 分组标题 */}
+              {/* 合集标题 */}
               <div className="flex items-center gap-2 px-3 mb-1.5">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted/60">
                   {group.title}

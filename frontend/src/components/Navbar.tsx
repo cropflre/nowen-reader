@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
@@ -76,7 +76,7 @@ export default function Navbar({
         {/* Logo */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           {siteIcon ? (
-            <img src="/api/site-settings/icon" alt="Site Icon" className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg object-contain" />
+            <img src={`/api/site-settings/icon?t=${Date.now()}`} alt="Site Icon" className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg object-contain" />
           ) : (
             <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-accent">
               <BookMarked className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" />

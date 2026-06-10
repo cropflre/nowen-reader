@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
@@ -75,7 +75,7 @@ export default function AddToGroupDialog({
           <div className="flex items-center gap-2">
             <FolderPlus className="h-5 w-5 text-accent" />
             <h3 className="text-base font-semibold text-foreground">
-              {t.comicGroup?.addToGroup || "加入分组"}
+              {t.comicGroup?.addToGroup || "加入合集"}
             </h3>
             <span className="rounded-md bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
               {comicIds.length} {t.statsBar?.unit || "本"}
@@ -97,13 +97,13 @@ export default function AddToGroupDialog({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t.comicGroup?.searchGroupHint || "搜索分组..."}
+              placeholder={t.comicGroup?.searchGroupHint || "搜索合集..."}
               className="w-full rounded-xl bg-background py-2.5 pl-9 pr-4 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/30"
             />
           </div>
         </div>
 
-        {/* 分组列表 */}
+        {/* 合集列表 */}
         <div className="max-h-72 overflow-y-auto px-5 py-3">
           {loading ? (
             <div className="flex items-center justify-center py-8">
@@ -114,8 +114,8 @@ export default function AddToGroupDialog({
               <Layers className="mb-2 h-8 w-8 text-muted/30" />
               <p className="text-xs text-muted">
                 {groups.length === 0
-                  ? (t.comicGroup?.noGroups || "还没有分组")
-                  : (t.comicGroup?.noMatchGroup || "无匹配分组")}
+                  ? (t.comicGroup?.noGroups || "还没有合集")
+                  : (t.comicGroup?.noMatchGroup || "无匹配合集")}
               </p>
             </div>
           ) : (
@@ -159,7 +159,7 @@ export default function AddToGroupDialog({
           )}
         </div>
 
-        {/* 创建新分组 */}
+        {/* 创建新合集 */}
         <div className="border-t border-border/30 px-5 py-3">
           {showCreate ? (
             <div className="flex items-center gap-2">
@@ -171,7 +171,7 @@ export default function AddToGroupDialog({
                   if (e.key === "Enter" && newName.trim()) handleCreateAndAdd();
                   if (e.key === "Escape") setShowCreate(false);
                 }}
-                placeholder={t.comicGroup?.groupNamePlaceholder || "输入分组名称..."}
+                placeholder={t.comicGroup?.groupNamePlaceholder || "输入合集名称..."}
                 className="flex-1 rounded-lg bg-background px-3 py-2 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/30"
                 autoFocus
               />
@@ -198,7 +198,7 @@ export default function AddToGroupDialog({
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted transition-colors hover:border-accent/50 hover:text-accent"
             >
               <Plus className="h-4 w-4" />
-              {t.comicGroup?.createGroup || "创建新分组"}
+              {t.comicGroup?.createGroup || "创建新合集"}
             </button>
           )}
         </div>

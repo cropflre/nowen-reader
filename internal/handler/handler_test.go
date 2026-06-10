@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"bytes"
@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/middleware"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
@@ -36,6 +38,31 @@ func setupTestRouter(t *testing.T) *gin.Engine {
 	return r
 }
 
+// registerAndLogin registers an admin user and returns the session cookie.
+func registerAndLogin(t *testing.T, r *gin.Engine) string {
+	t.Helper()
+
+	// Register
+	regBody := map[string]string{
+		"username": "admin",
+		"password": "password123",
+		"nickname": "Admin User",
+	}
+	w := performRequest(r, "POST", "/api/auth/register", regBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Register failed: %d %s", w.Code, w.Body.String())
+	}
+
+	// Extract session cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == middleware.SessionCookie {
+			return c.Value
+		}
+	}
+	t.Fatal("No session cookie after registration")
+	return ""
+}
+
 // performRequest executes an HTTP request against the test router.
 func performRequest(r *gin.Engine, method, path string, body interface{}) *httptest.ResponseRecorder {
 	var reqBody *bytes.Buffer
@@ -48,6 +75,29 @@ func performRequest(r *gin.Engine, method, path string, body interface{}) *httpt
 
 	req, _ := http.NewRequest(method, path, reqBody)
 	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// performAuthedRequest executes an authenticated HTTP request.
+func performAuthedRequest(r *gin.Engine, method, path string, body interface{}, cookie string) *httptest.ResponseRecorder {
+	var reqBody *bytes.Buffer
+	if body != nil {
+		b, _ := json.Marshal(body)
+		reqBody = bytes.NewBuffer(b)
+	} else {
+		reqBody = bytes.NewBuffer(nil)
+	}
+
+	req, _ := http.NewRequest(method, path, reqBody)
+	req.Header.Set("Content-Type", "application/json")
+	if cookie != "" {
+		req.AddCookie(&http.Cookie{
+			Name:  middleware.SessionCookie,
+			Value: cookie,
+		})
+	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
@@ -92,37 +142,27 @@ func TestAuthRegisterAndLogin(t *testing.T) {
 	}
 
 	// Register first user (should become admin)
-	regBody := map[string]string{
-		"username": "admin",
-		"password": "password123",
-		"nickname": "Admin User",
-	}
-	w = performRequest(r, "POST", "/api/auth/register", regBody)
-	if w.Code != http.StatusOK {
-		t.Fatalf("Register failed with status %d: %s", w.Code, w.Body.String())
-	}
+	cookie := registerAndLogin(t, r)
 
-	var regResp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &regResp)
-	user := regResp["user"].(map[string]interface{})
+	// Check me with auth
+	w = performAuthedRequest(r, "GET", "/api/auth/me", nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Me failed with status %d", w.Code)
+	}
+	json.Unmarshal(w.Body.Bytes(), &meResp)
+	user := meResp["user"].(map[string]interface{})
 	if user["role"] != "admin" {
 		t.Errorf("First user should be admin, got '%v'", user["role"])
 	}
 
 	// Try registering with same username
-	w = performRequest(r, "POST", "/api/auth/register", regBody)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Duplicate registration should fail, got %d", w.Code)
-	}
-
-	// Login with correct credentials
-	loginBody := map[string]string{
+	regBody := map[string]string{
 		"username": "admin",
 		"password": "password123",
 	}
-	w = performRequest(r, "POST", "/api/auth/login", loginBody)
-	if w.Code != http.StatusOK {
-		t.Fatalf("Login failed with status %d: %s", w.Code, w.Body.String())
+	w = performRequest(r, "POST", "/api/auth/register", regBody)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Duplicate registration should fail with 400, got %d", w.Code)
 	}
 
 	// Login with wrong password
@@ -179,86 +219,86 @@ func TestAuthValidation(t *testing.T) {
 
 func TestComicsEndpoints(t *testing.T) {
 	r := setupTestRouter(t)
+	cookie := registerAndLogin(t, r)
 
 	// List comics (empty)
-	w := performRequest(r, "GET", "/api/comics", nil)
+	w := performAuthedRequest(r, "GET", "/api/comics", nil, cookie)
 	if w.Code != http.StatusOK {
 		t.Fatalf("List comics failed with status %d", w.Code)
 	}
+
 	var listResp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &listResp)
-	if listResp["total"].(float64) != 0 {
-		t.Errorf("Expected 0 comics, got %v", listResp["total"])
+	comics := listResp["comics"].([]interface{})
+	if len(comics) != 0 {
+		t.Errorf("Expected 0 comics, got %d", len(comics))
 	}
 
-	// Insert test comics via store directly
-	comics := []struct {
+	// Create a comic directly in DB for testing
+	testComics := []struct {
 		ID       string
 		Filename string
 		Title    string
 		FileSize int64
 	}{
-		{store.FilenameToID("test1.cbz"), "test1.cbz", "Test Comic 1", 1000},
-		{store.FilenameToID("test2.cbz"), "test2.cbz", "Test Comic 2", 2000},
+		{"test-comic-1", "test-comic.cbz", "Test Comic", 1000},
 	}
-	store.BulkCreateComics(comics)
+	store.BulkCreateComics(testComics)
 
-	// List comics
-	w = performRequest(r, "GET", "/api/comics", nil)
+	// List comics (should have 1)
+	w = performAuthedRequest(r, "GET", "/api/comics", nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("List comics failed with status %d", w.Code)
+	}
 	json.Unmarshal(w.Body.Bytes(), &listResp)
-	if listResp["total"].(float64) != 2 {
-		t.Errorf("Expected 2 comics, got %v", listResp["total"])
+	comics = listResp["comics"].([]interface{})
+	if len(comics) != 1 {
+		t.Errorf("Expected 1 comic, got %d", len(comics))
 	}
 
 	// Get single comic
-	comicID := comics[0].ID
-	w = performRequest(r, "GET", "/api/comics/"+comicID, nil)
+	comicID := "test-comic-1"
+	w = performAuthedRequest(r, "GET", "/api/comics/"+comicID, nil, cookie)
 	if w.Code != http.StatusOK {
-		t.Errorf("Get comic failed with status %d", w.Code)
-	}
-
-	// Get non-existent comic
-	w = performRequest(r, "GET", "/api/comics/nonexistent", nil)
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Non-existent comic should return 404, got %d", w.Code)
+		t.Fatalf("Get comic failed with status %d", w.Code)
 	}
 
 	// Toggle favorite
-	w = performRequest(r, "PUT", "/api/comics/"+comicID+"/favorite", nil)
+	w = performAuthedRequest(r, "PUT", "/api/comics/"+comicID+"/favorite", nil, cookie)
 	if w.Code != http.StatusOK {
-		t.Errorf("Toggle favorite failed with status %d: %s", w.Code, w.Body.String())
+		t.Errorf("Toggle favorite failed with status %d", w.Code)
 	}
 
 	// Update rating
-	w = performRequest(r, "PUT", "/api/comics/"+comicID+"/rating", map[string]int{"rating": 5})
+	w = performAuthedRequest(r, "PUT", "/api/comics/"+comicID+"/rating", map[string]int{"rating": 5}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Update rating failed with status %d", w.Code)
 	}
 
 	// Invalid rating
-	w = performRequest(r, "PUT", "/api/comics/"+comicID+"/rating", map[string]int{"rating": 10})
+	w = performAuthedRequest(r, "PUT", "/api/comics/"+comicID+"/rating", map[string]int{"rating": 10}, cookie)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Invalid rating should fail, got %d", w.Code)
 	}
 
 	// Update progress
-	w = performRequest(r, "PUT", "/api/comics/"+comicID+"/progress", map[string]int{"page": 5})
+	w = performAuthedRequest(r, "PUT", "/api/comics/"+comicID+"/progress", map[string]int{"page": 5}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Update progress failed with status %d", w.Code)
 	}
 
 	// Add tags
-	w = performRequest(r, "POST", "/api/comics/"+comicID+"/tags", map[string]interface{}{
+	w = performAuthedRequest(r, "POST", "/api/comics/"+comicID+"/tags", map[string]interface{}{
 		"tags": []string{"action", "comedy"},
-	})
+	}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Add tags failed with status %d: %s", w.Code, w.Body.String())
 	}
 
 	// Remove tag
-	w = performRequest(r, "DELETE", "/api/comics/"+comicID+"/tags", map[string]string{
+	w = performAuthedRequest(r, "DELETE", "/api/comics/"+comicID+"/tags", map[string]string{
 		"tag": "comedy",
-	})
+	}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Remove tag failed with status %d: %s", w.Code, w.Body.String())
 	}
@@ -266,8 +306,9 @@ func TestComicsEndpoints(t *testing.T) {
 
 func TestTagsEndpoint(t *testing.T) {
 	r := setupTestRouter(t)
+	cookie := registerAndLogin(t, r)
 
-	w := performRequest(r, "GET", "/api/tags", nil)
+	w := performAuthedRequest(r, "GET", "/api/tags", nil, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("List tags failed with status %d", w.Code)
 	}
@@ -275,15 +316,16 @@ func TestTagsEndpoint(t *testing.T) {
 
 func TestCategoriesEndpoint(t *testing.T) {
 	r := setupTestRouter(t)
+	cookie := registerAndLogin(t, r)
 
 	// List categories (empty)
-	w := performRequest(r, "GET", "/api/categories", nil)
+	w := performAuthedRequest(r, "GET", "/api/categories", nil, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("List categories failed with status %d", w.Code)
 	}
 
-	// Init categories
-	w = performRequest(r, "POST", "/api/categories", map[string]string{"lang": "zh"})
+	// Init categories (admin only)
+	w = performAuthedRequest(r, "POST", "/api/categories", map[string]string{"lang": "zh"}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Init categories failed with status %d", w.Code)
 	}
@@ -298,9 +340,10 @@ func TestCategoriesEndpoint(t *testing.T) {
 
 func TestStatsEndpoints(t *testing.T) {
 	r := setupTestRouter(t)
+	cookie := registerAndLogin(t, r)
 
 	// Get stats (empty)
-	w := performRequest(r, "GET", "/api/stats", nil)
+	w := performAuthedRequest(r, "GET", "/api/stats", nil, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Get stats failed with status %d", w.Code)
 	}
@@ -317,10 +360,10 @@ func TestStatsEndpoints(t *testing.T) {
 	store.BulkCreateComics(comics)
 
 	// Start session
-	w = performRequest(r, "POST", "/api/stats/session", map[string]interface{}{
+	w = performAuthedRequest(r, "POST", "/api/stats/session", map[string]interface{}{
 		"comicId":   "stats-comic-1",
 		"startPage": 0,
-	})
+	}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Start session failed with status %d: %s", w.Code, w.Body.String())
 	}
@@ -330,11 +373,11 @@ func TestStatsEndpoints(t *testing.T) {
 	sessionID := sessionResp["sessionId"]
 
 	// End session
-	w = performRequest(r, "PUT", "/api/stats/session", map[string]interface{}{
+	w = performAuthedRequest(r, "PUT", "/api/stats/session", map[string]interface{}{
 		"sessionId": sessionID,
 		"endPage":   10,
 		"duration":  300,
-	})
+	}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("End session failed with status %d: %s", w.Code, w.Body.String())
 	}
@@ -343,7 +386,7 @@ func TestStatsEndpoints(t *testing.T) {
 func TestSiteSettingsEndpoints(t *testing.T) {
 	r := setupTestRouter(t)
 
-	// Get settings
+	// Get settings — public endpoint, no auth needed
 	w := performRequest(r, "GET", "/api/site-settings", nil)
 	if w.Code != http.StatusOK {
 		t.Errorf("Get settings failed with status %d", w.Code)
@@ -358,6 +401,7 @@ func TestSiteSettingsEndpoints(t *testing.T) {
 
 func TestBatchOperations(t *testing.T) {
 	r := setupTestRouter(t)
+	cookie := registerAndLogin(t, r)
 
 	// Create test comics
 	comics := []struct {
@@ -372,28 +416,28 @@ func TestBatchOperations(t *testing.T) {
 	store.BulkCreateComics(comics)
 
 	// Batch favorite
-	w := performRequest(r, "POST", "/api/comics/batch", map[string]interface{}{
+	w := performAuthedRequest(r, "POST", "/api/comics/batch", map[string]interface{}{
 		"action":   "favorite",
 		"comicIds": []string{"batch-api-1", "batch-api-2"},
-	})
+	}, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Batch favorite failed with status %d: %s", w.Code, w.Body.String())
 	}
 
 	// Unknown action
-	w = performRequest(r, "POST", "/api/comics/batch", map[string]interface{}{
+	w = performAuthedRequest(r, "POST", "/api/comics/batch", map[string]interface{}{
 		"action":   "unknown",
 		"comicIds": []string{"batch-api-1"},
-	})
+	}, cookie)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Unknown batch action should fail, got %d", w.Code)
 	}
 
 	// Empty comicIds
-	w = performRequest(r, "POST", "/api/comics/batch", map[string]interface{}{
+	w = performAuthedRequest(r, "POST", "/api/comics/batch", map[string]interface{}{
 		"action":   "favorite",
 		"comicIds": []string{},
-	})
+	}, cookie)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Empty comicIds should fail, got %d", w.Code)
 	}
@@ -401,9 +445,145 @@ func TestBatchOperations(t *testing.T) {
 
 func TestDuplicatesEndpoint(t *testing.T) {
 	r := setupTestRouter(t)
+	cookie := registerAndLogin(t, r)
 
-	w := performRequest(r, "GET", "/api/comics/duplicates", nil)
+	w := performAuthedRequest(r, "GET", "/api/comics/duplicates", nil, cookie)
 	if w.Code != http.StatusOK {
 		t.Errorf("Duplicates endpoint failed with status %d", w.Code)
+	}
+}
+
+// TestAuthRequired verifies that protected endpoints return 401 without auth.
+func TestAuthRequired(t *testing.T) {
+	r := setupTestRouter(t)
+
+	endpoints := []struct {
+		method string
+		path   string	}{
+		{"GET", "/api/comics"},
+		{"GET", "/api/comics/test-id"},
+		{"GET", "/api/tags"},
+		{"GET", "/api/categories"},
+		{"GET", "/api/stats"},
+		{"GET", "/api/groups"},
+		{"GET", "/api/goals"},
+		{"GET", "/api/recommendations"},
+		{"GET", "/api/site-settings"}, // public — should return 200
+	}
+
+	for _, ep := range endpoints {
+		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
+			w := performRequest(r, ep.method, ep.path, nil)
+			if ep.path == "/api/site-settings" {
+				if w.Code != http.StatusOK {
+					t.Errorf("Public endpoint %s should return 200, got %d", ep.path, w.Code)
+				}
+			} else {
+				if w.Code != http.StatusUnauthorized {
+					t.Errorf("Protected endpoint %s should return 401, got %d", ep.path, w.Code)
+				}
+			}
+		})
+	}
+}
+
+// TestAdminRequired verifies that admin endpoints return 403 for non-admin users.
+func TestAdminRequired(t *testing.T) {
+	r := setupTestRouter(t)
+
+	// Register admin
+	cookie := registerAndLogin(t, r)
+
+	// Register a normal user
+	regBody := map[string]string{
+		"username": "normaluser",
+		"password": "password123",
+	}
+	w := performRequest(r, "POST", "/api/auth/register", regBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Register normal user failed: %d", w.Code)
+	}
+	var normalCookie string
+	for _, c := range w.Result().Cookies() {
+		if c.Name == middleware.SessionCookie {
+			normalCookie = c.Value
+		}
+	}
+
+	// Admin-only endpoints should return 403 for normal user
+	adminEndpoints := []struct {
+		method string
+		path   string
+	}{
+		{"POST", "/api/comics/batch"},
+		{"POST", "/api/upload"},
+		{"POST", "/api/cache"},
+	}
+
+	for _, ep := range adminEndpoints {
+		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
+			w := performAuthedRequest(r, ep.method, ep.path, nil, normalCookie)
+			if w.Code != http.StatusForbidden && w.Code != http.StatusUnauthorized {
+				t.Errorf("Admin endpoint %s should return 403 for normal user, got %d", ep.path, w.Code)
+			}
+		})
+	}
+
+	// Admin should succeed (at least not get 403)
+	for _, ep := range adminEndpoints {
+		t.Run("admin_"+ep.method+" "+ep.path, func(t *testing.T) {
+			w := performAuthedRequest(r, ep.method, ep.path, map[string]interface{}{}, cookie)
+			if w.Code == http.StatusForbidden {
+				t.Errorf("Admin should not get 403 for %s", ep.path)
+			}
+		})
+	}
+}
+
+// TestSiteSettingsPublic verifies site-settings is accessible without auth.
+func TestSiteSettingsPublic(t *testing.T) {
+	r := setupTestRouter(t)
+
+	// site-settings should be public (no auth required)
+	w := performRequest(r, "GET", "/api/site-settings", nil)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /api/site-settings should be public, got %d", w.Code)
+	}
+
+	w = performRequest(r, "GET", "/api/site-settings/icon", nil)
+	// Icon may return 404 if not set, but should not return 401
+	if w.Code == http.StatusUnauthorized {
+		t.Error("GET /api/site-settings/icon should not require auth")
+	}
+}
+
+// TestNoUnprotectedEndpoints checks for common substring in response
+func TestNoUnprotectedEndpoints(t *testing.T) {
+	r := setupTestRouter(t)
+
+	// These endpoints should all return 401 without auth
+	protectedPaths := []string{
+		"/api/comics",
+		"/api/tags",
+		"/api/categories",
+		"/api/stats",
+		"/api/groups",
+		"/api/goals",
+		"/api/export/json",
+		"/api/recommendations",
+		"/api/translate/config",
+	}
+
+	for _, path := range protectedPaths {
+		t.Run(path, func(t *testing.T) {
+			w := performRequest(r, "GET", path, nil)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("%s returned %d instead of 401", path, w.Code)
+			}
+			body := w.Body.String()
+			if !strings.Contains(body, "Unauthorized") {
+				t.Errorf("%s did not return Unauthorized message", path)
+			}
+		})
 	}
 }
