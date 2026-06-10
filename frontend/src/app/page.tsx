@@ -462,14 +462,15 @@ export default function Home() {
     safeSetGroupPage(1);
   }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, contentType, safeSetCurrentPage, safeSetGroupPage]);
 
-  // 合集视图切换时重置合集分页（使用受保护的 setter，挂载保护期内不会重置）
+  // 视图模式切换时重置分页（使用受保护的 setter，挂载保护期内不会重置）
   useEffect(() => {
     if (!showGroupViewMountedRef.current) {
       showGroupViewMountedRef.current = true;
       return;
     }
     safeSetGroupPage(1);
-  }, [showGroupView, safeSetGroupPage]);
+    safeSetCurrentPage(1);
+  }, [showGroupView, safeSetGroupPage, safeSetCurrentPage]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -605,7 +606,7 @@ export default function Home() {
   }, [isUnifiedView, filteredGroups, looseComics, getSortKey, sortOrder]);
 
   // 统一视图客户端分页
-  const unifiedTotalPages = Math.max(1, Math.ceil(unifiedItems.length / pageSize));
+  const unifiedTotalPages = useMemo(() => Math.max(1, Math.ceil(unifiedItems.length / pageSize)), [unifiedItems.length, pageSize]);
   const pagedUnifiedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return unifiedItems.slice(start, start + pageSize);
