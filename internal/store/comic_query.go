@@ -1,4 +1,4 @@
-package store
+﻿package store
 
 import (
 	"database/sql"
@@ -57,6 +57,7 @@ type ComicListOptions struct {
 	ExcludeGrouped bool   // 是否排除已在分组中的漫画（用于分组视图）
 	MetaFilter     string // "all" | "with" | "missing" — 按元数据状态过滤
 	UserID         string // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
+	LibraryIDs     []string // 书库过滤 — 只返回这些书库下的漫画（空=不过滤）
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -183,6 +184,16 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		conditions = append(conditions, `c."metadataSource" != '' AND c."metadataSource" IS NOT NULL`)
 	} else if opts.MetaFilter == "missing" {
 		conditions = append(conditions, `(c."metadataSource" = '' OR c."metadataSource" IS NULL)`)
+	}
+
+	// Library filtering: 只返回用户有权访问的书库下的漫画
+	if len(opts.LibraryIDs) > 0 {
+		placeholders := make([]string, len(opts.LibraryIDs))
+		for i, id := range opts.LibraryIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		conditions = append(conditions, fmt.Sprintf(`c."libraryId" IN (%s)`, strings.Join(placeholders, ",")))
 	}
 
 	whereClause := ""
