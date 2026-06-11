@@ -1,4 +1,4 @@
-package store
+﻿package store
 
 import (
 	"database/sql"
@@ -380,6 +380,87 @@ func createTables() error {
 			INSERT INTO "ComicFTS"(rowid, title, author, filename, description, genre)
 			VALUES (new.rowid, new.title, new.author, new.filename, new.description, new.genre);
 		END`,
+
+		// ============================================================
+		// Library (书库)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "Library" (
+			"id"            TEXT NOT NULL PRIMARY KEY,
+			"name"          TEXT NOT NULL,
+			"type"          TEXT NOT NULL DEFAULT "comic",
+			"rootPath"      TEXT NOT NULL,
+			"enabled"       BOOLEAN NOT NULL DEFAULT 1,
+			"sortOrder"     INTEGER NOT NULL DEFAULT 0,
+			"defaultAccess" TEXT NOT NULL DEFAULT "private",
+			"createdAt"     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updatedAt"     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS "Library_name_idx" ON "Library"("name")`,
+		`CREATE INDEX IF NOT EXISTS "Library_type_idx" ON "Library"("type")`,
+		`CREATE INDEX IF NOT EXISTS "Library_enabled_idx" ON "Library"("enabled")`,
+
+		// ============================================================
+		// UserLibraryAccess (用户书库权限)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "UserLibraryAccess" (
+			"userId"    TEXT NOT NULL,
+			"libraryId" TEXT NOT NULL,
+			"canView"   BOOLEAN NOT NULL DEFAULT 1,
+			"canDownload" BOOLEAN NOT NULL DEFAULT 0,
+			"canManage" BOOLEAN NOT NULL DEFAULT 0,
+			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY ("userId", "libraryId"),
+			CONSTRAINT "ULA_userId_fkey" FOREIGN KEY ("userId")
+				REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "ULA_libraryId_fkey" FOREIGN KEY ("libraryId")
+				REFERENCES "Library" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS "ULA_userId_idx" ON "UserLibraryAccess"("userId")`,
+		`CREATE INDEX IF NOT EXISTS "ULA_libraryId_idx" ON "UserLibraryAccess"("libraryId")`,
+
+		// ============================================================
+		// UserGroup (用户组)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "UserGroup" (
+			"id"          TEXT NOT NULL PRIMARY KEY,
+			"name"        TEXT NOT NULL,
+			"description" TEXT NOT NULL DEFAULT "",
+			"createdAt"   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updatedAt"   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+
+		// ============================================================
+		// UserGroupMember (用户组成员)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "UserGroupMember" (
+			"groupId"   TEXT NOT NULL,
+			"userId"    TEXT NOT NULL,
+			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY ("groupId", "userId"),
+			CONSTRAINT "UGM_groupId_fkey" FOREIGN KEY ("groupId")
+				REFERENCES "UserGroup" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "UGM_userId_fkey" FOREIGN KEY ("userId")
+				REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS "UGM_groupId_idx" ON "UserGroupMember"("groupId")`,
+		`CREATE INDEX IF NOT EXISTS "UGM_userId_idx" ON "UserGroupMember"("userId")`,
+
+		// ============================================================
+		// GroupLibraryAccess (用户组书库权限)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "GroupLibraryAccess" (
+			"groupId"   TEXT NOT NULL,
+			"libraryId" TEXT NOT NULL,
+			"canView"   BOOLEAN NOT NULL DEFAULT 1,
+			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY ("groupId", "libraryId"),
+			CONSTRAINT "GLA_groupId_fkey" FOREIGN KEY ("groupId")
+				REFERENCES "UserGroup" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "GLA_libraryId_fkey" FOREIGN KEY ("libraryId")
+				REFERENCES "Library" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS "GLA_groupId_idx" ON "GroupLibraryAccess"("groupId")`,
+		`CREATE INDEX IF NOT EXISTS "GLA_libraryId_idx" ON "GroupLibraryAccess"("libraryId")`,
 	}
 
 	for _, stmt := range statements {
