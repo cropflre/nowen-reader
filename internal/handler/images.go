@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"fmt"
@@ -19,6 +19,25 @@ import (
 )
 
 // ImageHandler handles all image-serving API endpoints.
+// checkComicAccess 验证当前用户是否有权访问指定漫画。
+// 返回 nil 表示有权访问；否则已写入 403 响应。
+func checkComicAccess(c *gin.Context, comicID string) error {
+	uid := getUserID(c)
+	if uid == "" {
+		return nil // 单用户模式兼容
+	}
+	ok, err := store.UserCanViewComic(uid, comicID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check access"})
+		return err
+	}
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have access to this comic"})
+		return fmt.Errorf("access denied")
+	}
+	return nil
+}
+
 type ImageHandler struct{}
 
 // NewImageHandler creates a new ImageHandler.
@@ -39,6 +58,10 @@ func (h *ImageHandler) GetPages(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	start := time.Now()
 	result, err := service.GetComicPagesEx(id)
 	if err != nil {
@@ -113,6 +136,10 @@ func (h *ImageHandler) GetPageImage(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	result, err := service.GetPageImage(id, pageIndex)
 	if err != nil {
 		errMsg := err.Error()
@@ -168,6 +195,10 @@ func (h *ImageHandler) GetThumbnail(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	thumbnail, mimeType, aspectRatio, err := service.GetComicThumbnail(id)
 	if err != nil || thumbnail == nil {
 		log.Printf("[thumbnail] Failed for %s (%s): %v", id, comic.Filename, err)
@@ -506,6 +537,10 @@ func (h *ImageHandler) GetPdfFile(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	fp, _, err := service.FindComicFilePath(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found: " + err.Error()})
@@ -558,6 +593,10 @@ func (h *ImageHandler) GetChapterContent(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	start := time.Now()
 	chapter, err := service.GetChapterContent(id, chapterIndex)
 	if err != nil {
@@ -601,6 +640,10 @@ func (h *ImageHandler) GetEpubResource(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	result, err := service.GetEpubResource(id, resourcePath)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Resource not found: " + err.Error()})
@@ -689,6 +732,10 @@ func (h *ImageHandler) GetEmbeddedImages(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	images, supported, err := service.ListEmbeddedImages(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "supported": supported})
@@ -722,6 +769,10 @@ func (h *ImageHandler) GetEmbeddedImage(c *gin.Context) {
 		return
 	}
 
+
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
 	img, err := service.GetEmbeddedImageData(id, index)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Embedded image not found: " + err.Error()})
