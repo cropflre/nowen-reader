@@ -54,6 +54,7 @@ NowenReader is a self-hosted manga / novel management and reading platform optim
 - **📡 Protocol Integration** — OPDS support (KOReader / Moon+ Reader, etc.)
 - **📱 Multi-platform** — Web PWA + Flutter native client (Material 3, gesture zoom, immersive reading, progress sync)
 - **🛠️ Deploy-friendly** — Single Go binary, SQLite (WAL + FTS5), multi-arch Docker, i18n, theming, responsive
+- **🔐 Multi-user Library Access** — Per-library access control with public / private / group inheritance, friendly 403 for unauthorized content
 
 ## 🚀 Quick Start
 
