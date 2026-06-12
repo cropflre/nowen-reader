@@ -22,6 +22,7 @@ import {
   Users,
   UserCog,
   Wand2,
+  Shield,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
@@ -87,6 +88,11 @@ const UserGroupManagementPanel = dynamic(
   { loading: LoadingSkeleton }
 );
 
+const NASDiagnosticsPanel = dynamic(
+  () => import("@/components/NASDiagnosticsPanel").then((mod) => mod.default),
+  { loading: LoadingSkeleton }
+);
+
 /* ── 类型 ── */
 type SettingsTab =
   | "account"
@@ -99,6 +105,7 @@ type SettingsTab =
   | "logs"
   | "libraries"
   | "user-groups"
+  | "diagnostics"
   | "about";
 
 interface TabDef {
@@ -120,7 +127,7 @@ export default function SettingsPage() {
   const t = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const validTabs: SettingsTab[] = ["account", ...(isAdmin ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const, "libraries" as const, "user-groups" as const] : []), "about"];
+  const validTabs: SettingsTab[] = ["account", ...(isAdmin ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const, "libraries" as const, "user-groups" as const, "diagnostics" as const] : []), "about"];
   const tabFromUrl = searchParams.get("tab") as SettingsTab | null;
   const [activeTab, setActiveTab] = useState<SettingsTab>(
     tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "account"
@@ -167,6 +174,7 @@ export default function SettingsPage() {
           { id: "users" as const, label: "用户管理", icon: <Users className="h-[18px] w-[18px]" />, desc: "账号、角色、注册策略" },
           { id: "libraries" as const, label: "书库管理", icon: <BookOpen className="h-[18px] w-[18px]" />, desc: "目录、权限、公开策略" },
           { id: "user-groups" as const, label: "用户组", icon: <Users className="h-[18px] w-[18px]" />, desc: "批量管理用户权限" },
+          { id: "diagnostics" as const, label: "系统诊断", icon: <Shield className="h-[18px] w-[18px]" />, desc: "环境检查、权限、工具" },
         ] : []),
       ],
     },
@@ -306,6 +314,7 @@ export default function SettingsPage() {
             {activeTab === "users" && <UserManagementPanel />}
             {activeTab === "libraries" && <LibraryManagementPanel />}
             {activeTab === "user-groups" && <UserGroupManagementPanel />}
+            {activeTab === "diagnostics" && <NASDiagnosticsPanel />}
             {activeTab === "stats" && <StatsPanel />}
             {activeTab === "file-stats" && <FileStatsPanel />}
             {activeTab === "logs" && <LogsPanel />}
