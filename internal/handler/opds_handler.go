@@ -63,7 +63,8 @@ func parseOPDSPagination(c *gin.Context) (limit, offset int) {
 func (h *OPDSHandler) All(c *gin.Context) {
 	baseURL := getBaseURL(c)
 	limit, offset := parseOPDSPagination(c)
-	comics, err := store.GetOPDSComics("", nil, `ORDER BY c."title" ASC`, limit, offset)
+	filterWhere, filterArgs := opdsLibraryFilter(c)
+	comics, err := store.GetOPDSComics(filterWhere, filterArgs, `ORDER BY c."title" ASC`, limit, offset)
 	if err != nil {
 		c.Data(500, "text/plain", []byte("Failed to get comics"))
 		return
@@ -77,7 +78,8 @@ func (h *OPDSHandler) All(c *gin.Context) {
 // GET /api/opds/recent
 func (h *OPDSHandler) Recent(c *gin.Context) {
 	baseURL := getBaseURL(c)
-	comics, err := store.GetOPDSComics("", nil, `ORDER BY c."addedAt" DESC`, 50)
+	filterWhere, filterArgs := opdsLibraryFilter(c)
+	comics, err := store.GetOPDSComics(filterWhere, filterArgs, `ORDER BY c."addedAt" DESC`, 50)
 	if err != nil {
 		c.Data(500, "text/plain", []byte("Failed to get comics"))
 		return
@@ -92,7 +94,14 @@ func (h *OPDSHandler) Recent(c *gin.Context) {
 func (h *OPDSHandler) Favorites(c *gin.Context) {
 	baseURL := getBaseURL(c)
 	limit, offset := parseOPDSPagination(c)
-	comics, err := store.GetOPDSComics(`WHERE c."isFavorite" = 1`, nil, `ORDER BY c."title" ASC`, limit, offset)
+	filterWhere, filterArgs := opdsLibraryFilter(c)
+	where := `WHERE c."isFavorite" = 1`
+	var args []interface{}
+	if filterWhere != "" {
+		where = where + " AND " + strings.TrimPrefix(filterWhere, "WHERE ")
+		args = append(args, filterArgs...)
+	}
+	comics, err := store.GetOPDSComics(where, args, `ORDER BY c."title" ASC`, limit, offset)
 	if err != nil {
 		c.Data(500, "text/plain", []byte("Failed to get comics"))
 		return
@@ -113,8 +122,13 @@ func (h *OPDSHandler) Search(c *gin.Context) {
 
 	baseURL := getBaseURL(c)
 	searchPattern := "%" + query + "%"
+	filterWhere, filterArgs := opdsLibraryFilter(c)
 	where := `WHERE (c."title" LIKE ? OR c."author" LIKE ?)`
 	args := []interface{}{searchPattern, searchPattern}
+	if filterWhere != "" {
+		where = where + " AND " + strings.TrimPrefix(filterWhere, "WHERE ")
+		args = append(args, filterArgs...)
+	}
 
 	limit, offset := parseOPDSPagination(c)
 	comics, err := store.GetOPDSComics(where, args, `ORDER BY c."title" ASC`, limit, offset)
@@ -137,7 +151,7 @@ func (h *OPDSHandler) Download(c *gin.Context) {
 		return
 	}
 
-if err := checkComicAccess(c, comicID); err != nil {
+	if err := checkComicAccess(c, comicID); err != nil {
 		return
 	}
 
