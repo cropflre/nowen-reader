@@ -105,7 +105,29 @@ func autoRepairIndexes() error {
 	return nil
 }
 
-// CloseDB closes the database connection.
+// DBStats 数据库状态信息
+type DBStats struct {
+	Path string `json:"path"`
+}
+
+// GetDBStats 返回数据库状态信息。
+func GetDBStats() *DBStats {
+	if db == nil { return nil }
+	var path string
+	if err := db.QueryRow(`PRAGMA database_list`).Scan(new(int), new(string), &path); err != nil {
+		return nil
+	}
+	return &DBStats{Path: path}
+}
+
+// CountComics 返回漫画总数。
+func CountComics() (int, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM "Comic"`).Scan(&count)
+	return count, err
+}
+
+// CloseDB
 func CloseDB() {
 	if db != nil {
 		_ = db.Close()
