@@ -1,4 +1,4 @@
-﻿/// 漫画/小说数据模型
+/// 漫画/小说数据模型
 class Comic {
   final String id;
   final String filename;
