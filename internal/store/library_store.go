@@ -241,23 +241,43 @@ func SetUserLibraryAccess(userID string, libraryIDs []string) error {
 	return tx.Commit()
 }
 
-// UserCanViewLibrary 检查用户是否有权访问指定书库
+// UserCanViewLibrary 检查用户是否有权访问指定书库。
+// 语义与 GetUserAccessibleLibraryIDs 完全一致：
+//   - admin 可访问所有 enabled 书库
+//   - enabled=0 的书库普通用户不可访问
+//   - defaultAccess='public' 的 enabled 书库普通用户可访问
+//   - UserLibraryAccess.canView=1 可访问
+//   - 用户所在 UserGroup 的 GroupLibraryAccess.canView=1 可访问
 func UserCanViewLibrary(userID, libraryID string) (bool, error) {
-	// 首先检查用户是否是管理员
+	// 管理员可以访问所有 enabled 书库
 	var role string
 	err := db.QueryRow(`SELECT "role" FROM "User" WHERE "id" = ?`, userID).Scan(&role)
 	if err != nil {
 		return false, err
 	}
-
-	// 管理员可以访问所有书库
 	if role == "admin" {
-		return true, nil
+		var enabled bool
+		err := db.QueryRow(`SELECT "enabled" FROM "Library" WHERE "id" = ?`, libraryID).Scan(&enabled)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return enabled, nil
 	}
 
-	// 检查用户是否有权访问此书库
+	// 普通用户：检查书库是否 enabled 且满足任一授权条件
 	var count int
-	err = db.QueryRow(`SELECT COUNT(*) FROM "UserLibraryAccess" WHERE "userId" = ? AND "libraryId" = ? AND "canView" = 1`, userID, libraryID).Scan(&count)
+	err = db.QueryRow(`SELECT COUNT(*) FROM "Library" WHERE "id" = ? AND "enabled" = 1 AND (
+		"defaultAccess" = 'public'
+		OR "id" IN (SELECT "libraryId" FROM "UserLibraryAccess" WHERE "userId" = ? AND "canView" = 1)
+		OR "id" IN (
+			SELECT gla."libraryId" FROM "GroupLibraryAccess" gla
+			JOIN "UserGroupMember" ugm ON ugm."groupId" = gla."groupId"
+			WHERE ugm."userId" = ? AND gla."canView" = 1
+		)
+	)`, libraryID, userID, userID).Scan(&count)
 	if err != nil {
 		return false, err
 	}

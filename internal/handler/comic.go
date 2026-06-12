@@ -100,6 +100,11 @@ func (h *ComicHandler) GetComic(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
 		return
 	}
+	// 书库权限校验：无权限用户不得查看漫画详情（含元数据）
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
+
 	c.JSON(http.StatusOK, comic)
 }
 
