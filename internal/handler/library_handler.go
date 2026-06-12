@@ -1,10 +1,11 @@
-﻿package handler
+package handler
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/model"
+	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
@@ -32,7 +33,7 @@ func (h *LibraryHandler) ListLibraries(c *gin.Context) {
 		model.Library
 		ComicCount int `json:"comicCount"`
 	}
-	
+
 	result := make([]libraryWithCount, len(libraries))
 	for i, lib := range libraries {
 		count, _ := store.GetLibraryComicCount(lib.ID)
@@ -51,12 +52,13 @@ func (h *LibraryHandler) ListLibraries(c *gin.Context) {
 
 func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	var req struct {
-		Name      string `json:"name" binding:"required"`
-		Type      string `json:"type" binding:"required"`
-		RootPath  string `json:"rootPath" binding:"required"`
+		Name          string  `json:"name" binding:"required"`
+		Type          string  `json:"type" binding:"required"`
+		RootPath      string  `json:"rootPath" binding:"required"`
 		Enabled       *bool   `json:"enabled"`
 		SortOrder     *int    `json:"sortOrder"`
 		DefaultAccess *string `json:"defaultAccess"`
+		ScanEnabled   *bool   `json:"scanEnabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -85,6 +87,11 @@ func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 		defaultAccess = *req.DefaultAccess
 	}
 
+	scanEnabled := true
+	if req.ScanEnabled != nil {
+		scanEnabled = *req.ScanEnabled
+	}
+
 	lib := &model.Library{
 		Name:          req.Name,
 		Type:          req.Type,
@@ -92,6 +99,7 @@ func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 		Enabled:       enabled,
 		SortOrder:     sortOrder,
 		DefaultAccess: defaultAccess,
+		ScanEnabled:   scanEnabled,
 	}
 
 	if err := store.CreateLibrary(lib); err != nil {
@@ -120,12 +128,13 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 	}
 
 	var req struct {
-		Name      *string `json:"name"`
-		Type      *string `json:"type"`
-		RootPath  *string `json:"rootPath"`
+		Name          *string `json:"name"`
+		Type          *string `json:"type"`
+		RootPath      *string `json:"rootPath"`
 		Enabled       *bool   `json:"enabled"`
 		SortOrder     *int    `json:"sortOrder"`
 		DefaultAccess *string `json:"defaultAccess"`
+		ScanEnabled   *bool   `json:"scanEnabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -154,6 +163,9 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 	}
 	if req.DefaultAccess != nil && (*req.DefaultAccess == "public" || *req.DefaultAccess == "private") {
 		existing.DefaultAccess = *req.DefaultAccess
+	}
+	if req.ScanEnabled != nil {
+		existing.ScanEnabled = *req.ScanEnabled
 	}
 
 	if err := store.UpdateLibrary(existing); err != nil {
@@ -187,6 +199,33 @@ func (h *LibraryHandler) DeleteLibrary(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ============================================================
+// POST /api/admin/libraries/:id/scan — Scan library
+// ============================================================
+
+func (h *LibraryHandler) ScanLibrary(c *gin.Context) {
+	id := c.Param("id")
+
+	existing, err := store.GetLibraryByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch library"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Library not found"})
+		return
+	}
+
+	added, err := service.SyncLibraryByID(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	lib, _ := store.GetLibraryByID(id)
+	c.JSON(http.StatusOK, gin.H{"added": added, "library": lib})
 }
 
 // ============================================================
@@ -286,4 +325,3 @@ func (h *LibraryHandler) SetUserLibraryAccess(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
-

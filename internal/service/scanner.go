@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"crypto/md5"
@@ -1316,6 +1316,89 @@ func StartBackgroundSync() {
 // missingGracePeriod is how long a comic can be missing from disk before being deleted.
 // This protects against NAS/NFS/CIFS temporary unmounts.
 const missingGracePeriod = 24 * time.Hour
+
+// SyncLibraryByID 仅扫描指定书库对应的根目录，并更新该书库的扫描状态。
+func SyncLibraryByID(libraryID string) (int, error) {
+	lib, err := store.GetLibraryByID(libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch library: %w", err)
+	}
+	if lib == nil {
+		return 0, fmt.Errorf("library not found")
+	}
+	if !lib.Enabled {
+		return 0, fmt.Errorf("library is disabled")
+	}
+
+	useFolderComics := lib.Type != "novel"
+	files := walkDirRecursive(lib.RootPath, useFolderComics)
+	if len(files) == 0 {
+		_ = store.UpdateLibraryScanStatus(libraryID, 0, 0)
+		return 0, nil
+	}
+
+	for i := range files {
+		if lib.Type == "novel" {
+			files[i].Source = "novels"
+		} else {
+			files[i].Source = "comics"
+		}
+		files[i].LibraryID = libraryID
+	}
+
+	existing, err := store.GetComicIDsByLibraryID(libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query existing comics: %w", err)
+	}
+
+	fileMap := make(map[string]diskFile, len(files))
+	for _, f := range files {
+		fileMap[f.ID] = f
+	}
+
+	var toAdd []struct{
+		ID       string
+		Filename string
+		Title    string
+		FileSize int64
+	}
+
+	for id, f := range fileMap {
+		if _, ok := existing[id]; !ok {
+			toAdd = append(toAdd, struct{
+				ID       string
+				Filename string
+				Title    string
+				FileSize int64
+			}{ID: f.ID, Filename: f.Filename, Title: f.Title, FileSize: f.FileSize})
+		}
+	}
+
+	if len(toAdd) > 0 {
+		fileSourceMap := make(map[string]string, len(fileMap))
+		fileLibraryMap := make(map[string]string, len(fileMap))
+		for id, f := range fileMap {
+			fileSourceMap[id] = f.Source
+			fileLibraryMap[id] = f.LibraryID
+		}
+		for i := 0; i < len(toAdd); i += dbBatchSize {
+			end := i + dbBatchSize
+			if end > len(toAdd) {
+				end = len(toAdd)
+			}
+			if err := store.BulkCreateComicsWithSource(toAdd[i:end], fileSourceMap, fileLibraryMap); err != nil {
+				return 0, fmt.Errorf("failed to insert comics: %w", err)
+			}
+		}
+	}
+
+	if err := store.UpdateLibraryScanStatus(libraryID, len(toAdd), len(files)); err != nil {
+		return len(toAdd), fmt.Errorf("failed to update library scan status: %w", err)
+	}
+
+	return len(toAdd), nil
+}
+
 
 func CleanupInvalidComics() (int, error) {
 	allComics, err := store.GetAllComicIDsAndFilenames()
