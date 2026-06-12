@@ -1,4 +1,4 @@
-﻿import type { Translations } from "./zh-CN";
+import type { Translations } from "./zh-CN";
 
 const en: Translations = {
   // Common
@@ -379,6 +379,12 @@ const en: Translations = {
     imageContrast: "Contrast",
     imageGrayscale: "Grayscale",
     imageFilterReset: "Reset Filters",
+    imageFilterPreset: "Filter Preset",
+    presetDefault: "Default",
+    presetNightOwl: "Night Owl",
+    presetMangaEnhance: "Manga Enhance",
+    presetBWEnhance: "B&W Enhance",
+    presetCustom: "Custom",
   },
 
   // Duration formatting

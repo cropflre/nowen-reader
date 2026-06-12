@@ -1,4 +1,4 @@
-﻿const zhCN = {
+const zhCN = {
   // Common
   common: {
     confirm: "确定",
@@ -376,6 +376,12 @@
     imageContrast: "对比度",
     imageGrayscale: "灰度",
     imageFilterReset: "重置滤镜",
+    imageFilterPreset: "滤镜预设",
+    presetDefault: "默认",
+    presetNightOwl: "夜间护眼",
+    presetMangaEnhance: "老漫画增强",
+    presetBWEnhance: "黑白增强",
+    presetCustom: "自定义",
   },
 
   // Duration formatting
@@ -1517,6 +1523,12 @@ export interface Translations {
     imageContrast: string;
     imageGrayscale: string;
     imageFilterReset: string;
+    imageFilterPreset: string;
+    presetDefault: string;
+    presetNightOwl: string;
+    presetMangaEnhance: string;
+    presetBWEnhance: string;
+    presetCustom: string;
   };
   duration: {
     seconds: string;

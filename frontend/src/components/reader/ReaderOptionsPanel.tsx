@@ -222,6 +222,15 @@ export default function ReaderOptionsPanel({
     </div>
   );
 
+  // 滤镜预设
+  const filterPresets = [
+    { key: "default", label: ro.presetDefault, brightness: 100, contrast: 100, grayscale: 0 },
+    { key: "nightOwl", label: ro.presetNightOwl, brightness: 85, contrast: 95, grayscale: 0 },
+    { key: "mangaEnhance", label: ro.presetMangaEnhance, brightness: 105, contrast: 120, grayscale: 0 },
+    { key: "bwEnhance", label: ro.presetBWEnhance, brightness: 100, contrast: 125, grayscale: 100 },
+  ];
+  const activePreset = options.imageFilterPreset ?? "custom";
+
   /** 合集区域 */
   const Group = ({
     id,
@@ -423,6 +432,29 @@ export default function ReaderOptionsPanel({
               icon={<SlidersHorizontal className="h-4 w-4" />}
               title={ro.groupImageFilters}
             >
+              {/* 预设按钮 */}
+              <div className="flex flex-wrap gap-1.5">
+                {filterPresets.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() =>
+                      onChange({
+                        imageBrightness: p.brightness,
+                        imageContrast: p.contrast,
+                        imageGrayscale: p.grayscale,
+                        imageFilterPreset: p.key,
+                      })
+                    }
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                      activePreset === p.key
+                        ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
+                        : "bg-white/8 text-white/50 hover:bg-white/12 hover:text-white/70 active:bg-white/15"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               <FilterSlider
                 label={ro.imageBrightness}
                 value={options.imageBrightness}
@@ -430,7 +462,7 @@ export default function ReaderOptionsPanel({
                 max={150}
                 step={1}
                 unit="%"
-                onChange={(v) => onChange({ imageBrightness: v })}
+                onChange={(v) => onChange({ imageBrightness: v, imageFilterPreset: null })}
               />
               <FilterSlider
                 label={ro.imageContrast}
@@ -439,7 +471,7 @@ export default function ReaderOptionsPanel({
                 max={150}
                 step={1}
                 unit="%"
-                onChange={(v) => onChange({ imageContrast: v })}
+                onChange={(v) => onChange({ imageContrast: v, imageFilterPreset: null })}
               />
               <FilterSlider
                 label={ro.imageGrayscale}
@@ -448,7 +480,7 @@ export default function ReaderOptionsPanel({
                 max={100}
                 step={1}
                 unit="%"
-                onChange={(v) => onChange({ imageGrayscale: v })}
+                onChange={(v) => onChange({ imageGrayscale: v, imageFilterPreset: null })}
               />
               <button
                 onClick={() =>
@@ -456,6 +488,7 @@ export default function ReaderOptionsPanel({
                     imageBrightness: 100,
                     imageContrast: 100,
                     imageGrayscale: 0,
+                    imageFilterPreset: "default",
                   })
                 }
                 className="w-full rounded-lg bg-white/8 py-1.5 text-xs font-medium text-white/60 hover:bg-white/12 active:bg-white/15 transition-colors"

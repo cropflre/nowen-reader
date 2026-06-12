@@ -42,6 +42,8 @@ export interface ReaderOptions {
   imageBrightness: number;
   imageContrast: number;
   imageGrayscale: number;
+  // 滤镜预设名称（null 表示自定义/手动调整）
+  imageFilterPreset: string | null;
 }
 
 export const defaultReaderOptions: ReaderOptions = {
@@ -62,6 +64,7 @@ export const defaultReaderOptions: ReaderOptions = {
   imageBrightness: 100,
   imageContrast: 100,
   imageGrayscale: 0,
+  imageFilterPreset: null,
 };
 
 export interface ReaderSettings {
