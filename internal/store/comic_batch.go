@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"fmt"
@@ -369,6 +369,24 @@ func ComicFilenameExists(filename, excludeID string) (bool, error) {
 	return count > 0, err
 }
 
+// GetComicIDsByLibraryID 返回指定书库下所有漫画ID集合。
+func GetComicIDsByLibraryID(libraryID string) (map[string]struct{}, error) {
+	rows, err := db.Query(`SELECT "id" FROM "Comic" WHERE "libraryId" = ?`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			result[id] = struct{}{}
+		}
+	}
+	return result, rows.Err()
+}
+
 // UpdateComicIdentityAfterMove 在物理文件移动/重命名后同步更新 Comic 主键与 filename。
 // Comic.id 由 filename 生成；相关外键依赖 ON UPDATE CASCADE 自动级联。
 func UpdateComicIdentityAfterMove(oldID, newID, newFilename, newTitle string) error {
@@ -651,4 +669,9 @@ func GetMissingComicIDsOlderThan(olderThan time.Duration) ([]string, error) {
 	}
 	return ids, nil
 }
+
+
+
+
+
 

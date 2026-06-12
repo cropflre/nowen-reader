@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"database/sql"
@@ -7,7 +7,7 @@ import (
 
 	"path/filepath"
 
-"github.com/nowen-reader/nowen-reader/internal/model"
+	"github.com/nowen-reader/nowen-reader/internal/model"
 )
 
 // ============================================================
@@ -16,7 +16,7 @@ import (
 
 // GetAllLibraries 获取所有书库
 func GetAllLibraries() ([]model.Library, error) {
-	rows, err := db.Query(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "createdAt", "updatedAt" FROM "Library" ORDER BY "sortOrder", "name"`)
+	rows, err := db.Query(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" ORDER BY "sortOrder", "name"`)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +26,7 @@ func GetAllLibraries() ([]model.Library, error) {
 	for rows.Next() {
 		var lib model.Library
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt); err != nil {
 			continue
 		}
 		lib.CreatedAt = createdAt
@@ -40,8 +40,8 @@ func GetAllLibraries() ([]model.Library, error) {
 func GetLibraryByID(id string) (*model.Library, error) {
 	var lib model.Library
 	var createdAt, updatedAt time.Time
-	err := db.QueryRow(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "createdAt", "updatedAt" FROM "Library" WHERE "id" = ?`, id).Scan(
-		&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &createdAt, &updatedAt,
+	err := db.QueryRow(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "id" = ?`, id).Scan(
+		&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -63,18 +63,25 @@ func CreateLibrary(lib *model.Library) error {
 	lib.CreatedAt = now
 	lib.UpdatedAt = now
 
-	_, err := db.Exec(`INSERT INTO "Library" ("id", "name", "type", "rootPath", "enabled", "sortOrder", "defaultAccess", "createdAt", "updatedAt")
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		lib.ID, lib.Name, lib.Type, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.CreatedAt, lib.UpdatedAt)
+	_, err := db.Exec(`INSERT INTO "Library" ("id", "name", "type", "rootPath", "enabled", "sortOrder", "defaultAccess", "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt")
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		lib.ID, lib.Name, lib.Type, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.CreatedAt, lib.UpdatedAt)
 	return err
 }
 
 // UpdateLibrary 更新书库信息
 func UpdateLibrary(lib *model.Library) error {
 	lib.UpdatedAt = time.Now().UTC()
-	_, err := db.Exec(`UPDATE "Library" SET "name" = ?, "type" = ?, "rootPath" = ?, "enabled" = ?, "sortOrder" = ?, "defaultAccess" = ?, "updatedAt" = ?
+	_, err := db.Exec(`UPDATE "Library" SET "name" = ?, "type" = ?, "rootPath" = ?, "enabled" = ?, "sortOrder" = ?, "defaultAccess" = ?, "lastScanAt" = ?, "lastScanAdded" = ?, "lastScanTotal" = ?, "scanEnabled" = ?, "updatedAt" = ?
 		WHERE "id" = ?`,
-		lib.Name, lib.Type, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.UpdatedAt, lib.ID)
+		lib.Name, lib.Type, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.UpdatedAt, lib.ID)
+	return err
+}
+
+// UpdateLibraryScanStatus 更新书库的扫描状态信息
+func UpdateLibraryScanStatus(libraryID string, added int, total int) error {
+	_, err := db.Exec(`UPDATE "Library" SET "lastScanAt" = CURRENT_TIMESTAMP, "lastScanAdded" = ?, "lastScanTotal" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = ?`,
+		added, total, libraryID)
 	return err
 }
 
@@ -101,8 +108,8 @@ func DeleteLibrary(id string) error {
 func FindOrCreateLibrary(rootPath string, libType string) (*model.Library, error) {
 	// 先按rootPath查找
 	var lib model.Library
-	err := db.QueryRow(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "createdAt", "updatedAt" FROM "Library" WHERE "rootPath" = ?`, rootPath).Scan(
-		&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.CreatedAt, &lib.UpdatedAt)
+	err := db.QueryRow(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "rootPath" = ?`, rootPath).Scan(
+		&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &lib.CreatedAt, &lib.UpdatedAt)
 	if err == nil {
 		return &lib, nil
 	}
@@ -122,6 +129,7 @@ func FindOrCreateLibrary(rootPath string, libType string) (*model.Library, error
 		RootPath:      rootPath,
 		Enabled:       true,
 		DefaultAccess: "private",
+		ScanEnabled:   true,
 	}
 	if err := CreateLibrary(&lib); err != nil {
 		return nil, err
