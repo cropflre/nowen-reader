@@ -232,6 +232,83 @@ NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 | GET | `/api/health` | 健康检查 |
 | GET/PUT | `/api/site-settings` | 站点设置 |
 | POST | `/api/upload` | 文件上传 🔒管理员 |
+
+### `POST /api/upload`
+
+- **认证**: 管理员
+- **Content-Type**: `multipart/form-data`
+
+#### 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|:---|:---|:---:|:---|
+| `files` | File[] | 必填 | 上传文件列表（表单字段名必须为 `files`） |
+| `category` | string | 可选 | `comic` 或 `novel`，帮助后端判断歧义扩展名（如 `.azw3`） |
+| `libraryId` | string | 可选 | 目标书库 ID，不传则使用旧目录逻辑 |
+
+#### 行为
+
+**传入 `libraryId` 时**：
+
+1. 查询目标 Library，校验存在、`enabled=true`、`rootPath` 非空
+2. 文件写入 `Library.rootPath`
+3. 按 `Library.type` 校验文件格式：
+   - `comic`：仅允许归档类（`.zip` `.cbz` `.rar` `.cbr` `.7z` 等）
+   - `novel`：仅允许电子书（`.txt` `.epub` `.mobi` `.azw3` `.html` `.htm` `.pdf`）
+   - `mixed`：允许全部支持格式
+
+**不传 `libraryId` 时**：
+
+- 完全兼容旧逻辑
+- 漫画文件写入 `comicsDir`，小说文件写入 `novelsDir`
+- 根据 `category` 和文件扩展名自动判断目标目录
+
+**上传成功后**：
+
+- 接口只负责文件落盘，**不直接写入数据库**
+- 不直接触发扫描
+- 入库依赖现有 `POST /api/sync` 扫描流程（上传成功后通常自动触发）
+
+#### 错误响应
+
+| HTTP 状态码 | 场景 |
+|:---:|:---|
+| 400 | 没有上传文件 / `libraryId` 不存在 / Library 已禁用 / Library rootPath 为空 |
+| 401/403 | 未登录或非管理员 |
+| 200（单文件级别） | 文件已存在 / 不支持的格式 / 文件类型与书库类型不匹配（按单文件报告在 `results` 中） |
+
+#### 响应示例
+
+**全部成功**：
+
+```json
+{
+  "message": "Successfully uploaded 2 file(s)",
+  "results": [
+    { "filename": "vol01.zip", "success": true },
+    { "filename": "vol02.zip", "success": true }
+  ],
+  "successCount": 2,
+  "totalCount": 2,
+  "libraryId": "abc123"
+}
+```
+
+**部分失败**：
+
+```json
+{
+  "message": "Uploaded 1 of 2 file(s), 1 failed",
+  "results": [
+    { "filename": "vol01.zip", "success": true },
+    { "filename": "notes.txt", "success": false, "error": "File type not allowed for comic library" }
+  ],
+  "successCount": 1,
+  "totalCount": 2,
+  "libraryId": "abc123"
+}
+```
+
 | POST | `/api/cache` | 缓存管理 🔒管理员 |
 | POST | `/api/sync` | 触发文件同步 🔒管理员 |
 | GET | `/api/browse-dirs` | 浏览服务器目录 🔒管理员 |
