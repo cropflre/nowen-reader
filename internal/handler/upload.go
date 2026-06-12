@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/config"
+	"github.com/nowen-reader/nowen-reader/internal/model"
+	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
 type UploadHandler struct{}
@@ -37,13 +40,41 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	}
 
 	// 可选：当前页面的内容类别（"comic" | "novel"），用于消除歧义扩展名（如 .azw3）。
-	// 不传则按扩展名自动判断；漫画归档 → comicsDir；电子书 → novelsDir。
 	categoryHint := strings.ToLower(strings.TrimSpace(c.PostForm("category")))
 
-	comicsDir := config.GetComicsDir()
-	novelsDir := config.GetNovelsDir()
-	_ = os.MkdirAll(comicsDir, 0755)
-	_ = os.MkdirAll(novelsDir, 0755)
+	// 可选：目标书库 ID。传入时上传到该书库的 rootPath；不传时走旧目录逻辑。
+	libraryID := strings.TrimSpace(c.PostForm("libraryId"))
+
+	// 解析目标书库（如果指定了）
+	var targetLibrary *model.Library
+	if libraryID != "" {
+		lib, err := store.GetLibraryByID(libraryID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query library"})
+			return
+		}
+		if lib == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Library not found: " + libraryID})
+			return
+		}
+		if !lib.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Library is disabled"})
+			return
+		}
+		if lib.RootPath == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Library rootPath is empty"})
+			return
+		}
+		targetLibrary = lib
+		_ = os.MkdirAll(lib.RootPath, 0755)
+		log.Printf("[Upload] Targeting library %s (%s) at %s", lib.ID, lib.Type, lib.RootPath)
+	} else {
+		// 旧逻辑：使用 comicsDir / novelsDir
+		comicsDir := config.GetComicsDir()
+		novelsDir := config.GetNovelsDir()
+		_ = os.MkdirAll(comicsDir, 0755)
+		_ = os.MkdirAll(novelsDir, 0755)
+	}
 
 	var results []uploadResult
 	for _, fh := range files {
@@ -53,8 +84,23 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 			continue
 		}
 
-		// 按扩展名 + 类别提示选择目标目录
-		destDir := pickUploadDir(fh.Filename, categoryHint, comicsDir, novelsDir)
+		// 确定写入目录
+		var destDir string
+		if targetLibrary != nil {
+			// 按书库类型校验文件格式
+			if !isFileAllowedForLibraryType(fh.Filename, targetLibrary.Type) {
+				results = append(results, uploadResult{
+					Filename: fh.Filename,
+					Error:    fmt.Sprintf("File type not allowed for %s library", targetLibrary.Type),
+				})
+				continue
+			}
+			destDir = targetLibrary.RootPath
+		} else {
+			comicsDir := config.GetComicsDir()
+			novelsDir := config.GetNovelsDir()
+			destDir = pickUploadDir(fh.Filename, categoryHint, comicsDir, novelsDir)
+		}
 
 		destPath := filepath.Join(destDir, fh.Filename)
 		if _, err := os.Stat(destPath); err == nil {
@@ -105,18 +151,36 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		message = fmt.Sprintf("Upload failed: all %d file(s) failed", totalCount)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"message":      message,
 		"results":      results,
 		"successCount": successCount,
 		"totalCount":   totalCount,
-	})
+	}
+	if targetLibrary != nil {
+		resp["libraryId"] = targetLibrary.ID
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// isFileAllowedForLibraryType 根据书库类型判断文件是否允许上传。
+func isFileAllowedForLibraryType(filename, libraryType string) bool {
+	switch libraryType {
+	case "comic":
+		// 漫画书库只允许归档类格式
+		return config.IsSupportedArchive(filename)
+	case "novel":
+		// 小说书库只允许电子书格式
+		return config.IsNovelFile(filename)
+	case "mixed":
+		// 混合书库允许所有支持的格式
+		return config.IsSupportedFile(filename)
+	default:
+		return config.IsSupportedFile(filename)
+	}
 }
 
 // pickUploadDir 根据扩展名（以及可选的页面类别提示）决定目标目录。
-//   - 纯漫画归档扩展名（.zip/.cbz/.cbr/.rar/.7z/.cb7/.pdf）→ comicsDir
-//   - 纯电子书扩展名（.txt/.epub/.mobi/.html/.htm）→ novelsDir
-//   - 同属两类的歧义扩展名（.azw3）→ 优先看 categoryHint；为空时默认电子书
 func pickUploadDir(filename, categoryHint, comicsDir, novelsDir string) string {
 	isArchive := config.IsSupportedArchive(filename)
 	isNovel := config.IsNovelFile(filename)
