@@ -1071,6 +1071,19 @@ export default function Home() {
         {/* Loading — 骨架屏 */}
         {loading && (
           <div className="space-y-6">
+            <section className="home-hero surface-glass rounded-2xl p-4 sm:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0">
+                  <div className="skeleton-shimmer mb-2 h-6 w-40 rounded" />
+                  <div className="skeleton-shimmer h-4 w-64 max-w-full rounded" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="skeleton-shimmer h-9 w-20 rounded-lg" />
+                  <div className="skeleton-shimmer h-9 w-20 rounded-lg" />
+                </div>
+              </div>
+            </section>
+
             {/* 骨架：Tab 栏 */}
             <div className="flex items-center gap-2">
               {[1, 2, 3].map((i) => (
@@ -1097,6 +1110,28 @@ export default function Home() {
 
         {!loading && (
           <>
+            <section className="home-hero surface-glass rounded-2xl p-4 sm:p-6 mb-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0">
+                  <h1 className="text-lg font-semibold text-foreground sm:text-xl">Nowen Reader</h1>
+                  <p className="mt-1 text-xs text-muted sm:text-sm">
+                    {contentType === 'novel' ? '小说阅读库' : '漫画阅读库'}{' '}
+                    {apiTotal > 0 ? `· ${apiTotal} 项内容` : loading ? '· 加载中…' : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={handleUpload} disabled={uploading} className="motion-button inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60">
+                    <Upload className="h-3.5 w-3.5" />
+                    {uploading ? '上传中…' : '上传'}
+                  </button>
+                  <button onClick={handleScanLibrary} disabled={scanningLibrary} className="motion-button inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-card">
+                    {scanningLibrary ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+                    扫描
+                  </button>
+                </div>
+              </div>
+            </section>
+
             {/* 内容类型 Tab + 视图切换 */}
             <div className="flex items-center justify-between gap-1 sm:gap-1.5 mb-4">
               <div className="flex items-center gap-1 sm:gap-1.5">
@@ -1906,3 +1941,10 @@ export default function Home() {
     </div>
   );
 }
+
+
+
+
+
+
+
