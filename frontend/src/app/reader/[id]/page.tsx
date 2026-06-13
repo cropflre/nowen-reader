@@ -211,13 +211,20 @@ export default function ReaderPage() {
   // Start reading session
   useEffect(() => {
     if (!useRealData || pages.length === 0) return;
+    if (sessionIdRef.current || sessionStartPendingRef.current) return;
 
     let cancelled = false;
+    sessionStartPendingRef.current = true;
     sessionStartTimeRef.current = Date.now();
-    currentPageRef.current = currentPage;
-    console.debug("[reader] starting session", { comicId, currentPage });
+    const startPage = currentPageRef.current;
+
+    console.debug("[reader] starting session", {
+      comicId,
+      startPage,
+      pagesLength: pages.length,
+    });
     if (!cancelled) setSessionDiag("starting session");
-    startSession(comicId, currentPage)
+    startSession(comicId, startPage)
       .then((id) => {
         if (cancelled) return;
         if (id) {
@@ -225,13 +232,26 @@ export default function ReaderPage() {
           console.debug("[reader] started session", { sessionId: id });
           setSessionDiag(`started session ${id}`);
         } else {
-          console.warn("[reader] startSession returned null", { comicId, currentPage });
+          console.warn("[reader] startSession returned null", {
+            comicId,
+            startPage,
+            pagesLength: pages.length,
+          });
           setSessionDiag("startSession returned null");
         }
       })
       .catch((error) => {
-        console.warn("[reader] startSession failed", { comicId, currentPage, error });
+        if (cancelled) return;
+        console.warn("[reader] startSession failed", {
+          comicId,
+          startPage,
+          pagesLength: pages.length,
+          error,
+        });
         setSessionDiag(`startSession failed: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        sessionStartPendingRef.current = false;
       });
 
     return () => {
@@ -251,10 +271,11 @@ export default function ReaderPage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useRealData, comicId]);
+  }, [useRealData, comicId, pages.length]);
 
   // Finish session helper — called on explicit exit and unmount
   const sessionEndingRef = useRef(false);
+  const sessionStartPendingRef = useRef(false);
   const finishSessionRef = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
     finishSessionRef.current = async () => {
