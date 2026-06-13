@@ -31,6 +31,9 @@
 - 书库管理面板支持 `defaultAccess`（公开/私有）、`scanEnabled`（自动扫描开关）、目录浏览选择
 - 站点设置中"目录配置已迁移到书库管理"引导卡片
 - 管理员 API：`/api/admin/libraries` CRUD + `/api/admin/users/:id/library-access`
+- 移动端阅读器首次手势提示：首次进入移动端漫画阅读器时显示双击/双指缩放提示，localStorage 持久化，仅显示一次
+- 设置面板滤镜 slider 数值实时显示：亮度/对比度/灰度旁边显示当前百分比
+- 移动端顶部工具栏更多菜单：低频操作（详情、书签列表、全屏）收进 overflow 菜单，主栏只保留核心按钮
 
 ### Changed
 
@@ -48,6 +51,10 @@
 - 漫画列表按用户可访问书库过滤（`GetUserAccessibleLibraryIDs`）
 - 阅读进度计算统一为 0-based index 的展示语义
 - 系统诊断面板适配日间模式（33 处硬编码颜色替换为 CSS 变量）
+- 移动端底部工具栏、设置面板、书签面板 safe-area 适配，避开 iPhone home indicator 和 Android 底部导航栏
+- 小屏（< 640px）双页模式自动临时退化为单页，用户保存的设置不变
+- 移动端顶部工具栏按钮布局精简：书签切换 + 设置始终显示，更多菜单收纳低频操作
+- 设置面板 slider 数值可读性提升（12px 等宽字体、70% 不透明度）和预设按钮触控区域增大
 
 ### Fixed
 
@@ -64,6 +71,9 @@
 - 系统诊断面板日间模式文字不可读的问题
 - `frontend/tsconfig.tsbuildinfo` 被 Git 跟踪导致构建后误报"有未推送改动"
 - 前端收藏/评分/阅读状态 403 错误被静默吞掉的问题
+- iPhone home indicator 遮挡阅读器底部进度条、设置面板底部内容、书签面板最后一项的问题
+- 小屏手机双页模式内容过小看不清的问题
+- 移动端顶部工具栏按钮拥挤、标题和按钮互相挤压的问题
 
 ### Tests
 
@@ -122,3 +132,13 @@
 | `62834d0` | feat(comic): 漫画详情页阅读状态选择器 |
 | `878d7c9` | feat(comic): 首页列表页阅读状态筛选 |
 | `8ecb7aa` | fix(comic): 修复详情页阅读状态选择器在 loading skeleton 中未显示 |
+
+### Key Commits (P18 Mobile Reader)
+
+| Commit | Description |
+|:---|:---|
+| `2e56b20` | fix(reader): 移动端底部安全区适配 |
+| `1776bf5` | feat(reader): 移动端顶部工具栏按钮精简 |
+| `ec647a0` | fix(reader): 小屏双页模式自动退化为单页 |
+| `e632336` | feat(reader): 移动端缩放手势首次提示 |
+| `f0b722b` | feat(reader): 设置面板滤镜 slider 数值显示和触控优化 |
