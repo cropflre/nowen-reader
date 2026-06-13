@@ -41,6 +41,7 @@
 - PUT /api/comics/:id/reading-status 写入当前用户的 UserComicState，不再更新 Comic 表
 - GET /api/comics?readingStatus=reading 按当前用户的阅读状态过滤
 - Webtoon 缩放不破坏虚拟化逻辑、书签跳转、图片滤镜
+- 修复详情页阅读状态选择器被插入到 loading skeleton 分支，导致加载完成后的真实详情页不显示
 - OPDS All / Recent / Favorites / Search 全部接入 `opdsLibraryFilter()` 书库权限过滤
 - OPDS `opdsLibraryFilter()` 对无用户/无权限返回 `WHERE 1 = 0`，不再放行全库
 - 漫画详情、阅读器、小说页面接入 403 ForbiddenPage 友好展示
@@ -120,3 +121,4 @@
 | `8ad26cb` | fix(handler): 用户级阅读状态 Handler 改造 |
 | `62834d0` | feat(comic): 漫画详情页阅读状态选择器 |
 | `878d7c9` | feat(comic): 首页列表页阅读状态筛选 |
+| `8ecb7aa` | fix(comic): 修复详情页阅读状态选择器在 loading skeleton 中未显示 |
