@@ -228,15 +228,26 @@ export default function ReaderPage() {
   }, [useRealData, comicId]);
 
   // Finish session helper — called on explicit exit and unmount
-  const finishSessionRef = useRef<(() => void) | null>(null);
+  const sessionEndingRef = useRef(false);
+  const finishSessionRef = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
-    finishSessionRef.current = () => {
+    finishSessionRef.current = async () => {
+      if (sessionEndingRef.current) return;
       if (!sessionIdRef.current) return;
       const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
       if (duration > 2) {
-        endSession(sessionIdRef.current, currentPageRef.current, duration);
+        try {
+          sessionEndingRef.current = true;
+          await endSession(sessionIdRef.current, currentPageRef.current, duration);
+        } catch (error) {
+          console.warn("[reader] finishSession failed", error);
+        } finally {
+          sessionIdRef.current = null;
+          sessionEndingRef.current = false;
+        }
+      } else {
+        sessionIdRef.current = null;
       }
-      sessionIdRef.current = null;
     };
     return () => { finishSessionRef.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -725,10 +736,10 @@ export default function ReaderPage() {
         direction={direction}
         isFullscreen={isFullscreen}
         readerTheme={readerTheme}
-        onBack={() => {
+        onBack={async () => {
           // 智能返回：优先回到合集详情页，否则回首页
           // 使用 replace 避免 reader → group → back → reader 的历史栈循环
-          finishSessionRef.current?.();
+          await finishSessionRef.current?.();
           if (seriesGroupId) {
             router.replace(`/group/${seriesGroupId}`);
           } else {
@@ -874,10 +885,10 @@ export default function ReaderPage() {
                 return (
                   <button
                     key={vol.comicId}
-                    onClick={() => {
+                    onClick={async () => {
                       setShowChapterDrawer(false);
                       if (!isCurrent) {
-                        finishSessionRef.current?.();
+                        await finishSessionRef.current?.();
                         router.replace(`/reader/${vol.comicId}`);
                       }
                     }}

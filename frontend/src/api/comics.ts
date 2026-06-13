@@ -233,8 +233,15 @@ export async function startSession(comicId: string, startPage: number): Promise<
 export async function endSession(sessionId: number, endPage: number, duration: number) {
   try {
     await apiClient.put("/api/stats/session", { sessionId, endPage, duration });
-  } catch {
-    // ignore
+  } catch (error) {
+    if (typeof window !== "undefined") {
+      console.warn("[reader] failed to end reading session", {
+        sessionId,
+        endPage,
+        duration,
+        error,
+      });
+    }
   }
 }
 
