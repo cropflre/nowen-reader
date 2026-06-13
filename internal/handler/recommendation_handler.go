@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"time"
 
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -51,7 +53,8 @@ func (h *RecommendationHandler) GetRecommendations(c *gin.Context) {
 	}
 	recommendations, err := service.GetRecommendations(limit, excludeRead, contentType, seed, libraryIDs...)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to get recommendations"})
+		log.Printf("[RecommendationHandler] error: %v, userID=%q, libraryIDs=%v, contentType=%q", err, getUserID(c), libraryIDs, contentType)
+		c.JSON(500, gin.H{"error": "Failed to get recommendations", "detail": err.Error()})
 		return
 	}
 
