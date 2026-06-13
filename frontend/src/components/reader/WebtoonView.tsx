@@ -73,6 +73,9 @@ export default function WebtoonView({
   const isPanningRef = useRef(false);
   const lastTapTimeRef = useRef(0);
   const touchHandledRef = useRef(false);
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef(1);
+  const isPinchingRef = useRef(false);
 
   // Preload images ahead of current page
   useImagePreloader(pages, currentPage, preloadCount, comicId);
@@ -181,8 +184,22 @@ export default function WebtoonView({
     }
   }, []);
 
-  // Touch gesture handlers for double-tap zoom and pan
+  // Touch gesture handlers for double-tap zoom, pinch-to-zoom, and pan
+  const getTouchDistance = (touches: React.TouchList): number => {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  };
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Pinch start
+      pinchStartDistRef.current = getTouchDistance(e.touches);
+      pinchStartScaleRef.current = scale;
+      isPinchingRef.current = true;
+      panStartRef.current = null;
+      return;
+    }
     if (e.touches.length === 1 && scale > 1) {
       panStartRef.current = {
         x: e.touches[0].clientX,
@@ -194,11 +211,21 @@ export default function WebtoonView({
   }, [scale, translate]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 1 && panStartRef.current && scale > 1) {
+    // Pinch-to-zoom
+    if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
+      const currentDist = getTouchDistance(e.touches);
+      const nextScale = Math.min(3, Math.max(1, pinchStartScaleRef.current * (currentDist / pinchStartDistRef.current)));
+      setScale(nextScale);
+      if (nextScale <= 1) {
+        setTranslate({ x: 0, y: 0 });
+      }
+      return;
+    }
+    // Single-finger pan (only when zoomed in and not pinching)
+    if (e.touches.length === 1 && panStartRef.current && scale > 1 && !isPinchingRef.current) {
       const dx = e.touches[0].clientX - panStartRef.current.x;
       const dy = e.touches[0].clientY - panStartRef.current.y;
       isPanningRef.current = true;
-      // touch-none CSS class prevents browser scroll when zoomed
       setTranslate({
         x: panStartRef.current.tx + dx,
         y: panStartRef.current.ty + dy,
@@ -207,12 +234,26 @@ export default function WebtoonView({
   }, [scale]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    // End pinch gesture
+    if (isPinchingRef.current && e.touches.length < 2) {
+      pinchStartDistRef.current = null;
+      isPinchingRef.current = false;
+      // Snap to 1x if close enough
+      if (scale <= 1.05) {
+        setScale(1);
+        setTranslate({ x: 0, y: 0 });
+      }
+      touchHandledRef.current = true;
+      setTimeout(() => { touchHandledRef.current = false; }, 400);
+      panStartRef.current = null;
+      return;
+    }
+
     panStartRef.current = null;
 
-    // Double-tap detection
+    // Double-tap detection (only when not pinching)
     const now = Date.now();
     if (now - lastTapTimeRef.current < 300 && e.changedTouches.length === 1) {
-      // Double tap detected
       lastTapTimeRef.current = 0;
       touchHandledRef.current = true;
       setTimeout(() => { touchHandledRef.current = false; }, 400);
