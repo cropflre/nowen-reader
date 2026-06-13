@@ -489,6 +489,8 @@ const zhCN = {
     semanticMatch: "AI 语义匹配",
     aiReasonLoading: "正在生成 AI 推荐理由...",
     aiReasonGenerate: "AI 推荐理由",
+    loadFailed: "推荐加载失败",
+    noRecommendations: "暂无推荐",
   },
 
   // Settings
@@ -1645,6 +1647,8 @@ export interface Translations {
     semanticMatch: string;
     aiReasonLoading: string;
     aiReasonGenerate: string;
+    loadFailed: string;
+    noRecommendations: string;
   };
   settings: {
     title: string;

@@ -25,6 +25,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
   const t = useTranslation();
   const [recommendations, setRecommendations] = useState<RecommendedComic[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined);
@@ -33,13 +34,21 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
 
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({ limit: "8", excludeRead: "false", shuffle: "true" });
       if (contentType) params.set("contentType", contentType);
       const data = await apiClient.get(`/api/recommendations?${params.toString()}`) as any;
-      setRecommendations(data?.recommendations || []);
+      const recs = data?.recommendations;
+      if (Array.isArray(recs)) {
+        setRecommendations(recs);
+      } else {
+        console.warn("[RecommendationStrip] unexpected response shape:", data);
+        setRecommendations([]);
+      }
     } catch (err) {
       console.warn("[RecommendationStrip] failed to fetch recommendations:", err);
+      setError(err instanceof Error ? err.message : "Request failed");
     }
     finally { setLoading(false); }
   }, [contentType]);
@@ -104,8 +113,70 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
     }
   }, [recommendations]);
 
-  if (loading && recommendations.length === 0) return null;
-  if (recommendations.length === 0) return null;
+  // Loading state
+  if (loading && recommendations.length === 0) {
+    return (
+      <div className="mb-8">
+        <div className="mb-4 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-amber-400" />
+          <h2 className="text-sm font-semibold text-foreground">
+            {t.recommend?.title || "Recommended for You"}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>{t.common?.loading || "Loading..."}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && recommendations.length === 0) {
+    return (
+      <div className="mb-8">
+        <div className="mb-4 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-amber-400" />
+          <h2 className="text-sm font-semibold text-foreground">
+            {t.recommend?.title || "Recommended for You"}
+          </h2>
+        </div>
+        <div className="flex items-center gap-3 py-4">
+          <span className="text-sm text-muted">{t.recommend?.loadFailed || "Failed to load recommendations"}</span>
+          <button
+            onClick={fetchRecommendations}
+            className="rounded-lg bg-accent/20 px-3 py-1 text-xs text-accent hover:bg-accent/30 transition-colors"
+          >
+            {t.recommend?.refresh || "Retry"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (recommendations.length === 0) {
+    return (
+      <div className="mb-8">
+        <div className="mb-4 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-amber-400" />
+          <h2 className="text-sm font-semibold text-foreground">
+            {t.recommend?.title || "Recommended for You"}
+          </h2>
+        </div>
+        <div className="flex items-center gap-3 py-4">
+          <span className="text-sm text-muted">{t.recommend?.noRecommendations || "No recommendations yet"}</span>
+          <button
+            onClick={fetchRecommendations}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted transition-colors hover:text-foreground"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t.recommend?.refresh || "Refresh"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const reasonLabels: Record<string, string> = {
     tag_match: t.recommend?.tagMatch || "Similar tags",

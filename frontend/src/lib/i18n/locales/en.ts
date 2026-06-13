@@ -492,6 +492,8 @@ const en: Translations = {
     semanticMatch: "AI semantic match",
     aiReasonLoading: "Generating AI reasons...",
     aiReasonGenerate: "AI Reasons",
+    loadFailed: "Failed to load recommendations",
+    noRecommendations: "No recommendations yet",
   },
 
   // Settings
