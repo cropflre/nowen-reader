@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { apiClient } from "@/lib/apiClient";
 import Image from "next/image";
 import Link from "next/link";
 import { Sparkles, ChevronRight, ChevronUp, ChevronDown, RefreshCw } from "lucide-react";
@@ -35,12 +36,11 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
     try {
       const params = new URLSearchParams({ limit: "8", excludeRead: "false", shuffle: "true" });
       if (contentType) params.set("contentType", contentType);
-      const res = await fetch(`/api/recommendations?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setRecommendations(data.recommendations || []);
-      }
-    } catch { /* ignore */ }
+      const data = await apiClient.get(`/api/recommendations?${params.toString()}`) as any;
+      setRecommendations(data?.recommendations || []);
+    } catch (err) {
+      console.warn("[RecommendationStrip] failed to fetch recommendations:", err);
+    }
     finally { setLoading(false); }
   }, [contentType]);
 
@@ -215,12 +215,11 @@ export function SimilarComics({ comicId }: { comicId: string }) {
   const [similar, setSimilar] = useState<RecommendedComic[]>([]);
 
   useEffect(() => {
-    fetch(`/api/recommendations/similar/${comicId}?limit=5`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
+    apiClient.get(`/api/recommendations/similar/${comicId}?limit=5`)
+      .then((data: any) => {
         if (data?.similar) setSimilar(data.similar);
       })
-      .catch(() => {});
+      .catch((err) => console.warn("[SimilarComics] failed to fetch:", err));
   }, [comicId]);
 
   if (similar.length === 0) return null;
