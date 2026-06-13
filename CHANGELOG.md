@@ -10,6 +10,16 @@
 - 系统诊断和 PDF renderer 接口（`/api/system/*`）添加认证要求
 - Library.defaultAccess 防御性数据库迁移（migration 25），兼容中间版本升级的老数据库
 
+- 漫画阅读器图片滤镜：亮度、对比度、灰度，通过 CSS filter 实现，支持单页/双页/Webtoon 模式
+- 图片滤镜预设：默认、夜间护眼、老漫画增强、黑白增强，一键切换常用阅读效果
+- Webtoon 模式双击缩放：双击放大到 200%，再次双击还原，缩放状态下支持单指拖拽平移
+- 漫画本地书签：工具栏添加/取消书签、书签列表面板、点击跳转、localStorage 按漫画分组持久化
+- 用户级阅读状态（想读/在读/已读完）：每个用户独立管理，不再使用全局 Comic.readingStatus
+- 首页按阅读状态筛选：下拉选择器支持全部状态/想读/在读/已读完，与搜索、标签、分类等条件自由组合
+- 漫画详情页阅读状态选择器：点击即保存，支持 403/401 错误提示
+- Webtoon 缩放状态指示器（右下角百分比提示）
+- 漫画阅读器设置面板新增图片滤镜区域（3 个 slider + 预设按钮 + 重置按钮）
+
 - 多用户书库权限能力（Library / UserLibraryAccess / UserGroup / GroupLibraryAccess）
 - `UserCanViewLibrary()` 统一授权语义：admin→enabled / public→自动 / 直接授权 / 用户组继承
 - `UserCanViewComic()` 处理 NULL libraryId 和不存在书库的向后兼容
@@ -25,6 +35,12 @@
 ### Changed
 
 - 站点目录配置入口迁移到书库管理，原入口改为引导提示
+
+- 阅读状态从全局 Comic.readingStatus 切换为 UserComicState 用户级状态，多用户之间互不影响
+- GET /api/comics/:id 返回当前用户自己的 readingStatus，不再返回全局值
+- PUT /api/comics/:id/reading-status 写入当前用户的 UserComicState，不再更新 Comic 表
+- GET /api/comics?readingStatus=reading 按当前用户的阅读状态过滤
+- Webtoon 缩放不破坏虚拟化逻辑、书签跳转、图片滤镜
 - OPDS All / Recent / Favorites / Search 全部接入 `opdsLibraryFilter()` 书库权限过滤
 - OPDS `opdsLibraryFilter()` 对无用户/无权限返回 `WHERE 1 = 0`，不再放行全库
 - 漫画详情、阅读器、小说页面接入 403 ForbiddenPage 友好展示
@@ -91,3 +107,16 @@
 | `66fa6be` | fix(ui): 修复阅读进度显示 99% 问题，统一使用 calculateReadingProgress |
 | `789ed5a` | chore(git): 停止跟踪 TypeScript 构建缓存文件 |
 | `4b3b28d` | fix(ui): 统一小说阅读页及阅读器进度计算，消除最后章节 99% 问题 |
+
+### Key Commits (P13-P16)
+
+| Commit | Description |
+|:---|:---|
+| `2575109` | feat(reader): 漫画阅读器图片滤镜功能 |
+| `18087e1` | feat(reader): 图片滤镜预设功能 |
+| `385d098` | feat(reader): Webtoon 双击缩放和平移 |
+| `314d637` | feat(reader): 漫画阅读器本地书签功能 |
+| `df05842` | feat(store): 用户级阅读状态 Store 层改造 |
+| `8ad26cb` | fix(handler): 用户级阅读状态 Handler 改造 |
+| `62834d0` | feat(comic): 漫画详情页阅读状态选择器 |
+| `878d7c9` | feat(comic): 首页列表页阅读状态筛选 |

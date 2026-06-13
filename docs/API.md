@@ -35,6 +35,37 @@ NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 | PUT | `/api/comics/reorder` | 自定义排序 🔒管理员 |
 | GET | `/api/comics/duplicates` | 重复检测 |
 
+
+### 设置阅读状态
+
+```
+PUT /api/comics/:id/reading-status
+Authorization: Bearer <token>
+
+{
+  "status": "want" | "reading" | "finished" | "shelved" | ""
+}
+```
+
+- 需要登录（任何角色）
+- 需要对该漫画有访问权限（书库权限校验）
+- 状态保存到当前用户的 UserComicState，不更新全局 Comic 表
+- 多用户之间阅读状态互不影响
+- 空字符串 `""` 表示清除状态
+- 第一版前端不暴露 `shelved` 状态
+
+### 按阅读状态筛选列表
+
+```
+GET /api/comics?readingStatus=want
+GET /api/comics?readingStatus=reading
+GET /api/comics?readingStatus=finished
+```
+
+- 按当前用户的 UserComicState.readingStatus 过滤
+- 与 search、tags、category、contentType、favorites 等条件可自由组合
+- 不传该参数时不按阅读状态过滤
+
 ## 🏷️ 标签 & 分类
 
 | 方法 | 路径 | 说明 |

@@ -47,10 +47,10 @@ NowenReader is a self-hosted manga / novel management and reading platform optim
 
 ## ✨ Features
 
-- **📚 Content Management** — Multi-format, auto-scan, tags & categories, group merging, favorites & ratings, reading status, metadata editing, file upload, batch operations, duplicate detection, invalid cleanup
+- **📚 Content Management** — Multi-format, auto-scan, tags & categories, group merging, favorites & ratings, user-level reading status (want/reading/finished), reading status filter, metadata editing, file upload, batch operations, duplicate detection, invalid cleanup
 - **🔍 Metadata Scraping** — AniList / Bangumi / MangaDex / MangaUpdates / Kitsu; ComicInfo.xml & novel metadata extraction
 - **🤖 AI Assistance (optional)** — Semantic search, smart summary, tag/category suggestions, cover analysis, filename parsing, reading insights, AI chat, chapter summary, page translation, etc.
-- **📖 Reading Experience** — Single/double-page, webtoon mode, novel chapters, PDF rendering, continue reading, reading stats & goals, data export
+- **📖 Reading Experience** — Single/double-page, webtoon mode, image filters & presets, webtoon double-tap zoom, comic bookmarks, novel chapters, PDF rendering, continue reading, reading stats & goals, data export
 - **📡 Protocol Integration** — OPDS support (KOReader / Moon+ Reader, etc.)
 - **📱 Multi-platform** — Web PWA + Flutter native client (Material 3, gesture zoom, immersive reading, progress sync)
 - **🛠️ Deploy-friendly** — Single Go binary, SQLite (WAL + FTS5), multi-arch Docker, i18n, theming, responsive
