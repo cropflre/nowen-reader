@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useTranslation } from "@/lib/i18n";
 import { X, ChevronDown, Monitor, Wrench, Cog, SlidersHorizontal } from "lucide-react";
@@ -308,10 +308,10 @@ export default function ReaderOptionsPanel({
               : isOpen && !isClosing
               ? "translateY(0)"
               : "translateY(100%)",
-          maxHeight: "75vh",
+          maxHeight: "calc(75vh - env(safe-area-inset-bottom, 0px))",
         }}
       >
-        <div className="rounded-t-2xl bg-zinc-900 border-t border-white/10 shadow-2xl shadow-black/50 flex flex-col" style={{ maxHeight: "75vh" }}>
+        <div className="rounded-t-2xl bg-zinc-900 border-t border-white/10 shadow-2xl shadow-black/50 flex flex-col" style={{ maxHeight: "calc(75vh - env(safe-area-inset-bottom, 0px))" }}>
           {/* 拖拽把手 + 标题栏 */}
           <div
             data-drag-handle
@@ -340,7 +340,7 @@ export default function ReaderOptionsPanel({
           <div
             className="flex-1 overflow-y-auto overscroll-contain px-3 pb-4 space-y-2.5"
             style={{
-              paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))",
+              paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
             }}
           >
             {/* ── 📖 显示设置 ── */}

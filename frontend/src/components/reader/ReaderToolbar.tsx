@@ -228,7 +228,7 @@ export default function ReaderToolbar({
             : "translate-y-full opacity-0 pointer-events-none"
         }`}
       >
-        <div className="bg-black/70 px-4 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
+        <div className="bg-black/70 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur-xl">
           {/* Page Slider */}
           <div className="flex items-center gap-4 py-3">
             <button
