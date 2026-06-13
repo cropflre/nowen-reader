@@ -208,17 +208,35 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!useRealData || pages.length === 0) return;
 
+    let cancelled = false;
     sessionStartTimeRef.current = Date.now();
     currentPageRef.current = currentPage;
-    startSession(comicId, currentPage).then((id) => {
-      if (id) sessionIdRef.current = id;
-    });
+    console.debug("[reader] starting session", { comicId, currentPage });
+    startSession(comicId, currentPage)
+      .then((id) => {
+        if (cancelled) return;
+        if (id) {
+          sessionIdRef.current = id;
+          console.debug("[reader] started session", { sessionId: id });
+        } else {
+          console.warn("[reader] startSession returned null", { comicId, currentPage });
+        }
+      })
+      .catch((error) => {
+        console.warn("[reader] startSession failed", { comicId, currentPage, error });
+      });
 
     return () => {
+      cancelled = true;
       // End session on unmount
       if (sessionIdRef.current) {
         const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
         if (duration > 2) {
+          console.debug("[reader] cleanup ending session", {
+            sessionId: sessionIdRef.current,
+            currentPage: currentPageRef.current,
+            duration,
+          });
           endSession(sessionIdRef.current, currentPageRef.current, duration);
         }
         sessionIdRef.current = null;

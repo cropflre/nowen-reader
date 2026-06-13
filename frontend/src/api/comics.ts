@@ -224,8 +224,14 @@ export async function startSession(comicId: string, startPage: number): Promise<
       { comicId, startPage }
     );
     return data.sessionId ?? null;
-  } catch {
-    // ignore
+  } catch (error) {
+    if (typeof window !== "undefined") {
+      console.warn("[reader] failed to start reading session", {
+        comicId,
+        startPage,
+        error,
+      });
+    }
   }
   return null;
 }
