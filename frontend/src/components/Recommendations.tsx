@@ -304,7 +304,23 @@ export function SimilarComics({ comicId }: { comicId: string }) {
       .finally(() => setLoading(false));
   }, [comicId]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <section className="mt-8 surface-card rounded-2xl p-4 sm:p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="skeleton-shimmer h-4 w-32 rounded" />
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="w-[130px] shrink-0 space-y-2">
+              <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card skeleton-shimmer" />
+              <div className="skeleton-shimmer h-3 w-20 rounded" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (error && similar.length === 0) {
     return (
