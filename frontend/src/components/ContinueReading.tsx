@@ -96,7 +96,27 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
     fetchRecent();
   }, [fetchRecent]);
 
-  if (loading || recentComics.length === 0) return null;
+  if (loading) {
+    return (
+      <section className="mb-8 surface-card rounded-2xl p-4 sm:p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <BookOpen className="h-5 w-5 text-accent" />
+          <h2 className="text-sm font-semibold text-foreground">{t.continueReading?.title || "继续阅读"}</h2>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="w-[140px] shrink-0 space-y-1.5">
+              <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card skeleton-shimmer" />
+              <div className="skeleton-shimmer h-3 w-24 rounded" />
+              <div className="skeleton-shimmer h-3 w-16 rounded" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (recentComics.length === 0) return null;
 
   // 判断是否为小说：优先使用数据库 type 字段，fallback 到文件后缀
   const isNovelByFilename = (filename: string) =>
@@ -124,7 +144,7 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
   };
 
   return (
-    <div className="mb-6">
+    <section className="mb-8 surface-card rounded-2xl p-4 sm:p-5">
       {/* 标题栏 — 可点击折叠，与"为你推荐"交互一致 */}
       <div className="mb-3 flex items-center justify-between">
         <button
@@ -169,7 +189,7 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
                 <Link key={comic.id} href={href} className="group shrink-0">
                   <div className="w-[140px] space-y-1.5">
                     {/* 封面 */}
-                    <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card">
+                    <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card motion-cover">
                       <Image
                         src={comic.coverUrl}
                         alt={comic.title}
@@ -224,6 +244,6 @@ export function ContinueReading({ contentType }: { contentType?: string }) {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

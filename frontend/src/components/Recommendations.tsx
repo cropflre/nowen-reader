@@ -116,7 +116,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
   // Loading state
   if (loading && recommendations.length === 0) {
     return (
-      <div className="mb-8">
+      <section className="mb-8 surface-card rounded-2xl p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-amber-400" />
           <h2 className="text-sm font-semibold text-foreground">
@@ -127,14 +127,14 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
           <RefreshCw className="h-4 w-4 animate-spin" />
           <span>{t.common?.loading || "Loading..."}</span>
         </div>
-      </div>
+      </section>
     );
   }
 
   // Error state
   if (error && recommendations.length === 0) {
     return (
-      <div className="mb-8">
+      <section className="mb-8 surface-card rounded-2xl p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-amber-400" />
           <h2 className="text-sm font-semibold text-foreground">
@@ -150,14 +150,14 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
             {t.recommend?.refresh || "Retry"}
           </button>
         </div>
-      </div>
+      </section>
     );
   }
 
   // Empty state
   if (recommendations.length === 0) {
     return (
-      <div className="mb-8">
+      <section className="mb-8 surface-card rounded-2xl p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-amber-400" />
           <h2 className="text-sm font-semibold text-foreground">
@@ -174,7 +174,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
             {t.recommend?.refresh || "Refresh"}
           </button>
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -190,7 +190,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
   };
 
   return (
-    <div className="mb-8">
+    <section className="mb-8 surface-card rounded-2xl p-4 sm:p-5">
       <div className="mb-4 flex items-center justify-between">
         <button
           onClick={() => setCollapsed(!collapsed)}
@@ -236,7 +236,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
                 className="group shrink-0"
               >
                 <div className="w-[130px] space-y-2">
-                  <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card motion-cover group-hover:scale-105">
+                  <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg bg-card motion-cover">
                     <Image
                       src={item.coverUrl}
                       alt={item.title}
@@ -264,7 +264,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
             {/* See more */}
             <Link
               href={`/recommendations${contentType ? `?contentType=${contentType}` : ""}`}
-              className="flex w-[130px] shrink-0 items-center justify-center rounded-lg border border-border/40 bg-card/30 transition-colors hover:bg-card"
+              className="flex w-[130px] shrink-0 items-center justify-center rounded-lg border border-border/40 bg-card/30 transition-colors hover:bg-card interactive-scale"
             >
               <div className="flex flex-col items-center gap-1 text-muted">
                 <ChevronRight className="h-5 w-5" />
@@ -274,7 +274,7 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
