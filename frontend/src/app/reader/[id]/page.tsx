@@ -93,6 +93,15 @@ export default function ReaderPage() {
   // State
   const [currentPage, setCurrentPage] = useState(0);
   const [mode, setMode] = useState<ComicReadingMode>("single");
+  const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    const handler = (e: MediaQueryListEvent) => setIsSmallScreen(e.matches);
+    mql.addEventListener("change", handler);
+    setIsSmallScreen(mql.matches);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+  const effectiveMode: ComicReadingMode = isSmallScreen && mode === "double" ? "single" : mode;
   const [direction, setDirection] = useState<ReadingDirection>("ltr");
   const [toolbarVisible, setToolbarVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -301,7 +310,7 @@ export default function ReaderPage() {
           ? e.key === "ArrowLeft" || e.key === "a"
           : e.key === "ArrowRight" || e.key === "d";
 
-      const step = mode === "double" ? 2 : 1;
+      const step = effectiveMode === "double" ? 2 : 1;
 
       if (isForward || e.key === "ArrowDown" || e.key === " ") {
         e.preventDefault();
@@ -336,7 +345,7 @@ export default function ReaderPage() {
         setShowInfoPanel((v) => !v);
       }
     },
-    [direction, mode, pages.length, isFullscreen, router, showInfoPanel, showOptionsPanel, currentPage, handleBoundaryReached, seriesGroupId]
+    [direction, mode, effectiveMode, pages.length, isFullscreen, router, showInfoPanel, showOptionsPanel, currentPage, handleBoundaryReached, seriesGroupId]
   );
 
   useEffect(() => {
@@ -380,7 +389,7 @@ export default function ReaderPage() {
     if (!autoPageActive || readerOpts.autoPageInterval <= 0) return;
     if (mode === "webtoon") return; // 无限滚动不需要自动翻页
 
-    const step = mode === "double" ? 2 : 1;
+    const step = effectiveMode === "double" ? 2 : 1;
     const timer = setInterval(() => {
       setCurrentPage((p) => {
         const next = p + step;
@@ -393,7 +402,7 @@ export default function ReaderPage() {
     }, readerOpts.autoPageInterval * 1000);
 
     return () => clearInterval(timer);
-  }, [autoPageActive, readerOpts.autoPageInterval, mode, pages.length]);
+  }, [autoPageActive, readerOpts.autoPageInterval, mode, effectiveMode, pages.length]);
 
   // 选项面板 onChange 处理
   const handleOptionsChange = useCallback((partial: Partial<typeof readerOpts>) => {
@@ -556,7 +565,7 @@ export default function ReaderPage() {
       readerTheme === "day" ? "bg-gray-100" : "bg-black"
     }`}>
       {/* Reading View */}
-      {usePdfView && mode === "single" ? (
+      {usePdfView && effectiveMode === "single" ? (
         <PdfView
           comicId={comicId}
           totalPages={pages.length}
@@ -566,7 +575,7 @@ export default function ReaderPage() {
           onTapCenter={handleTapCenter}
           readerTheme={readerTheme}
         />
-      ) : mode === "single" ? (
+      ) : effectiveMode === "single" ? (
         <SinglePageView
           pages={pages}
           currentPage={currentPage}
@@ -582,7 +591,7 @@ export default function ReaderPage() {
           onBoundaryReached={handleBoundaryReached}
           imageFilter={imageFilter}
         />
-      ) : mode === "double" ? (
+      ) : effectiveMode === "double" ? (
         <DoublePageView
           pages={pages}
           currentPage={currentPage}
