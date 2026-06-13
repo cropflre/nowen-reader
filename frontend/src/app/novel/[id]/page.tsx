@@ -349,10 +349,11 @@ export default function NovelReaderPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-black">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-accent" />
-          <p className="text-sm text-white/40">{t.reader.loading || "正在加载..."}</p>
+      <div className="flex h-screen items-center justify-center bg-black relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.04)_0%,transparent_70%)] pointer-events-none" />
+        <div className="flex flex-col items-center gap-5">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-accent" />
+          <p className="text-sm font-medium text-white/50">{t.reader.loading || "正在加载..."}</p>
         </div>
       </div>
     );
@@ -365,20 +366,22 @@ export default function NovelReaderPage() {
 
   if (apiError) {
     return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
-        <div className="text-center">
+      <div className="flex h-screen items-center justify-center bg-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(239,68,68,0.04)_0%,transparent_70%)] pointer-events-none" />
+        <div className="mx-4 max-w-sm rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-white/[0.08] shadow-2xl shadow-black/60 p-8 text-center">
+          <div className="text-4xl mb-4">⚠️</div>
           <p className="text-lg font-medium">{t.reader.loadError || "加载失败"}</p>
-          <p className="mt-2 text-sm text-white/50">{apiError}</p>
-          <div className="mt-4 flex gap-3 justify-center">
+          <p className="mt-2 text-sm text-white/40">{apiError}</p>
+          <div className="mt-6 flex gap-3 justify-center">
             <button
               onClick={() => window.location.reload()}
-              className="rounded-lg bg-accent px-4 py-2 text-sm"
+              className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/25 transition-all duration-150 motion-button active:scale-[0.97]"
             >
               {t.reader.retry || "重试"}
             </button>
             <button
               onClick={() => router.push("/")}
-              className="rounded-lg bg-white/10 px-4 py-2 text-sm"
+              className="rounded-xl bg-white/[0.06] border border-white/[0.08] px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/[0.10] transition-all duration-150 motion-button active:scale-[0.97]"
             >
               {t.reader.backToShelf}
             </button>
@@ -391,12 +394,14 @@ export default function NovelReaderPage() {
   // No chapters found
   if (totalChapters === 0) {
     return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
-        <div className="text-center">
+      <div className="flex h-screen items-center justify-center bg-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.02)_0%,transparent_70%)] pointer-events-none" />
+        <div className="mx-4 max-w-sm rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-white/[0.08] shadow-2xl shadow-black/60 p-8 text-center">
+          <div className="text-4xl mb-4">📖</div>
           <p className="text-lg font-medium">{t.reader.comicNotFound}</p>
           <button
             onClick={() => router.push("/")}
-            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm"
+            className="mt-6 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/25 transition-all duration-150 motion-button active:scale-[0.97]"
           >
             {t.reader.backToShelf}
           </button>

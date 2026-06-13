@@ -1007,7 +1007,7 @@ export default function TextReaderView({
       >
         <div
           ref={swipeInnerRef}
-          className="mx-auto max-w-2xl"
+          className="mx-auto max-w-prose px-4 sm:px-6"
           style={{
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
@@ -1031,7 +1031,7 @@ export default function TextReaderView({
               {/* Chapter title */}
               {chapterTitle && (
                 <h2
-                  className={`mb-8 text-center text-xl font-bold ${theme.titleText}`}
+                  className={`mb-10 text-center text-2xl font-bold tracking-tight ${theme.titleText}`}
                 >
                   {chapterTitle}
                 </h2>
@@ -1129,7 +1129,7 @@ export default function TextReaderView({
 
               {/* Text content */}
               <div
-                className={`leading-relaxed ${theme.contentText}`}
+                className={`leading-[1.85] tracking-wide ${theme.contentText}`}
               >
                 {isHTML ? (
                   <>

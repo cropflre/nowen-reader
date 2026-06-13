@@ -520,7 +520,7 @@ export default function PdfView({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full flex items-center justify-center overflow-auto cursor-pointer select-none"
+      className="relative h-full w-full flex items-center justify-center overflow-auto cursor-pointer select-none bg-[#080808]"
       onClick={handleClick}
       onWheel={handleWheel}
       onTouchStart={handleTouchStart}
@@ -541,10 +541,10 @@ export default function PdfView({
       {/* 缩放指示器 */}
       {scale !== 1 && (
         <div
-          className={`absolute top-4 left-4 z-10 rounded-full px-2 py-0.5 text-xs backdrop-blur-sm ${
+          className={`absolute top-4 left-4 z-10 rounded-full px-3 py-1 text-xs font-medium backdrop-blur-xl border shadow-lg shadow-black/30 ${
             readerTheme === "day"
-              ? "bg-white/70 text-gray-500 shadow"
-              : "bg-black/50 text-white/50"
+              ? "bg-white/80 text-gray-600 border-gray-200/60 shadow-md"
+              : "bg-zinc-900/80 text-white/70 border-white/[0.08]"
           }`}
         >
           {Math.round(scale * 100)}%
@@ -553,7 +553,7 @@ export default function PdfView({
 
       <canvas
         ref={canvasRef}
-        className="max-w-full max-h-full"
+        className="max-w-full max-h-full shadow-2xl shadow-black/40 rounded-sm"
         style={{ imageRendering: "auto" }}
       />
     </div>
