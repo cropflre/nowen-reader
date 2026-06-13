@@ -166,6 +166,7 @@ export default function ReaderPage() {
   const sessionIdRef = useRef<number | null>(null);
   const sessionStartTimeRef = useRef<number>(Date.now());
   const sessionStartPageRef = useRef<number>(0);
+  const currentPageRef = useRef<number>(0);
 
   // Restore reading progress when comic detail loads
   useEffect(() => {
@@ -173,6 +174,7 @@ export default function ReaderPage() {
       // 进度跟踪：禁用时不恢复进度
       if (readerOpts.progressTracking && comicDetail.lastReadPage > 0 && comicDetail.lastReadPage < pages.length) {
         setCurrentPage(comicDetail.lastReadPage);
+        currentPageRef.current = comicDetail.lastReadPage;
         sessionStartPageRef.current = comicDetail.lastReadPage;
       }
       setIsFavorite(comicDetail.isFavorite);
@@ -207,6 +209,7 @@ export default function ReaderPage() {
     if (!useRealData || pages.length === 0) return;
 
     sessionStartTimeRef.current = Date.now();
+    currentPageRef.current = currentPage;
     startSession(comicId, currentPage).then((id) => {
       if (id) sessionIdRef.current = id;
     });
@@ -216,7 +219,7 @@ export default function ReaderPage() {
       if (sessionIdRef.current) {
         const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
         if (duration > 2) {
-          endSession(sessionIdRef.current, currentPage, duration);
+          endSession(sessionIdRef.current, currentPageRef.current, duration);
         }
         sessionIdRef.current = null;
       }
@@ -224,13 +227,28 @@ export default function ReaderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useRealData, comicId]);
 
+  // Finish session helper — called on explicit exit and unmount
+  const finishSessionRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    finishSessionRef.current = () => {
+      if (sessionIdRef.current) {
+        const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
+        if (duration > 2) {
+          endSession(sessionIdRef.current, currentPageRef.current, duration);
+        }
+        sessionIdRef.current = null;
+      }
+    };
+    return () => { finishSessionRef.current = null; };
+  });
+
   // beforeunload 兜底：浏览器崩溃/强制关闭时用 sendBeacon 保存会话
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (sessionIdRef.current) {
         const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
         if (duration > 2) {
-          endSessionBeacon(sessionIdRef.current, currentPage, duration);
+          endSessionBeacon(sessionIdRef.current, currentPageRef.current, duration);
         }
       }
     };
@@ -297,11 +315,13 @@ export default function ReaderPage() {
       if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
       transitionTimerRef.current = setTimeout(() => setVolumeTransitionHint(null), 2000);
       // 延迟 300ms 跳转，使用 replace 避免历史栈堆积
+      finishSessionRef.current?.();
       setTimeout(() => router.replace(`/reader/${nextVolume.comicId}`), 300);
     } else if (dir === "prev" && prevVolume) {
       setVolumeTransitionHint(`${t.series.prevVolume}: ${prevVolume.title}`);
       if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
       transitionTimerRef.current = setTimeout(() => setVolumeTransitionHint(null), 2000);
+      finishSessionRef.current?.();
       setTimeout(() => router.replace(`/reader/${prevVolume.comicId}`), 300);
     }
   }, [nextVolume, prevVolume, router, t.series.nextVolume, t.series.prevVolume]);
@@ -329,16 +349,18 @@ export default function ReaderPage() {
       if (isForward || e.key === "ArrowDown" || e.key === " ") {
         e.preventDefault();
         if (currentPage >= pages.length - 1) {
+          finishSessionRef.current?.();
           handleBoundaryReached("next");
         } else {
-          setCurrentPage((p) => Math.min(pages.length - 1, p + step));
+          setCurrentPage((p) => { const n = Math.min(pages.length - 1, p + step); currentPageRef.current = n; return n; });
         }
       } else if (isBack || e.key === "ArrowUp") {
         e.preventDefault();
         if (currentPage <= 0) {
+          finishSessionRef.current?.();
           handleBoundaryReached("prev");
         } else {
-          setCurrentPage((p) => Math.max(0, p - step));
+          setCurrentPage((p) => { const n = Math.max(0, p - step); currentPageRef.current = n; return n; });
         }
       } else if (e.key === "Escape") {
         if (showInfoPanel) {
@@ -347,6 +369,7 @@ export default function ReaderPage() {
           document.exitFullscreen?.();
         } else {
           // 与工具栏返回按钮保持一致：优先 replace 到系列详情页，避免历史栈循环
+          finishSessionRef.current?.();
           if (seriesGroupId) {
             router.replace(`/group/${seriesGroupId}`);
           } else {
@@ -394,6 +417,7 @@ export default function ReaderPage() {
     (page: number) => {
       const clamped = Math.max(0, Math.min(pages.length - 1, page));
       setCurrentPage(clamped);
+      currentPageRef.current = clamped;
     },
     [pages.length]
   );
@@ -411,6 +435,7 @@ export default function ReaderPage() {
           setAutoPageActive(false);
           return p;
         }
+        currentPageRef.current = next;
         return next;
       });
     }, readerOpts.autoPageInterval * 1000);
@@ -703,6 +728,7 @@ export default function ReaderPage() {
         onBack={() => {
           // 智能返回：优先回到合集详情页，否则回首页
           // 使用 replace 避免 reader → group → back → reader 的历史栈循环
+          finishSessionRef.current?.();
           if (seriesGroupId) {
             router.replace(`/group/${seriesGroupId}`);
           } else {
@@ -809,7 +835,8 @@ export default function ReaderPage() {
           currentPage={currentPage}
           onJump={(pageIndex) => {
             setCurrentPage(pageIndex);
-            setShowBookmarkPanel(false);
+              currentPageRef.current = pageIndex;
+              setShowBookmarkPanel(false);
           }}
           onRemove={removeBookmark}
           onClose={() => setShowBookmarkPanel(false)}
@@ -849,7 +876,7 @@ export default function ReaderPage() {
                     key={vol.comicId}
                     onClick={() => {
                       setShowChapterDrawer(false);
-                      if (!isCurrent) router.replace(`/reader/${vol.comicId}`);
+                      if (!isCurrent) { finishSessionRef.current?.(); router.replace(`/reader/${vol.comicId}`); }
                     }}
                     className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-all ${
                       isCurrent
