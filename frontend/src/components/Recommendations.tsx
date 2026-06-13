@@ -284,16 +284,49 @@ export function RecommendationStrip({ contentType }: { contentType?: string }) {
 export function SimilarComics({ comicId }: { comicId: string }) {
   const t = useTranslation();
   const [similar, setSimilar] = useState<RecommendedComic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setSimilar([]);
     apiClient.get(`/api/recommendations/similar/${comicId}?limit=5`)
       .then((data: any) => {
-        if (data?.similar) setSimilar(data.similar);
+        if (Array.isArray(data?.similar)) {
+          setSimilar(data.similar);
+        }
       })
-      .catch((err) => console.warn("[SimilarComics] failed to fetch:", err));
+      .catch((err) => {
+        console.warn("[SimilarComics] failed to fetch:", err);
+        setError(err instanceof Error ? err.message : "Request failed");
+      })
+      .finally(() => setLoading(false));
   }, [comicId]);
 
-  if (similar.length === 0) return null;
+  if (loading) return null;
+
+  if (error && similar.length === 0) {
+    return (
+      <div className="mt-8">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+          {t.recommend?.similar || "Similar Comics"}
+        </h3>
+        <p className="text-sm text-muted">{t.recommend?.loadFailed || "Failed to load"}</p>
+      </div>
+    );
+  }
+
+  if (similar.length === 0) {
+    return (
+      <div className="mt-8">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+          {t.recommend?.similar || "Similar Comics"}
+        </h3>
+        <p className="text-sm text-muted">{t.recommend?.noRecommendations || "No recommendations yet"}</p>
+      </div>
+    );
+  }
 
   return (
     <div>

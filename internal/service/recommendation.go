@@ -245,6 +245,37 @@ func GetSimilarComics(comicID string, limit int, libraryIDs ...string) ([]Scored
 	if limit > 0 && len(scored) > limit {
 		scored = scored[:limit]
 	}
+
+	log.Printf("[SimilarComics] comicID=%s, allComics=%d, scored=%d",
+		comicID, len(allComics), len(scored))
+
+	// Fallback: when no similar comics found (e.g. target has no metadata),
+	// return random comics from the same library scope.
+	if len(scored) == 0 && len(allComics) > 1 {
+		var fallback []ScoredComic
+		for _, comic := range allComics {
+			if comic.ID == comicID {
+				continue
+			}
+			fallback = append(fallback, ScoredComic{
+				ID:       comic.ID,
+				Title:    comic.Title,
+				Score:    0,
+				Reasons:  []string{"recommended"},
+				CoverURL: store.BuildComicCoverURL(comic.ID),
+				Author:   comic.Author,
+				Genre:    comic.Genre,
+				Filename: comic.Filename,
+				Tags:     comic.Tags,
+			})
+		}
+		rand.Shuffle(len(fallback), func(i, j int) { fallback[i], fallback[j] = fallback[j], fallback[i] })
+		if limit > 0 && len(fallback) > limit {
+			fallback = fallback[:limit]
+		}
+		log.Printf("[SimilarComics] fallback: returning %d comics", len(fallback))
+		return fallback, nil
+	}
 	return scored, nil
 }
 
