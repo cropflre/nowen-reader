@@ -151,7 +151,7 @@ export default function ReaderToolbar({
             : "-translate-y-full opacity-0 pointer-events-none"
         }`}
       >
-        <div className="flex h-14 items-center justify-between bg-black/70 px-4 backdrop-blur-xl">
+        <div className="flex h-14 items-center justify-between bg-black/70 px-4 backdrop-blur-xl border-b border-white/5">
           {/* Left: Back + Title */}
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -237,7 +237,7 @@ export default function ReaderToolbar({
                   {onShowInfo && (
                     <button
                       onClick={() => { onShowInfo(); setShowMoreMenu(false); }}
-                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+                      className="motion-button flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors"
                     >
                       <Info className="h-4 w-4" />
                       <span>{t.readerToolbar.moreInfo}</span>
@@ -274,7 +274,7 @@ export default function ReaderToolbar({
             : "translate-y-full opacity-0 pointer-events-none"
         }`}
       >
-        <div className="bg-black/70 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur-xl">
+        <div className="bg-black/70 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur-xl border-t border-white/5">
           {/* Page Slider */}
           <div className="flex items-center gap-4 py-3">
             <button
@@ -338,7 +338,7 @@ export default function ReaderToolbar({
               />
               <button
                 onClick={handlePageInputSubmit}
-                className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
+                className="motion-button rounded-lg bg-accent/20 px-3 py-1.5 text-xs text-accent hover:bg-accent/30 transition-colors"
               >
                 跳转
               </button>
