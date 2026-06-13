@@ -835,8 +835,8 @@ export default function ReaderPage() {
           currentPage={currentPage}
           onJump={(pageIndex) => {
             setCurrentPage(pageIndex);
-              currentPageRef.current = pageIndex;
-              setShowBookmarkPanel(false);
+            currentPageRef.current = pageIndex;
+            setShowBookmarkPanel(false);
           }}
           onRemove={removeBookmark}
           onClose={() => setShowBookmarkPanel(false)}
@@ -876,7 +876,10 @@ export default function ReaderPage() {
                     key={vol.comicId}
                     onClick={() => {
                       setShowChapterDrawer(false);
-                      if (!isCurrent) { finishSessionRef.current?.(); router.replace(`/reader/${vol.comicId}`); }
+                      if (!isCurrent) {
+                        finishSessionRef.current?.();
+                        router.replace(`/reader/${vol.comicId}`);
+                      }
                     }}
                     className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-all ${
                       isCurrent
