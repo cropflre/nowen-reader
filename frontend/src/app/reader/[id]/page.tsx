@@ -82,9 +82,6 @@ export default function ReaderPage() {
   const title = apiTitle || t.reader.unknownComic;
   const isLoading = apiLoading;
   const useRealData = pages.length > 0 || (comicDetail !== null);
-  const readerDiag = typeof window !== 'undefined'
-    ? `pages=${pages.length} detail=${comicDetail !== null} useReal=${useRealData} apiLoading=${apiLoading} isNovel=${isNovel} isPdf=${isPdf}`
-    : null;
 
   // Redirect novel files to the dedicated novel reader
   useEffect(() => {
@@ -131,7 +128,6 @@ export default function ReaderPage() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [rating, setRating] = useState<number>(0);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("night");
-  const [sessionDiag, setSessionDiag] = useState<string | null>(null);
   const { theme: globalTheme, toggleTheme: globalToggleTheme } = useTheme();
 
   // 系列跨卷连续阅读
@@ -223,21 +219,18 @@ export default function ReaderPage() {
       startPage,
       pagesLength: pages.length,
     });
-    if (!cancelled) setSessionDiag("starting session");
     startSession(comicId, startPage)
       .then((id) => {
         if (cancelled) return;
         if (id) {
           sessionIdRef.current = id;
           console.debug("[reader] started session", { sessionId: id });
-          setSessionDiag(`started session ${id}`);
         } else {
           console.warn("[reader] startSession returned null", {
             comicId,
             startPage,
             pagesLength: pages.length,
           });
-          setSessionDiag("startSession returned null");
         }
       })
       .catch((error) => {
@@ -248,7 +241,6 @@ export default function ReaderPage() {
           pagesLength: pages.length,
           error,
         });
-        setSessionDiag(`startSession failed: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => {
         sessionStartPendingRef.current = false;
@@ -728,19 +720,6 @@ export default function ReaderPage() {
         />
       )}
 
-      {/* 临时阅读器状态诊断提示 */}
-      {readerDiag && (
-        <div className="pointer-events-none fixed left-1/2 top-4 z-[2147483647] -translate-x-1/2 rounded-full bg-black/80 px-3 py-1 text-xs font-medium text-white shadow-lg">
-          {readerDiag}
-        </div>
-      )}
-
-      {/* 临时阅读会话诊断提示 */}
-      {sessionDiag && (
-        <div className="pointer-events-none fixed left-1/2 top-4 z-[2147483647] -translate-x-1/2 rounded-full bg-red-600/90 px-3 py-1 text-xs font-medium text-white shadow-lg">
-          {sessionDiag}
-        </div>
-      )}
 
       {/* 无感跳转过渡提示（底部 toast 样式） */}
       {volumeTransitionHint && (

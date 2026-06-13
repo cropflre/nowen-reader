@@ -231,15 +231,6 @@ export async function startSession(comicId: string, startPage: number): Promise<
         startPage,
         error,
       });
-      try {
-        const message = error instanceof Error ? error.message : String(error);
-        const div = document.createElement("div");
-        div.textContent = `[session] startSession failed: ${message}`;
-        div.style.cssText = "position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:2147483647;background:#dc2626;color:white;padding:4px 10px;border-radius:9999px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.3)";
-        document.body.appendChild(div);
-      } catch (_) {
-        // ignore
-      }
     }
   }
   return null;
