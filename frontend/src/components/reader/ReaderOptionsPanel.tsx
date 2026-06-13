@@ -109,10 +109,10 @@ export default function ReaderOptionsPanel({
         <button
           key={item.value}
           onClick={() => onGroupChange(item.value)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 motion-button ${
             value === item.value
-              ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
-              : "bg-white/8 text-white/50 hover:bg-white/12 hover:text-white/70 active:bg-white/15"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-blue-400/30"
+              : "bg-white/[0.06] text-white/55 hover:bg-white/[0.10] hover:text-white/75 active:bg-white/[0.12] border border-white/[0.06]"
           }`}
         >
           {item.label}
@@ -144,7 +144,7 @@ export default function ReaderOptionsPanel({
       </div>
       <button
         onClick={() => onToggle(!checked)}
-        className={`relative shrink-0 h-6 w-10 rounded-full transition-colors duration-200 ${
+        className={`relative shrink-0 h-6 w-10 rounded-full transition-all duration-200 ${
           checked ? "bg-blue-600" : "bg-white/15"
         }`}
       >
@@ -176,11 +176,11 @@ export default function ReaderOptionsPanel({
         onChange={(e) => onValueChange(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && onApply()}
         placeholder={placeholder}
-        className="flex-1 rounded-lg bg-white/8 px-3 py-1.5 text-xs text-white placeholder:text-white/25 outline-none focus:ring-1 focus:ring-blue-500/50 transition-shadow"
+        className="flex-1 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white placeholder:text-white/25 outline-none focus-ring border border-white/[0.06] focus:border-blue-500/40 transition-shadow"
       />
       <button
         onClick={onApply}
-        className="px-3 py-1.5 rounded-lg bg-blue-600/20 text-xs text-blue-400 font-medium hover:bg-blue-600/30 active:bg-blue-600/40 transition-colors"
+        className="px-3 py-1.5 rounded-lg bg-blue-600/20 text-xs text-blue-400 font-medium hover:bg-blue-600/30 active:bg-blue-600/40 transition-all duration-150 motion-button border border-blue-500/20"
       >
         {ro.apply}
       </button>
@@ -245,17 +245,17 @@ export default function ReaderOptionsPanel({
   }) => {
     const expanded = expandedGroups.has(id);
     return (
-      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
+      <div className="rounded-xl bg-white/[0.04] border border-white/[0.08] overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:shadow-black/20">
         <button
           onClick={() => toggleGroup(id)}
-          className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-white/[0.03] active:bg-white/[0.05] transition-colors"
+          className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-white/[0.05] active:bg-white/[0.07] transition-all duration-150 motion-button"
         >
           <span className="text-white/50">{icon}</span>
           <span className="flex-1 text-sm font-semibold text-white/90">
             {title}
           </span>
           <ChevronDown
-            className={`h-4 w-4 text-white/30 transition-transform duration-200 ${
+            className={`h-4 w-4 text-white/40 transition-transform duration-200 ${
               expanded ? "rotate-180" : ""
             }`}
           />
@@ -287,7 +287,7 @@ export default function ReaderOptionsPanel({
       {/* 背景遮罩 */}
       <div
         className={`fixed inset-0 z-[60] transition-opacity duration-300 ${
-          isOpen && !isClosing ? "bg-black/60" : "bg-black/0"
+          isOpen && !isClosing ? "bg-black/50 backdrop-blur-sm" : "bg-black/0 backdrop-blur-0"
         }`}
         onClick={handleClose}
       />
@@ -311,14 +311,14 @@ export default function ReaderOptionsPanel({
           maxHeight: "calc(75vh - env(safe-area-inset-bottom, 0px))",
         }}
       >
-        <div className="rounded-t-2xl bg-zinc-900 border-t border-white/10 shadow-2xl shadow-black/50 flex flex-col" style={{ maxHeight: "calc(75vh - env(safe-area-inset-bottom, 0px))" }}>
+        <div className="rounded-t-2xl bg-zinc-900/95 backdrop-blur-xl border-t border-white/[0.08] shadow-2xl shadow-black/60 flex flex-col" style={{ maxHeight: "calc(75vh - env(safe-area-inset-bottom, 0px))" }}>
           {/* 拖拽把手 + 标题栏 */}
           <div
             data-drag-handle
             className="shrink-0 px-4 pt-3 pb-2 cursor-grab active:cursor-grabbing"
           >
             {/* 拖拽指示条 */}
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15" />
 
             <div className="flex items-center justify-between">
               <div>
@@ -329,7 +329,7 @@ export default function ReaderOptionsPanel({
               </div>
               <button
                 onClick={handleClose}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-all duration-150 motion-button focus-ring"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -338,7 +338,7 @@ export default function ReaderOptionsPanel({
 
           {/* 可滚动内容区 */}
           <div
-            className="flex-1 overflow-y-auto overscroll-contain px-3 pb-4 space-y-2.5"
+            className="flex-1 overflow-y-auto overscroll-contain px-3.5 pb-4 space-y-3"
             style={{
               paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
             }}
@@ -445,10 +445,10 @@ export default function ReaderOptionsPanel({
                         imageFilterPreset: p.key,
                       })
                     }
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 motion-button ${
                       activePreset === p.key
-                        ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
-                        : "bg-white/8 text-white/50 hover:bg-white/12 hover:text-white/70 active:bg-white/15"
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-blue-400/30"
+                        : "bg-white/[0.06] text-white/55 hover:bg-white/[0.10] hover:text-white/75 active:bg-white/[0.12] border border-white/[0.06]"
                     }`}
                   >
                     {p.label}
@@ -491,7 +491,7 @@ export default function ReaderOptionsPanel({
                     imageFilterPreset: "default",
                   })
                 }
-                className="w-full rounded-lg bg-white/8 py-1.5 text-xs font-medium text-white/60 hover:bg-white/12 active:bg-white/15 transition-colors"
+                className="w-full rounded-lg bg-white/[0.06] py-1.5 text-xs font-medium text-white/60 hover:bg-white/[0.10] active:bg-white/[0.12] transition-all duration-150 motion-button border border-white/[0.06]"
               >
                 {ro.imageFilterReset}
               </button>
