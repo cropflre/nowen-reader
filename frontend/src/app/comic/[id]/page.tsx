@@ -1036,7 +1036,7 @@ export default function ComicDetailPage() {
             {user?.role === "admin" && (
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2.5 text-sm text-red-400 transition-all hover:bg-red-500/10 btn-press"
+              className="motion-button flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2.5 text-sm text-red-400 transition-all hover:bg-red-500/10 btn-press"
             >
               <Trash2 className="h-4 w-4" />
               {t.comicDetail.deleteComic}
@@ -1079,12 +1079,12 @@ export default function ComicDetailPage() {
                     </button>
                     </>
                     ) : (
-                      <h2 className="text-xl sm:text-2xl font-bold text-foreground break-words line-clamp-2">{comic.title}</h2>
+                      <h2 className="text-2xl sm:text-3xl font-bold text-foreground break-words line-clamp-2 tracking-tight">{comic.title}</h2>
                     )}
                   </div>
                 ) : (
                   <div className="group/title flex items-center gap-2 min-w-0">
-                  <h2 className="text-xl sm:text-2xl font-bold text-foreground break-words line-clamp-2">{comic.title}</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-foreground break-words line-clamp-2 tracking-tight">{comic.title}</h2>
                     {isAdmin && (
                     <button
                       onClick={startEditTitle}
@@ -1122,7 +1122,7 @@ export default function ComicDetailPage() {
                   <button
                     key={star}
                     onClick={() => handleRating(star)}
-                    className="p-0.5 transition-transform hover:scale-110"
+                    className="motion-button p-0.5 transition-transform hover:scale-110"
                   >
                     <Star
                       className={`h-7 w-7 ${
@@ -1159,7 +1159,7 @@ export default function ComicDetailPage() {
                 {comic?.readingStatus && comic.readingStatus !== "" && (
                   <button
                     onClick={() => handleReadingStatus("")}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-card text-muted hover:text-foreground hover:bg-card/80 transition-all"
+                    className="motion-button px-3 py-1.5 rounded-lg text-xs font-medium bg-card text-muted hover:text-foreground hover:bg-card/80 transition-all border border-border/40"
                   >
                     {t.comicDetail.statusClear}
                   </button>
@@ -1169,7 +1169,7 @@ export default function ComicDetailPage() {
 
             {/* Meta Info Grid */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-4 sm:grid-cols-3">
-              <div className="rounded-xl bg-card p-3 sm:p-4">
+              <div className="surface-card rounded-xl p-3 sm:p-4">
                 <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
                   <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="text-[11px] sm:text-xs">{t.comicDetail.pages}</span>
@@ -1177,7 +1177,7 @@ export default function ComicDetailPage() {
                 <p className="mt-1 text-base sm:text-lg font-semibold text-foreground">{comic.pageCount}</p>
               </div>
 
-              <div className="rounded-xl bg-card p-3 sm:p-4">
+              <div className="surface-card rounded-xl p-3 sm:p-4">
                 <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
                   <HardDrive className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="text-[11px] sm:text-xs">{t.comicDetail.fileSize}</span>
@@ -1187,7 +1187,7 @@ export default function ComicDetailPage() {
                 </p>
               </div>
 
-              <div className="rounded-xl bg-card p-3 sm:p-4">
+              <div className="surface-card rounded-xl p-3 sm:p-4">
                 <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
                   <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="text-[11px] sm:text-xs">{t.comicDetail.addedAt}</span>
@@ -1197,7 +1197,7 @@ export default function ComicDetailPage() {
                 </p>
               </div>
 
-              <div className="rounded-xl bg-card p-3 sm:p-4">
+              <div className="surface-card rounded-xl p-3 sm:p-4">
                 <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
                   <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="text-[11px] sm:text-xs">{t.comicDetail.readTime}</span>
@@ -1207,7 +1207,7 @@ export default function ComicDetailPage() {
                 </p>
               </div>
 
-              <div className="rounded-xl bg-card p-3 sm:p-4">
+              <div className="surface-card rounded-xl p-3 sm:p-4">
                 <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
                   <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="text-[11px] sm:text-xs">{t.comicDetail.readProgress}</span>
@@ -1222,7 +1222,7 @@ export default function ComicDetailPage() {
               </div>
 
               {comic.lastReadAt && (
-                <div className="rounded-xl bg-card p-3 sm:p-4">
+                <div className="surface-card rounded-xl p-3 sm:p-4">
                   <div className="flex items-center gap-1.5 sm:gap-2 text-muted">
                     <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     <span className="text-[11px] sm:text-xs">{t.comicDetail.lastRead}</span>
