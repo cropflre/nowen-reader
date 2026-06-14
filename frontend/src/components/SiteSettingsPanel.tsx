@@ -170,8 +170,19 @@ export function SiteSettingsPanel() {
       const res = await fetch("/api/site-settings", {
         credentials: "include",
       });
+      const contentType = res.headers.get("content-type") || "";
       if (!res.ok) {
-        throw new Error(`Failed to load site settings: ${res.status}`);
+        const body = await res.text();
+        const preview = body.length > 240 ? `${body.slice(0, 240)}…` : body;
+        if (!contentType.includes("json")) {
+          throw new Error(`站点设置接口返回非 JSON 响应 (${res.status})，可能是登录页或网关错误：${preview}`);
+        }
+        throw new Error(`Failed to load site settings: ${res.status} ${preview}`);
+      }
+      if (!contentType.includes("json")) {
+        const body = await res.text();
+        const preview = body.length > 240 ? `${body.slice(0, 240)}…` : body;
+        throw new Error(`站点设置接口返回了 HTML 而不是 JSON，通常是反代 / 认证跳转：${preview}`);
       }
       const data = await res.json();
       setConfig({
