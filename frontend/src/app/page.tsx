@@ -25,6 +25,9 @@ import DuplicateDetector from "@/components/DuplicateDetector";
 import GroupCard from "@/components/GroupCard";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
 import UploadDialog from "@/components/UploadDialog";
+import DiscoverySpotlight from "@/components/home/DiscoverySpotlight";
+import RecentlyAdded from "@/components/home/RecentlyAdded";
+import RandomDiscovery from "@/components/home/RandomDiscovery";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -1076,6 +1079,9 @@ export default function Home() {
 
         {!loading && (
           <>
+            {/* Discovery Spotlight — personalized discovery stage */}
+            <DiscoverySpotlight comics={apiComics} contentType={contentType} />
+
             <section className="home-hero surface-glass rounded-2xl p-4 sm:p-6 mb-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="min-w-0">
@@ -1150,6 +1156,12 @@ export default function Home() {
 
             {/* Recommendations */}
             <RecommendationStrip contentType={contentType} />
+
+            {/* Recently Added shelf */}
+            <RecentlyAdded comics={apiComics} contentType={contentType} />
+
+            {/* Random Discovery shelf */}
+            <RandomDiscovery comics={apiComics} contentType={contentType} />
 
             {/* Library Control Console */}
             <section className="rounded-xl bg-card/60 backdrop-blur-md border border-border/20 px-3 py-2.5 sm:px-4 sm:py-3 space-y-2">
