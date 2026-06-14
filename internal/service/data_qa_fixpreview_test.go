@@ -205,20 +205,14 @@ func TestBuildFixPreview_NonAutoFixable(t *testing.T) {
 	db := store.DB()
 
 	_, err := db.Exec(`INSERT INTO "Comic" ("id","filename","title","pageCount","fileSize","addedAt","updatedAt")
-		VALUES ('comic-szd','f.cbz','Test',100,100,datetime('now'),datetime('now'))`)
+		VALUES ('comic-pcz','f.cbz','Test',0,100,datetime('now'),datetime('now'))`)
 	if err != nil {
 		t.Fatalf("insert comic: %v", err)
 	}
 
-	oneHourAgo := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = db.Exec(`INSERT INTO "ReadingSession" ("comicId","startedAt","endedAt","duration","startPage","endPage")
-		VALUES ('comic-szd',?,?,0,0,0)`, oneHourAgo, now)
-	if err != nil {
-		t.Fatalf("insert session: %v", err)
-	}
-
-	result, err := BuildFixPreview([]string{"SESSION_ZERO_DURATION"}, nil, false)
+	// PAGE_COUNT_ZERO has AutoFixable=true in scan but no dry-run logic
+	// so it will be skipped by BuildFixPreview default case
+	result, err := BuildFixPreview([]string{"PAGE_COUNT_ZERO"}, nil, false)
 	if err != nil {
 		t.Fatalf("BuildFixPreview: %v", err)
 	}

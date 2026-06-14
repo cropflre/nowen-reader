@@ -1,6 +1,7 @@
 package service
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -134,7 +135,35 @@ func ExecuteFix(issueTypes []string, issueIDs []string, fixAll bool) (*DataQAFix
 				result.Executed = append(result.Executed, item)
 			}
 
-		default:
+		case "SESSION_ORPHAN":
+			item, err := fixOrphanSession(iss)
+			if err != nil {
+				result.Errors = append(result.Errors, DataQAFixResultItem{
+					IssueID:   iss.ID,
+					IssueType: iss.IssueType,
+					EntityID:  iss.EntityID,
+					Action:    "CLOSE_ORPHAN_SESSION",
+					Success:   false,
+				})
+			} else {
+				result.Executed = append(result.Executed, item)
+			}
+
+		case "SESSION_ZERO_DURATION":
+			item, err := fixZeroDurationSession(iss)
+			if err != nil {
+				result.Errors = append(result.Errors, DataQAFixResultItem{
+					IssueID:   iss.ID,
+					IssueType: iss.IssueType,
+					EntityID:  iss.EntityID,
+					Action:    "RECALCULATE_ZERO_DURATION_SESSION",
+					Success:   false,
+				})
+			} else {
+				result.Executed = append(result.Executed, item)
+			}
+
+				default:
 			result.Skipped = append(result.Skipped, DataQASkip{
 				IssueID: iss.ID,
 				Reason:  fmt.Sprintf("No fix logic for issue type %s", iss.IssueType),
@@ -355,6 +384,167 @@ func fixOrphanCategory(iss DataQAIssue) (DataQAFixResultItem, error) {
 		Action:     "DELETE_ORPHAN_CATEGORY",
 		Before:     "exists",
 		After:      fmt.Sprintf("deleted (%d rows)", rows),
+		Success:    true,
+	}, nil
+}
+
+func fixOrphanSession(iss DataQAIssue) (DataQAFixResultItem, error) {
+	db := store.DB()
+
+	// EntityID is the session ID as string
+	sessID := iss.EntityID
+
+	// Re-validate: confirm still orphan (endedAt IS NULL, startedAt > 1h ago)
+	var endedAt sql.NullString
+	err := db.QueryRow(`SELECT "endedAt" FROM "ReadingSession" WHERE "id" = ?`, sessID).Scan(&endedAt)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("query session %s: %w", sessID, err)
+	}
+	if endedAt.Valid {
+		// Already ended, idempotent skip
+		return DataQAFixResultItem{
+			IssueID:    iss.ID,
+			IssueType:  iss.IssueType,
+			EntityType: iss.EntityType,
+			EntityID:   iss.EntityID,
+			Action:     "CLOSE_ORPHAN_SESSION",
+			Before:     "NULL endedAt",
+			After:      "already closed",
+			Success:    true,
+		}, nil
+	}
+
+	// Mark as closed: endedAt = startedAt, duration = 0
+	// This does NOT accumulate totalReadTime
+	_, err = db.Exec(`
+		UPDATE "ReadingSession"
+		SET "endedAt" = "startedAt", "duration" = 0
+		WHERE "id" = ? AND "endedAt" IS NULL
+	`, sessID)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("close orphan session %s: %w", sessID, err)
+	}
+
+	return DataQAFixResultItem{
+		IssueID:    iss.ID,
+		IssueType:  iss.IssueType,
+		EntityType: iss.EntityType,
+		EntityID:   iss.EntityID,
+		Action:     "CLOSE_ORPHAN_SESSION",
+		Before:     "NULL endedAt, 0 duration",
+		After:      "endedAt=startedAt, duration=0",
+		Success:    true,
+	}, nil
+}
+
+func fixZeroDurationSession(iss DataQAIssue) (DataQAFixResultItem, error) {
+	db := store.DB()
+
+	sessID := iss.EntityID
+
+	// Re-validate: confirm still zero duration with valid endedAt > startedAt
+	var endedAt, startedAt sql.NullString
+	var duration int
+	err := db.QueryRow(`
+		SELECT "endedAt", "startedAt", "duration"
+		FROM "ReadingSession" WHERE "id" = ?
+	`, sessID).Scan(&endedAt, &startedAt, &duration)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("query session %s: %w", sessID, err)
+	}
+	if !endedAt.Valid || !startedAt.Valid {
+		return DataQAFixResultItem{}, fmt.Errorf("session %s has NULL timestamps", sessID)
+	}
+	if duration > 0 {
+		// Already has valid duration, idempotent skip
+		return DataQAFixResultItem{
+			IssueID:    iss.ID,
+			IssueType:  iss.IssueType,
+			EntityType: iss.EntityType,
+			EntityID:   iss.EntityID,
+			Action:     "RECALCULATE_ZERO_DURATION_SESSION",
+			Before:     fmt.Sprintf("%d", duration),
+			After:      fmt.Sprintf("%d", duration),
+			Success:    true,
+		}, nil
+	}
+
+	// Calculate duration from timestamps
+	var computedDuration int
+	err = db.QueryRow(`
+		SELECT CAST((julianday("endedAt") - julianday("startedAt")) * 86400 AS INTEGER)
+		FROM "ReadingSession" WHERE "id" = ?
+	`, sessID).Scan(&computedDuration)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("compute duration for session %s: %w", sessID, err)
+	}
+
+	// Safety bounds: must be > 2 seconds and < 12 hours
+	if computedDuration <= 2 {
+		return DataQAFixResultItem{}, fmt.Errorf("computed duration %d too small for session %s", computedDuration, sessID)
+	}
+	if computedDuration > 43200 {
+		return DataQAFixResultItem{}, fmt.Errorf("computed duration %d exceeds 12h for session %s", computedDuration, sessID)
+	}
+
+	// Get session info for totalReadTime recalculation
+	var comicID string
+	var userID sql.NullString
+	err = db.QueryRow(`SELECT "comicId", "userId" FROM "ReadingSession" WHERE "id" = ?`, sessID).Scan(&comicID, &userID)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("query session info %s: %w", sessID, err)
+	}
+
+	// Update the session duration
+	_, err = db.Exec(`
+		UPDATE "ReadingSession" SET "duration" = ?
+		WHERE "id" = ? AND "duration" <= 0
+	`, computedDuration, sessID)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("update session %s: %w", sessID, err)
+	}
+
+	// Recalculate Comic.totalReadTime from SUM (not additive)
+	var comicSum int
+	err = db.QueryRow(`
+		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
+		WHERE "comicId" = ? AND "duration" > 0
+	`, comicID).Scan(&comicSum)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("sum comic read time: %w", err)
+	}
+	_, err = db.Exec(`UPDATE "Comic" SET "totalReadTime" = ? WHERE "id" = ?`, comicSum, comicID)
+	if err != nil {
+		return DataQAFixResultItem{}, fmt.Errorf("update comic totalReadTime: %w", err)
+	}
+
+	// Recalculate UserComicState.totalReadTime if userId present
+	if userID.Valid && userID.String != "" {
+		var ucsSum int
+		err = db.QueryRow(`
+			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
+			WHERE "userId" = ? AND "comicId" = ? AND "duration" > 0
+		`, userID.String, comicID).Scan(&ucsSum)
+		if err != nil {
+			return DataQAFixResultItem{}, fmt.Errorf("sum ucs read time: %w", err)
+		}
+		_, err = db.Exec(`
+			UPDATE "UserComicState" SET "totalReadTime" = ?
+			WHERE "userId" = ? AND "comicId" = ?
+		`, ucsSum, userID.String, comicID)
+		if err != nil {
+			return DataQAFixResultItem{}, fmt.Errorf("update ucs totalReadTime: %w", err)
+		}
+	}
+
+	return DataQAFixResultItem{
+		IssueID:    iss.ID,
+		IssueType:  iss.IssueType,
+		EntityType: iss.EntityType,
+		EntityID:   iss.EntityID,
+		Action:     "RECALCULATE_ZERO_DURATION_SESSION",
+		Before:     "0",
+		After:      fmt.Sprintf("%d", computedDuration),
 		Success:    true,
 	}, nil
 }

@@ -167,7 +167,7 @@ func ScanDataIssues() ([]DataQAIssue, error) {
 			Message:     fmt.Sprintf("Session ended but duration is %d", duration),
 			CurrentVal:  fmt.Sprintf("%d", duration),
 			ExpectedVal: "> 0",
-			AutoFixable: false,
+			AutoFixable: true,
 		})
 	}
 

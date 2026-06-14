@@ -125,7 +125,29 @@ func BuildFixPreview(issueTypes []string, issueIDs []string, fixAll bool) (*Data
 				Message:    "Would delete orphan ComicCategory row",
 			})
 
-		default:
+		case "SESSION_ORPHAN":
+			result.Plans = append(result.Plans, DataQAFixPlan{
+				IssueID:    iss.ID,
+				IssueType:  iss.IssueType,
+				EntityType: iss.EntityType,
+				EntityID:   iss.EntityID,
+				Action:     "CLOSE_ORPHAN_SESSION",
+				Safe:       true,
+				Message:    "Would mark orphan session as closed (endedAt=startedAt, duration=0)",
+			})
+
+		case "SESSION_ZERO_DURATION":
+			result.Plans = append(result.Plans, DataQAFixPlan{
+				IssueID:    iss.ID,
+				IssueType:  iss.IssueType,
+				EntityType: iss.EntityType,
+				EntityID:   iss.EntityID,
+				Action:     "RECALCULATE_ZERO_DURATION_SESSION",
+				Safe:       true,
+				Message:    "Would recalculate duration from timestamps and re-aggregate totalReadTime",
+			})
+
+				default:
 			result.Skipped = append(result.Skipped, DataQASkip{
 				IssueID: iss.ID,
 				Reason:  fmt.Sprintf("No dry-run logic for issue type %s", iss.IssueType),
