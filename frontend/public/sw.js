@@ -1,9 +1,9 @@
 // NowenReader Service Worker
 // 注意：升级缓存版本号会让旧版本的缓存（含可能损坏的页面响应）被自动清理。
-const CACHE_NAME = "nowen-reader-v2";
-const STATIC_CACHE = "nowen-static-v2";
-const IMAGE_CACHE = "nowen-images-v2";
-const API_CACHE = "nowen-api-v2";
+const CACHE_NAME = "nowen-reader-v3";
+const STATIC_CACHE = "nowen-static-v3";
+const IMAGE_CACHE = "nowen-images-v3";
+const API_CACHE = "nowen-api-v3";
 
 // Static assets to pre-cache
 const PRECACHE_URLS = [
@@ -150,10 +150,13 @@ async function networkFirstStrategy(request, cacheName, maxAge) {
     if (request.headers.get("accept")?.includes("text/html")) {
       return new Response(
         `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NowenReader - Offline</title><style>body{background:#09090b;color:#fafafa;font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}div{text-align:center}h1{color:#6366f1}p{color:#a1a1aa}button{background:#6366f1;color:#fff;border:none;padding:8px 24px;border-radius:8px;cursor:pointer;margin-top:16px}</style></head><body><div><h1>NowenReader</h1><p>You are currently offline</p><button onclick="location.reload()">Retry</button></div></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
+        { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
       );
     }
-    return new Response("Offline", { status: 503 });
+    return new Response(JSON.stringify({ error: "offline" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+    });
   }
 }
 
