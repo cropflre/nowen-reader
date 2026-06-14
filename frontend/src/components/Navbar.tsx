@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
@@ -19,6 +19,7 @@ import {
   LogOut,
   Globe,
   HardDrive,
+  Clock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
@@ -289,6 +290,15 @@ function MoreMenu({
               >
                 <Tag className="h-4 w-4" />
                 {((t as any).tagManager?.title) || "标签与分类管理"}
+              </button>
+
+              {/* 阅读历史 */}
+              <button
+                onClick={() => handleAction(() => router.push("/history"))}
+                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+              >
+                <Clock className="h-4 w-4" />
+                阅读历史
               </button>
 
               {/* 数据管理 */}
