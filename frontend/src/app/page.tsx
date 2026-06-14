@@ -24,6 +24,7 @@ import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpe
 import DuplicateDetector from "@/components/DuplicateDetector";
 import GroupCard from "@/components/GroupCard";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
+import UploadDialog from "@/components/UploadDialog";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -112,6 +113,7 @@ export default function Home() {
     return "grid";
   });
   const [uploading, setUploading] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const [libraries, setLibraries] = useState<Library[]>([]);
 
@@ -651,7 +653,7 @@ export default function Home() {
 
   // Upload handler
   const handleUpload = useCallback(() => {
-    fileInputRef.current?.click();
+    setUploadDialogOpen(true);
   }, []);
 
   // 手动扫描文库
@@ -1971,6 +1973,15 @@ export default function Home() {
         open={showDuplicates}
         onClose={() => setShowDuplicates(false)}
         onDeleted={refetch}
+      />
+
+      {/* Unified Upload Dialog */}
+      <UploadDialog
+        open={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+        contentType={contentType}
+        defaultLibraryId={selectedLibraryId}
+        onUploaded={async () => { await refetch(); }}
       />
     </div>
   );
