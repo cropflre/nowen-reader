@@ -149,16 +149,16 @@ export default function DiscoverySpotlight({ comics, contentType, totalItems, lo
       )}
 
       <div className="relative z-10 p-4 sm:p-5 lg:p-6">
-        {/* Bento Grid: 12 cols */}
-        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-12 transition-all duration-300 ease-out ${animClass}`}>
+        {/* Spotlight — full width */}
+        <div className={`transition-all duration-300 ease-out ${animClass}`}>
 
-          {/* Main Spotlight Card: col-span-7 */}
+          {/* Main Spotlight Card: full width */}
           {spotlight && (
             <Link
               href={`/comic/${spotlight.id}`}
-              className="group relative sm:col-span-7 overflow-hidden rounded-2xl bg-background/40 backdrop-blur-sm border border-border/20 transition-all duration-300 hover:shadow-xl hover:border-border/40"
+              className="group relative block overflow-hidden rounded-2xl bg-background/40 backdrop-blur-sm border border-border/20 transition-all duration-300 hover:shadow-xl hover:border-border/40"
             >
-              <div className="flex flex-col sm:flex-row gap-4 p-4 sm:p-5 lg:p-6 h-full">
+              <div className="flex flex-col sm:flex-row gap-4 p-4 sm:p-5 lg:p-6">
                 {/* Cover - big */}
                 <div className="relative mx-auto sm:mx-0 w-40 sm:w-52 lg:w-60 flex-shrink-0 overflow-hidden rounded-xl shadow-lg transition-transform duration-300 group-hover:scale-[1.03]">
                   <div className="aspect-[5/7] relative bg-gradient-to-br from-muted/30 to-card dark:from-muted/20">
@@ -214,6 +214,12 @@ export default function DiscoverySpotlight({ comics, contentType, totalItems, lo
                     <span className="inline-flex items-center gap-1.5 rounded-xl border border-border/40 px-5 py-2.5 text-sm text-muted hover:text-foreground transition-colors">
                       <Eye className="h-4 w-4" /> 详情
                     </span>
+                    <button
+                      onClick={(e) => { e.preventDefault(); handleRandomOne(); }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border/40 px-5 py-2.5 text-sm text-muted hover:text-foreground transition-colors"
+                    >
+                      <Shuffle className="h-4 w-4" /> 随机一本
+                    </button>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
@@ -231,85 +237,17 @@ export default function DiscoverySpotlight({ comics, contentType, totalItems, lo
                         {m.label}
                       </button>
                     ))}
+                    <button
+                      onClick={(e) => { e.preventDefault(); handleShuffle(); }}
+                      className="inline-flex items-center gap-1 rounded-full border border-border/40 px-2.5 py-1 text-[11px] font-medium text-muted hover:text-foreground transition-colors"
+                    >
+                      <Shuffle className="h-3 w-3" /> 换一批
+                    </button>
                   </div>
                 </div>
               </div>
             </Link>
           )}
-
-          {/* Right Bento Grid: col-span-5 */}
-          <div className="sm:col-span-5 grid grid-cols-2 gap-2 auto-rows-fr">
-            {/* Bento: Random - wide card */}
-            <button
-              onClick={handleRandomOne}
-              className="group relative col-span-2 overflow-hidden rounded-xl bg-gradient-to-br from-accent/5 to-card border border-border/20 p-3 text-left transition-all hover:shadow-lg hover:border-border/40"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex -space-x-4">
-                  {randomComics.slice(0, 3).map((comic, i) => (
-                    <div key={comic.id} className="relative w-12 h-[68px] rounded-lg overflow-hidden shadow-md border border-border/20 flex-shrink-0" style={{ zIndex: 3 - i }}>
-                      <Image src={comic.coverUrl || '/api/placeholder/96/128'} alt="" fill className="object-contain" sizes="48px" />
-                    </div>
-                  ))}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <Shuffle className="h-3.5 w-3.5 text-accent" />
-                    <span className="text-sm font-semibold text-foreground">随机盲盒</span>
-                  </div>
-                  <p className="text-xs text-muted mt-0.5">看看命运给你安排了什么</p>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted flex-shrink-0" />
-              </div>
-            </button>
-
-            {/* Bento: Unread treasures */}
-            <div className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-muted/10 to-card border border-border/20 p-3 transition-all hover:shadow-lg hover:border-border/40">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">📚</span>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">未读宝藏</p>
-                  <p className="text-[11px] text-muted">{unreadCount} 本等待打开</p>
-                </div>
-              </div>
-              <div className="flex -space-x-2">
-                {randomPool.filter(c => calculateReadingProgress(c.lastReadPage, c.pageCount) === 0).slice(0, 3).map((comic, i) => (
-                  <div key={comic.id} className="relative w-8 h-11 rounded-md overflow-hidden shadow-sm border border-border/20 flex-shrink-0" style={{ zIndex: 3 - i }}>
-                    <Image src={comic.coverUrl || '/api/placeholder/64/96'} alt="" fill className="object-contain" sizes="32px" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Bento: Latest arrivals */}
-            <div className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-muted/10 to-card border border-border/20 p-3 transition-all hover:shadow-lg hover:border-border/40">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🆕</span>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">最近入库</p>
-                  <p className="text-[11px] text-muted">刚到书库的新鲜内容</p>
-                </div>
-              </div>
-              <div className="flex -space-x-2">
-                {latestComics.slice(0, 3).map((comic, i) => (
-                  <div key={comic.id} className="relative w-8 h-11 rounded-md overflow-hidden shadow-sm border border-border/20 flex-shrink-0" style={{ zIndex: 3 - i }}>
-                    <Image src={comic.coverUrl || '/api/placeholder/64/96'} alt="" fill className="object-contain" sizes="32px" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Bento: Quick actions bar */}
-            <div className="col-span-2 flex items-center justify-between gap-2 rounded-xl bg-background/40 border border-border/20 px-3 py-2">
-              <button onClick={handleShuffle} className="inline-flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-xs font-medium text-muted hover:text-foreground transition-colors">
-                <Shuffle className="h-3 w-3" /> 换一批
-              </button>
-              <div className="text-[11px] text-muted">
-                {totalItems ? `共 ${totalItems} 项` : ''}
-                {unreadCount > 0 ? ` · ${unreadCount} 未读` : ''}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>

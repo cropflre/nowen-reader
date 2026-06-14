@@ -27,6 +27,7 @@ import MergeGroupDialog from "@/components/MergeGroupDialog";
 import UploadDialog from "@/components/UploadDialog";
 import DiscoverySpotlight from "@/components/home/DiscoverySpotlight";
 import ExploreChannel from "@/components/home/ExploreChannel";
+import PersonalSidebar from "@/components/home/PersonalSidebar";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -1009,7 +1010,8 @@ export default function Home() {
       />
 
       {/* Main Content */}
-      <main className={`mx-auto max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-12 pt-20 sm:pt-24 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
+      <div className={`mx-auto w-full max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-14 pt-14 sm:pt-16 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
+      <main className="min-w-0 space-y-4 pt-6 sm:pt-8">
         {/* Data Source Indicator — 空库提示 */}
         {!loading && displayComics.length === 0 && apiTotal === 0 && !debouncedSearch && selectedTags.length === 0 && !favoritesOnly && !selectedCategory && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
@@ -1688,6 +1690,11 @@ export default function Home() {
           </>
         )}
       </main>
+
+      {/* Personal Sidebar — desktop only */}
+      <PersonalSidebar comics={apiComics} contentType={contentType} totalItems={apiTotal} />
+
+    </div>
 
       {/* 合集批量操作栏 — 固定在底部，当漫画也被选中时叠在BatchToolbar上方 */}
       {batchMode && selectedGroupIds.size > 0 && (
