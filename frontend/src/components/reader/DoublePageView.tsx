@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
@@ -292,10 +292,10 @@ export default function DoublePageView({
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2 text-center">
               <span className="text-2xl">⚠️</span>
-              <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>加载失败</p>
+              <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>加载失败，请检查网络</p>
               <button
                 onClick={(e) => { e.stopPropagation(); setError(false); setLoaded(false); }}
-                className="text-xs text-accent hover:text-accent/80"
+                className="min-h-[44px] rounded-lg bg-accent/20 px-4 py-2 text-xs font-medium text-accent hover:bg-accent/30 active:bg-accent/40 transition-colors"
               >重试</button>
             </div>
           </div>

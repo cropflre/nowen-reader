@@ -41,6 +41,7 @@ export default function SinglePageView({
 }: SinglePageViewProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [scale, setScale] = useState(1);
   // 拖拽平移偏移量（缩放后拖拽查看）
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
@@ -64,6 +65,7 @@ export default function SinglePageView({
   useEffect(() => {
     setImageLoaded(false);
     setImageError(false);
+    setRetryCount(0);
     setScale(1);
     setTranslate({ x: 0, y: 0 });
     // 清除翻页动画
@@ -393,11 +395,9 @@ export default function SinglePageView({
               <p className={`text-sm font-medium ${readerTheme === "day" ? "text-gray-600" : "text-white/70"}`}>
                 页面加载失败
               </p>
-              <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>
-                PDF 渲染可能需要安装 mutool 等工具
-              </p>
+              <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>{retryCount > 0 ? `已重试 ${retryCount} 次，请检查网络` : "请检查网络后重试"}</p>
               <button
-                onClick={(e) => { e.stopPropagation(); setImageError(false); setImageLoaded(false); }}
+                onClick={(e) => { e.stopPropagation(); setImageError(false); setImageLoaded(false); setRetryCount((c) => c + 1); }}
                 className="mt-2 min-h-[44px] rounded-lg bg-accent/20 px-5 py-2 text-sm font-medium text-accent hover:bg-accent/30 active:bg-accent/40 transition-colors"
               >
                 重试

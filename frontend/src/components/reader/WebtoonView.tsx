@@ -389,7 +389,7 @@ export default function WebtoonView({
                     >
                       <div className="flex flex-col items-center gap-2 text-center">
                         <span className="text-2xl">⚠️</span>
-                        <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>第 {index + 1} 页加载失败</p>
+                        <p className={`text-xs ${readerTheme === "day" ? "text-gray-400" : "text-white/40"}`}>第 {index + 1} 页加载失败，请重试</p>
                         <button
                           onClick={(e) => { e.stopPropagation(); setErrorPages(prev => { const next = new Set(prev); next.delete(index); return next; }); }}
                         className="min-h-[44px] rounded-lg bg-accent/20 px-4 py-2 text-xs font-medium text-accent hover:bg-accent/30 active:bg-accent/40 transition-colors"
