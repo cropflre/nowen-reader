@@ -34,6 +34,7 @@ const Collections = React.lazy(() => import("@/app/collections/page"));
 const TagManager = React.lazy(() => import("@/app/tag-manager/page"));
 const DataAdmin = React.lazy(() => import("@/app/data-admin/page"));
 const DataQA = React.lazy(() => import("@/app/data-qa/page"));
+const BookFlipDevPage = React.lazy(() => import("@/app/dev/book-flip/page"));
 
 /** 动态设置浏览器标签页标题 */
 function SiteTitle() {
@@ -73,6 +74,7 @@ function AnimatedRoutes() {
         <Route path="/tag-manager" element={<AdminRoute><TagManager /></AdminRoute>} />
         <Route path="/data-admin" element={<AdminRoute><DataAdmin /></AdminRoute>} />
         <Route path="/data-qa" element={<AdminRoute><DataQA /></AdminRoute>} />
+        <Route path="/dev/book-flip" element={<BookFlipDevPage />} />
       </Routes>
     </div>
   );
