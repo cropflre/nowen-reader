@@ -33,6 +33,7 @@ import PageTranslateOverlay from "@/components/reader/PageTranslateOverlay";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { useReaderOptions } from "@/hooks/useReaderOptions";
 import { useComicBookmarks } from "@/hooks/useComicBookmarks";
+import { useCoverAmbientColor } from "@/hooks/useCoverAmbientColor";
 import BookmarkPanel from "@/components/reader/BookmarkPanel";
 import { fetchGroupedComicMap, fetchGroupDetail } from "@/api/groups";
 
@@ -68,6 +69,7 @@ export default function ReaderPage() {
   // Comic detail from DB
   const { comic: comicDetail, refetch: refetchDetail } =
     useComicDetail(comicId);
+  const ambientColors = useCoverAmbientColor(comicId, comicDetail?.coverUrl);
 
   // 检测受限浏览器 — 微信/夸克/UC/百度等 WebView 不支持 PDF.js，需降级为后端图片渲染模式
   const isRestrictedBrowser = typeof navigator !== "undefined" && /micromessenger|wechat|quark|ucbrowser|baiduboxapp/i.test(navigator.userAgent);
@@ -714,8 +716,20 @@ export default function ReaderPage() {
     <div className={`reader-shell h-dvh w-full overflow-hidden overflow-x-hidden transition-colors duration-300 ${immersiveMode ? "cursor-none " : ""}${
       readerTheme === "day" ? "bg-gray-100" : "bg-[#050505]"
     }`}>
-      {/* Immersive ambient background — 沉浸阅读舱氛围 */}
-      {readerTheme !== "day" && <div className="reader-ambient-bg" />}
+      {/* Immersive ambient background — 沉浸阅读舱氛围（封面取色） */}
+      {readerTheme !== "day" && (
+        <div
+          className="reader-ambient-bg"
+          style={{
+            background: [
+              `radial-gradient(ellipse at 50% 8%, rgba(${ambientColors.primary}, 0.18) 0%, transparent 50%)`,
+              `radial-gradient(ellipse at 20% 40%, rgba(${ambientColors.secondary}, 0.10) 0%, transparent 35%)`,
+              `radial-gradient(ellipse at 80% 70%, rgba(${ambientColors.primary}, 0.06) 0%, transparent 30%)`,
+              "linear-gradient(180deg, #07070a 0%, #050505 50%, #030303 100%)",
+            ].join(", "),
+          }}
+        />
+      )}
 
       {/* Reading View */}
       {usePdfView && effectiveMode === "single" ? (
