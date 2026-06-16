@@ -605,7 +605,7 @@ export default function RealisticBookView({
   return (
     <div
       ref={containerRef}
-      className="relative mx-auto flex h-full w-full items-center justify-center overflow-hidden"
+      className="relative mx-auto flex h-dvh w-full items-center justify-center overflow-hidden"
       style={{ background: "transparent" }}
     >
       <canvas
