@@ -44,6 +44,8 @@ export interface ReaderOptions {
   imageGrayscale: number;
   // 滤镜预设名称（null 表示自定义/手动调整）
   imageFilterPreset: string | null;
+  // 真实翻页效果
+  pageFlipEffect: "none" | "realistic";
 }
 
 export const defaultReaderOptions: ReaderOptions = {
@@ -65,6 +67,7 @@ export const defaultReaderOptions: ReaderOptions = {
   imageContrast: 100,
   imageGrayscale: 0,
   imageFilterPreset: null,
+  pageFlipEffect: "none",
 };
 
 export interface ReaderSettings {

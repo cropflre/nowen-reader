@@ -572,14 +572,19 @@ function ReaderPreferencesPanel() {
             </select>
           </div>
 
-          {/* Animation — disabled, coming soon */}
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 opacity-50">
+          {/* Page flip effect */}
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
-              <div className="text-sm font-medium text-foreground">翻页动画 <span className="ml-1 text-[10px] text-muted">即将支持</span></div>
-              <div className="text-xs text-muted">选择更克制或更流畅的页面切换体验。</div>
+              <div className="text-sm font-medium text-foreground">翻页效果 <span className="ml-1 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/20">实验</span></div>
+              <div className="text-xs text-muted">真实翻页仅适用于图片漫画的单页/双页模式；小屏、PDF、小说、Webtoon 和减少动态效果模式下会自动禁用。</div>
             </div>
-            <select disabled className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none sm:w-56">
-              <option>淡入</option>
+            <select
+              value={options.pageFlipEffect}
+              onChange={(e) => updateOptions({ pageFlipEffect: e.target.value as "none" | "realistic" })}
+              className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none transition-colors focus:border-accent/50 sm:w-56"
+            >
+              <option value="none">关闭</option>
+              <option value="realistic">真实翻页（实验）</option>
             </select>
           </div>
 

@@ -138,8 +138,10 @@ export default function ReaderPage() {
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [immersiveMode, setImmersiveMode] = useState(false);
   const [showThumbnails, setShowThumbnails] = useState(false);
-  // Experimental: realistic book flip (session-only, defaults off)
-  const [realisticFlipEnabled, setRealisticFlipEnabled] = useState(false);
+  // Realistic flip: preference from settings + session override
+  const [realisticFlipSessionOverride, setRealisticFlipSessionOverride] = useState<boolean | null>(null);
+  const preferredRealisticFlip = readerOpts.pageFlipEffect === "realistic";
+  const realisticFlipEnabled = realisticFlipSessionOverride ?? preferredRealisticFlip;
   const [newTag, setNewTag] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
   const [rating, setRating] = useState<number>(0);
@@ -632,7 +634,7 @@ export default function ReaderPage() {
   // Auto-disable realistic flip if conditions become invalid
   useEffect(() => {
     if (realisticFlipEnabled && !canUseRealisticFlip) {
-      setRealisticFlipEnabled(false);
+      setRealisticFlipSessionOverride(false);
     }
   }, [realisticFlipEnabled, canUseRealisticFlip]);
 
@@ -921,7 +923,7 @@ export default function ReaderPage() {
             onShowThumbnails={() => setShowThumbnails(true)}
             realisticFlipEnabled={realisticFlipEnabled}
             canUseRealisticFlip={canUseRealisticFlip}
-            onToggleRealisticFlip={() => setRealisticFlipEnabled((v) => !v)}
+            onToggleRealisticFlip={() => setRealisticFlipSessionOverride((v) => v === null ? !preferredRealisticFlip : !v)}
       />
 
       {/* Page number indicator (页码指示器可见性控制) */}
