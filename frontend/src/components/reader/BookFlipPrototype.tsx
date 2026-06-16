@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/**
+ * BookFlipPrototype — Isolated prototype for realistic page-flip engine.
+ * Uses stable offscreen canvas compositing to avoid read-after-write corruption.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const FLIP_THRESHOLD = 0.32;
 const FINISH_DURATION = 320;
@@ -54,7 +59,7 @@ function drawPagePlaceholder(
 
   ctx.fillStyle = "#9ca3af";
   ctx.font = `500 ${Math.round(Math.min(width, height) * 0.032)}px ui-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
-  ctx.fillText("Canvas 2D realistic page curl", width / 2, height / 2 + Math.round(height * 0.14));
+  ctx.fillText("Canvas 2D stable page fold", width / 2, height / 2 + Math.round(height * 0.14));
 }
 
 function drawSpineShadow(ctx: CanvasRenderingContext2D, w: number, h: number) {
@@ -74,9 +79,109 @@ function drawPageTexture(ctx: CanvasRenderingContext2D, img: HTMLImageElement | 
   }
 }
 
+/**
+ * Draw a stable page fold using an offscreen canvas buffer.
+ * Avoids read-after-write on the main canvas.
+ */
+function drawPageFold(
+  ctx: CanvasRenderingContext2D,
+  offscreen: HTMLCanvasElement,
+  img: HTMLImageElement | null,
+  fallbackIdx: number,
+  fallbackLabel: string,
+  w: number,
+  h: number,
+  foldX: number,
+  progress: number,
+  directionIsNext: boolean,
+) {
+  const foldWidth = directionIsNext
+    ? Math.max(0, w - foldX)
+    : Math.max(0, foldX);
+
+  if (foldWidth < 1) return;
+
+  // Render the source texture to offscreen buffer
+  offscreen.width = Math.ceil(foldWidth);
+  offscreen.height = Math.ceil(h);
+  const offCtx = offscreen.getContext("2d");
+  if (!offCtx) return;
+
+  offCtx.clearRect(0, 0, foldWidth, h);
+
+  if (img && img.complete && img.naturalWidth > 0) {
+    if (directionIsNext) {
+      const sx = (foldX / w) * img.naturalWidth;
+      const sw = ((w - foldX) / w) * img.naturalWidth;
+      offCtx.drawImage(img, sx, 0, sw, img.naturalHeight, 0, 0, foldWidth, h);
+    } else {
+      const sw = (foldX / w) * img.naturalWidth;
+      offCtx.drawImage(img, 0, 0, sw, img.naturalHeight, 0, 0, foldWidth, h);
+    }
+  } else {
+    drawPagePlaceholder(offCtx, foldWidth, h, fallbackIdx, fallbackLabel);
+  }
+
+  // Composite onto main canvas with fold effect
+  ctx.save();
+  ctx.beginPath();
+  if (directionIsNext) {
+    ctx.rect(0, 0, foldX, h);
+  } else {
+    ctx.rect(foldX, 0, w - foldX, h);
+  }
+  ctx.clip();
+
+  const curlAmplitude = Math.sin(progress * Math.PI) * w * 0.03;
+  const skewFactor = progress * 0.08;
+
+  ctx.save();
+  if (directionIsNext) {
+    ctx.translate(foldX, 0);
+    ctx.scale(-1, 1);
+    ctx.transform(1, skewFactor, 0, 1, 0, curlAmplitude);
+    ctx.drawImage(offscreen, 0, 0, foldWidth, h, 0, 0, foldWidth, h);
+  } else {
+    ctx.translate(foldX, 0);
+    ctx.scale(-1, 1);
+    ctx.transform(1, -skewFactor, 0, 1, 0, -curlAmplitude);
+    ctx.drawImage(offscreen, 0, 0, foldWidth, h, -foldWidth, 0, foldWidth, h);
+  }
+  ctx.restore();
+
+  // Fold shadow
+  const shadowGrad = ctx.createLinearGradient(
+    directionIsNext ? 0 : foldX, 0,
+    directionIsNext ? foldX : w, 0,
+  );
+  shadowGrad.addColorStop(0, "rgba(0,0,0,0.25)");
+  shadowGrad.addColorStop(0.3, "rgba(0,0,0,0.12)");
+  shadowGrad.addColorStop(0.8, "rgba(0,0,0,0.03)");
+  shadowGrad.addColorStop(1, "rgba(0,0,0,0.00)");
+  ctx.fillStyle = shadowGrad;
+  if (directionIsNext) {
+    ctx.fillRect(0, 0, foldX, h);
+  } else {
+    ctx.fillRect(foldX, 0, w - foldX, h);
+  }
+
+  // Fold highlight
+  const hlWidth = Math.max(4, w * 0.015);
+  const hlGrad = ctx.createLinearGradient(foldX - hlWidth, 0, foldX + hlWidth, 0);
+  hlGrad.addColorStop(0, "rgba(255,255,255,0.00)");
+  hlGrad.addColorStop(0.4, "rgba(255,255,255,0.12)");
+  hlGrad.addColorStop(0.6, "rgba(255,255,255,0.15)");
+  hlGrad.addColorStop(1, "rgba(255,255,255,0.00)");
+  ctx.fillStyle = hlGrad;
+  ctx.fillRect(foldX - hlWidth, 0, hlWidth * 2, h);
+
+  ctx.restore();
+}
+
 export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlipPrototypeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [flipState, setFlipState] = useState<FlipState>("idle");
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -112,6 +217,13 @@ export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlip
     pointerId: 0,
     locked: false,
   });
+
+  const getOffscreen = useCallback(() => {
+    if (!offscreenRef.current) {
+      offscreenRef.current = document.createElement("canvas");
+    }
+    return offscreenRef.current;
+  }, []);
 
   useEffect(() => {
     stateRef.current.currentPage = currentPage;
@@ -195,17 +307,14 @@ export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlip
     const currentUrl = pages[pageIdx] ?? "";
     const nextUrl = pages[pageIdx + 1] ?? "";
     const prevUrl = pages[pageIdx - 1] ?? "";
-    const backUrl = pages[pageIdx + 2] ?? "";
 
     const currentLabel = `Page ${pageIdx + 1}`;
     const nextLabel = `Page ${pageIdx + 2}`;
     const prevLabel = `Page ${Math.max(1, pageIdx)}`;
-    const backLabel = `Page ${pageIdx + 3}`;
 
     const currentImg = ensureImage(currentUrl);
     const nextImg = ensureImage(nextUrl);
     const prevImg = ensureImage(prevUrl);
-    const backImg = ensureImage(backUrl);
 
     ctx.clearRect(0, 0, width, height);
     ctx.save();
@@ -222,11 +331,9 @@ export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlip
         : width * easedProgress;
 
       if (directionIsNext) {
+        // Forward flip: current page background, next page revealed
         drawPageTexture(ctx, currentImg, width, height, currentLabel, pageIdx);
         drawSpineShadow(ctx, width, height);
-
-        ctx.fillStyle = "rgba(0,0,0,0.12)";
-        ctx.fillRect(foldX, 0, Math.max(0, width - foldX), height);
 
         ctx.save();
         ctx.beginPath();
@@ -234,102 +341,62 @@ export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlip
         ctx.clip();
         drawPageTexture(ctx, nextImg, width, height, nextLabel, pageIdx + 1);
         ctx.restore();
+
+        // Fold from current page
+        const offscreen = getOffscreen();
+        drawPageFold(
+          ctx, offscreen, currentImg, pageIdx, currentLabel,
+          width, height, foldX, progress, true,
+        );
+
+        // Drop shadow behind turning page
+        const dropAlpha = 0.15 + 0.1 * Math.sin(progress * Math.PI);
+        const dropGrad = ctx.createLinearGradient(foldX - width * 0.1, 0, foldX, 0);
+        dropGrad.addColorStop(0, "rgba(0,0,0,0.00)");
+        dropGrad.addColorStop(1, `rgba(0,0,0,${dropAlpha.toFixed(3)})`);
+        ctx.fillStyle = dropGrad;
+        ctx.fillRect(foldX - width * 0.1, 0, width * 0.1, height);
+
       } else {
-        if (prevImg) {
-          drawPageTexture(ctx, prevImg, width, height, prevLabel, Math.max(0, pageIdx - 1));
-        } else {
-          ctx.fillStyle = "#030712";
-          ctx.fillRect(0, 0, width, height);
-        }
-      }
-
-      ctx.save();
-      if (directionIsNext) {
-        ctx.beginPath();
-        ctx.moveTo(foldX, 0);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(0, height);
-        ctx.lineTo(foldX, height);
-        ctx.closePath();
-        ctx.clip();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(foldX, 0);
-        ctx.lineTo(width, 0);
-        ctx.lineTo(width, height);
-        ctx.lineTo(foldX, height);
-        ctx.closePath();
-        ctx.clip();
-      }
-
-      const curlAmplitude = Math.sin(progress * Math.PI) * width * 0.08;
-      const foldWidth = width * (1 - easedProgress);
-
-      ctx.save();
-      ctx.translate(foldX, 0);
-
-      if (directionIsNext) {
-        ctx.transform(-1, 0, 0, 1, 0, 0);
-      }
-
-      const steps = 8;
-      const sliceWidth = foldWidth / steps;
-      for (let i = 0; i < steps; i += 1) {
-        const t = i / steps;
-        const sliceX = t * foldWidth;
-        const localT = clamp(1 - t, 0, 1);
-        const wave = Math.sin(localT * Math.PI);
-        const curlY = wave * curlAmplitude * (0.85 + 0.15 * Math.sin(t * Math.PI * 2));
-        const scaleX = sliceWidth * 1.03;
+        // Backward flip: previous page background, current page revealed
+        drawPageTexture(ctx, prevImg, width, height, prevLabel, Math.max(0, pageIdx - 1));
+        drawSpineShadow(ctx, width, height);
 
         ctx.save();
-        ctx.transform(1, 0, 0, 1, sliceX, curlY);
-        ctx.drawImage(
-          canvas,
-          (directionIsNext ? (width - sliceWidth - sliceX) : (sliceX + foldX)) * 1,
-          0,
-          sliceWidth,
-          height,
-          0,
-          0,
-          scaleX,
-          height,
-        );
+        ctx.beginPath();
+        ctx.rect(foldX, 0, width - foldX, height);
+        ctx.clip();
+        drawPageTexture(ctx, currentImg, width, height, currentLabel, pageIdx);
         ctx.restore();
+
+        // Fold from previous page
+        const offscreen = getOffscreen();
+        drawPageFold(
+          ctx, offscreen, prevImg, Math.max(0, pageIdx - 1), prevLabel,
+          width, height, foldX, progress, false,
+        );
+
+        // Drop shadow behind turning page
+        const dropAlpha = 0.15 + 0.1 * Math.sin(progress * Math.PI);
+        const dropGrad = ctx.createLinearGradient(foldX, 0, foldX + width * 0.1, 0);
+        dropGrad.addColorStop(0, `rgba(0,0,0,${dropAlpha.toFixed(3)})`);
+        dropGrad.addColorStop(1, "rgba(0,0,0,0.00)");
+        ctx.fillStyle = dropGrad;
+        ctx.fillRect(foldX, 0, width * 0.1, height);
       }
 
-      const grad = ctx.createLinearGradient(0, 0, foldWidth, 0);
-      grad.addColorStop(0, "rgba(0,0,0,0.22)");
-      grad.addColorStop(0.45, "rgba(0,0,0,0.08)");
-      grad.addColorStop(0.9, "rgba(0,0,0,0.00)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, foldWidth, height);
-
-      const highlight = ctx.createLinearGradient(foldWidth * 0.7, 0, foldWidth, 0);
-      highlight.addColorStop(0, "rgba(255,255,255,0.00)");
-      highlight.addColorStop(0.9, "rgba(255,255,255,0.10)");
-      highlight.addColorStop(1, "rgba(255,255,255,0.05)");
-      ctx.fillStyle = highlight;
-      ctx.fillRect(foldWidth * 0.7, 0, foldWidth * 0.3, height);
-
-      ctx.restore();
-      ctx.restore();
-
-      const shadowAlpha = 0.22 + 0.18 * Math.sin(progress * Math.PI);
-      const shadowGrad = ctx.createLinearGradient(
-        foldX - width * 0.08,
-        0,
-        foldX + width * 0.06,
-        0,
+      // Spine shadow at fold line
+      const spineAlpha = 0.22 + 0.18 * Math.sin(progress * Math.PI);
+      const spineGrad = ctx.createLinearGradient(
+        foldX - width * 0.06, 0, foldX + width * 0.04, 0,
       );
-      shadowGrad.addColorStop(0, `rgba(0,0,0,${(shadowAlpha * 0.2).toFixed(3)})`);
-      shadowGrad.addColorStop(0.45, `rgba(0,0,0,${(shadowAlpha * 0.7).toFixed(3)})`);
-      shadowGrad.addColorStop(1, "rgba(0,0,0,0.00)");
-      ctx.fillStyle = shadowGrad;
-      ctx.fillRect(foldX - width * 0.08, 0, width * 0.14, height);
+      spineGrad.addColorStop(0, "rgba(0,0,0,0.00)");
+      spineGrad.addColorStop(0.45, `rgba(0,0,0,${(spineAlpha * 0.7).toFixed(3)})`);
+      spineGrad.addColorStop(0.55, `rgba(0,0,0,${spineAlpha.toFixed(3)})`);
+      spineGrad.addColorStop(1, "rgba(0,0,0,0.00)");
+      ctx.fillStyle = spineGrad;
+      ctx.fillRect(foldX - width * 0.06, 0, width * 0.1, height);
 
-      ctx.fillStyle = `rgba(0,0,0,${(0.08 + 0.07 * Math.sin(progress * Math.PI)).toFixed(3)})`;
-      ctx.fillRect(foldX - 1, 0, 2, height);
     } else {
       drawPageTexture(ctx, currentImg, width, height, currentLabel, pageIdx);
       drawSpineShadow(ctx, width, height);
@@ -347,7 +414,7 @@ export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlip
       metricsRef.current.fpsAccumulator = 0;
       metricsRef.current.fpsRefreshTime = now;
     }
-  }, [ensureImage, pages]);
+  }, [ensureImage, pages, getOffscreen]);
 
   useEffect(() => {
     let raf = 0;
@@ -513,4 +580,3 @@ export default function BookFlipPrototype({ pages, direction = "ltr" }: BookFlip
     </div>
   );
 }
-

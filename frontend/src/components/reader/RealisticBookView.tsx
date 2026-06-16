@@ -1,17 +1,22 @@
-﻿"use client";
+"use client";
 
 /**
  * RealisticBookView — Production-ready realistic page-flip reader view.
  *
- * Adapted from BookFlipPrototype with the following changes:
- * - Controlled currentPage prop (syncs with external state)
- * - onPageChange callback fires only after animation completes
- * - Tap-center for toolbar toggle
- * - No debug HUD
- * - Dark immersive background matching nowen-reader style
- * - Boundary protection (first/last page)
- * - Input locking during animation
- * - prefers-reduced-motion: disables drag, falls back to instant page turn
+ * Rendering approach: Stable single-pass page fold using offscreen canvas.
+ * The fold region is rendered to a separate offscreen buffer first, then
+ * composited onto the main canvas. This avoids the read-after-write bug
+ * where drawing from the same canvas being written to causes texture
+ * corruption (vertical stripes, misalignment).
+ *
+ * Visual effects:
+ * - Page fold with perspective skew
+ * - Fold shadow (darkening under the fold)
+ * - Fold highlight (light edge on the fold)
+ * - Back page visible through the fold
+ * - Spine shadow at the fold line
+ * - Drop shadow behind the turning page
+ * - Eased animation for natural feel
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -89,6 +94,136 @@ function drawPageTexture(
   }
 }
 
+/**
+ * Draw a page fold effect using an offscreen canvas buffer.
+ *
+ * This renders the fold region to a separate canvas first, then composites
+ * it onto the main canvas with proper clipping. No read-after-write.
+ */
+function drawPageFold(
+  ctx: CanvasRenderingContext2D,
+  offscreen: HTMLCanvasElement,
+  img: HTMLImageElement | null,
+  fallbackIdx: number,
+  w: number,
+  h: number,
+  /** foldX: the x-coordinate of the fold line */
+  foldX: number,
+  /** progress: 0-1 how far the fold has progressed */
+  progress: number,
+  /** directionIsNext: true if turning forward (fold from right) */
+  directionIsNext: boolean,
+) {
+  // The fold region width
+  const foldWidth = directionIsNext
+    ? Math.max(0, w - foldX)
+    : Math.max(0, foldX);
+
+  if (foldWidth < 1) return;
+
+  // 1) Render the page texture to the offscreen buffer
+  offscreen.width = Math.ceil(foldWidth);
+  offscreen.height = Math.ceil(h);
+  const offCtx = offscreen.getContext("2d");
+  if (!offCtx) return;
+
+  offCtx.clearRect(0, 0, foldWidth, h);
+
+  // Draw the relevant portion of the source image onto the offscreen canvas.
+  // For "next" direction: we want the right portion of the current page
+  // (which is the part that will fold over). The image source is the current page.
+  // For "prev" direction: we want the left portion of the previous page.
+  if (img && img.complete && img.naturalWidth > 0) {
+    // Map the fold region from the full image
+    if (directionIsNext) {
+      // Source region: from foldX to w in the full canvas
+      const sx = (foldX / w) * img.naturalWidth;
+      const sw = ((w - foldX) / w) * img.naturalWidth;
+      offCtx.drawImage(img, sx, 0, sw, img.naturalHeight, 0, 0, foldWidth, h);
+    } else {
+      // Source region: from 0 to foldX in the full canvas
+      const sw = (foldX / w) * img.naturalWidth;
+      offCtx.drawImage(img, 0, 0, sw, img.naturalHeight, 0, 0, foldWidth, h);
+    }
+  } else {
+    offCtx.fillStyle = "#07070a";
+    offCtx.fillRect(0, 0, foldWidth, h);
+    offCtx.fillStyle = "rgba(255,255,255,0.08)";
+    offCtx.font = `bold ${Math.round(Math.min(foldWidth, h) * 0.06)}px system-ui, sans-serif`;
+    offCtx.textAlign = "center";
+    offCtx.textBaseline = "middle";
+    offCtx.fillText(`${fallbackIdx + 1}`, foldWidth / 2, h / 2);
+  }
+
+  // 2) Composite the offscreen buffer onto the main canvas with fold clip
+  ctx.save();
+  ctx.beginPath();
+  if (directionIsNext) {
+    // Clip to left of foldX (the fold region for forward flip)
+    ctx.rect(0, 0, foldX, h);
+  } else {
+    // Clip to right of foldX (the fold region for backward flip)
+    ctx.rect(foldX, 0, w - foldX, h);
+  }
+  ctx.clip();
+
+  // Apply perspective-like skew for the fold
+  const curlAmplitude = Math.sin(progress * Math.PI) * w * 0.03;
+  const skewFactor = progress * 0.08;
+
+  ctx.save();
+  if (directionIsNext) {
+    // Draw the fold region mirrored horizontally, positioned at foldX
+    ctx.translate(foldX, 0);
+    ctx.scale(-1, 1);
+    // Apply a subtle vertical wave to simulate paper curl
+    ctx.transform(1, skewFactor, 0, 1, 0, curlAmplitude);
+    ctx.drawImage(offscreen, 0, 0, foldWidth, h, 0, 0, foldWidth, h);
+  } else {
+    // Draw the fold region at its natural position
+    ctx.translate(foldX, 0);
+    ctx.scale(-1, 1);
+    ctx.transform(1, -skewFactor, 0, 1, 0, -curlAmplitude);
+    ctx.drawImage(offscreen, 0, 0, foldWidth, h, -foldWidth, 0, foldWidth, h);
+  }
+  ctx.restore();
+
+  // 3) Fold shadow — darkening under the fold area
+  const shadowGrad = ctx.createLinearGradient(
+    directionIsNext ? 0 : foldX,
+    0,
+    directionIsNext ? foldX : w,
+    0,
+  );
+  shadowGrad.addColorStop(0, "rgba(0,0,0,0.25)");
+  shadowGrad.addColorStop(0.3, "rgba(0,0,0,0.12)");
+  shadowGrad.addColorStop(0.8, "rgba(0,0,0,0.03)");
+  shadowGrad.addColorStop(1, "rgba(0,0,0,0.00)");
+  ctx.fillStyle = shadowGrad;
+  if (directionIsNext) {
+    ctx.fillRect(0, 0, foldX, h);
+  } else {
+    ctx.fillRect(foldX, 0, w - foldX, h);
+  }
+
+  // 4) Fold highlight — bright edge at the fold line
+  const hlWidth = Math.max(4, w * 0.015);
+  const hlGrad = ctx.createLinearGradient(
+    foldX - hlWidth,
+    0,
+    foldX + hlWidth,
+    0,
+  );
+  hlGrad.addColorStop(0, "rgba(255,255,255,0.00)");
+  hlGrad.addColorStop(0.4, "rgba(255,255,255,0.12)");
+  hlGrad.addColorStop(0.6, "rgba(255,255,255,0.15)");
+  hlGrad.addColorStop(1, "rgba(255,255,255,0.00)");
+  ctx.fillStyle = hlGrad;
+  ctx.fillRect(foldX - hlWidth, 0, hlWidth * 2, h);
+
+  ctx.restore();
+}
+
 // ── Component ──
 
 export default function RealisticBookView({
@@ -101,6 +236,7 @@ export default function RealisticBookView({
 }: RealisticBookViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
 
   // Internal page state: synced with external, but updated internally during animation
   const [internalPage, setInternalPage] = useState(externalPage);
@@ -131,6 +267,14 @@ export default function RealisticBookView({
     tapStartX: 0,
     tapStartY: 0,
   });
+
+  // Ensure offscreen canvas exists
+  const getOffscreen = useCallback(() => {
+    if (!offscreenRef.current) {
+      offscreenRef.current = document.createElement("canvas");
+    }
+    return offscreenRef.current;
+  }, []);
 
   // ── Sync external → internal ──
   useEffect(() => {
@@ -237,131 +381,87 @@ export default function RealisticBookView({
 
     if (isActiveFlip) {
       const easedProgress = isDragging ? progress : easeInOutCubic(progress);
+
+      // foldX: the line where the page folds
       const foldX = directionIsNext
         ? width * (1 - easedProgress)
         : width * easedProgress;
 
       if (directionIsNext) {
+        // ── Forward flip ──
+        // 1) Draw current page as background (full)
         drawPageTexture(ctx, currentImg, width, height, pageIdx);
         drawSpineShadow(ctx, width, height);
-        ctx.fillStyle = "rgba(0,0,0,0.12)";
-        ctx.fillRect(foldX, 0, Math.max(0, width - foldX), height);
+
+        // 2) Draw the revealed next page behind the fold region
         ctx.save();
         ctx.beginPath();
         ctx.rect(foldX, 0, width - foldX, height);
         ctx.clip();
         drawPageTexture(ctx, nextImg, width, height, pageIdx + 1);
         ctx.restore();
-      } else {
-        if (prevImg) {
-          drawPageTexture(ctx, prevImg, width, height, Math.max(0, pageIdx - 1));
-        } else {
-          ctx.fillStyle = "#07070a";
-          ctx.fillRect(0, 0, width, height);
-        }
-      }
 
-      // Curl effect
-      ctx.save();
-      if (directionIsNext) {
-        ctx.beginPath();
-        ctx.moveTo(foldX, 0);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(0, height);
-        ctx.lineTo(foldX, height);
-        ctx.closePath();
-        ctx.clip();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(foldX, 0);
-        ctx.lineTo(width, 0);
-        ctx.lineTo(width, height);
-        ctx.lineTo(foldX, height);
-        ctx.closePath();
-        ctx.clip();
-      }
-
-      const curlAmplitude =
-        Math.sin(progress * Math.PI) * width * 0.08;
-      const foldWidth = width * (1 - easedProgress);
-
-      ctx.save();
-      ctx.translate(foldX, 0);
-      if (directionIsNext) {
-        ctx.transform(-1, 0, 0, 1, 0, 0);
-      }
-
-      const steps = 8;
-      const sliceWidth = foldWidth / steps;
-      for (let i = 0; i < steps; i += 1) {
-        const t = i / steps;
-        const sliceX = t * foldWidth;
-        const localT = clamp(1 - t, 0, 1);
-        const wave = Math.sin(localT * Math.PI);
-        const curlY =
-          wave * curlAmplitude * (0.85 + 0.15 * Math.sin(t * Math.PI * 2));
-        const scaleX = sliceWidth * 1.03;
-
-        ctx.save();
-        ctx.transform(1, 0, 0, 1, sliceX, curlY);
-        ctx.drawImage(
-          canvas,
-          (directionIsNext
-            ? width - sliceWidth - sliceX
-            : sliceX + foldX) * 1,
-          0,
-          sliceWidth,
-          height,
-          0,
-          0,
-          scaleX,
-          height,
+        // 3) Draw the page fold (turning page from current page image)
+        const offscreen = getOffscreen();
+        drawPageFold(
+          ctx, offscreen, currentImg, pageIdx,
+          width, height, foldX, progress, true,
         );
+
+        // 4) Drop shadow behind the turning page
+        const dropAlpha = 0.15 + 0.1 * Math.sin(progress * Math.PI);
+        const dropGrad = ctx.createLinearGradient(
+          foldX - width * 0.1, 0, foldX, 0,
+        );
+        dropGrad.addColorStop(0, `rgba(0,0,0,0.00)`);
+        dropGrad.addColorStop(1, `rgba(0,0,0,${dropAlpha.toFixed(3)})`);
+        ctx.fillStyle = dropGrad;
+        ctx.fillRect(foldX - width * 0.1, 0, width * 0.1, height);
+
+      } else {
+        // ── Backward flip ──
+        // 1) Draw previous page as background
+        drawPageTexture(ctx, prevImg, width, height, Math.max(0, pageIdx - 1));
+        drawSpineShadow(ctx, width, height);
+
+        // 2) Draw the revealed current page on the right side of fold
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(foldX, 0, width - foldX, height);
+        ctx.clip();
+        drawPageTexture(ctx, currentImg, width, height, pageIdx);
         ctx.restore();
+
+        // 3) Draw the page fold (turning page from previous page image)
+        const offscreen = getOffscreen();
+        drawPageFold(
+          ctx, offscreen, prevImg, Math.max(0, pageIdx - 1),
+          width, height, foldX, progress, false,
+        );
+
+        // 4) Drop shadow behind the turning page
+        const dropAlpha = 0.15 + 0.1 * Math.sin(progress * Math.PI);
+        const dropGrad = ctx.createLinearGradient(
+          foldX, 0, foldX + width * 0.1, 0,
+        );
+        dropGrad.addColorStop(0, `rgba(0,0,0,${dropAlpha.toFixed(3)})`);
+        dropGrad.addColorStop(1, `rgba(0,0,0,0.00)`);
+        ctx.fillStyle = dropGrad;
+        ctx.fillRect(foldX, 0, width * 0.1, height);
       }
 
-      // Fold shadow + highlight
-      const grad = ctx.createLinearGradient(0, 0, foldWidth, 0);
-      grad.addColorStop(0, "rgba(0,0,0,0.22)");
-      grad.addColorStop(0.45, "rgba(0,0,0,0.08)");
-      grad.addColorStop(0.9, "rgba(0,0,0,0.00)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, foldWidth, height);
-
-      const highlight = ctx.createLinearGradient(
-        foldWidth * 0.7,
-        0,
-        foldWidth,
-        0,
+      // 5) Spine shadow at the fold line (always on top)
+      const spineAlpha = 0.22 + 0.18 * Math.sin(progress * Math.PI);
+      const spineGrad = ctx.createLinearGradient(
+        foldX - width * 0.06, 0, foldX + width * 0.04, 0,
       );
-      highlight.addColorStop(0, "rgba(255,255,255,0.00)");
-      highlight.addColorStop(0.9, "rgba(255,255,255,0.10)");
-      highlight.addColorStop(1, "rgba(255,255,255,0.05)");
-      ctx.fillStyle = highlight;
-      ctx.fillRect(foldWidth * 0.7, 0, foldWidth * 0.3, height);
+      spineGrad.addColorStop(0, `rgba(0,0,0,0.00)`);
+      spineGrad.addColorStop(0.45, `rgba(0,0,0,${(spineAlpha * 0.7).toFixed(3)})`);
+      spineGrad.addColorStop(0.55, `rgba(0,0,0,${spineAlpha.toFixed(3)})`);
+      spineGrad.addColorStop(1, `rgba(0,0,0,0.00)`);
+      ctx.fillStyle = spineGrad;
+      ctx.fillRect(foldX - width * 0.06, 0, width * 0.1, height);
 
-      ctx.restore();
-      ctx.restore();
-
-      // Spine shadow at fold line
-      const shadowAlpha = 0.22 + 0.18 * Math.sin(progress * Math.PI);
-      const shadowGrad = ctx.createLinearGradient(
-        foldX - width * 0.08,
-        0,
-        foldX + width * 0.06,
-        0,
-      );
-      shadowGrad.addColorStop(0, `rgba(0,0,0,${(shadowAlpha * 0.2).toFixed(3)})`);
-      shadowGrad.addColorStop(
-        0.45,
-        `rgba(0,0,0,${(shadowAlpha * 0.7).toFixed(3)})`,
-      );
-      shadowGrad.addColorStop(1, "rgba(0,0,0,0.00)");
-      ctx.fillStyle = shadowGrad;
-      ctx.fillRect(foldX - width * 0.08, 0, width * 0.14, height);
-
-      ctx.fillStyle = `rgba(0,0,0,${(0.08 + 0.07 * Math.sin(progress * Math.PI)).toFixed(3)})`;
-      ctx.fillRect(foldX - 1, 0, 2, height);
     } else {
       // Idle: draw current page
       drawPageTexture(ctx, currentImg, width, height, pageIdx);
@@ -369,7 +469,7 @@ export default function RealisticBookView({
     }
 
     ctx.restore();
-  }, [ensureImage, pages]);
+  }, [ensureImage, pages, getOffscreen]);
 
   // ── Animation loop ──
   useEffect(() => {
