@@ -316,3 +316,24 @@ func GetLibraryComicCount(libraryID string) (int, error) {
 	err := db.QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "libraryId" = ?`, libraryID).Scan(&count)
 	return count, err
 }
+
+// CountNovelsByLibraryID returns the number of novels (contentType=novel) in a library.
+func CountNovelsByLibraryID(libraryID string) (int, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "libraryId" = ? AND "contentType" = 'novel'`, libraryID).Scan(&count)
+	return count, err
+}
+
+// GetLibraryContentCounts returns comic / novel / total counts for a library.
+func GetLibraryContentCounts(libraryID string) (comicCount int, novelCount int, totalCount int, err error) {
+	comicCount, err = GetLibraryComicCount(libraryID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	novelCount, err = CountNovelsByLibraryID(libraryID)
+	if err != nil {
+		return comicCount, 0, 0, err
+	}
+	totalCount = comicCount
+	return comicCount, novelCount, totalCount, nil
+}

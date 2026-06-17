@@ -18,6 +18,7 @@ func registerLibraryRoutes(api *gin.RouterGroup) {
 		libraryGroup.PUT("/:id", library.UpdateLibrary)
 		libraryGroup.DELETE("/:id", library.DeleteLibrary)
 		libraryGroup.POST("/:id/scan", library.ScanLibrary)
+		libraryGroup.POST("/:id/delete-preview", library.DeletePreview)
 	}
 
 	// User library access management (admin only)

@@ -1,9 +1,14 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -226,6 +231,92 @@ func (h *LibraryHandler) ScanLibrary(c *gin.Context) {
 
 	lib, _ := store.GetLibraryByID(id)
 	c.JSON(http.StatusOK, gin.H{"added": added, "library": lib})
+}
+
+// ============================================================
+// POST /api/admin/libraries/:id/delete-preview — Dry-run delete preview
+// ============================================================
+
+func (h *LibraryHandler) DeletePreview(c *gin.Context) {
+	id := c.Param("id")
+
+	existing, err := store.GetLibraryByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch library"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Library not found"})
+		return
+	}
+
+	comicCount, novelCount, contentCount, err := store.GetLibraryContentCounts(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to compute library content counts"})
+		return
+	}
+
+	thumbnailCacheCount := 0
+	pageCacheCount := 0
+
+	if comicCount > 0 {
+		ids, err := store.GetComicIDsByLibraryID(id)
+		if err == nil {
+			tw := config.GetThumbnailWidth()
+			th := config.GetThumbnailHeight()
+			thumbsDir := config.GetThumbnailsDir()
+			pagesDir := config.GetPagesCacheDir()
+
+			for comicID := range ids {
+				thumbName := filepath.Base(filepath.Clean(comicID)) + "_" + fmt.Sprintf("%d", tw) + "x" + fmt.Sprintf("%d", th) + ".webp"
+				if _, err := os.Stat(filepath.Join(thumbsDir, thumbName)); err == nil {
+					thumbnailCacheCount++
+				}
+				if _, err := os.Stat(filepath.Join(pagesDir, comicID)); err == nil {
+					pageCacheCount++
+				}
+			}
+		}
+	}
+
+	warnings := []string{}
+	if comicCount > 0 {
+		warnings = append(warnings, "删除将同时清理该书库下的所有内容索引与阅读记录")
+	}
+
+	resp := gin.H{
+		"libraryId":               existing.ID,
+		"libraryName":             existing.Name,
+		"isDefaultLibrary":        strings.EqualFold(existing.ID, "default"),
+		"comicCount":              comicCount,
+		"novelCount":              novelCount,
+		"contentCount":            contentCount,
+		"thumbnailCacheCount":     thumbnailCacheCount,
+		"pageCacheCount":          pageCacheCount,
+		"estimatedCacheSizeBytes": 0,
+		"deleteSourceFiles":       false,
+		"willDelete": []string{
+			"library record",
+			"comic records",
+			"comic tag relations",
+			"comic category relations",
+			"reading states",
+			"reading sessions",
+			"group items",
+			"thumbnail cache",
+			"page cache",
+		},
+		"willKeep": []string{
+			"source files",
+			"source folders",
+			"user accounts",
+			"site config",
+			"AI config",
+		},
+		"warnings": warnings,
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // ============================================================
