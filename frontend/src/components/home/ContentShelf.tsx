@@ -7,6 +7,9 @@ import Link from "next/link";
 // Types
 // ============================================================
 
+type SectionLayout = "shelf" | "grid" | "row";
+type CardSize = "sm" | "md" | "lg";
+
 interface ContentShelfProps {
   title: string;
   icon?: React.ReactNode;
@@ -15,7 +18,21 @@ interface ContentShelfProps {
   actionHref?: string;
   children: React.ReactNode;
   className?: string;
+  /** Section rendering mode: shelf (horizontal scroll), grid, or row */
+  sectionLayout?: SectionLayout;
+  /** Card size preset for grid/row layouts */
+  cardSize?: CardSize;
 }
+
+// ============================================================
+// Layout helpers
+// ============================================================
+
+const GRID_COLS: Record<CardSize, string> = {
+  sm: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7",
+  md: "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
+  lg: "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5",
+};
 
 // ============================================================
 // Component — horizontal content shelf (Netflix/Apple Books style)
@@ -28,25 +45,41 @@ export default function ContentShelf({
   actionHref,
   children,
   className = "",
+  sectionLayout = "shelf",
+  cardSize = "md",
 }: ContentShelfProps) {
+  const containerClass =
+    sectionLayout === "grid"
+      ? `grid gap-3 ${GRID_COLS[cardSize] || GRID_COLS.md}`
+      : sectionLayout === "row"
+        ? "flex gap-3 overflow-x-auto pb-2"
+        : "scrollbar-hide -mx-1 flex gap-3 overflow-x-auto px-1 pb-2";
+
+  const containerStyle: React.CSSProperties =
+    sectionLayout === "shelf" || sectionLayout === "row"
+      ? { scrollbarWidth: "none", msOverflowStyle: "none" }
+      : {};
+
   return (
     <section className={`mb-4 ${className}`}>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground sm:text-base">
-          {icon}
-          {title}
-        </h3>
-        {actionLabel && actionHref && (
-          <Link
-            href={actionHref}
-            className="flex items-center gap-1 text-xs text-muted hover:text-accent transition-colors"
-          >
-            {actionLabel}
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
-      </div>
-      <div className="scrollbar-hide -mx-1 flex gap-3 overflow-x-auto px-1 pb-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+      {title && (
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground sm:text-base">
+            {icon}
+            {title}
+          </h3>
+          {actionLabel && actionHref && (
+            <Link
+              href={actionHref}
+              className="flex items-center gap-1 text-xs text-muted hover:text-accent transition-colors"
+            >
+              {actionLabel}
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
+      )}
+      <div className={containerClass} style={containerStyle}>
         {children}
       </div>
     </section>
@@ -110,7 +143,7 @@ export function ShelfCard({
           <p className="mt-0.5 text-[10px] text-muted line-clamp-1">{subtitle}</p>
         )}
         {badge && (
-          <span className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badgeColor}`}>
+          <span className={`mt-1 inline-block rounded-md px-1.5 py-0.5 text-[9px] font-medium ${badgeColor}`}>
             {badge}
           </span>
         )}

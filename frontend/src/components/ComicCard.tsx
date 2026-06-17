@@ -81,6 +81,18 @@ interface ComicCardProps {
   animationIndex?: number;
   /** 删除动画：设为 true 时播放收缩消失动画 */
   isRemoving?: boolean;
+  /** Poster aspect ratio override (CSS value like "3/4", "2/3") */
+  posterAspect?: string;
+  /** Compact mode: smaller padding, hide tags, single-line title */
+  compact?: boolean;
+  /** Title max visible lines */
+  titleMaxLines?: 1 | 2 | 3;
+  /** Show star rating on card */
+  showRating?: boolean;
+  /** Show reading progress bar */
+  showProgress?: boolean;
+  /** Hide metadata (tags, badges) */
+  hideMeta?: boolean;
 }
 
 /** 渲染标签chip */
@@ -116,6 +128,12 @@ const ComicCard = memo(function ComicCard({
   onContextMenu,
   animationIndex,
   isRemoving,
+  posterAspect,
+  compact = false,
+  titleMaxLines = 2,
+  showRating = false,
+  showProgress = false,
+  hideMeta = false,
 }: ComicCardProps) {
 
   // 构建 tag name → ApiComicTag 的映射
@@ -130,7 +148,7 @@ const ComicCard = memo(function ComicCard({
 
   // Detect landscape cover: aspect ratio > 1.3 means wide cover
   const isLandscape = (comic.coverAspectRatio ?? 0) > 1.3;
-  const coverAspectClass = "aspect-[5/7]"; // Keep consistent aspect ratio for all covers
+  const coverAspectClass = `aspect-[${posterAspect || "5/7"}]`;
   const coverObjectFit = "object-cover"; // Use cover to fill container properly
 
   const handleClick = (e: React.MouseEvent) => {
@@ -357,7 +375,7 @@ const ComicCard = memo(function ComicCard({
               )}
             </div>
             <div className="p-3">
-              <h3 className="mb-2 truncate text-sm font-medium text-foreground/90">{comic.title}</h3>
+              <h3 className={`mb-2 text-sm font-medium text-foreground/90 ${titleMaxLines === 1 ? "truncate" : `line-clamp-${titleMaxLines}`}`}>{comic.title}</h3>
 <div className="flex flex-wrap items-center gap-1.5">
                 {(comic.tags || []).slice(0, 3).map((tag) => (
                   <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />
@@ -375,7 +393,7 @@ const ComicCard = memo(function ComicCard({
             </div>
           )}
 
-          <div className="motion-cover relative overflow-hidden rounded-xl bg-card group-hover:shadow-accent/10">
+          <div className={`motion-cover relative overflow-hidden rounded-xl bg-card group-hover:shadow-accent/10 ${compact ? "shadow-sm" : ""}`}>
             {/* Cover Image — 点击进入阅读 */}
             <Link
               href={getReaderUrl(comic)}
@@ -441,7 +459,7 @@ const ComicCard = memo(function ComicCard({
                   {comic.title}
                 </Link>
               ) : (
-                <h3 className="mb-2 truncate text-sm font-medium text-foreground/90">{comic.title}</h3>
+                <h3 className={`mb-2 text-sm font-medium text-foreground/90 ${titleMaxLines === 1 ? "truncate" : `line-clamp-${titleMaxLines}`}`}>{comic.title}</h3>
               )}
               <div className="flex flex-wrap items-center gap-1.5">
                 {(comic.tags || []).slice(0, 3).map((tag) => (
