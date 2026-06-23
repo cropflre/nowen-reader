@@ -859,11 +859,16 @@ export function LibraryManagementPanel() {
         open={browseOpen}
         onClose={() => setBrowseOpen(false)}
         onSelect={(path) => {
-          if (browseTarget === "create") {
-            setNewRootPaths(prev => [...prev, path]);
-          } else {
-            setEditRootPaths(prev => [...prev, path]);
-          }
+          const setPaths = browseTarget === "create" ? setNewRootPaths : setEditRootPaths;
+          setPaths(prev => {
+            const emptyIndex = prev.findIndex(p => !p.trim());
+            if (emptyIndex !== -1) {
+              const updated = [...prev];
+              updated[emptyIndex] = path;
+              return updated;
+            }
+            return [...prev, path];
+          });
         }}
       />
     </div>
