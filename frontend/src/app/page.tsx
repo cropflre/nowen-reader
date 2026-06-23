@@ -20,7 +20,7 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation, useLocale } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpen, Brain, Loader2, Layers, Trash2, X } from "lucide-react";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpen, Brain, Loader2, Layers, Trash2, X, Eye, EyeOff, Settings2 } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 import GroupCard from "@/components/GroupCard";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
@@ -132,6 +132,9 @@ export default function Home() {
   const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() =>
     readStringArrayFromLocalStorage("home:selectedLibraryIds")
   );
+  const [hiddenLibraryIds, setHiddenLibraryIds] = useState<string[]>(() =>
+    readStringArrayFromLocalStorage("home:hiddenLibraryIds")
+  );
   const [uploading, setUploading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
@@ -151,13 +154,22 @@ export default function Home() {
     fetchAccessibleLibraries()
       .then((libs) => {
         setAccessibleLibraries(libs);
-        // 清理 localStorage 中已删除/无权限的书库 ID
+        const validIds = new Set(libs.map((l) => l.id));
+        // 清理 selectedLibraryIds 中失效的 ID
         setSelectedLibraryIds((prev) => {
           if (prev.length === 0) return prev;
-          const validIds = new Set(libs.map((l) => l.id));
           const cleaned = prev.filter((id) => validIds.has(id));
           if (cleaned.length !== prev.length) {
             localStorage.setItem("home:selectedLibraryIds", JSON.stringify(cleaned));
+          }
+          return cleaned.length !== prev.length ? cleaned : prev;
+        });
+        // 清理 hiddenLibraryIds 中失效的 ID
+        setHiddenLibraryIds((prev) => {
+          if (prev.length === 0) return prev;
+          const cleaned = prev.filter((id) => validIds.has(id));
+          if (cleaned.length !== prev.length) {
+            localStorage.setItem("home:hiddenLibraryIds", JSON.stringify(cleaned));
           }
           return cleaned.length !== prev.length ? cleaned : prev;
         });
@@ -170,6 +182,31 @@ export default function Home() {
     localStorage.setItem("home:selectedLibraryIds", JSON.stringify(ids));
     setCurrentPage(1);
   }, []);
+
+  const handleToggleLibraryVisible = useCallback((id: string) => {
+    setHiddenLibraryIds((prev) => {
+      const next = prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id];
+      localStorage.setItem("home:hiddenLibraryIds", JSON.stringify(next));
+      // 如果隐藏了当前选中的书库，自动移除选择
+      if (next.includes(id)) {
+        setSelectedLibraryIds((prevSel) => {
+          const nextSel = prevSel.filter((x) => x !== id);
+          localStorage.setItem("home:selectedLibraryIds", JSON.stringify(nextSel));
+          return nextSel;
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  const handleShowAllLibraries = useCallback(() => {
+    setHiddenLibraryIds([]);
+    localStorage.setItem("home:hiddenLibraryIds", "[]");
+  }, []);
+
+  const visibleLibraries = accessibleLibraries.filter((lib) => !hiddenLibraryIds.includes(lib.id));
 
   const [scanningLibrary, setScanningLibrary] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(() => {
@@ -334,6 +371,9 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("home:selectedLibraryIds", JSON.stringify(selectedLibraryIds));
   }, [selectedLibraryIds]);
+  useEffect(() => {
+    localStorage.setItem("home:hiddenLibraryIds", JSON.stringify(hiddenLibraryIds));
+  }, [hiddenLibraryIds]);
 
   // 书库筛选状态
   const isLibraryFiltered = selectedLibraryIds.length > 0;
@@ -1191,11 +1231,15 @@ export default function Home() {
               </div>
 
             {/* Library Tabs — accessible library filter */}
-            {accessibleLibraries.length > 1 && (
+            {visibleLibraries.length > 0 && (
               <LibraryTabsBar
-                libraries={accessibleLibraries}
+                libraries={visibleLibraries}
                 selectedIds={selectedLibraryIds}
                 onChange={handleLibraryTabsChange}
+                hiddenIds={hiddenLibraryIds}
+                onToggleVisible={handleToggleLibraryVisible}
+                onShowAll={handleShowAllLibraries}
+                allLibraries={accessibleLibraries}
               />
             )}
 
