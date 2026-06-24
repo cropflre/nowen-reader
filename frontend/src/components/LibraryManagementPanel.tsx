@@ -265,8 +265,8 @@ export function LibraryManagementPanel() {
           const result = await scanLibrary(lib.id);
           showMessage(`扫描完成，新增 ${result.added} 个内容`);
           fetchLibraryList();
-        } catch {
-          // 扫描失败不阻塞创建流程
+        } catch (scanErr) {
+          showMessage(scanErr instanceof Error ? `扫描失败: ${scanErr.message}` : "自动扫描失败，请手动重试", true);
         } finally {
           setScanningId(null);
         }

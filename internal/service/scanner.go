@@ -192,6 +192,21 @@ type diskFile struct {
 	LibraryID string // 书库ID
 }
 
+// fileBelongsToRootPaths 检查文件是否物理存在于某个根目录下。
+// 用于防止重叠目录导致文件在书库间反复迁移。
+func fileBelongsToRootPaths(filename string, rootPaths []string, rootPathSet map[string]bool) bool {
+	// filename 是相对于某个根目录的相对路径，无法直接判断属于哪个根目录
+	// 这里用简单的前缀匹配：如果文件名以根目录的 basename 开头，认为可能属于
+	// 更准确的做法是检查文件是否真的存在于某个根目录下
+	for _, rp := range rootPaths {
+		fullPath := filepath.Join(rp, filename)
+		if _, err := os.Stat(fullPath); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // walkDirRecursive 递归遍历目录中的所有支持文件。
 // 当 enableImageFolder=true 时，会识别"图片文件夹漫画"：如果某个子目录直接包含
 // 多张图片，则将整个目录作为一个漫画入库。novels 目录应当传入 false，避免把
@@ -1375,15 +1390,27 @@ func SyncLibraryByID(libraryID string) (int, error) {
 		return 0, fmt.Errorf("failed to query existing comics: %w", err)
 	}
 
-	// 获取所有已存在的漫画ID及其当前书库
-	allExisting, err := store.GetAllComicIDsAndLibraryIDs()
-	if err != nil {
-		return 0, fmt.Errorf("failed to query all comics: %w", err)
-	}
-
 	fileMap := make(map[string]diskFile, len(allFiles))
 	for _, f := range allFiles {
 		fileMap[f.ID] = f
+	}
+
+	// 只查询磁盘上发现的文件是否已存在于数据库（避免加载全库）
+	diskIDs := make([]string, 0, len(fileMap))
+	for id := range fileMap {
+		if _, ok := existing[id]; !ok {
+			diskIDs = append(diskIDs, id)
+		}
+	}
+	existingInOther, err := store.GetComicsLibraryIDsByIDs(diskIDs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query existing comics by IDs: %w", err)
+	}
+
+	// 构建根目录集合，用于判断文件是否真的属于当前书库
+	rootPathSet := make(map[string]bool, len(rootPaths))
+	for _, rp := range rootPaths {
+		rootPathSet[filepath.Clean(rp)] = true
 	}
 
 	var toAdd []struct{
@@ -1396,9 +1423,11 @@ func SyncLibraryByID(libraryID string) (int, error) {
 
 	for id, f := range fileMap {
 		if _, ok := existing[id]; !ok {
-			if otherLib, existsInOther := allExisting[id]; existsInOther && otherLib != "" && otherLib != libraryID {
-				// 文件在其他书库中，需要移动
-				toMove = append(toMove, id)
+			if otherLib, existsInOther := existingInOther[id]; existsInOther && otherLib != "" && otherLib != libraryID {
+				// 只有当文件物理路径确实属于当前书库根目录时才移动，防止重叠目录导致反复迁移
+				if fileBelongsToRootPaths(f.Filename, rootPaths, rootPathSet) {
+					toMove = append(toMove, id)
+				}
 			} else {
 				// 文件不存在，需要新增
 				toAdd = append(toAdd, struct{

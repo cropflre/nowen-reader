@@ -465,6 +465,44 @@ func GetAllComicIDsAndLibraryIDs() (map[string]string, error) {
 	return result, nil
 }
 
+// GetComicsLibraryIDsByIDs 批量查询指定漫画ID的书库ID（比 GetAllComicIDsAndLibraryIDs 更高效）。
+func GetComicsLibraryIDsByIDs(ids []string) (map[string]string, error) {
+	if len(ids) == 0 {
+		return map[string]string{}, nil
+	}
+	result := make(map[string]string, len(ids))
+	// 分批查询，避免 SQLite 参数过多
+	const batchSize = 500
+	for i := 0; i < len(ids); i += batchSize {
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[i:end]
+		placeholders := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for j, id := range batch {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+		rows, err := db.Query(
+			fmt.Sprintf(`SELECT "id", COALESCE("libraryId", '') FROM "Comic" WHERE "id" IN (%s)`, strings.Join(placeholders, ",")),
+			args...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, libraryID string
+			if rows.Scan(&id, &libraryID) == nil {
+				result[id] = libraryID
+			}
+		}
+		rows.Close()
+	}
+	return result, nil
+}
+
 // UpdateComicPageCount 更新单个漫画的页数。
 func UpdateComicPageCount(comicID string, pageCount int) error {
 	_, err := db.Exec(`UPDATE "Comic" SET "pageCount" = ? WHERE "id" = ?`, pageCount, comicID)
