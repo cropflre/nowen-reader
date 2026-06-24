@@ -366,6 +366,32 @@ func BulkDeleteComicsByIDs(ids []string) error {
 	return err
 }
 
+// BulkUpdateComicLibraryID 批量更新漫画的书库ID和类型（用于将已有漫画移动到新书库）。
+func BulkUpdateComicLibraryID(ids []string, libraryID string, comicType string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().UTC()
+	for _, id := range ids {
+		if _, err := stmt.Exec(libraryID, comicType, now, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // GetComicsNeedingPageCount 返回 pageCount=0 或 -1 的漫画（需要全量同步）。
 // pageCount=-1 表示上次同步失败，需要重试。
 func GetComicsNeedingPageCount(limit int) ([]struct {
@@ -416,6 +442,24 @@ func GetAllComicIDsAndFilenames() ([]ComicIDFilename, error) {
 		var c ComicIDFilename
 		if rows.Scan(&c.ID, &c.Filename, &c.Title) == nil {
 			result = append(result, c)
+		}
+	}
+	return result, nil
+}
+
+// GetAllComicIDsAndLibraryIDs 返回所有漫画的ID和所属书库ID。
+func GetAllComicIDsAndLibraryIDs() (map[string]string, error) {
+	rows, err := db.Query(`SELECT "id", COALESCE("libraryId", '') FROM "Comic"`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var id, libraryID string
+		if rows.Scan(&id, &libraryID) == nil {
+			result[id] = libraryID
 		}
 	}
 	return result, nil

@@ -95,7 +95,7 @@ export default function UploadDialog({
 
   // Filtered libraries
   const filteredLibs = libraries.filter(
-    (lib) => lib.enabled && lib.rootPath && (lib.type === "mixed" || lib.type === contentType)
+    (lib) => lib.enabled && ((lib.rootPaths && lib.rootPaths.length > 0) || lib.rootPath) && (lib.type === "mixed" || lib.type === contentType)
   );
 
   // Add files to queue

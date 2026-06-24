@@ -12,6 +12,7 @@ export interface Library {
   name: string;
   type: "comic" | "novel" | "mixed";
   rootPath: string;
+  rootPaths?: string[]; // 多目录支持，包含主路径和额外路径
   enabled: boolean;
   sortOrder: number;
   defaultAccess: "public" | "private";
@@ -70,10 +71,12 @@ export async function fetchLibraries(): Promise<Library[]> {
 export async function createLibrary(library: {
   name: string;
   type: "comic" | "novel" | "mixed";
-  rootPath: string;
+  rootPath?: string;
+  rootPaths?: string[];
   enabled?: boolean;
   sortOrder?: number;
   defaultAccess?: "public" | "private";
+  scanEnabled?: boolean;
 }): Promise<Library> {
   const res = await fetch("/api/admin/libraries", {
     method: "POST",
@@ -91,6 +94,7 @@ export async function updateLibrary(
     name: string;
     type: "comic" | "novel" | "mixed";
     rootPath: string;
+    rootPaths?: string[];
     enabled: boolean;
     sortOrder: number;
     defaultAccess: "public" | "private";

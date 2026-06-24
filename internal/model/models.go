@@ -43,6 +43,7 @@ type Library struct {
 	Name      string    `json:"name"`
 	Type      string    `json:"type"` // "comic" | "novel" | "mixed"
 	RootPath  string    `json:"rootPath"`
+	RootPaths []string  `json:"rootPaths,omitempty"` // 多目录支持，包含主路径和额外路径
 	Enabled   bool      `json:"enabled"`
 	SortOrder int       `json:"sortOrder"`
 	DefaultAccess string    `json:"defaultAccess"` // "public" | "private"

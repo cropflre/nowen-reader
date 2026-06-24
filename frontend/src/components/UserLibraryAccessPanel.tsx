@@ -97,11 +97,11 @@ export function UserLibraryAccessPanel({
     return (
       <div className="p-6 rounded-2xl bg-card border border-border">
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Shield className="h-5 w-5 text-primary" />
+          <div className="p-2 rounded-lg bg-accent/10">
+            <Shield className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <h3 className="font-semibold">管理员权限</h3>
+            <h3 className="font-semibold text-foreground">管理员权限</h3>
             <p className="text-sm text-muted">
               管理员默认拥有所有书库的访问权限
             </p>
@@ -109,7 +109,7 @@ export function UserLibraryAccessPanel({
         </div>
         <button
           onClick={onClose}
-          className="px-4 py-2 rounded-lg bg-card hover:bg-card/80 transition-colors"
+          className="px-4 py-2 rounded-lg bg-card hover:bg-card-hover transition-colors text-foreground"
         >
           关闭
         </button>
@@ -121,19 +121,19 @@ export function UserLibraryAccessPanel({
     <div className="p-6 rounded-2xl bg-card border border-border">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Library className="h-5 w-5 text-primary" />
+          <div className="p-2 rounded-lg bg-accent/10">
+            <Library className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <h3 className="font-semibold">书库访问权限</h3>
+            <h3 className="font-semibold text-foreground">书库访问权限</h3>
             <p className="text-sm text-muted">
-              配置用户 <span className="font-medium">{username}</span> 可以访问的书库
+              配置用户 <span className="font-medium text-foreground">{username}</span> 可以访问的书库
             </p>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="p-2 rounded-lg text-muted hover:text-foreground hover:bg-card transition-colors"
+          className="p-2 rounded-lg text-muted hover:text-foreground hover:bg-card-hover transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
@@ -141,13 +141,13 @@ export function UserLibraryAccessPanel({
 
       {/* 消息提示 */}
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive mb-4">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 mb-4">
           <AlertTriangle className="h-4 w-4" />
           {error}
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 text-green-500 mb-4">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-4">
           <Check className="h-4 w-4" />
           {success}
         </div>
@@ -155,7 +155,7 @@ export function UserLibraryAccessPanel({
 
       {loading ? (
         <div className="flex items-center justify-center h-32">
-          <RefreshCw className="h-6 w-6 animate-spin" />
+          <RefreshCw className="h-6 w-6 animate-spin text-muted" />
         </div>
       ) : libraries.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-32 text-muted">
@@ -170,33 +170,35 @@ export function UserLibraryAccessPanel({
                 key={lib.id}
                 className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${
                   lib.canView
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
+                    ? "border-accent/50 bg-accent/5"
+                    : "border-border hover:border-accent/30"
                 }`}
                 onClick={() => handleToggle(lib.id)}
               >
                 <div className="flex items-center gap-3">
                   <div
                     className={`p-2 rounded-lg ${
-                      lib.canView ? "bg-primary/10" : "bg-card"
+                      lib.canView ? "bg-accent/10" : "bg-card-hover"
                     }`}
                   >
                     <Library
                       className={`h-4 w-4 ${
-                        lib.canView ? "text-primary" : "text-muted"
+                        lib.canView ? "text-accent" : "text-muted"
                       }`}
                     />
                   </div>
                   <div>
-                    <div className="font-medium">{lib.name}</div>
+                    <div className="font-medium text-foreground">{lib.name}</div>
                     <div className="text-sm text-muted">
-                      {lib.rootPath}
+                      {(lib.rootPaths && lib.rootPaths.length > 0 ? lib.rootPaths : [lib.rootPath]).map((path, index) => (
+                        <div key={index} className="truncate">{path}</div>
+                      ))}
                     </div>
                   </div>
                 </div>
                 <div
                   className={`w-10 h-6 rounded-full transition-colors ${
-                    lib.canView ? "bg-primary" : "bg-card"
+                    lib.canView ? "bg-accent" : "bg-muted/30"
                   }`}
                 >
                   <div
@@ -214,7 +216,7 @@ export function UserLibraryAccessPanel({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
             >
               {saving ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -225,7 +227,7 @@ export function UserLibraryAccessPanel({
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-card hover:bg-card/80 transition-colors"
+              className="px-4 py-2 rounded-lg bg-card hover:bg-card-hover transition-colors text-foreground"
             >
               取消
             </button>

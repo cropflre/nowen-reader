@@ -369,6 +369,24 @@ var Migrations = []Migration{
 		Description: "Add defaultAccess column to Library for databases upgraded from migration 22",
 		SQL:         `ALTER TABLE "Library" ADD COLUMN "defaultAccess" TEXT NOT NULL DEFAULT 'private';`,
 	},
+	{
+		Version:     26,
+		Description: "Add library_root_paths table for multi-directory support",
+		SQL: strings.Join([]string{
+			`CREATE TABLE IF NOT EXISTS "library_root_paths" (
+				"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+				"libraryId" TEXT NOT NULL,
+				"rootPath" TEXT NOT NULL,
+				"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY ("libraryId") REFERENCES "Library"("id") ON DELETE CASCADE,
+				UNIQUE("libraryId", "rootPath")
+			);`,
+			`CREATE INDEX IF NOT EXISTS "idx_library_root_paths_libraryId" ON "library_root_paths"("libraryId");`,
+			// Note: main rootPath is stored in Library.rootPath column,
+			// library_root_paths only stores additional paths.
+			// No data migration needed for existing libraries.
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.

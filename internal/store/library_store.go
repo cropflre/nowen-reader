@@ -32,6 +32,12 @@ func GetAllLibraries() ([]model.Library, error) {
 		}
 		lib.CreatedAt = createdAt
 		lib.UpdatedAt = updatedAt
+		// 填充 rootPaths（主路径 + 额外路径）
+		extraPaths, err := GetLibraryRootPaths(lib.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get root paths for library %s: %w", lib.ID, err)
+		}
+		lib.RootPaths = append([]string{lib.RootPath}, extraPaths...)
 		libraries = append(libraries, lib)
 	}
 	return libraries, nil
@@ -52,6 +58,12 @@ func GetLibraryByID(id string) (*model.Library, error) {
 	}
 	lib.CreatedAt = createdAt
 	lib.UpdatedAt = updatedAt
+	// 填充 rootPaths（主路径 + 额外路径）
+	extraPaths, err := GetLibraryRootPaths(lib.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root paths for library %s: %w", lib.ID, err)
+	}
+	lib.RootPaths = append([]string{lib.RootPath}, extraPaths...)
 	return &lib, nil
 }
 
@@ -67,7 +79,15 @@ func CreateLibrary(lib *model.Library) error {
 	_, err := db.Exec(`INSERT INTO "Library" ("id", "name", "type", "rootPath", "enabled", "sortOrder", "defaultAccess", "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt")
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		lib.ID, lib.Name, lib.Type, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.CreatedAt, lib.UpdatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 保存 rootPaths 到关联表（排除主路径，避免重复）
+	if len(lib.RootPaths) > 0 {
+		return SetLibraryRootPaths(lib.ID, lib.RootPaths, lib.RootPath)
+	}
+	return nil
 }
 
 // UpdateLibrary 更新书库信息
@@ -76,7 +96,15 @@ func UpdateLibrary(lib *model.Library) error {
 	_, err := db.Exec(`UPDATE "Library" SET "name" = ?, "type" = ?, "rootPath" = ?, "enabled" = ?, "sortOrder" = ?, "defaultAccess" = ?, "lastScanAt" = ?, "lastScanAdded" = ?, "lastScanTotal" = ?, "scanEnabled" = ?, "updatedAt" = ?
 		WHERE "id" = ?`,
 		lib.Name, lib.Type, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.UpdatedAt, lib.ID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 更新 rootPaths 关联表（排除主路径，避免重复）
+	if lib.RootPaths != nil {
+		return SetLibraryRootPaths(lib.ID, lib.RootPaths, lib.RootPath)
+	}
+	return nil
 }
 
 // UpdateLibraryScanStatus 更新书库的扫描状态信息
@@ -84,6 +112,61 @@ func UpdateLibraryScanStatus(libraryID string, added int, total int) error {
 	_, err := db.Exec(`UPDATE "Library" SET "lastScanAt" = CURRENT_TIMESTAMP, "lastScanAdded" = ?, "lastScanTotal" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = ?`,
 		added, total, libraryID)
 	return err
+}
+
+// GetLibraryRootPaths 获取书库的所有额外根目录路径（不包含主路径 rootPath）
+func GetLibraryRootPaths(libraryID string) ([]string, error) {
+	rows, err := db.Query(`SELECT "rootPath" FROM "library_root_paths" WHERE "libraryId" = ? ORDER BY "id"`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
+}
+
+// SetLibraryRootPaths 设置书库的额外根目录路径（替换所有现有路径）
+// 注意：此函数只管理 library_root_paths 表，不修改主路径 rootPath
+// 主路径由 Library.rootPath 列单独管理，不存储在 library_root_paths 表中
+func SetLibraryRootPaths(libraryID string, paths []string, mainRootPath string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 删除现有记录
+	_, err = tx.Exec(`DELETE FROM "library_root_paths" WHERE "libraryId" = ?`, libraryID)
+	if err != nil {
+		return err
+	}
+
+	// 插入新记录（排除主路径，避免重复）
+	if len(paths) > 0 {
+		stmt, err := tx.Prepare(`INSERT OR IGNORE INTO "library_root_paths"("libraryId", "rootPath") VALUES (?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		for _, path := range paths {
+			if path != "" && path != mainRootPath {
+				if _, err := stmt.Exec(libraryID, path); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return tx.Commit()
 }
 
 // DeleteLibrary 删除书库
@@ -106,13 +189,25 @@ func DeleteLibrary(id string) error {
 // ============================================================
 // FindOrCreateLibrary 根据rootPath查找书库，不存在则自动创建。
 // 用于扫描器自动为每个扫描目录创建对应的书库。
+// 查找时同时检查主路径 rootPath 和关联表 library_root_paths。
 func FindOrCreateLibrary(rootPath string, libType string) (*model.Library, error) {
-	// 先按rootPath查找
+	// 先按主路径 rootPath 查找
 	var lib model.Library
 	err := db.QueryRow(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "rootPath" = ?`, rootPath).Scan(
 		&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &lib.CreatedAt, &lib.UpdatedAt)
 	if err == nil {
 		return &lib, nil
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	// 再按关联表 library_root_paths 查找
+	var libraryID string
+	err = db.QueryRow(`SELECT "libraryId" FROM "library_root_paths" WHERE "rootPath" = ?`, rootPath).Scan(&libraryID)
+	if err == nil {
+		// 找到了，获取完整的 library 信息
+		return GetLibraryByID(libraryID)
 	}
 	if err != sql.ErrNoRows {
 		return nil, err

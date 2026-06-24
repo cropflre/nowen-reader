@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -74,6 +75,7 @@ type GroupListOptions struct {
 	Category     string   // 分类过滤（slug）
 	Tags         []string // 标签过滤（标签名列表，AND 逻辑）
 	FavoritesOnly bool   // 仅返回包含收藏漫画的分组
+	LibraryIDs   []string // 书库ID过滤：只返回包含这些书库中漫画的分组
 }
 
 // GetAllGroups 获取所有分组（带漫画数量）。
@@ -87,12 +89,10 @@ func GetAllGroups(userID ...string) ([]ComicGroupWithCount, error) {
 
 // GetAllGroupsWithOptions 获取所有分组（带漫画数量），支持更多过滤选项。
 // 当指定 ContentType 时，只返回包含该类型漫画的分组，且 comicCount 只统计该类型的数量。
-// 注意：分组是全局资源，所有已登录用户都能看到所有分组（不按 userId 过滤），只有管理员能修改。
+// 当指定 LibraryIDs 时，只返回包含这些书库中漫画的分组（用于非管理员用户的书库权限过滤）。
 func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, error) {
 	var conditions []string
 	var args []interface{}
-	// P0修复：不再按 userId 过滤分组列表，所有用户都能看到所有分组
-	// 旧逻辑会导致成员用户看不到管理员创建的分组
 	// contentType 过滤：返回包含指定类型漫画的分组，以及尚未添加任何漫画的空分组
 	if opts.ContentType == "comic" || opts.ContentType == "novel" {
 		conditions = append(conditions, `(g."id" IN (
@@ -103,6 +103,22 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 			SELECT DISTINCT gi3."groupId" FROM "ComicGroupItem" gi3
 		))`)
 		args = append(args, opts.ContentType)
+	}
+
+	// 书库权限过滤：只返回包含可访问书库中漫画的分组
+	if len(opts.LibraryIDs) > 0 {
+		placeholders := make([]string, len(opts.LibraryIDs))
+		for i, id := range opts.LibraryIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		conditions = append(conditions, fmt.Sprintf(`(g."id" IN (
+			SELECT DISTINCT gi4."groupId" FROM "ComicGroupItem" gi4
+			JOIN "Comic" c4 ON c4."id" = gi4."comicId"
+			WHERE c4."libraryId" IN (%s)
+		) OR g."id" NOT IN (
+			SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
+		))`, strings.Join(placeholders, ",")))
 	}
 
 	// 分类过滤：只返回至少包含一本属于指定分类的漫画的分组

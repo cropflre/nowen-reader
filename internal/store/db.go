@@ -426,6 +426,19 @@ func createTables() error {
 		`CREATE INDEX IF NOT EXISTS "Library_enabled_idx" ON "Library"("enabled")`,
 
 		// ============================================================
+		// library_root_paths (书库多目录支持)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "library_root_paths" (
+			"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+			"libraryId" TEXT NOT NULL,
+			"rootPath" TEXT NOT NULL,
+			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY ("libraryId") REFERENCES "Library"("id") ON DELETE CASCADE,
+			UNIQUE("libraryId", "rootPath")
+		)`,
+		`CREATE INDEX IF NOT EXISTS "idx_library_root_paths_libraryId" ON "library_root_paths"("libraryId")`,
+
+		// ============================================================
 		// UserLibraryAccess (用户书库权限)
 		// ============================================================
 		`CREATE TABLE IF NOT EXISTS "UserLibraryAccess" (

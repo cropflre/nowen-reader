@@ -8,6 +8,7 @@ nowen-reader-linux-*
 /server
 /server.exe
 
+nowen-reader-api-doc.md
 # Data
 *.db
 *.db-journal

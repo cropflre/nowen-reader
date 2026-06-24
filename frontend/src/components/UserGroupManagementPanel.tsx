@@ -175,7 +175,7 @@ export default function UserGroupManagementPanel() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-400">{"加载中..."}</div>
+        <div className="text-muted">{"加载中..."}</div>
       </div>
     );
   }
@@ -184,33 +184,33 @@ export default function UserGroupManagementPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-blue-400" />
-          <h3 className="text-lg font-medium text-white">
+          <Users className="h-5 w-5 text-accent" />
+          <h3 className="text-lg font-medium text-foreground">
             {"用户组管理"}
           </h3>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover transition-colors"
         >
           <Plus className="h-4 w-4" />
           {"新建用户组"}
         </button>
       </div>
 
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted">
         {"通过用户组批量管理用户对书库的访问权限。将用户加入组后，组的书库权限会自动继承给组内所有用户。"}
       </p>
 
       {/* Create form */}
       {showCreate && (
-        <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 space-y-3">
+        <div className="rounded-lg border border-border bg-card/50 p-4 space-y-3">
           <input
             type="text"
             placeholder={"用户组名称"}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-full rounded bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded bg-card border border-border px-3 py-2 text-sm text-foreground placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <input
             type="text"
@@ -219,19 +219,19 @@ export default function UserGroupManagementPanel() {
             }
             value={newDesc}
             onChange={(e) => setNewDesc(e.target.value)}
-            className="w-full rounded bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded bg-card border border-border px-3 py-2 text-sm text-foreground placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <div className="flex gap-2">
             <button
               onClick={handleCreate}
-              className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+              className="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover"
             >
               <Save className="h-3.5 w-3.5" />
               {"保存"}
             </button>
             <button
               onClick={() => setShowCreate(false)}
-              className="rounded bg-gray-600 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-500"
+              className="rounded bg-card-hover px-3 py-1.5 text-sm text-muted hover:text-foreground"
             >
               {"取消"}
             </button>
@@ -241,7 +241,7 @@ export default function UserGroupManagementPanel() {
 
       {/* Group list */}
       {groups.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
+        <div className="text-center py-8 text-muted">
           {"暂无用户组，点击上方按钮创建"}
         </div>
       ) : (
@@ -249,14 +249,14 @@ export default function UserGroupManagementPanel() {
           {groups.map((group) => (
             <div
               key={group.id}
-              className="rounded-lg border border-gray-700 bg-gray-800/50 overflow-hidden"
+              className="rounded-lg border border-border bg-card/50 overflow-hidden"
             >
               {/* Group header */}
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <button
                     onClick={() => toggleExpand(group.id)}
-                    className="text-gray-400 hover:text-white flex-shrink-0"
+                    className="text-muted hover:text-foreground flex-shrink-0"
                   >
                     {expandedId === group.id ? (
                       <ChevronDown className="h-4 w-4" />
@@ -270,7 +270,7 @@ export default function UserGroupManagementPanel() {
                         type="text"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="rounded bg-gray-700 px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
+                        className="rounded bg-card border border-border px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent w-40"
                       />
                       <input
                         type="text"
@@ -279,20 +279,20 @@ export default function UserGroupManagementPanel() {
                         placeholder={
                           "描述"
                         }
-                        className="rounded bg-gray-700 px-2 py-1 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 flex-1"
+                        className="rounded bg-card border border-border px-2 py-1 text-sm text-foreground placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent flex-1"
                       />
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-white truncate">
+                      <span className="text-sm font-medium text-foreground truncate">
                         {group.name}
                       </span>
                       {group.description && (
-                        <span className="text-xs text-gray-400 truncate hidden sm:inline">
+                        <span className="text-xs text-muted truncate hidden sm:inline">
                           {group.description}
                         </span>
                       )}
-                      <span className="text-xs text-gray-500 flex-shrink-0">
+                      <span className="text-xs text-muted/70 flex-shrink-0">
                         ({group.memberCount || 0}{" "}
                         {"成员"})
                       </span>
@@ -304,13 +304,13 @@ export default function UserGroupManagementPanel() {
                     <>
                       <button
                         onClick={() => handleUpdate(group.id)}
-                        className="p-1.5 text-green-400 hover:text-green-300"
+                        className="p-1.5 text-emerald-500 hover:text-emerald-400"
                       >
                         <Save className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
-                        className="p-1.5 text-gray-400 hover:text-white"
+                        className="p-1.5 text-muted hover:text-foreground"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -323,13 +323,13 @@ export default function UserGroupManagementPanel() {
                           setEditName(group.name);
                           setEditDesc(group.description);
                         }}
-                        className="p-1.5 text-gray-400 hover:text-white"
+                        className="p-1.5 text-muted hover:text-foreground"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => handleDelete(group.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-400"
+                        className="p-1.5 text-muted hover:text-rose-500"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -340,15 +340,15 @@ export default function UserGroupManagementPanel() {
 
               {/* Expanded content */}
               {expandedId === group.id && (
-                <div className="border-t border-gray-700 p-3">
+                <div className="border-t border-border p-3">
                   {/* Tabs */}
-                  <div className="flex gap-4 mb-3 border-b border-gray-700">
+                  <div className="flex gap-4 mb-3 border-b border-border">
                     <button
                       onClick={() => setActiveTab("members")}
                       className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
                         activeTab === "members"
-                          ? "border-blue-500 text-blue-400"
-                          : "border-transparent text-gray-400 hover:text-white"
+                          ? "border-accent text-accent"
+                          : "border-transparent text-muted hover:text-foreground"
                       }`}
                     >
                       <Users className="inline h-3.5 w-3.5 mr-1" />
@@ -358,8 +358,8 @@ export default function UserGroupManagementPanel() {
                       onClick={() => setActiveTab("libraries")}
                       className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
                         activeTab === "libraries"
-                          ? "border-blue-500 text-blue-400"
-                          : "border-transparent text-gray-400 hover:text-white"
+                          ? "border-accent text-accent"
+                          : "border-transparent text-muted hover:text-foreground"
                       }`}
                     >
                       <BookOpen className="inline h-3.5 w-3.5 mr-1" />
@@ -371,11 +371,11 @@ export default function UserGroupManagementPanel() {
                   {activeTab === "members" && (
                     <div>
                       {loadingMembers ? (
-                        <div className="text-sm text-gray-400 py-2">
+                        <div className="text-sm text-muted py-2">
                           {"加载中..."}
                         </div>
                       ) : members.length === 0 ? (
-                        <div className="text-sm text-gray-500 py-2">
+                        <div className="text-sm text-muted py-2">
                           {"暂无用户"}
                         </div>
                       ) : (
@@ -383,7 +383,7 @@ export default function UserGroupManagementPanel() {
                           {members.map((user) => (
                             <label
                               key={user.id}
-                              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-700/50 cursor-pointer"
+                              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-card-hover cursor-pointer"
                             >
                               <input
                                 type="checkbox"
@@ -395,16 +395,16 @@ export default function UserGroupManagementPanel() {
                                     !user.isMember
                                   )
                                 }
-                                className="rounded border-gray-500 text-blue-500 focus:ring-blue-500"
+                                className="rounded border-border text-accent focus:ring-accent"
                               />
-                              <span className="text-sm text-white">
+                              <span className="text-sm text-foreground">
                                 {user.nickname || user.username}
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted">
                                 @{user.username}
                               </span>
                               {user.role === "admin" && (
-                                <span className="text-xs text-yellow-500 bg-yellow-500/10 px-1.5 py-0.5 rounded">
+                                <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
                                   admin
                                 </span>
                               )}
@@ -419,11 +419,11 @@ export default function UserGroupManagementPanel() {
                   {activeTab === "libraries" && (
                     <div>
                       {loadingLibs ? (
-                        <div className="text-sm text-gray-400 py-2">
+                        <div className="text-sm text-muted py-2">
                           {"加载中..."}
                         </div>
                       ) : libraries.length === 0 ? (
-                        <div className="text-sm text-gray-500 py-2">
+                        <div className="text-sm text-muted py-2">
                           {"暂无书库"}
                         </div>
                       ) : (
@@ -431,7 +431,7 @@ export default function UserGroupManagementPanel() {
                           {libraries.map((lib) => (
                             <label
                               key={lib.id}
-                              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-700/50 cursor-pointer"
+                              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-card-hover cursor-pointer"
                             >
                               <input
                                 type="checkbox"
@@ -443,10 +443,10 @@ export default function UserGroupManagementPanel() {
                                     !lib.canView
                                   )
                                 }
-                                className="rounded border-gray-500 text-blue-500 focus:ring-blue-500"
+                                className="rounded border-border text-accent focus:ring-accent"
                               />
-                              <BookOpen className="h-3.5 w-3.5 text-gray-400" />
-                              <span className="text-sm text-white">
+                              <BookOpen className="h-3.5 w-3.5 text-muted" />
+                              <span className="text-sm text-foreground">
                                 {lib.name}
                               </span>
                             </label>

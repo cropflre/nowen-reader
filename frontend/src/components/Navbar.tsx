@@ -20,6 +20,7 @@ import {
   Globe,
   HardDrive,
   Clock,
+  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
@@ -59,18 +60,6 @@ export default function Navbar({
   const scraperT = (t as any).scraper || {};
   const { batchRunning } = useScraperStore();
   const { siteName, siteIcon, scraperEnabled } = useSiteSettings();
-
-  // Update favicon dynamically
-  useEffect(() => {
-    const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-    if (!link) return;
-
-    if (siteIcon) {
-      link.href = `/api/site-settings/icon?t=${Date.now()}`;
-    } else {
-      link.href = "/icons/icon-192.png";
-    }
-  }, [siteIcon]);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
@@ -318,6 +307,17 @@ function MoreMenu({
                 <Shield className="h-4 w-4" />
                 Data QA
               </button>
+
+              <a
+                href="/api-doc.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
+              >
+                <FileText className="h-4 w-4" />
+                API Docs
+              </a>
 
               {/* 元数据刮削 — 启用时正常显示；未启用时灰显并跳转到设置 */}
               {scraperEnabled ? (

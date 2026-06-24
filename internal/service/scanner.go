@@ -1331,19 +1331,43 @@ func SyncLibraryByID(libraryID string) (int, error) {
 	}
 
 	useFolderComics := lib.Type != "novel"
-	files := walkDirRecursive(lib.RootPath, useFolderComics)
-	if len(files) == 0 {
+
+	// 收集所有根目录路径（RootPaths 已包含主路径和额外路径）
+	rootPaths := lib.RootPaths
+	if len(rootPaths) == 0 {
+		rootPaths = []string{lib.RootPath}
+	}
+
+	// 遍历所有根目录收集文件
+	var allFiles []diskFile
+	var missingPaths []string
+	for _, rootPath := range rootPaths {
+		// 检查路径是否存在
+		info, err := os.Stat(rootPath)
+		if err != nil || !info.IsDir() {
+			missingPaths = append(missingPaths, rootPath)
+			continue
+		}
+		files := walkDirRecursive(rootPath, useFolderComics)
+		allFiles = append(allFiles, files...)
+	}
+	// 如果有缺失的路径，记录警告但不中断扫描
+	if len(missingPaths) > 0 {
+		fmt.Printf("[WARN] Library %s: %d root path(s) not found or not a directory: %v\n", libraryID, len(missingPaths), missingPaths)
+	}
+
+	if len(allFiles) == 0 {
 		_ = store.UpdateLibraryScanStatus(libraryID, 0, 0)
 		return 0, nil
 	}
 
-	for i := range files {
+	for i := range allFiles {
 		if lib.Type == "novel" {
-			files[i].Source = "novels"
+			allFiles[i].Source = "novels"
 		} else {
-			files[i].Source = "comics"
+			allFiles[i].Source = "comics"
 		}
-		files[i].LibraryID = libraryID
+		allFiles[i].LibraryID = libraryID
 	}
 
 	existing, err := store.GetComicIDsByLibraryID(libraryID)
@@ -1351,8 +1375,14 @@ func SyncLibraryByID(libraryID string) (int, error) {
 		return 0, fmt.Errorf("failed to query existing comics: %w", err)
 	}
 
-	fileMap := make(map[string]diskFile, len(files))
-	for _, f := range files {
+	// 获取所有已存在的漫画ID及其当前书库
+	allExisting, err := store.GetAllComicIDsAndLibraryIDs()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query all comics: %w", err)
+	}
+
+	fileMap := make(map[string]diskFile, len(allFiles))
+	for _, f := range allFiles {
 		fileMap[f.ID] = f
 	}
 
@@ -1362,15 +1392,22 @@ func SyncLibraryByID(libraryID string) (int, error) {
 		Title    string
 		FileSize int64
 	}
+	var toMove []string // 已在其他书库中的文件ID，需要移动到当前书库
 
 	for id, f := range fileMap {
 		if _, ok := existing[id]; !ok {
-			toAdd = append(toAdd, struct{
-				ID       string
-				Filename string
-				Title    string
-				FileSize int64
-			}{ID: f.ID, Filename: f.Filename, Title: f.Title, FileSize: f.FileSize})
+			if otherLib, existsInOther := allExisting[id]; existsInOther && otherLib != "" && otherLib != libraryID {
+				// 文件在其他书库中，需要移动
+				toMove = append(toMove, id)
+			} else {
+				// 文件不存在，需要新增
+				toAdd = append(toAdd, struct{
+					ID       string
+					Filename string
+					Title    string
+					FileSize int64
+				}{ID: f.ID, Filename: f.Filename, Title: f.Title, FileSize: f.FileSize})
+			}
 		}
 	}
 
@@ -1392,11 +1429,23 @@ func SyncLibraryByID(libraryID string) (int, error) {
 		}
 	}
 
-	if err := store.UpdateLibraryScanStatus(libraryID, len(toAdd), len(files)); err != nil {
-		return len(toAdd), fmt.Errorf("failed to update library scan status: %w", err)
+	// 移动已在其他书库中的文件到当前书库
+	if len(toMove) > 0 {
+		comicType := "comic"
+		if lib.Type == "novel" {
+			comicType = "novel"
+		}
+		if err := store.BulkUpdateComicLibraryID(toMove, libraryID, comicType); err != nil {
+			return 0, fmt.Errorf("failed to move comics to library: %w", err)
+		}
 	}
 
-	return len(toAdd), nil
+	totalAdded := len(toAdd) + len(toMove)
+	if err := store.UpdateLibraryScanStatus(libraryID, totalAdded, len(allFiles)); err != nil {
+		return totalAdded, fmt.Errorf("failed to update library scan status: %w", err)
+	}
+
+	return totalAdded, nil
 }
 
 

@@ -35,12 +35,25 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 		}
 	}
 
+	// 书库权限过滤：非管理员只能看到自己有权限的书库中的分组
+	var libraryIDs []string
+	uid := getUserID(c)
+	if uid != "" {
+		user, _ := store.GetUserByID(uid)
+		if user == nil || user.Role != "admin" {
+			if ids, err := store.GetUserAccessibleLibraryIDs(uid); err == nil {
+				libraryIDs = ids
+			}
+		}
+	}
+
 	groups, err := store.GetAllGroupsWithOptions(store.GroupListOptions{
-		UserID:        getUserID(c),
+		UserID:        uid,
 		ContentType:   c.Query("contentType"),
 		Category:      c.Query("category"),
 		Tags:          tags,
 		FavoritesOnly: c.Query("favoritesOnly") == "true",
+		LibraryIDs:    libraryIDs,
 	})
 	if err != nil {
 		log.Printf("[API] ListGroups error: %v", err)

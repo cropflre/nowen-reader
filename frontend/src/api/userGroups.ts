@@ -127,6 +127,7 @@ export async function fetchGroupLibraryAccess(groupId: string): Promise<{
     name: string;
     type: string;
     rootPath: string;
+    rootPaths?: string[];
     canView: boolean;
   }>;
 }> {
