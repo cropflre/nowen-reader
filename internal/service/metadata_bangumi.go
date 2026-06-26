@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,11 +41,12 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 
 	var data struct {
 		List []struct {
-			ID      int    `json:"id"`
-			Name    string `json:"name"`
-			NameCN  string `json:"name_cn"`
-			Summary string `json:"summary"`
-			Date    string `json:"date"`
+			ID      int     `json:"id"`
+			Name    string  `json:"name"`
+			NameCN  string  `json:"name_cn"`
+			Summary string  `json:"summary"`
+			Date    string  `json:"date"`
+			Score   float64 `json:"score"`
 			Images struct {
 					Large   string `json:"large"`
 					Common  string `json:"common"`
@@ -62,12 +64,35 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 		return nil
 	}
 
-	var results []ComicMetadata
 	isZh := strings.HasPrefix(lang, "zh")
 
-	for _, s := range data.List {
-		// 调用 Bangumi v0 详情 API 获取 infobox（包含作者、出版社等信息）
-		author, publisher, language := fetchBangumiSubjectDetail(s.ID)
+	// 并发获取所有 subject 的详情信息（作者、出版社、语言）
+	type subjectDetail struct {
+		author    string
+		publisher string
+		language  string
+	}
+	details := make([]subjectDetail, len(data.List))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // 限制最多 5 个并发请求
+
+	for i, s := range data.List {
+		wg.Add(1)
+		go func(idx int, subjectID int) {
+			defer wg.Done()
+			sem <- struct{}{}        // 获取信号量
+			defer func() { <-sem }() // 释放信号量
+			a, p, l := fetchBangumiSubjectDetail(subjectID)
+			details[idx] = subjectDetail{a, p, l}
+		}(i, s.ID)
+	}
+	wg.Wait()
+
+	var results []ComicMetadata
+	for i, s := range data.List {
+		author := details[i].author
+		publisher := details[i].publisher
+		language := details[i].language
 
 		var year *int
 		if s.Date != "" {
@@ -130,6 +155,15 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 			CoverURL:    coverURL,
 			Source:      sourceName,
 		})
+
+		// Add rating if available (Bangumi score is 0-10)
+		if s.Score > 0 {
+			score := s.Score
+			maxScore := 10.0
+			results[len(results)-1].ExternalRating = &score
+			results[len(results)-1].ExternalRatingMax = &maxScore
+			results[len(results)-1].ExternalRatingSource = "bangumi"
+		}
 	}
 	return results
 }

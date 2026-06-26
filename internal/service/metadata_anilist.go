@@ -38,6 +38,7 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 				}
 				coverImage { large }
 				volumes
+				meanScore
 			}
 		}
 	}` + "}"
@@ -82,11 +83,13 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 					CoverImage struct {
 						Large string `json:"large"`
 					} `json:"coverImage"`
+					MeanScore *float64 `json:"meanScore"`
 				} `json:"media"`
 			} `json:"Page"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		log.Printf("[metadata] AniList JSON decode failed: %v", err)
 		return nil
 	}
 
@@ -158,6 +161,14 @@ func searchAniListWithType(query, lang, mediaType, sourceName string) []ComicMet
 			CoverURL:    m.CoverImage.Large,
 			Source:      sourceName,
 		})
+
+		// Add rating if available (AniList meanScore is 0-100)
+		if m.MeanScore != nil && *m.MeanScore > 0 {
+			maxVal := float64(100)
+			results[len(results)-1].ExternalRating = m.MeanScore
+			results[len(results)-1].ExternalRatingMax = &maxVal
+			results[len(results)-1].ExternalRatingSource = "anilist"
+		}
 	}
 	return results
 }

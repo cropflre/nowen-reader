@@ -1167,6 +1167,42 @@ export default function ComicDetailPage() {
               </div>
             </div>
 
+            {/* External Rating */}
+            {comic.externalRating && comic.externalRatingMax && (
+            <div>
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">
+                {t.comicDetail.externalRating}
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold text-foreground">
+                  {comic.externalRatingMax === 10 ? comic.externalRating : comic.externalRating.toFixed(1)}
+                </span>
+                <span className="text-sm text-muted">/ {comic.externalRatingMax}</span>
+                {comic.externalRatingSource && (
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    {comic.externalRatingSource}
+                  </span>
+                )}
+                {comic.externalRatingUpdatedAt && (
+                  <span className="text-xs text-muted/60">
+                    {(() => {
+                      const diff = Date.now() - new Date(comic.externalRatingUpdatedAt).getTime();
+                      const minutes = Math.floor(diff / 60000);
+                      if (minutes < 1) return locale === "zh-CN" ? "刚刚更新" : "just now";
+                      const hours = Math.floor(minutes / 60);
+                      if (hours < 1) return locale === "zh-CN" ? `${minutes}分钟前更新` : `${minutes}m ago`;
+                      const days = Math.floor(hours / 24);
+                      if (days < 1) return locale === "zh-CN" ? `${hours}小时前更新` : `${hours}h ago`;
+                      if (days < 30) return locale === "zh-CN" ? `${days}天前更新` : `${days}d ago`;
+                      const months = Math.floor(days / 30);
+                      return locale === "zh-CN" ? `${months}月前更新` : `${months}mo ago`;
+                    })()}
+                  </span>
+                )}
+              </div>
+            </div>
+            )}
+
             {/* Meta Info Grid */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-4 sm:grid-cols-3">
               <div className="surface-card rounded-xl p-3 sm:p-4">

@@ -217,6 +217,7 @@ const en: Translations = {
     deleteSuccess: "Deleted",
     deleteError: "Delete failed: {{error}}",
     favorite: "Favorite",
+    externalRating: "External Rating",
   },
 
   // Stats Page

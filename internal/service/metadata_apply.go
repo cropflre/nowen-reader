@@ -26,6 +26,27 @@ var groupCoverDownload sync.Map // groupID -> chan struct{}
 // Apply metadata to comic
 // ============================================================
 
+// BuildRatingUpdates 构建外部评分的更新字段 map，避免在多处重复相同的逻辑。
+// 如果 metadata 中没有评分信息，返回 nil。
+func BuildRatingUpdates(meta ComicMetadata) map[string]interface{} {
+	if meta.ExternalRating == nil {
+		return nil
+	}
+	updates := map[string]interface{}{
+		"externalRating":       *meta.ExternalRating,
+		"externalRatingSource": meta.ExternalRatingSource,
+	}
+	if meta.ExternalRatingMax != nil {
+		updates["externalRatingMax"] = *meta.ExternalRatingMax
+	}
+	if meta.ExternalRatingUpdatedAt != nil {
+		updates["externalRatingUpdatedAt"] = *meta.ExternalRatingUpdatedAt
+	} else {
+		updates["externalRatingUpdatedAt"] = time.Now().UTC()
+	}
+	return updates
+}
+
 // ApplyMetadata updates comic fields in DB from metadata.
 func ApplyMetadata(comicID string, meta ComicMetadata, lang string, overwrite bool, opts ...ApplyOption) (*store.ComicListItem, error) {
 	// 解析可选参数
@@ -74,6 +95,10 @@ func ApplyMetadata(comicID string, meta ComicMetadata, lang string, overwrite bo
 	// P2-A: 当 skipCover 为 true 时，跳过封面更新
 	if meta.CoverURL != "" && !opt.SkipCover {
 		updates["coverImageUrl"] = meta.CoverURL
+	}
+	// External rating
+	for k, v := range BuildRatingUpdates(meta) {
+		updates[k] = v
 	}
 
 	if len(updates) > 0 {

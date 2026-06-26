@@ -35,6 +35,12 @@ export interface ApiComic {
   metadataSource: string;
   type: string; // 内容类型："comic" | "novel"
   readingStatus?: string; // 用户级阅读状态
+
+  // External rating from scraping sources
+  externalRating?: number; // 外部评分原始分数
+  externalRatingMax?: number; // 满分值（如 10, 100）
+  externalRatingSource?: string; // 评分来源（"anilist", "bangumi"）
+  externalRatingUpdatedAt?: string; // 评分更新时间
 }
 
 export interface ComicsResponse {
