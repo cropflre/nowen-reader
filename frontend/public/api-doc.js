@@ -1,3 +1,32 @@
+// ── i18n Language Switch ──
+let currentLang = localStorage.getItem('api-doc-lang') || 'en';
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem('api-doc-lang', lang);
+  // Update toggle buttons
+  document.querySelectorAll('.lang-switch button').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.trim() === (lang === 'zh' ? '中文' : 'EN'));
+  });
+  // Update all elements with data-en/data-zh
+  document.querySelectorAll('[data-' + lang + ']').forEach(el => {
+    const text = el.getAttribute('data-' + lang);
+    if (text !== null) {
+      // For elements that use textContent (summary, description, nav, etc.)
+      if (el.tagName === 'INPUT') {
+        el.placeholder = text;
+      } else {
+        el.textContent = text;
+      }
+    }
+  });
+  // Update html lang attribute
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+}
+
+// Initialize language on load
+document.addEventListener('DOMContentLoaded', () => setLang(currentLang));
+
 // Toggle endpoint body
 document.querySelectorAll('.endpoint-header').forEach(header => {
   header.addEventListener('click', () => {
