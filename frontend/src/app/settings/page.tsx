@@ -115,6 +115,7 @@ type SettingsTab =
   | "user-groups"
   | "diagnostics"
   | "reader"
+  | "data-admin"
   | "data-qa"
   | "sync-backup"
   | "about";
@@ -226,6 +227,7 @@ export default function SettingsPage() {
           : []),
         ...(isAdmin
           ? [
+              { id: "data-admin" as const, label: "数据管理", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "存储、缓存、数据库维护", keywords: ["数据", "管理", "存储", "缓存", "数据库", "data", "admin", "storage", "cache", "database"] },
               { id: "data-qa" as const, label: "数据巡检", icon: <Database className="h-[18px] w-[18px]" />, desc: "一致性检查、安全修复", keywords: ["data", "qa", "health", "repair", "scan", "fix", "dry-run", "数据", "巡检", "修复", "扫描", "异常", "健康"] },
               { id: "sync-backup" as const, label: "同步与备份", icon: <RefreshCw className="h-[18px] w-[18px]" />, desc: "备份、导入、导出", keywords: ["sync", "backup", "export", "import", "restore", "同步", "备份", "导出", "导入", "恢复"] },
             ]
@@ -466,6 +468,7 @@ export default function SettingsPage() {
               {activeTab === "user-groups" && <UserGroupManagementPanel />}
               {activeTab === "diagnostics" && <NASDiagnosticsPanel />}
               {activeTab === "reader" && <ReaderPreferencesPanel />}
+              {activeTab === "data-admin" && <DataAdminSettingsPanel />}
               {activeTab === "data-qa" && <DataQASettingsPanel />}
               {activeTab === "sync-backup" && <SyncBackupPanel />}
               {activeTab === "stats" && <StatsPanel />}
@@ -705,6 +708,76 @@ function DataQASettingsPanel() {
   );
 }
 
+/* ── Data Admin Panel ── */
+function DataAdminSettingsPanel() {
+  const router = useRouter();
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <div className="rounded-2xl border border-border/40 bg-gradient-to-br from-accent/5 via-card to-card p-5 sm:p-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
+            <HardDrive className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">数据管理</h2>
+            <p className="text-xs text-muted">存储概览、缓存清理、数据库维护与优化。</p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted/80">
+          管理应用的存储空间、缓存策略和数据库健康状态。支持缓存清理、数据库检查点、分析、压缩和完整性检查。
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
+        <div className="divide-y divide-border/25">
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground">存储概览</div>
+              <div className="text-xs text-muted">查看各分类的存储占用和缓存状态。</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-muted" />
+              <span className="text-xs text-muted">实时数据</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground">缓存管理</div>
+              <div className="text-xs text-muted">清理缩略图、元数据等缓存数据。</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-muted" />
+              <span className="text-xs text-muted">按需清理</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground">数据库维护</div>
+              <div className="text-xs text-muted">检查点、分析、压缩、完整性检查。</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-muted" />
+              <span className="text-xs text-muted">定期维护</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-2 pt-2">
+        <button
+          onClick={() => router.push("/data-admin")}
+          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+        >
+          <ExternalLink className="h-4 w-4" />
+          打开数据管理页
+        </button>
+        <span className="text-xs text-muted/60">独立页面中包含完整的存储概览、缓存清理和数据库维护功能。</span>
+      </div>
+    </div>
+  );
+}
+
 /* ── Sync & Backup Panel ── */
 function SyncBackupPanel() {
   const [autoBackup, setAutoBackup] = useState(false);
@@ -913,20 +986,6 @@ function AboutPanel() {
           <FileText className="h-4 w-4" />
           API Docs
           <ExternalLink className="h-3 w-3 opacity-50" />
-        </a>
-        <a
-          href="/data-admin"
-          className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
-        >
-          <HardDrive className="h-4 w-4" />
-          数据管理
-        </a>
-        <a
-          href="/data-qa"
-          className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
-        >
-          <Shield className="h-4 w-4" />
-          Data QA
         </a>
       </div>
 
