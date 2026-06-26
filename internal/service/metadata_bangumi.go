@@ -41,12 +41,14 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 
 	var data struct {
 		List []struct {
-			ID      int     `json:"id"`
-			Name    string  `json:"name"`
-			NameCN  string  `json:"name_cn"`
-			Summary string  `json:"summary"`
-			Date    string  `json:"date"`
-			Score   float64 `json:"score"`
+			ID      int    `json:"id"`
+			Name    string `json:"name"`
+			NameCN  string `json:"name_cn"`
+			Summary string `json:"summary"`
+			Date    string `json:"date"`
+			Rating  struct {
+				Score float64 `json:"score"`
+			} `json:"rating"`
 			Images struct {
 					Large   string `json:"large"`
 					Common  string `json:"common"`
@@ -157,8 +159,8 @@ func searchBangumiWithType(query, lang string, bangumiType int, sourceName strin
 		})
 
 		// Add rating if available (Bangumi score is 0-10)
-		if s.Score > 0 {
-			score := s.Score
+		if s.Rating.Score > 0 {
+			score := s.Rating.Score
 			maxScore := 10.0
 			results[len(results)-1].ExternalRating = &score
 			results[len(results)-1].ExternalRatingMax = &maxScore
