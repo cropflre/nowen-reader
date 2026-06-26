@@ -32,10 +32,10 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [scanningLibrary, setScanningLibrary] = useState(false);
 
-  // 获取最近添加（精选 8 本）
+  // 获取最近添加（精选 6 本）
   const { comics: recentComics, refetch } = useComics({
     page: 1,
-    pageSize: 8,
+    pageSize: 6,
     sortBy: "addedAt",
     sortOrder: "desc",
   });
@@ -103,14 +103,11 @@ export default function Home() {
 
             {/* ── Recently Added 精选 ── */}
             <section className="px-5 sm:px-8 lg:px-10 py-6">
-              <div className="flex items-end justify-between mb-4">
+              <div className="flex items-end justify-between mb-3">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+                  <h2 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">
                     Recently Added
                   </h2>
-                  <p className="text-xs text-muted mt-1">
-                    最近入库
-                  </p>
                 </div>
                 <Link
                   href="/books?sortBy=addedAt&sortOrder=desc"
@@ -122,7 +119,7 @@ export default function Home() {
               </div>
 
               {recentComics.length > 0 ? (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                   {recentComics.map((comic) => {
                     const href = comic.type === "novel" ? `/novel/${comic.id}` : `/reader/${comic.id}`;
                     const progress = comic.pageCount > 0
@@ -138,7 +135,7 @@ export default function Home() {
                             fill
                             unoptimized
                             className="object-cover transition-transform duration-500 group-hover:scale-110"
-                            sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 14vw"
+                            sizes="(max-width: 640px) 33vw, 16vw"
                           />
                           {progress > 0 && (
                             <div className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm border border-white/10">

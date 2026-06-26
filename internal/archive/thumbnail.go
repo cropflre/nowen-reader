@@ -480,23 +480,23 @@ func generateTextCover(filePath, comicID, thumbDir, cachePath string) ([]byte, s
 	// Create a gradient-like background
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 
-	// Generate a consistent color based on filename hash
+	// Generate a consistent color based on filename hash — dark glassmorphism theme
 	hash := []byte(comicID)
 	hue := int(hash[0]) % 6
 	var bgR, bgG, bgB uint8
 	switch hue {
 	case 0:
-		bgR, bgG, bgB = 59, 130, 246 // blue
+		bgR, bgG, bgB = 15, 23, 42 // slate-900
 	case 1:
-		bgR, bgG, bgB = 16, 185, 129 // green
+		bgR, bgG, bgB = 15, 23, 42 // slate-900
 	case 2:
-		bgR, bgG, bgB = 245, 158, 11 // amber
+		bgR, bgG, bgB = 15, 23, 42 // slate-900
 	case 3:
-		bgR, bgG, bgB = 239, 68, 68 // red
+		bgR, bgG, bgB = 15, 23, 42 // slate-900
 	case 4:
-		bgR, bgG, bgB = 139, 92, 246 // purple
+		bgR, bgG, bgB = 15, 23, 42 // slate-900
 	default:
-		bgR, bgG, bgB = 236, 72, 153 // pink
+		bgR, bgG, bgB = 15, 23, 42 // slate-900
 	}
 
 	// Fill background
@@ -511,21 +511,30 @@ func generateTextCover(filePath, comicID, thumbDir, cachePath string) ([]byte, s
 		}
 	}
 
-	// Draw a book icon area (white rectangle in center-top)
+	// Draw a book icon area (subtle blue-tinted rectangle in center)
 	iconTop := 120
 	iconW := 160
 	iconH := 200
 	iconLeft := (width - iconW) / 2
 	for y := iconTop; y < iconTop+iconH; y++ {
 		for x := iconLeft; x < iconLeft+iconW; x++ {
-			dst.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 60})
+			dst.Set(x, y, color.RGBA{R: 59, G: 130, B: 246, A: 25})
 		}
+	}
+	// Draw subtle border around icon area
+	for x := iconLeft; x < iconLeft+iconW; x++ {
+		dst.Set(x, iconTop, color.RGBA{R: 255, G: 255, B: 255, A: 15})
+		dst.Set(x, iconTop+iconH-1, color.RGBA{R: 255, G: 255, B: 255, A: 15})
+	}
+	for y := iconTop; y < iconTop+iconH; y++ {
+		dst.Set(iconLeft, y, color.RGBA{R: 255, G: 255, B: 255, A: 15})
+		dst.Set(iconLeft+iconW-1, y, color.RGBA{R: 255, G: 255, B: 255, A: 15})
 	}
 
 	// Draw "TXT" or "EPUB" label
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
-	// Draw simple pixel text for the extension label
-	drawSimpleText(dst, ext, width/2, iconTop+iconH/2, color.RGBA{R: 255, G: 255, B: 255, A: 200})
+	// Draw simple pixel text for the extension label — muted blue
+	drawSimpleText(dst, ext, width/2, iconTop+iconH/2, color.RGBA{R: 148, G: 163, B: 184, A: 180})
 
 	// Encode as PNG for universal compatibility
 	var buf bytes.Buffer
