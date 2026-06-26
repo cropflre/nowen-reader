@@ -20,7 +20,6 @@ import {
   Globe,
   HardDrive,
   Clock,
-  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
@@ -307,17 +306,6 @@ function MoreMenu({
                 <Shield className="h-4 w-4" />
                 Data QA
               </button>
-
-              <a
-                href="/api-doc.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setOpen(false)}
-                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
-              >
-                <FileText className="h-4 w-4" />
-                API Docs
-              </a>
 
               {/* 元数据刮削 — 启用时正常显示；未启用时灰显并跳转到设置 */}
               {scraperEnabled ? (
