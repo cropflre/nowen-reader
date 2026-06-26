@@ -25,16 +25,27 @@ export default function RecentlyAdded({ comics, contentType }: RecentlyAddedProp
       title="最近入库"
       icon={<Clock className="h-4 w-4 text-sky-500" />}
     >
-      {recent.map((comic) => (
-        <ShelfCard
-          key={comic.id}
-          href={`/comic/${comic.id}`}
-          coverUrl={comic.coverUrl}
-          title={comic.title}
-          subtitle={comic.author || undefined}
-          badge={comic.isFavorite ? "❤️" : undefined}
-        />
-      ))}
+      {recent.map((comic) => {
+        const isFinished = comic.readingStatus === "finished";
+        const isReading = comic.readingStatus === "reading";
+        const progressPct =
+          isReading && comic.pageCount > 0
+            ? Math.round((comic.lastReadPage / comic.pageCount) * 100)
+            : undefined;
+
+        return (
+          <ShelfCard
+            key={comic.id}
+            href={`/comic/${comic.id}`}
+            coverUrl={comic.coverUrl}
+            title={comic.title}
+            subtitle={comic.author || undefined}
+            badge={comic.isFavorite ? "❤️" : undefined}
+            badgeType={isFinished ? "completed" : isReading ? "progress" : null}
+            progressPercentage={isFinished ? 100 : progressPct}
+          />
+        );
+      })}
     </ContentShelf>
   );
 }

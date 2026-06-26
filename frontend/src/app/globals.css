@@ -889,3 +889,54 @@ html.light .image-outline {
     transform: none !important;
   }
 }
+
+/* ===================================================================
+   Dark Immersive UI — 3D / Neon / Cover Flow / Progress / Scanner
+   =================================================================== */
+
+/* ── 3D Perspective ── */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+/* ── Neon Glow ── */
+.neon-glow {
+  box-shadow:
+    0 0 15px rgba(99, 102, 241, 0.4),
+    0 0 30px rgba(99, 102, 241, 0.2),
+    0 0 45px rgba(99, 102, 241, 0.1);
+}
+
+.neon-glow-purple {
+  box-shadow:
+    0 0 15px rgba(168, 85, 247, 0.4),
+    0 0 30px rgba(168, 85, 247, 0.2),
+    0 0 45px rgba(168, 85, 247, 0.1);
+}
+
+/* ── Cover Flow Card ── */
+.cover-flow-card {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  backface-visibility: hidden;
+}
+
+/* ── Progress Ring ── */
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.35s;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* ── Scanner Pulse ── */
+@keyframes scanner-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+.scanner-pulse {
+  animation: scanner-pulse 2s ease-in-out infinite;
+}

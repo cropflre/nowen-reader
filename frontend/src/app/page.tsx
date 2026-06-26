@@ -29,6 +29,7 @@ import DiscoverySpotlight from "@/components/home/DiscoverySpotlight";
 import { LibraryTabsBar } from "@/components/home/LibraryTabsBar";
 import ExploreChannel from "@/components/home/ExploreChannel";
 import PersonalSidebar from "@/components/home/PersonalSidebar";
+import FileScannerBar from "@/components/home/FileScannerBar";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -2070,6 +2071,14 @@ export default function Home() {
         onClose={() => setUploadDialogOpen(false)}
         defaultLibraryId={selectedLibraryId}
         onUploaded={async () => { await refetch(); }}
+      />
+
+      {/* File Scanner Progress Bar — mock data for now, no real API yet */}
+      <FileScannerBar
+        isScanning={false}
+        progress={0}
+        current={0}
+        total={0}
       />
     </div>
   );
