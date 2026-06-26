@@ -17,7 +17,6 @@ import {
   Settings,
   LogOut,
   Globe,
-  HardDrive,
   Clock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -286,15 +285,6 @@ function MoreMenu({
               >
                 <Clock className="h-4 w-4" />
                 阅读历史
-              </button>
-
-              {/* 数据管理 */}
-              <button
-                onClick={() => handleAction(() => router.push("/data-admin"))}
-                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
-              >
-                <HardDrive className="h-4 w-4" />
-                {((t as any).dataAdmin?.title) || "数据管理"}
               </button>
 
               {/* 元数据刮削 — 启用时正常显示；未启用时灰显并跳转到设置 */}

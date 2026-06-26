@@ -915,6 +915,13 @@ function AboutPanel() {
           <ExternalLink className="h-3 w-3 opacity-50" />
         </a>
         <a
+          href="/data-admin"
+          className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
+        >
+          <HardDrive className="h-4 w-4" />
+          数据管理
+        </a>
+        <a
           href="/data-qa"
           className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
         >
