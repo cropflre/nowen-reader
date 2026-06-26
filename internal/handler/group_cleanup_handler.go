@@ -326,8 +326,11 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 
 			// 同步到所有卷
 			if body.SyncToVolumes {
-				if err := syncGroupMetadataToVolumes(gid, bestMatch, fieldsSet, body.Overwrite); err != nil {
+				successCount, errorCount, err := syncGroupMetadataToVolumes(gid, bestMatch, fieldsSet, body.Overwrite, false)
+				if err != nil {
 					log.Printf("[API] BatchScrape: syncToVolumes error for group %d: %v", gid, err)
+				} else {
+					log.Printf("[API] BatchScrape: synced to %d volumes (%d errors) for group %d", successCount, errorCount, gid)
 				}
 			}
 

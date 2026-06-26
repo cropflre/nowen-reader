@@ -2,6 +2,7 @@ package service
 
 import (
 	"strings"
+	"time"
 )
 
 // ComicMetadata holds metadata from various sources.
@@ -15,6 +16,12 @@ type ComicMetadata struct {
 	Genre       string `json:"genre,omitempty"`
 	CoverURL    string `json:"coverUrl,omitempty"`
 	Source      string `json:"source"`
+
+	// External rating from scraping sources
+	ExternalRating          *float64   `json:"externalRating,omitempty"`       // 外部评分原始分数
+	ExternalRatingMax       *float64   `json:"externalRatingMax,omitempty"`    // 满分值（如 10, 100）
+	ExternalRatingSource    string     `json:"externalRatingSource,omitempty"` // 评分来源（"anilist", "bangumi"）
+	ExternalRatingUpdatedAt *time.Time `json:"externalRatingUpdatedAt,omitempty"` // 评分更新时间
 }
 
 // ApplyOption 控制 ApplyMetadata 的可选行为。
