@@ -169,7 +169,7 @@ export default function Home() {
             </section>
 
             {/* 移动端：进入全部书库 */}
-            <div className="px-5 pb-8 sm:hidden">
+            <div className="px-5 pb-20 sm:pb-8 sm:hidden">
               <Link
                 href="/books"
                 className="flex items-center justify-center gap-2 rounded-xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm font-medium text-accent hover:bg-accent/20 transition-colors"

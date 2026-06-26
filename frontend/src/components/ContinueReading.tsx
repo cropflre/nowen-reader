@@ -369,7 +369,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
 
           {/* 移动端：简单横向滚动 */}
           <div className="sm:hidden">
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {recentComics.map((comic) => {
                 const progress =
                   comic.pageCount > 0
