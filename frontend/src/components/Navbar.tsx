@@ -10,7 +10,6 @@ import {
   Moon,
   Brain,
   Database,
-  Shield,
   Layers,
   RefreshCw,
   Tag,
@@ -296,15 +295,6 @@ function MoreMenu({
               >
                 <HardDrive className="h-4 w-4" />
                 {((t as any).dataAdmin?.title) || "数据管理"}
-              </button>
-
-              {/* Data QA */}
-              <button
-                onClick={() => handleAction(() => router.push("/data-qa"))}
-                className="w-full px-3 py-2.5 text-left text-sm text-muted hover:bg-card-hover hover:text-foreground flex items-center gap-2.5"
-              >
-                <Shield className="h-4 w-4" />
-                Data QA
               </button>
 
               {/* 元数据刮削 — 启用时正常显示；未启用时灰显并跳转到设置 */}

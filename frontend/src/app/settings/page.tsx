@@ -914,6 +914,13 @@ function AboutPanel() {
           API Docs
           <ExternalLink className="h-3 w-3 opacity-50" />
         </a>
+        <a
+          href="/data-qa"
+          className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
+        >
+          <Shield className="h-4 w-4" />
+          Data QA
+        </a>
       </div>
 
       {/* Footer */}
