@@ -733,6 +733,35 @@ const en: Translations = {
     expand: "Expand",
   },
 
+  // Dashboard
+  dashboard: {
+    title: "Dashboard",
+    continueReading: "Continue Reading",
+    continueSubtitle: "Pick up where you left off",
+    recentlyAdded: "Recently Added",
+    continueAction: "Continue",
+    allLibrary: "Library",
+    viewAll: "View All",
+    libraryOverview: "Library Overview",
+    totalItems: "Total Items",
+    unread: "Unread",
+    browseLibrary: "Browse Library",
+    randomPick: "Random Pick",
+    shuffle: "Shuffle",
+    pages: "pages",
+    emptyRecentlyAdded: "No recently added items",
+    uploadFile: "Upload File",
+    enterLibrary: "Enter Library",
+    server: "Server",
+    running: "Running",
+    cores: "cores",
+    memory: "Memory",
+    goroutines: "Goroutines",
+    platform: "Platform",
+    database: "Database",
+    version: "Version",
+  },
+
   // Mobile Navigation
   mobileNav: {
     library: "Library",

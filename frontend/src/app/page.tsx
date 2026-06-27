@@ -29,6 +29,7 @@ import { calculateReadingProgress } from "@/lib/progress";
  * 左侧 Sidebar + 顶部 TopBar + 主内容（Continue Reading Hero + Recently Added 精选）+ 右侧状态面板
  */
 export default function Home() {
+  const t = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const { enabled: privacyEnabled, blurNSFW } = usePrivacyMode();
@@ -79,17 +80,17 @@ export default function Home() {
               <div className="flex items-end justify-between mb-4">
                 <div>
                   <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-extrabold text-foreground tracking-tight leading-tight">
-                    Continue Reading
+                    {t.dashboard.continueReading}
                   </h2>
                   <p className="text-sm text-muted mt-1.5">
-                    继续上次的阅读
+                    {t.dashboard.continueSubtitle}
                   </p>
                 </div>
                 <Link
                   href="/books"
                   className="hidden sm:flex items-center gap-1.5 text-sm text-accent hover:text-accent-hover transition-colors group"
                 >
-                  全部书库
+                  {t.dashboard.allLibrary}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
               </div>
@@ -101,14 +102,14 @@ export default function Home() {
               <div className="flex items-end justify-between mb-3">
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">
-                    Recently Added
+                    {t.dashboard.recentlyAdded}
                   </h2>
                 </div>
                 <Link
                   href="/books?sortBy=addedAt&sortOrder=desc"
                   className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors group"
                 >
-                  查看全部
+                  {t.dashboard.viewAll}
                   <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </Link>
               </div>
@@ -151,14 +152,14 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="dashboard-glass rounded-2xl p-8 text-center">
-                  <p className="text-muted text-sm">暂无最近添加的内容</p>
+                  <p className="text-muted text-sm">{t.dashboard.emptyRecentlyAdded}</p>
                   {isAdmin && (
                     <button
                       onClick={() => setUploadDialogOpen(true)}
                       className="mt-3 inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
                     >
                       <Upload className="h-4 w-4" />
-                      上传文件
+                      {t.dashboard.uploadFile}
                     </button>
                   )}
                 </div>
@@ -172,7 +173,7 @@ export default function Home() {
                 className="flex items-center justify-center gap-2 rounded-xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm font-medium text-accent hover:bg-accent/20 transition-colors"
               >
                 <Layers className="h-4 w-4" />
-                进入全部书库
+                {t.dashboard.enterLibrary}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -182,8 +183,8 @@ export default function Home() {
           <aside className="hidden xl:block w-[300px] 2xl:w-[340px] shrink-0 border-l border-border/30 bg-surface/40">
             <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-6 px-4 space-y-4 scrollbar-hide" style={{ scrollbarWidth: "none" }}>
               <ServerActivityPanel />
-              <LibraryOverviewCard />
-              <RandomPickCard privacyEnabled={privacyEnabled} blurNSFW={blurNSFW} />
+              <LibraryOverviewCard t={t} />
+              <RandomPickCard privacyEnabled={privacyEnabled} blurNSFW={blurNSFW} t={t} />
             </div>
           </aside>
         </div>
@@ -199,7 +200,7 @@ export default function Home() {
 }
 
 /** 书库概览卡片 */
-function LibraryOverviewCard() {
+function LibraryOverviewCard({ t }: { t: any }) {
   const [total, setTotal] = useState(0);
   useEffect(() => {
     fetch("/api/comics?pageSize=1&page=1", { credentials: "include" })
@@ -212,23 +213,23 @@ function LibraryOverviewCard() {
     <div className="dashboard-glass p-4">
       <div className="flex items-center gap-1.5 mb-3">
         <Layers className="h-3.5 w-3.5 text-accent" />
-        <h3 className="text-sm font-semibold text-foreground">书库概览</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t.dashboard.libraryOverview}</h3>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-background/30 p-3 text-center border border-border/30">
           <p className="text-2xl font-bold text-foreground tabular-nums">{total || "—"}</p>
-          <p className="text-[10px] text-muted mt-0.5">总内容</p>
+          <p className="text-[10px] text-muted mt-0.5">{t.dashboard.totalItems}</p>
         </div>
         <div className="rounded-lg bg-background/30 p-3 text-center border border-border/30">
           <p className="text-2xl font-bold text-emerald-500 tabular-nums">—</p>
-          <p className="text-[10px] text-muted mt-0.5">未读</p>
+          <p className="text-[10px] text-muted mt-0.5">{t.dashboard.unread}</p>
         </div>
       </div>
       <Link
         href="/books"
         className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-accent/10 border border-accent/20 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
       >
-        浏览全部书库
+        {t.dashboard.browseLibrary}
         <ArrowRight className="h-3 w-3" />
       </Link>
     </div>
@@ -236,7 +237,7 @@ function LibraryOverviewCard() {
 }
 
 /** 随机盲盒卡片 */
-function RandomPickCard({ privacyEnabled, blurNSFW }: { privacyEnabled: boolean; blurNSFW: boolean }) {
+function RandomPickCard({ privacyEnabled, blurNSFW, t }: { privacyEnabled: boolean; blurNSFW: boolean; t: any }) {
   const [comic, setComic] = useState<ApiComic | null>(null);
   const [key, setKey] = useState(0);
 
@@ -261,13 +262,13 @@ function RandomPickCard({ privacyEnabled, blurNSFW }: { privacyEnabled: boolean;
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
           <span className="text-sm">🎲</span>
-          <h3 className="text-sm font-semibold text-foreground">随机盲盒</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t.dashboard.randomPick}</h3>
         </div>
         <button
           onClick={() => setKey((k) => k + 1)}
           className="flex items-center gap-1 text-[11px] text-muted hover:text-accent transition-colors"
         >
-          <Shuffle className="h-3 w-3" /> 换一个
+          <Shuffle className="h-3 w-3" /> {t.dashboard.shuffle}
         </button>
       </div>
       <Link href={href} className="group flex items-center gap-3 rounded-xl bg-background/30 p-2.5 transition-all hover:bg-background/50 border border-border/30">
@@ -286,7 +287,7 @@ function RandomPickCard({ privacyEnabled, blurNSFW }: { privacyEnabled: boolean;
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground line-clamp-2">{comic.title}</p>
           {comic.pageCount > 0 && (
-            <p className="text-[11px] text-muted mt-0.5">{comic.pageCount} 页</p>
+            <p className="text-[11px] text-muted mt-0.5">{comic.pageCount} {t.dashboard?.pages || "页"}</p>
           )}
         </div>
         <ChevronRight className="h-4 w-4 text-muted flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />

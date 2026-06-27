@@ -343,12 +343,12 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                               <Clock className="h-3 w-3" />
                               <span>{formatTime(comic.lastReadAt!)}</span>
                               {comic.pageCount > 0 && (
-                                <span className="ml-auto">{comic.lastReadPage + 1}/{comic.pageCount} 页</span>
+                                <span className="ml-auto">{comic.lastReadPage + 1}/{comic.pageCount} {t.dashboard?.pages || "页"}</span>
                               )}
                             </div>
                             {/* Continue 按钮 */}
                             <div className="mt-3 flex items-center gap-2 text-xs font-medium text-accent">
-                              <span>Continue</span>
+                              <span>{t.dashboard?.continueAction || "Continue"}</span>
                               <ChevronRight className="h-3.5 w-3.5" />
                             </div>
                           </div>
