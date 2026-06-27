@@ -262,14 +262,14 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
         <div ref={contentRef}>
           {/* 桌面端：3D Coverflow 舞台 */}
           <div className="hidden sm:block">
-            <div className="relative h-[360px] sm:h-[400px] flex items-center justify-center overflow-hidden" style={{ perspective: "1200px" }}>
+            <div className="relative h-[340px] sm:h-[380px] flex items-center justify-center overflow-hidden" style={{ perspective: "1200px" }}>
               {/* 背景光晕 */}
               <div className="absolute inset-0 pointer-events-none" style={{
                 background: "radial-gradient(ellipse 60% 50% at 50% 60%, rgba(59,130,246,0.08) 0%, transparent 70%)",
               }} />
 
-              {/* 循环渲染 5 张卡片：-2, -1, 0, +1, +2 */}
-              {[-2, -1, 0, 1, 2].map((offset) => {
+              {/* 动态渲染卡片：根据数据量决定显示范围 */}
+              {(recentComics.length >= 7 ? [-3,-2,-1,0,1,2,3] : recentComics.length >= 5 ? [-2,-1,0,1,2] : recentComics.length >= 3 ? [-1,0,1] : [0]).map((offset) => {
                 const n = recentComics.length;
                 if (n === 0) return null;
                 const index = ((activeIndex + offset) % n + n) % n;
@@ -281,17 +281,18 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                 const href = novel ? `/novel/${comic.id}` : `/reader/${comic.id}`;
                 const distance = Math.abs(offset);
 
-                const isActiveCard = distance === 0;
-                const isNear = distance === 1;
-                const isFar = distance === 2;
+                // 3D 舞台参数 — 紧凑排布
+                const params = distance === 0
+                  ? { width: 230, scale: 1.12, translateX: 0, translateZ: 70, rotateY: 0, opacity: 1 }
+                  : distance === 1
+                  ? { width: 180, scale: 0.88, translateX: offset * 175, translateZ: -30, rotateY: -offset * 14, opacity: 0.78 }
+                  : distance === 2
+                  ? { width: 150, scale: 0.74, translateX: offset * 305, translateZ: -90, rotateY: -offset * 26, opacity: 0.52 }
+                  : { width: 125, scale: 0.62, translateX: offset * 410, translateZ: -150, rotateY: -offset * 36, opacity: 0.28 };
 
-                const translateX = offset * (isNear ? 190 : 320);
-                const translateZ = isActiveCard ? 60 : isNear ? -40 : -100;
-                const rotateY = isActiveCard ? 0 : -offset * (isNear ? 16 : 30);
-                const scale = isActiveCard ? 1.12 : isNear ? 0.86 : 0.72;
-                const opacity = isActiveCard ? 1 : isNear ? 0.75 : 0.42;
+                const { width: cardWidth, scale, translateX, translateZ, rotateY, opacity } = params;
+                const isActiveCard = distance === 0;
                 const zIndex = 10 - distance;
-                const cardWidth = isActiveCard ? 220 : isNear ? 170 : 140;
 
                 return (
                   <Link
