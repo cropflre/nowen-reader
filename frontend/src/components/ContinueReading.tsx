@@ -254,7 +254,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
       <div
         style={{
           height: collapsed ? 0 : contentHeight ?? "auto",
-          overflow: "hidden",
+          overflow: collapsed ? "hidden" : "visible",
           transition: "height 0.3s ease, opacity 0.3s ease",
           opacity: collapsed ? 0 : 1,
         }}
