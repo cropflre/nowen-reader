@@ -266,6 +266,8 @@ const en: Translations = {
     retry: "Retry",
     toc: "Contents",
     typesetting: "Typography",
+    viewDetail: "View Details",
+    openComicDetail: "Open Comic Details",
     // Novel reader
     prevChapter: "Previous",
     nextChapter: "Next",

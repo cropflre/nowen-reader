@@ -258,6 +258,8 @@ const zhCN = {
     immersiveMode: "沉浸模式",
     reachedLastPage: "已到达最后一页",
     loading: "正在加载...",
+    viewDetail: "查看详情",
+    openComicDetail: "打开漫画详情",
     loadError: "加载失败",
     retry: "重试",
     toc: "目录",
@@ -1548,6 +1550,8 @@ export interface Translations {
     retry: string;
     toc: string;
     typesetting: string;
+    viewDetail: string;
+    openComicDetail: string;
     // Novel reader
     prevChapter: string;
     nextChapter: string;

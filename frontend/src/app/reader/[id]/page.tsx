@@ -25,7 +25,7 @@ import DoublePageView from "@/components/reader/DoublePageView";
 import WebtoonView from "@/components/reader/WebtoonView";
 import PdfView from "@/components/reader/PdfView";
 import ReaderOptionsPanel from "@/components/reader/ReaderOptionsPanel";
-import { Heart, Star, Tag, X, Plus, List, Trash2 } from "lucide-react";
+import { Heart, Star, Tag, X, Plus, List, Trash2, ExternalLink } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import ForbiddenPage from "@/components/ForbiddenPage";
 import AIChatPanel from "@/components/reader/AIChatPanel";
@@ -595,6 +595,15 @@ export default function ReaderPage() {
       updateReaderOpts({ direction: d, infiniteScroll: false, mode: newMode });
     }
   }, [updateReaderOpts, mode]);
+
+  // 跳转到漫画详情页（先保存进度）
+  const handleOpenComicDetail = useCallback(async () => {
+    if (useRealData) {
+      saveReadingProgress(comicId, currentPageRef.current, pages.length);
+    }
+    await finishSessionRef.current?.();
+    router.push(`/comic/${comicId}`);
+  }, [comicId, pages.length, router, useRealData]);
 
   // 图片 CSS 滤镜
   const imageFilter = useMemo(() => {
@@ -1185,9 +1194,14 @@ export default function ReaderPage() {
               <X className="h-5 w-5" />
             </button>
 
-            <h2 className="mb-6 pr-8 text-lg font-semibold text-white">
-              {title}
-            </h2>
+            <button
+              onClick={handleOpenComicDetail}
+              className="mb-6 pr-8 text-lg font-semibold text-white hover:text-accent transition-colors text-left w-full flex items-center gap-2 group"
+              title={t.reader.viewDetail || "查看详情"}
+            >
+              <span className="flex-1 line-clamp-2">{title}</span>
+              <ExternalLink className="h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
 
             {/* Favorite */}
             <div className="mb-6">
