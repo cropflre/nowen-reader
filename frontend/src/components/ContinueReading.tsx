@@ -308,9 +308,16 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                       cursor: "pointer",
                     }}
                   >
-                    {/* 卡片外壳：负责宽度，relative 定位 */}
                     <div style={{ width: cardWidth }} className="relative">
-                      {/* 卡片主体：overflow-hidden，封面+信息层 */}
+                      {/* 外部 glow — 仅活跃卡片，单独一层 */}
+                      {isActiveCard && (
+                        <div
+                          className="pointer-events-none absolute inset-0 rounded-2xl"
+                          style={{ boxShadow: "0 0 28px rgba(59,130,246,0.4), 0 0 60px rgba(59,130,246,0.18)" }}
+                        />
+                      )}
+
+                      {/* 卡片主体 */}
                       <div className="relative aspect-[5/7] w-full overflow-hidden rounded-2xl bg-card shadow-lg">
                         <NSFWCoverGuard
                           src={comic.coverUrl}
@@ -343,7 +350,6 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                                 <span className="ml-auto">{comic.lastReadPage + 1}/{comic.pageCount} {t.dashboard?.pages || "页"}</span>
                               )}
                             </div>
-                            {/* Continue 按钮 */}
                             <div className="mt-3 flex items-center gap-2 text-xs font-medium text-accent">
                               <span>{t.dashboard?.continueAction || "Continue"}</span>
                               <ChevronRight className="h-3.5 w-3.5" />
@@ -359,12 +365,15 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                             </div>
                           </div>
                         )}
-                      </div>
 
-                      {/* Active 高亮边框 — 放在 overflow-hidden 外部，作为兄弟节点 */}
-                      {isActiveCard && (
-                        <div className="pointer-events-none absolute -inset-[2px] z-30 rounded-[18px] ring-2 ring-accent/70 shadow-[0_0_28px_rgba(59,130,246,0.5),0_0_60px_rgba(59,130,246,0.22)]" />
-                      )}
+                        {/* 真实边框 — 在 body 内部最高层，用 inset box-shadow */}
+                        {isActiveCard && (
+                          <div
+                            className="pointer-events-none absolute inset-0 z-40 rounded-2xl"
+                            style={{ boxShadow: "inset 0 0 0 2px rgba(59,130,246,0.85)" }}
+                          />
+                        )}
+                      </div>
                     </div>
                   </Link>
                 );
