@@ -316,7 +316,14 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                     <div style={{ width: 230 }} className="relative">
                       <div
                         className="relative aspect-[5/7] w-full overflow-hidden rounded-2xl bg-card"
-                        style={{ boxShadow: "0 0 24px rgba(59,130,246,0.35), 0 0 48px rgba(59,130,246,0.16), 0 4px 16px rgba(0,0,0,0.3)" }}
+                        style={{
+                          boxShadow: [
+                            "0 0 0 1px rgba(96,165,250,0.25)",
+                            "0 18px 50px rgba(37,99,235,0.28)",
+                            "0 0 42px rgba(59,130,246,0.22)",
+                            "0 8px 20px rgba(0,0,0,0.35)",
+                          ].join(", "),
+                        }}
                       >
                         <NSFWCoverGuard
                           src={comic.coverUrl}
@@ -352,10 +359,16 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                           </div>
                         </div>
 
-                        {/* 边框 */}
+                        {/* 双层边框 — 内蓝主边 + 白色高光 + 外轮廓 */}
                         <div
                           className="pointer-events-none absolute inset-0 z-40 rounded-2xl"
-                          style={{ boxShadow: "inset 0 0 0 2px rgba(59,130,246,0.85)" }}
+                          style={{
+                            boxShadow: [
+                              "inset 0 0 0 2px rgba(96,165,250,0.95)",
+                              "inset 0 0 0 3px rgba(255,255,255,0.16)",
+                              "0 0 0 1px rgba(96,165,250,0.35)",
+                            ].join(", "),
+                          }}
                         />
                       </div>
                     </div>
