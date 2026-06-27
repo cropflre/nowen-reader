@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { memo, useState } from "react";
 import { Comic } from "@/types/comic";
-import { BookOpen, Heart, Star, Info, GripVertical } from "lucide-react";
+import { BookOpen, Heart, Star, Info, GripVertical, Globe } from "lucide-react";
 import NSFWCoverGuard from "@/components/NSFWCoverGuard";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import { isNSFW } from "@/lib/nsfw";
@@ -231,6 +231,15 @@ const ComicCard = memo(function ComicCard({
                     <span className="text-[10px] text-amber-400">{comic.rating}</span>
                   </div>
                 )}
+                {comic.externalRating != null && (
+                  <div
+                    className="flex items-center gap-0.5"
+                    aria-label={`External rating: ${comic.externalRating}${comic.externalRatingMax ? ` out of ${comic.externalRatingMax}` : ""} from ${comic.externalRatingSource || "unknown"}`}
+                  >
+                    <Globe className="h-3 w-3 text-blue-400 dark:text-blue-200" />
+                    <span className="text-[10px] text-blue-400 dark:text-blue-300">{comic.externalRating}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -277,6 +286,15 @@ const ComicCard = memo(function ComicCard({
                     <div className="flex-shrink-0 flex items-center gap-0.5">
                       <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                       <span className="text-[10px] text-amber-400">{comic.rating}</span>
+                    </div>
+                  )}
+                  {comic.externalRating != null && (
+                    <div
+                      className="flex-shrink-0 flex items-center gap-0.5"
+                      aria-label={`External rating: ${comic.externalRating}${comic.externalRatingMax ? ` out of ${comic.externalRatingMax}` : ""} from ${comic.externalRatingSource || "unknown"}`}
+                    >
+                      <Globe className="h-3 w-3 text-blue-400 dark:text-blue-200" />
+                      <span className="text-[10px] text-blue-400 dark:text-blue-300">{comic.externalRating}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-1 overflow-hidden">
@@ -427,6 +445,18 @@ const ComicCard = memo(function ComicCard({
                 {comic.isFavorite && (
                   <div className="absolute top-2 right-2 z-10">
                     <Heart className="h-4 w-4 fill-rose-500 text-rose-500 drop-shadow-lg" />
+                  </div>
+                )}
+
+                {comic.externalRating != null && (
+                  <div
+                    className={`absolute ${comic.isFavorite ? "top-10" : "top-2"} right-2 z-10 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 backdrop-blur-sm`}
+                    aria-label={`External rating: ${comic.externalRating}${comic.externalRatingMax ? ` out of ${comic.externalRatingMax}` : ""} from ${comic.externalRatingSource || "unknown"}`}
+                  >
+                    <Globe className="h-3 w-3 text-blue-400 dark:text-blue-200" />
+                    <span className="text-[10px] font-medium text-blue-400 dark:text-blue-300">
+                      {comic.externalRating}
+                    </span>
                   </div>
                 )}
 

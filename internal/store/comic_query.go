@@ -85,11 +85,15 @@ type ComicListItem struct {
 	Description      string              `json:"description"`
 	Language         string              `json:"language"`
 	Genre            string              `json:"genre"`
-	MetadataSource   string              `json:"metadataSource"`
-	ReadingStatus    string              `json:"readingStatus"`
-	ComicType        string              `json:"type"`
-	Tags             []ComicTagInfo      `json:"tags"`
-	Categories       []ComicCategoryInfo `json:"categories"`
+	MetadataSource           string              `json:"metadataSource"`
+	ReadingStatus            string              `json:"readingStatus"`
+	ComicType                string              `json:"type"`
+	ExternalRating           *float64            `json:"externalRating"`
+	ExternalRatingMax        float64             `json:"externalRatingMax"`
+	ExternalRatingSource     string              `json:"externalRatingSource"`
+	ExternalRatingUpdatedAt  string              `json:"externalRatingUpdatedAt"`
+	Tags                     []ComicTagInfo      `json:"tags"`
+	Categories               []ComicCategoryInfo `json:"categories"`
 }
 
 type ComicTagInfo struct {
@@ -305,7 +309,8 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		       COALESCE(NULLIF(ucs."totalReadTime", 0), c."totalReadTime") AS trt,
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       COALESCE(ucs."readingStatus", '') AS readingStatus, c."type", c."coverAspectRatio"
+		       COALESCE(ucs."readingStatus", '') AS readingStatus, c."type", c."coverAspectRatio",
+		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c
 		%s %s %s %s
 	`, joinClause, whereClause, orderClause, limitClause)
@@ -316,7 +321,8 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       c."readingStatus", c."type", c."coverAspectRatio"
+		       c."readingStatus", c."type", c."coverAspectRatio",
+		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c
 		%s %s %s
 	`, whereClause, orderClause, limitClause)
@@ -341,6 +347,10 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		var rating sql.NullInt64
 		var totalReadTime sql.NullInt64
 		var year sql.NullInt64
+		var extRating sql.NullFloat64
+		var extRatingMax sql.NullFloat64
+		var extRatingSource sql.NullString
+		var extRatingUpdatedAtStr sql.NullString
 
 		if err := rows.Scan(
 			&c.ID, &c.Filename, &c.Title, &c.PageCount, &c.FileSize,
@@ -349,6 +359,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			&c.Author, &c.Publisher, &year, &c.Description,
 			&c.Language, &c.Genre, &c.MetadataSource,
 			&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
+			&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan comic: %w", err)
 		}
@@ -377,6 +388,25 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		if year.Valid {
 			v := int(year.Int64)
 			c.Year = &v
+		}
+		if extRating.Valid {
+			v := extRating.Float64
+			c.ExternalRating = &v
+		}
+		if extRatingMax.Valid {
+			c.ExternalRatingMax = extRatingMax.Float64
+		}
+		if extRatingSource.Valid {
+			c.ExternalRatingSource = extRatingSource.String
+		}
+		if extRatingUpdatedAtStr.Valid && extRatingUpdatedAtStr.String != "" {
+			s := strings.TrimSpace(extRatingUpdatedAtStr.String)
+			parsed := parseSQLiteTime(s)
+			if !parsed.IsZero() {
+				c.ExternalRatingUpdatedAt = parsed.UTC().Format(time.RFC3339Nano)
+			} else {
+				c.ExternalRatingUpdatedAt = s
+			}
 		}
 		c.CoverURL = BuildComicCoverURL(c.ID)
 
@@ -516,7 +546,8 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       c."readingStatus", c."type", c."coverAspectRatio"
+		       c."readingStatus", c."type", c."coverAspectRatio",
+		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c WHERE c."id" = ?
 	`
 	var c ComicListItem
@@ -525,6 +556,10 @@ func GetComicByID(id string) (*ComicListItem, error) {
 	var rating sql.NullInt64
 	var year sql.NullInt64
 	var isFav int
+	var extRating sql.NullFloat64
+	var extRatingMax sql.NullFloat64
+	var extRatingSource sql.NullString
+	var extRatingUpdatedAtStr sql.NullString
 
 	err := db.QueryRow(query, id).Scan(
 		&c.ID, &c.Filename, &c.Title, &c.PageCount, &c.FileSize,
@@ -533,6 +568,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		&c.Author, &c.Publisher, &year, &c.Description,
 		&c.Language, &c.Genre, &c.MetadataSource,
 		&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
+		&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -555,6 +591,25 @@ func GetComicByID(id string) (*ComicListItem, error) {
 	if year.Valid {
 		v := int(year.Int64)
 		c.Year = &v
+	}
+	if extRating.Valid {
+		v := extRating.Float64
+		c.ExternalRating = &v
+	}
+	if extRatingMax.Valid {
+		c.ExternalRatingMax = extRatingMax.Float64
+	}
+	if extRatingSource.Valid {
+		c.ExternalRatingSource = extRatingSource.String
+	}
+	if extRatingUpdatedAtStr.Valid && extRatingUpdatedAtStr.String != "" {
+		s := strings.TrimSpace(extRatingUpdatedAtStr.String)
+		parsed := parseSQLiteTime(s)
+		if !parsed.IsZero() {
+			c.ExternalRatingUpdatedAt = parsed.UTC().Format(time.RFC3339Nano)
+		} else {
+			c.ExternalRatingUpdatedAt = s
+		}
 	}
 	c.CoverURL = BuildComicCoverURL(c.ID)
 
@@ -610,7 +665,8 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
 		       COALESCE(ucs."readingStatus", '') AS readingStatus,
-		       c."type", c."coverAspectRatio"
+		       c."type", c."coverAspectRatio",
+		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c
 		LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?
 		WHERE c."id" = ?
@@ -623,6 +679,10 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 	var rating sql.NullInt64
 	var totalReadTime sql.NullInt64
 	var year sql.NullInt64
+	var extRating sql.NullFloat64
+	var extRatingMax sql.NullFloat64
+	var extRatingSource sql.NullString
+	var extRatingUpdatedAtStr sql.NullString
 
 	err := db.QueryRow(query, userID, comicID).Scan(
 		&ci.ID, &ci.Filename, &ci.Title, &ci.PageCount, &ci.FileSize,
@@ -631,6 +691,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 		&ci.Author, &ci.Publisher, &year, &ci.Description,
 		&ci.Language, &ci.Genre, &ci.MetadataSource,
 		&ci.ReadingStatus, &ci.ComicType, &ci.CoverAspectRatio,
+		&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -655,6 +716,25 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 	if year.Valid {
 		v := int(year.Int64)
 		ci.Year = &v
+	}
+	if extRating.Valid {
+		v := extRating.Float64
+		ci.ExternalRating = &v
+	}
+	if extRatingMax.Valid {
+		ci.ExternalRatingMax = extRatingMax.Float64
+	}
+	if extRatingSource.Valid {
+		ci.ExternalRatingSource = extRatingSource.String
+	}
+	if extRatingUpdatedAtStr.Valid && extRatingUpdatedAtStr.String != "" {
+		s := strings.TrimSpace(extRatingUpdatedAtStr.String)
+		parsed := parseSQLiteTime(s)
+		if !parsed.IsZero() {
+			ci.ExternalRatingUpdatedAt = parsed.UTC().Format(time.RFC3339Nano)
+		} else {
+			ci.ExternalRatingUpdatedAt = s
+		}
 	}
 	if totalReadTime.Valid {
 		ci.TotalReadTime = int(totalReadTime.Int64)

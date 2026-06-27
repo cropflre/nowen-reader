@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/service"
@@ -89,6 +90,7 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 		Overwrite     bool                  `json:"overwrite"`
 		SyncTags      bool                  `json:"syncTags"`
 		SyncToVolumes bool                  `json:"syncToVolumes"`
+		SyncRating    bool                  `json:"syncRating"` // 是否同步评分到单行本
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
@@ -148,6 +150,14 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 	if meta.CoverURL != "" && shouldApply("cover") {
 		update.CoverURL = &meta.CoverURL
 	}
+	// External rating
+	if meta.ExternalRating != nil && shouldApply("rating") {
+		update.ExternalRating = meta.ExternalRating
+		update.ExternalRatingMax = meta.ExternalRatingMax
+		update.ExternalRatingSource = &meta.ExternalRatingSource
+		now := time.Now().UTC()
+		update.ExternalRatingUpdatedAt = &now
+	}
 
 	if err := store.UpdateGroupMetadata(id, update); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "应用元数据失败"})
@@ -185,28 +195,37 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 	}
 
 	// 同步元数据到所有卷
+	var syncSuccess, syncErrors int
 	if body.SyncToVolumes {
-		go func() {
-			if err := syncGroupMetadataToVolumes(id, meta, fieldsSet, body.Overwrite); err != nil {
-				log.Printf("[API] syncGroupMetadataToVolumes error for group %d: %v", id, err)
-			}
-		}()
+		syncSuccess, syncErrors, _ = syncGroupMetadataToVolumes(id, meta, fieldsSet, body.Overwrite, body.SyncRating)
 	}
 
 	updated, _ := store.GetGroupByID(id)
-	c.JSON(http.StatusOK, gin.H{"success": true, "group": updated})
+	resp := gin.H{"success": true, "group": updated}
+	if body.SyncToVolumes {
+		resp["syncSuccess"] = syncSuccess
+		resp["syncErrors"] = syncErrors
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
-// syncGroupMetadataToVolumes 将刮削的元数据同步到系列下所有卷
-func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsSet map[string]bool, overwrite bool) error {
+// syncGroupMetadataToVolumes 将刮削的元数据同步到系列下所有卷。
+// 返回成功数、失败数和错误。
+func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsSet map[string]bool, overwrite bool, syncRating bool) (successCount, errorCount int, err error) {
 	group, err := store.GetGroupByID(groupID)
 	if err != nil || group == nil || len(group.Comics) == 0 {
-		return fmt.Errorf("系列不存在或没有漫画")
+		return 0, 0, fmt.Errorf("系列不存在或没有漫画")
 	}
 
 	applyAll := len(fieldsSet) == 0
 	shouldApply := func(field string) bool {
 		return applyAll || fieldsSet[field]
+	}
+
+	// 预构建评分更新 map（所有卷共享同一评分）
+	ratingUpdates := map[string]interface{}{}
+	if syncRating {
+		ratingUpdates = service.BuildRatingUpdates(meta)
 	}
 
 	for _, comic := range group.Comics {
@@ -230,6 +249,10 @@ func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsS
 		if meta.Year != nil && shouldApply("year") {
 			updates["year"] = *meta.Year
 		}
+		// 同步评分到单行本
+		for k, v := range ratingUpdates {
+			updates[k] = v
+		}
 
 		if !overwrite {
 			// 非覆盖模式：只填充空字段，需要先查询当前值
@@ -239,10 +262,13 @@ func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsS
 		if len(updates) > 0 {
 			if err := store.UpdateComicFields(comic.ComicID, updates); err != nil {
 				log.Printf("[API] syncGroupMetadataToVolumes: failed to update comic %s: %v", comic.ComicID, err)
+				errorCount++
+			} else {
+				successCount++
 			}
 		}
 	}
-	return nil
+	return successCount, errorCount, nil
 }
 
 // filterEmptyFieldsOnly 过滤掉漫画中已有值的字段，只保留空字段的更新

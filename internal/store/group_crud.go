@@ -373,6 +373,12 @@ type GroupMetadataUpdate struct {
 	Language    *string `json:"language"`
 	Genre       *string `json:"genre"`
 	Status      *string `json:"status"`
+
+	// External rating fields
+	ExternalRating          *float64   `json:"externalRating"`
+	ExternalRatingMax       *float64   `json:"externalRatingMax"`
+	ExternalRatingSource    *string    `json:"externalRatingSource"`
+	ExternalRatingUpdatedAt *time.Time `json:"externalRatingUpdatedAt"`
 }
 
 // UpdateGroupMetadata 更新系列的元数据字段。
@@ -419,6 +425,22 @@ func UpdateGroupMetadata(groupID int, update GroupMetadataUpdate) error {
 	if update.Status != nil {
 		setClauses = append(setClauses, `"status" = ?`)
 		args = append(args, *update.Status)
+	}
+	if update.ExternalRating != nil {
+		setClauses = append(setClauses, `"externalRating" = ?`)
+		args = append(args, *update.ExternalRating)
+	}
+	if update.ExternalRatingMax != nil {
+		setClauses = append(setClauses, `"externalRatingMax" = ?`)
+		args = append(args, *update.ExternalRatingMax)
+	}
+	if update.ExternalRatingSource != nil {
+		setClauses = append(setClauses, `"externalRatingSource" = ?`)
+		args = append(args, *update.ExternalRatingSource)
+	}
+	if update.ExternalRatingUpdatedAt != nil {
+		setClauses = append(setClauses, `"externalRatingUpdatedAt" = ?`)
+		args = append(args, *update.ExternalRatingUpdatedAt)
 	}
 
 	if len(setClauses) == 0 {

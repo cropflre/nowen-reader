@@ -387,6 +387,20 @@ var Migrations = []Migration{
 			// No data migration needed for existing libraries.
 		}, "\n"),
 	},
+	{
+		Version:     27,
+		Description: "Add external rating fields to Comic and ComicGroup",
+		SQL: strings.Join([]string{
+			`ALTER TABLE "Comic" ADD COLUMN "externalRating" REAL;`,
+			`ALTER TABLE "Comic" ADD COLUMN "externalRatingMax" REAL;`,
+			`ALTER TABLE "Comic" ADD COLUMN "externalRatingSource" TEXT;`,
+			`ALTER TABLE "Comic" ADD COLUMN "externalRatingUpdatedAt" DATETIME;`,
+			`ALTER TABLE "ComicGroup" ADD COLUMN "externalRating" REAL;`,
+			`ALTER TABLE "ComicGroup" ADD COLUMN "externalRatingMax" REAL;`,
+			`ALTER TABLE "ComicGroup" ADD COLUMN "externalRatingSource" TEXT;`,
+			`ALTER TABLE "ComicGroup" ADD COLUMN "externalRatingUpdatedAt" DATETIME;`,
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.
