@@ -280,17 +280,22 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                 const novel = isNovel(comic);
                 const href = novel ? `/novel/${comic.id}` : `/reader/${comic.id}`;
                 const distance = Math.abs(offset);
+                const sign = Math.sign(offset);
 
-                // 3D 舞台参数 — 紧凑排布
-                const params = distance === 0
-                  ? { width: 230, scale: 1.10, translateX: 0, translateZ: 60, rotateY: 0, opacity: 1 }
-                  : distance === 1
-                  ? { width: 180, scale: 0.88, translateX: offset * 145, translateZ: -25, rotateY: -offset * 10, opacity: 0.82 }
-                  : distance === 2
-                  ? { width: 150, scale: 0.76, translateX: offset * 245, translateZ: -70, rotateY: -offset * 20, opacity: 0.58 }
-                  : { width: 125, scale: 0.66, translateX: offset * 330, translateZ: -110, rotateY: -offset * 28, opacity: 0.40 };
+                // 3D 舞台参数 — 按距离映射固定位置，不是 offset * value
+                const positionMap: Record<number, { x: number; z: number; rotate: number; scale: number; opacity: number; width: number }> = {
+                  0: { x: 0,   z: 60,  rotate: 0,  scale: 1.10, opacity: 1,    width: 230 },
+                  1: { x: 145, z: -25, rotate: 10, scale: 0.88, opacity: 0.82, width: 180 },
+                  2: { x: 245, z: -70, rotate: 20, scale: 0.76, opacity: 0.58, width: 150 },
+                  3: { x: 330, z: -110, rotate: 28, scale: 0.66, opacity: 0.40, width: 125 },
+                };
+                const p = positionMap[distance] || positionMap[3];
 
-                const { width: cardWidth, scale, translateX, translateZ, rotateY, opacity } = params;
+                const translateX = sign * p.x;
+                const translateZ = p.z;
+                const rotateY = -sign * p.rotate;
+                const { scale, opacity } = p;
+                const cardWidth = p.width;
                 const isActiveCard = distance === 0;
                 const zIndex = 10 - distance;
 
@@ -309,16 +314,11 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                     }}
                   >
                     <div style={{ width: cardWidth }} className="relative">
-                      {/* 外部 glow — 仅活跃卡片，单独一层 */}
-                      {isActiveCard && (
-                        <div
-                          className="pointer-events-none absolute inset-0 rounded-2xl"
-                          style={{ boxShadow: "0 0 28px rgba(59,130,246,0.4), 0 0 60px rgba(59,130,246,0.18)" }}
-                        />
-                      )}
-
                       {/* 卡片主体 */}
-                      <div className="relative aspect-[5/7] w-full overflow-hidden rounded-2xl bg-card shadow-lg">
+                      <div
+                        className="relative aspect-[5/7] w-full overflow-hidden rounded-2xl bg-card"
+                        style={isActiveCard ? { boxShadow: "0 0 24px rgba(59,130,246,0.35), 0 0 48px rgba(59,130,246,0.16), 0 4px 16px rgba(0,0,0,0.3)" } : { boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}
+                      >
                         <NSFWCoverGuard
                           src={comic.coverUrl}
                           alt={comic.title}
