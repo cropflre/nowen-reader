@@ -33,6 +33,7 @@ const zhCN = {
     aiSearchTitle: "AI 语义搜索结果",
     aiSearchNoResults: "未找到匹配结果，试试换个描述方式",
     scanLibrary: "扫描文库",
+    backToDashboard: "返回仪表盘",
   },
   home: {
     mockDataNotice: "当前显示 Mock 数据。将",
@@ -259,6 +260,8 @@ const zhCN = {
     immersiveMode: "沉浸模式",
     reachedLastPage: "已到达最后一页",
     loading: "正在加载...",
+    viewDetail: "查看详情",
+    openComicDetail: "打开漫画详情",
     loadError: "加载失败",
     retry: "重试",
     toc: "目录",
@@ -729,6 +732,35 @@ const zhCN = {
     pageUnit: "页",
     collapse: "收起",
     expand: "展开",
+  },
+
+  // Dashboard 首页
+  dashboard: {
+    title: "仪表盘",
+    continueReading: "继续阅读",
+    continueSubtitle: "继续上次的阅读",
+    recentlyAdded: "最近添加",
+    continueAction: "继续阅读",
+    allLibrary: "全部书库",
+    viewAll: "查看全部",
+    libraryOverview: "书库概览",
+    totalItems: "总内容",
+    unread: "未读",
+    browseLibrary: "浏览全部书库",
+    randomPick: "随机盲盒",
+    shuffle: "换一个",
+    pages: "页",
+    emptyRecentlyAdded: "暂无最近添加的内容",
+    uploadFile: "上传文件",
+    enterLibrary: "进入全部书库",
+    server: "服务器",
+    running: "运行中",
+    cores: "核心",
+    memory: "内存",
+    goroutines: "协程",
+    platform: "平台",
+    database: "数据库",
+    version: "版本",
   },
 
   // 移动端导航
@@ -1310,6 +1342,7 @@ export interface Translations {
     aiSearchTitle: string;
     aiSearchNoResults: string;
     scanLibrary: string;
+    backToDashboard: string;
   };
   home: {
     mockDataNotice: string;
@@ -1521,6 +1554,8 @@ export interface Translations {
     retry: string;
     toc: string;
     typesetting: string;
+    viewDetail: string;
+    openComicDetail: string;
     // Novel reader
     prevChapter: string;
     nextChapter: string;
@@ -1959,6 +1994,33 @@ export interface Translations {
     pageUnit: string;
     collapse: string;
     expand: string;
+  };
+  dashboard: {
+    title: string;
+    continueReading: string;
+    continueSubtitle: string;
+    recentlyAdded: string;
+    continueAction: string;
+    allLibrary: string;
+    viewAll: string;
+    libraryOverview: string;
+    totalItems: string;
+    unread: string;
+    browseLibrary: string;
+    randomPick: string;
+    shuffle: string;
+    pages: string;
+    emptyRecentlyAdded: string;
+    uploadFile: string;
+    enterLibrary: string;
+    server: string;
+    running: string;
+    cores: string;
+    memory: string;
+    goroutines: string;
+    platform: string;
+    database: string;
+    version: string;
   };
   mobileNav: {
     library: string;

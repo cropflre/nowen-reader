@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Activity, Clock } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * 圆形仪表盘
@@ -80,6 +81,7 @@ function MiniChart({ data, color = "#3B82F6" }: { data: number[]; color?: string
  * 服务器状态面板 — 产品化圆形仪表盘
  */
 export default function ServerActivityPanel() {
+  const t = useTranslation();
   const [health, setHealth] = useState<{
     status: string;
     version: string;
@@ -114,7 +116,7 @@ export default function ServerActivityPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-accent" />
-          <span className="text-sm font-semibold text-foreground">服务器</span>
+          <span className="text-sm font-semibold text-foreground">{t.dashboard?.server || "服务器"}</span>
         </div>
         <div className="flex items-center gap-1 text-[10px] text-muted">
           <Clock className="h-3 w-3" />
@@ -125,21 +127,21 @@ export default function ServerActivityPanel() {
       {/* 状态指示 */}
       <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
         <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 pulse-dot" />
-        <span className="text-xs font-medium text-emerald-400">运行中</span>
+        <span className="text-xs font-medium text-emerald-400">{t.dashboard?.running || "运行中"}</span>
         <span className="text-[10px] text-emerald-400/60 ml-auto">v{health.version}</span>
       </div>
 
       {/* 圆形仪表盘组 */}
       <div className="flex items-center justify-around">
-        <Gauge value={rt.cpus} max={32} color="#3B82F6" label="CPU" unit="核心" />
-        <Gauge value={rt.memoryMB} max={512} color="#8B5CF6" label="内存" unit="MB" />
-        <Gauge value={rt.goroutines} max={100} color="#22C55E" label="协程" />
+        <Gauge value={rt.cpus} max={32} color="#3B82F6" label="CPU" unit={t.dashboard?.cores || "核心"} />
+        <Gauge value={rt.memoryMB} max={512} color="#8B5CF6" label={t.dashboard?.memory || "内存"} unit="MB" />
+        <Gauge value={rt.goroutines} max={100} color="#22C55E" label={t.dashboard?.goroutines || "协程"} />
       </div>
 
       {/* 内存趋势曲线 */}
       {memHistory.length > 3 && (
         <div className="space-y-1">
-          <span className="text-[10px] text-muted">内存趋势</span>
+          <span className="text-[10px] text-muted">{t.dashboard?.memory || "内存"}趋势</span>
           <div className="rounded-lg bg-background/30 px-2 py-1 border border-border/30">
             <MiniChart data={memHistory} color="#8B5CF6" />
           </div>
@@ -148,7 +150,7 @@ export default function ServerActivityPanel() {
 
       {/* 平台信息 */}
       <p className="text-[10px] text-muted/40 text-center">
-        {rt.os}/{rt.arch} · SQLite
+        {rt.os}/{rt.arch} · {t.dashboard?.database || "SQLite"}
       </p>
     </div>
   );

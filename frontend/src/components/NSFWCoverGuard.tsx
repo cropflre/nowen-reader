@@ -16,6 +16,8 @@ interface NSFWCoverGuardProps {
   className?: string;
   unoptimized?: boolean;
   onClick?: () => void;
+  onLoad?: () => void;
+  onError?: () => void;
 }
 
 /**
@@ -34,6 +36,8 @@ export default function NSFWCoverGuard({
   className = "",
   unoptimized = false,
   onClick,
+  onLoad,
+  onError,
 }: NSFWCoverGuardProps) {
   const [revealed, setRevealed] = useState(false);
   const shouldBlur = isNSFW && blurEnabled && !revealed;
@@ -49,6 +53,8 @@ export default function NSFWCoverGuard({
         alt={shouldBlur ? "" : alt}
         unoptimized={unoptimized}
         className={`${className} ${shouldBlur ? "blur-xl scale-110" : ""} transition-all duration-300`}
+        onLoad={onLoad}
+        onError={onError}
         {...imgProps}
       />
 

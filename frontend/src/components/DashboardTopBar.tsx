@@ -70,7 +70,7 @@ export default function DashboardTopBar({
           )}
         </div>
         <h1 className="hidden lg:block text-lg font-semibold text-foreground">
-          Dashboard
+          {t.dashboard?.title || "Dashboard"}
         </h1>
       </div>
 

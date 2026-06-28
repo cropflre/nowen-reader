@@ -4,6 +4,32 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Lightbulb } from "lucide-react";
 import { GUIDE_STEPS, nextGuideStep, prevGuideStep, skipGuide, finishGuide } from "@/lib/scraper-store";
 
+/** 获取安全视口尺寸（兼容 iOS visualViewport + safe-area） */
+function getSafeViewport() {
+  const vv = window.visualViewport;
+  return {
+    width: vv?.width ?? window.innerWidth,
+    height: vv?.height ?? window.innerHeight,
+    offsetTop: vv?.offsetTop ?? 0,
+    offsetLeft: vv?.offsetLeft ?? 0,
+  };
+}
+
+/** 获取移动端底部避让高度（BottomNav h-14 + safe-area） */
+function getBottomOffset(): number {
+  const isMobile = window.innerWidth < 640;
+  if (!isMobile) return 0;
+  // 尝试读取实际 BottomNav 高度（包含 safe-area padding）
+  const bottomNav = document.querySelector("nav.fixed.bottom-0");
+  if (bottomNav) {
+    const navRect = bottomNav.getBoundingClientRect();
+    // navRect.height 已包含 padding-bottom (safe-area-inset-bottom)
+    return navRect.height + 12;
+  }
+  // 兜底：h-14 = 56px + 预估 safe-area 20px + 间距 12px
+  return 88;
+}
+
 export function GuideOverlay({
   scraperT,
   currentStep,
@@ -15,13 +41,14 @@ export function GuideOverlay({
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const totalSteps = GUIDE_STEPS.length;
   const maskId = useRef(`guide-mask-${Math.random().toString(36).slice(2, 8)}`).current;
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
 
   // 计算目标元素位置的函数
   const updateTargetRect = useCallback(() => {
     if (!step) { setTargetRect(null); return; }
     const el = document.querySelector(step.targetSelector);
     if (el) {
-      // 检查元素是否实际可见（排除 display:none / visibility:hidden / 零尺寸）
       const rect = el.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         setTargetRect(rect);
@@ -33,19 +60,17 @@ export function GuideOverlay({
     }
   }, [step]);
 
-  // 当步骤切换时：滚动到目标元素并计算位置
+  // 当步骤切换时：滚动目标元素到可见区域并计算位置
   useEffect(() => {
     if (!step) return;
     const el = document.querySelector(step.targetSelector);
     if (el) {
-      const rect = el.getBoundingClientRect();
-      // 仅在目标元素不在视口内时才滚动
-      const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
-      if (!inView) {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
-      // 延迟计算位置（等待 scroll 完成）
-      const timer = setTimeout(updateTargetRect, 350);
+      // 滚动到可见区域，block: "center" 确保上下都有空间放 tooltip
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      });
+      // 延迟计算位置（等待 scroll + 动画完成）
+      const timer = setTimeout(updateTargetRect, 400);
       return () => clearTimeout(timer);
     } else {
       // 目标元素不存在 → 自动跳过该步骤
@@ -61,17 +86,22 @@ export function GuideOverlay({
     }
   }, [currentStep, step, totalSteps, updateTargetRect]);
 
-  // 监听窗口 resize 和 scroll 以实时刷新遮罩位置
+  // 监听窗口 resize、scroll 和 visualViewport 变化
   useEffect(() => {
     if (!step) return;
 
     const handleUpdate = () => { updateTargetRect(); };
     window.addEventListener("resize", handleUpdate);
-    window.addEventListener("scroll", handleUpdate, true); // true 捕获阶段，兼容内部滚动容器
+    window.addEventListener("scroll", handleUpdate, true);
+    // iOS 缩放/键盘弹出时 visualViewport 会变化
+    window.visualViewport?.addEventListener("resize", handleUpdate);
+    window.visualViewport?.addEventListener("scroll", handleUpdate);
 
     return () => {
       window.removeEventListener("resize", handleUpdate);
       window.removeEventListener("scroll", handleUpdate, true);
+      window.visualViewport?.removeEventListener("resize", handleUpdate);
+      window.visualViewport?.removeEventListener("scroll", handleUpdate);
     };
   }, [step, updateTargetRect]);
 
@@ -81,40 +111,65 @@ export function GuideOverlay({
     .replace("{current}", String(currentStep + 1))
     .replace("{total}", String(totalSteps));
 
-  // 计算弹窗位置（增加视口边界安全检测）
+  // 计算弹窗位置（移动端安全区适配 + 视口 clamp）
   const getTooltipStyle = (): React.CSSProperties => {
-    if (!targetRect) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)", position: "fixed", zIndex: 10002 };
-
-    const gap = 16;
-    const tooltipW = 360;
+    const { width: vw, height: vh, offsetTop: vTop, offsetLeft: vLeft } = getSafeViewport();
+    const bottomOffset = getBottomOffset();
+    const margin = isMobile ? 10 : 16;
+    // 移动端 tooltip 宽度自适应：不超过视口宽度减去两侧间距
+    const tooltipW = isMobile ? Math.min(340, vw - margin * 2) : 360;
     const tooltipH = 260; // 预估高度
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const style: React.CSSProperties = { position: "fixed", zIndex: 10002 };
+    const safeBottom = Math.max(margin, bottomOffset); // 底部安全距离
 
-    switch (step.placement) {
+    if (!targetRect) {
+      // 无目标元素时居中显示，但底部要避开 BottomNav
+      return {
+        position: "fixed",
+        zIndex: 10002,
+        top: vTop + Math.max(margin, (vh - tooltipH) / 3),
+        left: vLeft + (vw - tooltipW) / 2,
+        width: tooltipW,
+      };
+    }
+
+    const gap = isMobile ? 10 : 16;
+    const style: React.CSSProperties = { position: "fixed", zIndex: 10002, width: tooltipW };
+
+    // 移动端：left/right placement 强制改为 bottom（水平空间不足）
+    const effectivePlacement = isMobile && (step.placement === "left" || step.placement === "right")
+      ? "bottom"
+      : step.placement;
+
+    switch (effectivePlacement) {
       case "bottom": {
-        const top = targetRect.bottom + gap;
-        style.top = top + tooltipH > vh ? Math.max(16, targetRect.top - tooltipH - gap) : top;
-        style.left = Math.max(16, Math.min(targetRect.left, vw - tooltipW - 16));
+        let top = targetRect.bottom + gap;
+        // 如果底部超出视口（含 BottomNav 避让），改到目标上方
+        if (top + tooltipH > vTop + vh - safeBottom) {
+          top = targetRect.top - tooltipH - gap;
+        }
+        // 如果上方也超出，贴底部安全区上方
+        if (top < vTop + margin) {
+          top = vTop + vh - safeBottom - tooltipH;
+        }
+        style.top = Math.max(vTop + margin, top);
+        style.left = vLeft + Math.max(margin, Math.min(targetRect.left, vw - tooltipW - margin));
         break;
       }
       case "top": {
-        const bottom = vh - targetRect.top + gap;
-        if (targetRect.top - gap - tooltipH < 0) {
-          // 上方空间不足，改到下方
+        let bottom = vh - targetRect.top + gap;
+        // 如果上方超出视口，改到目标下方
+        if (targetRect.top - gap - tooltipH < vTop + margin) {
           style.top = targetRect.bottom + gap;
         } else {
           style.bottom = bottom;
         }
-        style.left = Math.max(16, Math.min(targetRect.left, vw - tooltipW - 16));
+        style.left = vLeft + Math.max(margin, Math.min(targetRect.left, vw - tooltipW - margin));
         break;
       }
       case "left": {
-        style.top = Math.max(16, Math.min(targetRect.top, vh - tooltipH - 16));
+        style.top = vTop + Math.max(margin, Math.min(targetRect.top, vh - tooltipH - margin));
         const right = vw - targetRect.left + gap;
-        if (targetRect.left - gap - tooltipW < 0) {
-          // 左侧空间不足，改到右侧
+        if (targetRect.left - gap - tooltipW < margin) {
           style.left = targetRect.right + gap;
         } else {
           style.right = right;
@@ -122,10 +177,9 @@ export function GuideOverlay({
         break;
       }
       case "right": {
-        style.top = Math.max(16, Math.min(targetRect.top, vh - tooltipH - 16));
+        style.top = vTop + Math.max(margin, Math.min(targetRect.top, vh - tooltipH - margin));
         const left = targetRect.right + gap;
-        if (left + tooltipW > vw) {
-          // 右侧空间不足，改到左侧
+        if (left + tooltipW > vw - margin) {
           style.right = vw - targetRect.left + gap;
         } else {
           style.left = left;
@@ -198,10 +252,13 @@ export function GuideOverlay({
         />
       )}
 
-      {/* 提示卡片 */}
+      {/* 提示卡片 — 移动端使用 bottom sheet 风格 */}
       <div
+        ref={tooltipRef}
         style={getTooltipStyle()}
-        className="w-[360px] rounded-2xl bg-card border border-border/60 shadow-2xl p-5 space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-300"
+        className={`rounded-2xl bg-card border border-border/60 shadow-2xl p-4 sm:p-5 space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-300 ${
+          isMobile ? "max-h-[45vh] overflow-y-auto" : ""
+        }`}
       >
         {/* 步骤指示器 */}
         <div className="flex items-center justify-between">
@@ -240,11 +297,11 @@ export function GuideOverlay({
           </div>
         )}
 
-        {/* 导航按钮 */}
-        <div className="flex items-center justify-between pt-1">
+        {/* 导航按钮 — 移动端按钮更大更易点击 */}
+        <div className="flex items-center justify-between pt-1 gap-2">
           <button
             onClick={skipGuide}
-            className="text-[11px] text-muted hover:text-foreground transition-colors"
+            className="text-[11px] sm:text-[11px] text-muted hover:text-foreground transition-colors py-1.5 sm:py-0"
           >
             {scraperT.guideSkip || "跳过教程"}
           </button>
@@ -252,7 +309,7 @@ export function GuideOverlay({
             {currentStep > 0 && (
               <button
                 onClick={prevGuideStep}
-                className="flex items-center gap-1 rounded-lg border border-border/40 px-3 py-1.5 text-[11px] font-medium text-muted hover:text-foreground hover:bg-card-hover transition-all"
+                className="flex items-center gap-1 rounded-lg border border-border/40 px-3 py-2 sm:py-1.5 text-[12px] sm:text-[11px] font-medium text-muted hover:text-foreground hover:bg-card-hover transition-all"
               >
                 <ChevronLeft className="h-3 w-3" />
                 {scraperT.guidePrev || "上一步"}
@@ -260,7 +317,7 @@ export function GuideOverlay({
             )}
             <button
               onClick={currentStep < totalSteps - 1 ? nextGuideStep : finishGuide}
-              className="flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-accent-hover transition-all"
+              className="flex items-center gap-1 rounded-lg bg-accent px-3.5 py-2 sm:py-1.5 text-[12px] sm:text-[11px] font-medium text-white shadow-sm hover:bg-accent-hover transition-all"
             >
               {currentStep < totalSteps - 1
                 ? (scraperT.guideNext || "下一步")

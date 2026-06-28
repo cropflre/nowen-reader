@@ -35,6 +35,7 @@ const en: Translations = {
     aiSearchTitle: "AI Semantic Search Results",
     aiSearchNoResults: "No matches found, try a different description",
     scanLibrary: "Scan Library",
+    backToDashboard: "Back to Dashboard",
   },
 
   // Home page
@@ -267,6 +268,8 @@ const en: Translations = {
     retry: "Retry",
     toc: "Contents",
     typesetting: "Typography",
+    viewDetail: "View Details",
+    openComicDetail: "Open Comic Details",
     // Novel reader
     prevChapter: "Previous",
     nextChapter: "Next",
@@ -732,6 +735,35 @@ const en: Translations = {
     pageUnit: "p",
     collapse: "Collapse",
     expand: "Expand",
+  },
+
+  // Dashboard
+  dashboard: {
+    title: "Dashboard",
+    continueReading: "Continue Reading",
+    continueSubtitle: "Pick up where you left off",
+    recentlyAdded: "Recently Added",
+    continueAction: "Continue",
+    allLibrary: "Library",
+    viewAll: "View All",
+    libraryOverview: "Library Overview",
+    totalItems: "Total Items",
+    unread: "Unread",
+    browseLibrary: "Browse Library",
+    randomPick: "Random Pick",
+    shuffle: "Shuffle",
+    pages: "pages",
+    emptyRecentlyAdded: "No recently added items",
+    uploadFile: "Upload File",
+    enterLibrary: "Enter Library",
+    server: "Server",
+    running: "Running",
+    cores: "cores",
+    memory: "Memory",
+    goroutines: "Goroutines",
+    platform: "Platform",
+    database: "Database",
+    version: "Version",
   },
 
   // Mobile Navigation

@@ -438,6 +438,8 @@ const ComicCard = memo(function ComicCard({
                     coverLoaded ? "opacity-100" : "opacity-0"
                   }`}
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                  onLoad={() => setCoverLoaded(true)}
+                  onError={() => setCoverLoaded(true)}
                 />
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
