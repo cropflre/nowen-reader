@@ -380,6 +380,148 @@ func UserCanViewLibrary(userID, libraryID string) (bool, error) {
 	return count > 0, nil
 }
 
+// UserCanDownloadLibrary 检查用户是否可以下载指定书库的内容。
+// 规则：
+//   - admin 对 enabled 书库返回 true
+//   - public 书库不自动给 canDownload
+//   - UserLibraryAccess.canDownload = 1 返回 true
+//   - GroupLibraryAccess.canDownload 等 B.3 migration 后接入（当前留 TODO）
+func UserCanDownloadLibrary(userID, libraryID string) (bool, error) {
+	if userID == "" || libraryID == "" {
+		return false, nil
+	}
+
+	// 管理员可以下载所有 enabled 书库的内容
+	var role string
+	err := db.QueryRow(`SELECT "role" FROM "User" WHERE "id" = ?`, userID).Scan(&role)
+	if err != nil {
+		return false, err
+	}
+	if role == "admin" {
+		var enabled bool
+		err := db.QueryRow(`SELECT "enabled" FROM "Library" WHERE "id" = ?`, libraryID).Scan(&enabled)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return enabled, nil
+	}
+
+	// 普通用户：public 不自动给 canDownload，只检查直接授权
+	// TODO: B.3 migration 后补充 GroupLibraryAccess.canDownload 检查
+	var count int
+	err = db.QueryRow(`SELECT COUNT(*) FROM "UserLibraryAccess"
+		WHERE "userId" = ? AND "libraryId" = ? AND "canDownload" = 1`,
+		userID, libraryID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// UserCanManageLibrary 检查用户是否可以管理指定书库的内容。
+// 规则：
+//   - admin 对 enabled 书库返回 true
+//   - public 书库不自动给 canManage
+//   - UserLibraryAccess.canManage = 1 返回 true
+//   - GroupLibraryAccess.canManage 等 B.3 migration 后接入（当前留 TODO）
+func UserCanManageLibrary(userID, libraryID string) (bool, error) {
+	if userID == "" || libraryID == "" {
+		return false, nil
+	}
+
+	// 管理员可以管理所有 enabled 书库的内容
+	var role string
+	err := db.QueryRow(`SELECT "role" FROM "User" WHERE "id" = ?`, userID).Scan(&role)
+	if err != nil {
+		return false, err
+	}
+	if role == "admin" {
+		var enabled bool
+		err := db.QueryRow(`SELECT "enabled" FROM "Library" WHERE "id" = ?`, libraryID).Scan(&enabled)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return enabled, nil
+	}
+
+	// 普通用户：public 不自动给 canManage，只检查直接授权
+	// TODO: B.3 migration 后补充 GroupLibraryAccess.canManage 检查
+	var count int
+	err = db.QueryRow(`SELECT COUNT(*) FROM "UserLibraryAccess"
+		WHERE "userId" = ? AND "libraryId" = ? AND "canManage" = 1`,
+		userID, libraryID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// UserCanDownloadComic 检查用户是否可以下载指定漫画。
+// 与 UserCanViewComic 不同：旧数据（无 libraryId）默认拒绝。
+func UserCanDownloadComic(userID, comicID string) (bool, error) {
+	if userID == "" || comicID == "" {
+		return false, nil
+	}
+
+	var libraryID sql.NullString
+	err := db.QueryRow(`SELECT "libraryId" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&libraryID)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// 旧数据（无 libraryId）：canDownload 默认拒绝
+	if !libraryID.Valid || libraryID.String == "" {
+		return false, nil
+	}
+
+	// 书库不存在：默认拒绝
+	var exists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "Library" WHERE "id" = ?`, libraryID.String).Scan(&exists); err != nil || exists == 0 {
+		return false, nil
+	}
+
+	return UserCanDownloadLibrary(userID, libraryID.String)
+}
+
+// UserCanManageComic 检查用户是否可以管理指定漫画。
+// 与 UserCanViewComic 不同：旧数据（无 libraryId）默认拒绝。
+func UserCanManageComic(userID, comicID string) (bool, error) {
+	if userID == "" || comicID == "" {
+		return false, nil
+	}
+
+	var libraryID sql.NullString
+	err := db.QueryRow(`SELECT "libraryId" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&libraryID)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// 旧数据（无 libraryId）：canManage 默认拒绝
+	if !libraryID.Valid || libraryID.String == "" {
+		return false, nil
+	}
+
+	// 书库不存在：默认拒绝
+	var exists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "Library" WHERE "id" = ?`, libraryID.String).Scan(&exists); err != nil || exists == 0 {
+		return false, nil
+	}
+
+	return UserCanManageLibrary(userID, libraryID.String)
+}
+
 // UserCanViewComic 检查用户是否有权访问指定漫画
 func UserCanViewComic(userID, comicID string) (bool, error) {
 	// 获取漫画的书库ID（可能为 NULL，旧数据兼容）

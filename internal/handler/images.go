@@ -19,8 +19,8 @@ import (
 )
 
 // ImageHandler handles all image-serving API endpoints.
-// checkComicAccess 验证当前用户是否有权访问指定漫画。
-// 返回 nil 表示有权访问；否则已写入 403 响应。
+// checkComicAccess 验证当前用户是否有权访问指定漫画（canView）。
+// 返回 nil 表示有权访问；否则已写入 401/403 响应。
 func checkComicAccess(c *gin.Context, comicID string) error {
 	uid := getUserID(c)
 	if uid == "" {
@@ -34,6 +34,63 @@ func checkComicAccess(c *gin.Context, comicID string) error {
 	if !ok {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have access to this comic"})
 		return fmt.Errorf("access denied")
+	}
+	return nil
+}
+
+// checkComicDownloadAccess 验证当前用户是否有权下载指定漫画（canDownload）。
+// 返回 nil 表示有权访问；否则已写入 401/403 响应。
+func checkComicDownloadAccess(c *gin.Context, comicID string) error {
+	uid := getUserID(c)
+	if uid == "" {
+		return nil // 单用户模式兼容
+	}
+	ok, err := store.UserCanDownloadComic(uid, comicID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check access"})
+		return err
+	}
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have download access to this comic"})
+		return fmt.Errorf("download access denied")
+	}
+	return nil
+}
+
+// checkComicManageAccess 验证当前用户是否有权管理指定漫画（canManage）。
+// 返回 nil 表示有权访问；否则已写入 401/403 响应。
+func checkComicManageAccess(c *gin.Context, comicID string) error {
+	uid := getUserID(c)
+	if uid == "" {
+		return nil // 单用户模式兼容
+	}
+	ok, err := store.UserCanManageComic(uid, comicID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check access"})
+		return err
+	}
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have manage access to this comic"})
+		return fmt.Errorf("manage access denied")
+	}
+	return nil
+}
+
+// checkLibraryManageAccess 验证当前用户是否有权管理指定书库（canManage）。
+// 返回 nil 表示有权访问；否则已写入 401/403 响应。
+func checkLibraryManageAccess(c *gin.Context, libraryID string) error {
+	uid := getUserID(c)
+	if uid == "" {
+		return nil // 单用户模式兼容
+	}
+	ok, err := store.UserCanManageLibrary(uid, libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check access"})
+		return err
+	}
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have manage access to this library"})
+		return fmt.Errorf("manage access denied")
 	}
 	return nil
 }
