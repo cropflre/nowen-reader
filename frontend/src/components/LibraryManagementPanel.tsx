@@ -40,8 +40,8 @@ type NormalizedStatus = "scan-on" | "scan-off" | "access-public" | "access-priva
 const statusConfig: Record<NormalizedStatus, { label: string; className: string }> = {
   "scan-on": { label: "自动扫描", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" },
   "scan-off": { label: "手动扫描", className: "bg-muted/30 text-muted border border-border/50" },
-  "access-public": { label: "公开访问", className: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20" },
-  "access-private": { label: "私有访问", className: "bg-muted/30 text-muted border border-border/50" },
+  "access-public": { label: "公开", className: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20" },
+  "access-private": { label: "私密", className: "bg-muted/30 text-muted border border-border/50" },
   "last-scanned": { label: "已扫描", className: "bg-accent/10 text-accent border border-accent/20" },
   "last-unscanned": { label: "未扫描", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" },
   enabled: { label: "启用", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" },
@@ -501,15 +501,20 @@ export function LibraryManagementPanel() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted">默认访问</label>
+                <label className="block text-sm font-medium text-muted">默认可见性</label>
                 <select
                   value={newDefaultAccess}
                   onChange={(e) => setNewDefaultAccess(e.target.value as "public" | "private")}
                   className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground shadow-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 >
-                  <option value="private">私有</option>
-                  <option value="public">公开</option>
+                  <option value="private">私密 — 仅授权用户可查看</option>
+                  <option value="public">公开 — 所有登录用户可查看</option>
                 </select>
+                <p className="text-xs text-muted mt-1">
+                  {newDefaultAccess === "public"
+                    ? "公开书库不需要在用户权限中单独勾选"
+                    : "私密书库需要为用户单独授权或通过权限组授权"}
+                </p>
               </div>
               <div className="flex items-end gap-3">
                 <label className="flex items-center gap-2 text-sm text-muted">
@@ -704,15 +709,20 @@ export function LibraryManagementPanel() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-muted">默认访问</label>
+                        <label className="block text-sm font-medium text-muted">默认可见性</label>
                         <select
                           value={editDefaultAccess}
                           onChange={(e) => setEditDefaultAccess(e.target.value as "public" | "private")}
                           className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground shadow-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                         >
-                          <option value="private">私有</option>
-                          <option value="public">公开</option>
+                          <option value="private">私密 — 仅授权用户可查看</option>
+                          <option value="public">公开 — 所有登录用户可查看</option>
                         </select>
+                        <p className="text-xs text-muted mt-1">
+                          {editDefaultAccess === "public"
+                            ? "公开书库不需要在用户权限中单独勾选"
+                            : "私密书库需要为用户单独授权或通过权限组授权"}
+                        </p>
                       </div>
                       <div className="flex items-end gap-3">
                         <label className="flex items-center gap-2 text-sm text-muted">

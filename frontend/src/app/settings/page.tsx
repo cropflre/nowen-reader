@@ -208,7 +208,7 @@ export default function SettingsPage() {
               { id: "scan-rules" as const, label: "扫描规则", icon: <Wand2 className="h-[18px] w-[18px]" />, desc: "AI 识别 + 自动归类", keywords: ["扫描", "规则", "归类", "scan", "rules"] },
               { id: "users" as const, label: "用户管理", icon: <Users className="h-[18px] w-[18px]" />, desc: "账号、角色、注册策略", keywords: ["用户", "账号", "角色", "user", "role"] },
               { id: "libraries" as const, label: "书库管理", icon: <BookOpen className="h-[18px] w-[18px]" />, desc: "目录、权限、公开策略", keywords: ["书库", "目录", "权限", "library"] },
-              { id: "user-groups" as const, label: "用户组", icon: <Users className="h-[18px] w-[18px]" />, desc: "批量管理用户权限", keywords: ["用户组", "权限", "group"] },
+              { id: "user-groups" as const, label: "权限组", icon: <Users className="h-[18px] w-[18px]" />, desc: "批量管理用户书库权限", keywords: ["权限组", "用户组", "权限", "group"] },
               { id: "diagnostics" as const, label: "系统诊断", icon: <Shield className="h-[18px] w-[18px]" />, desc: "环境检查、权限、工具", keywords: ["诊断", "检查", "权限", "diagnostics"] },
               { id: "reader" as const, label: "阅读器偏好", icon: <Eye className="h-[18px] w-[18px]" />, desc: "方向、缩放、翻页、背景", keywords: ["reader", "reading", "page", "zoom", "direction", "animation", "progress", "阅读器", "阅读", "方向", "缩放", "翻页", "页码", "进度"] },
             ]

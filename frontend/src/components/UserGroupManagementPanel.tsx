@@ -93,7 +93,7 @@ export default function UserGroupManagementPanel() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定删除此用户组？"))
+    if (!confirm("确定删除此权限组？"))
       return;
     try {
       await deleteUserGroup(id);
@@ -186,7 +186,7 @@ export default function UserGroupManagementPanel() {
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-accent" />
           <h3 className="text-lg font-medium text-foreground">
-            {"用户组管理"}
+            {"权限组管理"}
           </h3>
         </div>
         <button
@@ -194,12 +194,12 @@ export default function UserGroupManagementPanel() {
           className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover transition-colors"
         >
           <Plus className="h-4 w-4" />
-          {"新建用户组"}
+          {"新建权限组"}
         </button>
       </div>
 
       <p className="text-sm text-muted">
-        {"通过用户组批量管理用户对书库的访问权限。将用户加入组后，组的书库权限会自动继承给组内所有用户。"}
+        {"权限组用于批量给普通用户分配书库访问权限。管理员无需加入权限组，已拥有全部书库权限。"}
       </p>
 
       {/* Create form */}
@@ -207,7 +207,7 @@ export default function UserGroupManagementPanel() {
         <div className="rounded-lg border border-border bg-card/50 p-4 space-y-3">
           <input
             type="text"
-            placeholder={"用户组名称"}
+            placeholder={"权限组名称"}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             className="w-full rounded bg-card border border-border px-3 py-2 text-sm text-foreground placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
@@ -242,7 +242,7 @@ export default function UserGroupManagementPanel() {
       {/* Group list */}
       {groups.length === 0 ? (
         <div className="text-center py-8 text-muted">
-          {"暂无用户组，点击上方按钮创建"}
+          {"暂无权限组，点击上方按钮创建"}
         </div>
       ) : (
         <div className="space-y-2">
@@ -374,43 +374,50 @@ export default function UserGroupManagementPanel() {
                         <div className="text-sm text-muted py-2">
                           {"加载中..."}
                         </div>
-                      ) : members.length === 0 ? (
-                        <div className="text-sm text-muted py-2">
-                          {"暂无用户"}
-                        </div>
                       ) : (
-                        <div className="space-y-1">
-                          {members.map((user) => (
-                            <label
-                              key={user.id}
-                              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-card-hover cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={user.isMember}
-                                onChange={() =>
-                                  handleToggleMember(
-                                    group.id,
-                                    user.id,
-                                    !user.isMember
-                                  )
-                                }
-                                className="rounded border-border text-accent focus:ring-accent"
-                              />
-                              <span className="text-sm text-foreground">
-                                {user.nickname || user.username}
-                              </span>
-                              <span className="text-xs text-muted">
-                                @{user.username}
-                              </span>
-                              {user.role === "admin" && (
-                                <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                                  admin
-                                </span>
-                              )}
-                            </label>
-                          ))}
-                        </div>
+                        <>
+                          {/* 管理员提示 */}
+                          {members.some((u) => u.role === "admin") && (
+                            <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/5 border border-amber-500/20 rounded px-2.5 py-2 mb-2">
+                              管理员已拥有全部书库权限，无需加入权限组
+                            </div>
+                          )}
+                          {members.filter((u) => u.role !== "admin").length === 0 ? (
+                            <div className="text-sm text-muted py-2">
+                              {"暂无普通用户"}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {members
+                                .filter((user) => user.role !== "admin")
+                                .map((user) => (
+                                  <label
+                                    key={user.id}
+                                    className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-card-hover cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={user.isMember}
+                                      onChange={() =>
+                                        handleToggleMember(
+                                          group.id,
+                                          user.id,
+                                          !user.isMember
+                                        )
+                                      }
+                                      className="rounded border-border text-accent focus:ring-accent"
+                                    />
+                                    <span className="text-sm text-foreground">
+                                      {user.nickname || user.username}
+                                    </span>
+                                    <span className="text-xs text-muted">
+                                      @{user.username}
+                                    </span>
+                                  </label>
+                                ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
