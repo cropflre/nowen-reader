@@ -90,6 +90,11 @@ func (h *AIHandler) InferTitle(c *gin.Context) {
 		return
 	}
 
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
+
 	var body struct {
 		Apply        bool `json:"apply"`
 		ApplyToGroup bool `json:"applyToGroup"`

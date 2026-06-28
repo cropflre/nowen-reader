@@ -20,6 +20,11 @@ func (h *AIHandler) ChapterRecap(c *gin.Context) {
 		return
 	}
 
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
+
 	var body struct {
 		ChapterIndex int    `json:"chapterIndex"` // 当前要阅读的章节索引
 		TargetLang   string `json:"targetLang"`
@@ -153,6 +158,22 @@ func (h *AIHandler) VerifyDuplicates(c *gin.Context) {
 			continue
 		}
 
+		// 权限校验：检查用户是否有权访问该组中的漫画
+		hasAccess := true
+		for _, comic := range group.Comics {
+			if err := checkComicAccess(c, comic.ID); err != nil {
+				hasAccess = false
+				break
+			}
+		}
+		if !hasAccess {
+			results = append(results, GroupVerification{
+				GroupIndex: gi,
+				Error:      "access denied for one or more comics in this group",
+			})
+			continue
+		}
+
 		// 构建候选信息
 		var candidates []map[string]string
 		var coverDataList [][]byte
@@ -268,6 +289,11 @@ func (h *AIHandler) TranslatePage(c *gin.Context) {
 	comicID := c.Param("id")
 	if comicID == "" {
 		c.JSON(400, gin.H{"error": "comic id required"})
+		return
+	}
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
 		return
 	}
 

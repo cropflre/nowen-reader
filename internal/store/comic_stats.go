@@ -10,6 +10,14 @@ import (
 	"unicode/utf8"
 )
 
+// placeholders 生成 n 个 SQL 占位符 (?, ?, ...)，用于 IN 子句。
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.Repeat("?,", n-1) + "?"
+}
+
 // ============================================================
 // 阅读会话
 // ============================================================
@@ -254,12 +262,27 @@ type DuplicateComicInfo struct {
 
 // DetectDuplicates 通过多种策略查找重复漫画。
 // 4 pass 检测：MD5 哈希（数据库预计算）→ 大小+页数 → 标准化标题 → 模糊标题匹配。
-func DetectDuplicates(comicsDir string) ([]DuplicateGroup, error) {
-	rows, err := db.Query(`
-		SELECT "id", "filename", "title", "fileSize", "pageCount", "addedAt",
-		       COALESCE("author", ''), COALESCE("genre", ''), COALESCE("md5Hash", '')
-		FROM "Comic" ORDER BY "title" ASC
-	`)
+// libraryIDs 可选：如果非空，只在指定书库范围内检测重复。
+func DetectDuplicates(comicsDir string, libraryIDs []string) ([]DuplicateGroup, error) {
+	var rows *sql.Rows
+	var err error
+	if len(libraryIDs) > 0 {
+		// 按书库过滤
+		query := `SELECT "id", "filename", "title", "fileSize", "pageCount", "addedAt",
+		        COALESCE("author", ''), COALESCE("genre", ''), COALESCE("md5Hash", '')
+			FROM "Comic" WHERE "libraryId" IN (` + placeholders(len(libraryIDs)) + `) ORDER BY "title" ASC`
+		args := make([]interface{}, len(libraryIDs))
+		for i, id := range libraryIDs {
+			args[i] = id
+		}
+		rows, err = db.Query(query, args...)
+	} else {
+		rows, err = db.Query(`
+			SELECT "id", "filename", "title", "fileSize", "pageCount", "addedAt",
+			       COALESCE("author", ''), COALESCE("genre", ''), COALESCE("md5Hash", '')
+			FROM "Comic" ORDER BY "title" ASC
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}

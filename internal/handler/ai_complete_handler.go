@@ -21,6 +21,11 @@ func (h *AIHandler) CompleteMetadata(c *gin.Context) {
 		return
 	}
 
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
+
 	var body struct {
 		TargetLang string `json:"targetLang"`
 		Apply      bool   `json:"apply"` // 是否自动应用到元数据
@@ -123,6 +128,12 @@ func (h *AIHandler) SuggestCategory(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "comicId is required"})
 		return
 	}
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, body.ComicID); err != nil {
+		return
+	}
+
 	if body.TargetLang == "" {
 		body.TargetLang = "zh"
 	}
@@ -240,6 +251,20 @@ func (h *AIHandler) BatchSuggestCategory(c *gin.Context) {
 	failCount := 0
 
 	for i, comicID := range body.ComicIDs {
+		// 权限校验：检查用户是否有权访问该漫画
+		if err := checkComicAccess(c, comicID); err != nil {
+			failCount++
+			data, _ := json.Marshal(gin.H{
+				"comicId": comicID,
+				"index":   i,
+				"total":   len(body.ComicIDs),
+				"error":   "access denied",
+			})
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			c.Writer.Flush()
+			continue
+		}
+
 		comic, err := store.GetComicByID(comicID)
 		if err != nil || comic == nil {
 			failCount++

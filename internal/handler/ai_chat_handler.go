@@ -37,6 +37,13 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		return
 	}
 
+	// 权限校验：如果指定了漫画ID，检查用户是否有权访问
+	if body.ComicID != "" {
+		if err := checkComicAccess(c, body.ComicID); err != nil {
+			return
+		}
+	}
+
 	// 获取作品标题和类型
 	title := "Unknown"
 	contentType := "content"
@@ -88,6 +95,11 @@ func (h *AIHandler) ChapterSummary(c *gin.Context) {
 	comicID := c.Param("id")
 	if comicID == "" {
 		c.JSON(400, gin.H{"error": "comic id required"})
+		return
+	}
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
 		return
 	}
 
@@ -145,6 +157,11 @@ func (h *AIHandler) BatchChapterSummaries(c *gin.Context) {
 	comicID := c.Param("id")
 	if comicID == "" {
 		c.JSON(400, gin.H{"error": "comic id required"})
+		return
+	}
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
 		return
 	}
 

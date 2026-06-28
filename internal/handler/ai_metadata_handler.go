@@ -19,6 +19,11 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		return
 	}
 
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
+
 	var body struct {
 		TargetLang string `json:"targetLang"`
 	}
@@ -84,6 +89,11 @@ func (h *AIHandler) ParseFilename(c *gin.Context) {
 	comicID := c.Param("id")
 	if comicID == "" {
 		c.JSON(400, gin.H{"error": "comic id required"})
+		return
+	}
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
 		return
 	}
 
@@ -175,6 +185,11 @@ func (h *AIHandler) SuggestTags(c *gin.Context) {
 		return
 	}
 
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
+
 	var body struct {
 		TargetLang string `json:"targetLang"`
 		Apply      bool   `json:"apply"` // 是否自动添加到标签
@@ -246,6 +261,11 @@ func (h *AIHandler) AnalyzeCover(c *gin.Context) {
 	comicID := c.Param("id")
 	if comicID == "" {
 		c.JSON(400, gin.H{"error": "comic id required"})
+		return
+	}
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, comicID); err != nil {
 		return
 	}
 

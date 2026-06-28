@@ -678,6 +678,11 @@ func (h *ImageHandler) GetEpubResource(c *gin.Context) {
 func (h *ImageHandler) WarmupPages(c *gin.Context) {
 	id := c.Param("id")
 
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
+
 	// Verify comic exists
 	comic, err := store.GetComicByID(id)
 	if err != nil || comic == nil {
@@ -721,6 +726,13 @@ func (h *ImageHandler) WarmupPages(c *gin.Context) {
 // ============================================================
 
 func (h *ImageHandler) WarmupDone(c *gin.Context) {
+	id := c.Param("id")
+
+	// 权限校验：检查用户是否有权访问该漫画
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
+
 	service.ReleaseReadingLock()
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }

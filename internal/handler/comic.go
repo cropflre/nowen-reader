@@ -483,7 +483,15 @@ func (h *ComicHandler) Reorder(c *gin.Context) {
 // ============================================================
 
 func (h *ComicHandler) DetectDuplicates(c *gin.Context) {
-	groups, err := store.DetectDuplicates(config.GetComicsDir())
+	// 权限过滤：普通用户只能查看自己可访问书库范围内的重复项
+	var libraryIDs []string
+	if uid := getUserID(c); uid != "" {
+		if ids, err := store.GetUserAccessibleLibraryIDs(uid); err == nil {
+			libraryIDs = ids
+		}
+	}
+
+	groups, err := store.DetectDuplicates(config.GetComicsDir(), libraryIDs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to detect duplicates"})
 		return
