@@ -387,6 +387,14 @@ var Migrations = []Migration{
 			// No data migration needed for existing libraries.
 		}, "\n"),
 	},
+	{
+		Version:     27,
+		Description: "Add canDownload and canManage to GroupLibraryAccess",
+		SQL: strings.Join([]string{
+			`ALTER TABLE "GroupLibraryAccess" ADD COLUMN "canDownload" BOOLEAN NOT NULL DEFAULT 0;`,
+			`ALTER TABLE "GroupLibraryAccess" ADD COLUMN "canManage" BOOLEAN NOT NULL DEFAULT 0;`,
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.

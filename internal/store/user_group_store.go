@@ -177,7 +177,7 @@ func GetUserGroups(userID string) ([]model.UserGroup, error) {
 // GetGroupLibraryAccess 获取用户组的书库权限列表
 func GetGroupLibraryAccess(groupID string) ([]model.GroupLibraryAccess, error) {
 	rows, err := db.Query(`
-		SELECT "groupId", "libraryId", "canView", "createdAt"
+		SELECT "groupId", "libraryId", "canView", "canDownload", "canManage", "createdAt"
 		FROM "GroupLibraryAccess"
 		WHERE "groupId" = ?
 	`, groupID)
@@ -189,7 +189,7 @@ func GetGroupLibraryAccess(groupID string) ([]model.GroupLibraryAccess, error) {
 	var accesses []model.GroupLibraryAccess
 	for rows.Next() {
 		var a model.GroupLibraryAccess
-		if err := rows.Scan(&a.GroupID, &a.LibraryID, &a.CanView, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.GroupID, &a.LibraryID, &a.CanView, &a.CanDownload, &a.CanManage, &a.CreatedAt); err != nil {
 			continue
 		}
 		accesses = append(accesses, a)
@@ -197,7 +197,8 @@ func GetGroupLibraryAccess(groupID string) ([]model.GroupLibraryAccess, error) {
 	return accesses, nil
 }
 
-// SetGroupLibraryAccess 设置用户组的书库权限（替换全部）
+// SetGroupLibraryAccess 设置用户组的书库权限（替换全部，向后兼容旧接口）。
+// 旧接口只传 libraryIDs，全部设置为 canView=true。
 func SetGroupLibraryAccess(groupID string, libraryIDs []string) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -220,6 +221,45 @@ func SetGroupLibraryAccess(groupID string, libraryIDs []string) error {
 	now := time.Now().UTC()
 	for _, libID := range libraryIDs {
 		if _, err := stmt.Exec(groupID, libID, now); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GroupLibraryPermission 表示用户组对单个书库的权限。
+type GroupLibraryPermission struct {
+	LibraryID   string
+	CanView     bool
+	CanDownload bool
+	CanManage   bool
+}
+
+// SetGroupLibraryAccessFull 设置用户组的书库权限（支持三列权限矩阵）。
+// 替换指定用户组的所有书库权限。
+func SetGroupLibraryAccessFull(groupID string, permissions []GroupLibraryPermission) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 删除现有权限
+	if _, err := tx.Exec(`DELETE FROM "GroupLibraryAccess" WHERE "groupId" = ?`, groupID); err != nil {
+		return err
+	}
+
+	// 插入新权限
+	stmt, err := tx.Prepare(`INSERT INTO "GroupLibraryAccess" ("groupId", "libraryId", "canView", "canDownload", "canManage", "createdAt") VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().UTC()
+	for _, p := range permissions {
+		if _, err := stmt.Exec(groupID, p.LibraryID, p.CanView, p.CanDownload, p.CanManage, now); err != nil {
 			return err
 		}
 	}

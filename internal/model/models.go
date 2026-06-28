@@ -90,10 +90,12 @@ type UserGroupMember struct {
 // GroupLibraryAccess 保存用户组对书库的访问权限。
 // 当用户属于某个组时，继承该组对书库的访问权限。
 type GroupLibraryAccess struct {
-	GroupID   string    `json:"groupId"`
-	LibraryID string    `json:"libraryId"`
-	CanView   bool      `json:"canView"`
-	CreatedAt time.Time `json:"createdAt"`
+	GroupID     string    `json:"groupId"`
+	LibraryID   string    `json:"libraryId"`
+	CanView     bool      `json:"canView"`
+	CanDownload bool      `json:"canDownload"`
+	CanManage   bool      `json:"canManage"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // ============================================================

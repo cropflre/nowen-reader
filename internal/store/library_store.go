@@ -385,7 +385,7 @@ func UserCanViewLibrary(userID, libraryID string) (bool, error) {
 //   - admin 对 enabled 书库返回 true
 //   - public 书库不自动给 canDownload
 //   - UserLibraryAccess.canDownload = 1 返回 true
-//   - GroupLibraryAccess.canDownload 等 B.3 migration 后接入（当前留 TODO）
+//   - GroupLibraryAccess.canDownload = 1 返回 true（用户组继承）
 func UserCanDownloadLibrary(userID, libraryID string) (bool, error) {
 	if userID == "" || libraryID == "" {
 		return false, nil
@@ -409,12 +409,17 @@ func UserCanDownloadLibrary(userID, libraryID string) (bool, error) {
 		return enabled, nil
 	}
 
-	// 普通用户：public 不自动给 canDownload，只检查直接授权
-	// TODO: B.3 migration 后补充 GroupLibraryAccess.canDownload 检查
+	// 普通用户：public 不自动给 canDownload
+	// 检查直接授权 OR 用户组继承
 	var count int
-	err = db.QueryRow(`SELECT COUNT(*) FROM "UserLibraryAccess"
-		WHERE "userId" = ? AND "libraryId" = ? AND "canDownload" = 1`,
-		userID, libraryID).Scan(&count)
+	err = db.QueryRow(`SELECT COUNT(*) FROM "Library" WHERE "id" = ? AND "enabled" = 1 AND (
+		"id" IN (SELECT "libraryId" FROM "UserLibraryAccess" WHERE "userId" = ? AND "canDownload" = 1)
+		OR "id" IN (
+			SELECT gla."libraryId" FROM "GroupLibraryAccess" gla
+			JOIN "UserGroupMember" ugm ON ugm."groupId" = gla."groupId"
+			WHERE ugm."userId" = ? AND gla."canDownload" = 1
+		)
+	)`, libraryID, userID, userID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -426,7 +431,7 @@ func UserCanDownloadLibrary(userID, libraryID string) (bool, error) {
 //   - admin 对 enabled 书库返回 true
 //   - public 书库不自动给 canManage
 //   - UserLibraryAccess.canManage = 1 返回 true
-//   - GroupLibraryAccess.canManage 等 B.3 migration 后接入（当前留 TODO）
+//   - GroupLibraryAccess.canManage = 1 返回 true（用户组继承）
 func UserCanManageLibrary(userID, libraryID string) (bool, error) {
 	if userID == "" || libraryID == "" {
 		return false, nil
@@ -450,12 +455,17 @@ func UserCanManageLibrary(userID, libraryID string) (bool, error) {
 		return enabled, nil
 	}
 
-	// 普通用户：public 不自动给 canManage，只检查直接授权
-	// TODO: B.3 migration 后补充 GroupLibraryAccess.canManage 检查
+	// 普通用户：public 不自动给 canManage
+	// 检查直接授权 OR 用户组继承
 	var count int
-	err = db.QueryRow(`SELECT COUNT(*) FROM "UserLibraryAccess"
-		WHERE "userId" = ? AND "libraryId" = ? AND "canManage" = 1`,
-		userID, libraryID).Scan(&count)
+	err = db.QueryRow(`SELECT COUNT(*) FROM "Library" WHERE "id" = ? AND "enabled" = 1 AND (
+		"id" IN (SELECT "libraryId" FROM "UserLibraryAccess" WHERE "userId" = ? AND "canManage" = 1)
+		OR "id" IN (
+			SELECT gla."libraryId" FROM "GroupLibraryAccess" gla
+			JOIN "UserGroupMember" ugm ON ugm."groupId" = gla."groupId"
+			WHERE ugm."userId" = ? AND gla."canManage" = 1
+		)
+	)`, libraryID, userID, userID).Scan(&count)
 	if err != nil {
 		return false, err
 	}

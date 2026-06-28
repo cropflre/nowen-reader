@@ -488,10 +488,12 @@ func createTables() error {
 		// GroupLibraryAccess (用户组书库权限)
 		// ============================================================
 		`CREATE TABLE IF NOT EXISTS "GroupLibraryAccess" (
-			"groupId"   TEXT NOT NULL,
-			"libraryId" TEXT NOT NULL,
-			"canView"   BOOLEAN NOT NULL DEFAULT 1,
-			"createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"groupId"     TEXT NOT NULL,
+			"libraryId"   TEXT NOT NULL,
+			"canView"     BOOLEAN NOT NULL DEFAULT 1,
+			"canDownload" BOOLEAN NOT NULL DEFAULT 0,
+			"canManage"   BOOLEAN NOT NULL DEFAULT 0,
+			"createdAt"   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY ("groupId", "libraryId"),
 			CONSTRAINT "GLA_groupId_fkey" FOREIGN KEY ("groupId")
 				REFERENCES "UserGroup" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
