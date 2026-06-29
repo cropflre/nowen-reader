@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Brain,
   Cloud,
+  Cpu,
   Eye,
   Loader2,
   ChevronDown,
@@ -15,6 +16,8 @@ import {
   Zap,
   CheckCircle2,
   XCircle,
+  Play,
+  Square,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
@@ -77,6 +80,16 @@ interface AIConfig {
   cloudModel: string;
   maxTokens: number;
   maxRetries: number;
+  // 本地模型配置
+  enableLocalAI: boolean;
+  localEngine: string;
+  localBinaryPath: string;
+  localModelPath: string;
+  localHost: string;
+  localPort: number;
+  contextSize: number;
+  threads: number;
+  gpuLayers: string;
 }
 
 interface AIStatus {
@@ -85,6 +98,16 @@ interface AIStatus {
     provider: string;
     model: string;
   };
+}
+
+interface LocalAIStatus {
+  running: boolean;
+  pid: number;
+  port: number;
+  modelPath: string;
+  engine: string;
+  error: string;
+  uptime: string;
 }
 
 interface AIUsageStats {
@@ -128,19 +151,39 @@ export function AISettingsPanel() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // 本地模型状态
+  const [localStatus, setLocalStatus] = useState<LocalAIStatus | null>(null);
+  const [localStarting, setLocalStarting] = useState(false);
+  const [localStopping, setLocalStopping] = useState(false);
+  const [localTesting, setLocalTesting] = useState(false);
+  const [localTestResult, setLocalTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showLocalAdvanced, setShowLocalAdvanced] = useState(false);
+
   const aiT = t.ai || {} as Record<string, string>;
 
   useEffect(() => {
     Promise.all([
       fetch("/api/ai/settings").then((r) => r.json()),
       fetch("/api/ai/status").then((r) => r.json()),
-    ]).then(([cfg, st]) => {
+      fetch("/api/ai/local/status").then((r) => r.json()).catch(() => null),
+    ]).then(([cfg, st, localSt]) => {
       setConfig({
         ...cfg,
         maxTokens: cfg.maxTokens || 2000,
         maxRetries: cfg.maxRetries ?? 2,
+        // 本地模型默认值
+        enableLocalAI: cfg.enableLocalAI ?? false,
+        localEngine: cfg.localEngine || "llama.cpp",
+        localBinaryPath: cfg.localBinaryPath || "",
+        localModelPath: cfg.localModelPath || "",
+        localHost: cfg.localHost || "127.0.0.1",
+        localPort: cfg.localPort || 11435,
+        contextSize: cfg.contextSize || 8192,
+        threads: cfg.threads || 0,
+        gpuLayers: cfg.gpuLayers || "auto",
       });
       setStatus(st);
+      setLocalStatus(localSt);
     });
   }, []);
 
@@ -206,6 +249,78 @@ export function AISettingsPanel() {
     setUsageStats(null);
     handleLoadUsage();
   }, [aiT, handleLoadUsage]);
+
+  // 本地模型控制
+  const handleStartLocal = useCallback(async () => {
+    setLocalStarting(true);
+    try {
+      // 先保存配置
+      if (config) {
+        await fetch("/api/ai/local/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enableLocalAI: config.enableLocalAI,
+            localEngine: config.localEngine,
+            localBinaryPath: config.localBinaryPath,
+            localModelPath: config.localModelPath,
+            localHost: config.localHost,
+            localPort: config.localPort,
+            contextSize: config.contextSize,
+            threads: config.threads,
+            gpuLayers: config.gpuLayers,
+          }),
+        });
+      }
+      const res = await fetch("/api/ai/local/start", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        // 等待服务就绪后刷新状态
+        setTimeout(async () => {
+          const st = await fetch("/api/ai/local/status").then((r) => r.json());
+          setLocalStatus(st);
+        }, 3000);
+      } else {
+        alert(data.error || "启动失败");
+      }
+    } finally {
+      setLocalStarting(false);
+    }
+  }, [config]);
+
+  const handleStopLocal = useCallback(async () => {
+    setLocalStopping(true);
+    try {
+      await fetch("/api/ai/local/stop", { method: "POST" });
+      const st = await fetch("/api/ai/local/status").then((r) => r.json());
+      setLocalStatus(st);
+    } finally {
+      setLocalStopping(false);
+    }
+  }, []);
+
+  const handleTestLocal = useCallback(async () => {
+    setLocalTesting(true);
+    setLocalTestResult(null);
+    try {
+      const res = await fetch("/api/ai/local/test", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setLocalTestResult({ success: true, message: data.message || "连接成功" });
+      } else {
+        setLocalTestResult({ success: false, message: data.error || "连接失败" });
+      }
+    } catch (err) {
+      setLocalTestResult({ success: false, message: err instanceof Error ? err.message : "Error" });
+    } finally {
+      setLocalTesting(false);
+    }
+  }, []);
+
+  const handleRefreshLocalStatus = useCallback(async () => {
+    const st = await fetch("/api/ai/local/status").then((r) => r.json());
+    setLocalStatus(st);
+  }, []);
 
   const handleFetchModels = useCallback(async () => {
     if (!config) return;
@@ -579,6 +694,203 @@ export function AISettingsPanel() {
                   <p className="text-[10px] text-muted/70 pl-0 sm:pl-[7.5rem]">
                     {aiT.maxRetriesHint || "Auto-retry count on API failure (0-5)"}
                   </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Local AI Section */}
+      <div className="space-y-3 rounded-xl bg-background p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Cpu className="h-4 w-4 text-green-400" />
+            <span className="text-sm font-medium text-foreground">
+              {aiT.localAI || "Local Model (llama.cpp)"}
+            </span>
+          </div>
+          <ToggleSwitch
+            checked={config.enableLocalAI}
+            onChange={(v) => setConfig({ ...config, enableLocalAI: v })}
+          />
+        </div>
+
+        {config.enableLocalAI && (
+          <div className="space-y-3 border-t border-border/30 pt-3">
+            {/* 状态显示 */}
+            {localStatus && (
+              <div className="flex items-center gap-2 rounded-lg bg-card p-2.5">
+                <div className={`h-2 w-2 rounded-full ${localStatus.running ? "bg-green-400" : "bg-gray-400"}`} />
+                <span className="text-xs text-foreground">
+                  {localStatus.running
+                    ? `${aiT.localRunning || "Running"} · PID ${localStatus.pid} · ${localStatus.uptime}`
+                    : aiT.localStopped || "Stopped"}
+                </span>
+                {localStatus.error && (
+                  <span className="text-[10px] text-red-400 ml-auto">{localStatus.error}</span>
+                )}
+                <button
+                  onClick={handleRefreshLocalStatus}
+                  className="ml-auto text-muted hover:text-foreground"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
+            {/* llama-server 路径 */}
+            <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+              <span className="block text-xs text-muted sm:w-28 sm:shrink-0">
+                {aiT.llamaServerPath || "llama-server"}
+              </span>
+              <input
+                type="text"
+                value={config.localBinaryPath}
+                onChange={(e) => setConfig({ ...config, localBinaryPath: e.target.value })}
+                placeholder="C:\AI\llama.cpp\llama-server.exe"
+                className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted/50"
+              />
+            </div>
+
+            {/* 模型文件路径 */}
+            <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+              <span className="block text-xs text-muted sm:w-28 sm:shrink-0">
+                {aiT.modelPath || "Model File"}
+              </span>
+              <input
+                type="text"
+                value={config.localModelPath}
+                onChange={(e) => setConfig({ ...config, localModelPath: e.target.value })}
+                placeholder="D:\AI\models\qwen-8b-instruct-q4_k_m.gguf"
+                className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted/50"
+              />
+            </div>
+
+            {/* 控制按钮 */}
+            <div className="flex items-center gap-2">
+              {localStatus?.running ? (
+                <button
+                  onClick={handleStopLocal}
+                  disabled={localStopping}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-card px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                >
+                  {localStopping ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Square className="h-3 w-3" />
+                  )}
+                  {aiT.stopLocal || "Stop"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStartLocal}
+                  disabled={localStarting || !config.localBinaryPath || !config.localModelPath}
+                  className="flex items-center gap-1.5 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs text-green-400 transition-colors hover:bg-green-500/30 disabled:opacity-50"
+                >
+                  {localStarting ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3" />
+                  )}
+                  {aiT.startLocal || "Start"}
+                </button>
+              )}
+
+              <button
+                onClick={handleTestLocal}
+                disabled={localTesting || !localStatus?.running}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-card-hover disabled:opacity-50"
+              >
+                {localTesting ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Zap className="h-3 w-3" />
+                )}
+                {aiT.testLocal || "Test"}
+              </button>
+
+              {localTestResult && (
+                <span className={`flex items-center gap-1 text-[10px] ${localTestResult.success ? "text-green-400" : "text-red-400"}`}>
+                  {localTestResult.success ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                  {localTestResult.message}
+                </span>
+              )}
+            </div>
+
+            {/* 高级设置 */}
+            <div className="border-t border-border/30 pt-3">
+              <button
+                onClick={() => setShowLocalAdvanced(!showLocalAdvanced)}
+                className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                {aiT.localAdvanced || "Advanced Settings"}
+                <ChevronDown className={`h-3 w-3 transition-transform ${showLocalAdvanced ? "rotate-180" : ""}`} />
+              </button>
+
+              {showLocalAdvanced && (
+                <div className="mt-3 space-y-3">
+                  {/* 端口 */}
+                  <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+                    <span className="block text-xs text-muted sm:w-28 sm:shrink-0">
+                      {aiT.localPort || "Port"}
+                    </span>
+                    <input
+                      type="number"
+                      min={1024}
+                      max={65535}
+                      value={config.localPort}
+                      onChange={(e) => setConfig({ ...config, localPort: parseInt(e.target.value) || 11435 })}
+                      className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none"
+                    />
+                  </div>
+
+                  {/* 上下文大小 */}
+                  <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+                    <span className="block text-xs text-muted sm:w-28 sm:shrink-0">
+                      {aiT.contextSize || "Context Size"}
+                    </span>
+                    <input
+                      type="number"
+                      min={1024}
+                      max={131072}
+                      step={1024}
+                      value={config.contextSize}
+                      onChange={(e) => setConfig({ ...config, contextSize: parseInt(e.target.value) || 8192 })}
+                      className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none"
+                    />
+                  </div>
+
+                  {/* 线程数 */}
+                  <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+                    <span className="block text-xs text-muted sm:w-28 sm:shrink-0">
+                      {aiT.threads || "CPU Threads"}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={64}
+                      value={config.threads}
+                      onChange={(e) => setConfig({ ...config, threads: parseInt(e.target.value) || 0 })}
+                      placeholder="0 = auto"
+                      className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted/50"
+                    />
+                  </div>
+
+                  {/* GPU 层数 */}
+                  <div className="space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+                    <span className="block text-xs text-muted sm:w-28 sm:shrink-0">
+                      {aiT.gpuLayers || "GPU Layers"}
+                    </span>
+                    <input
+                      type="text"
+                      value={config.gpuLayers}
+                      onChange={(e) => setConfig({ ...config, gpuLayers: e.target.value })}
+                      placeholder="auto"
+                      className="w-full sm:flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted/50"
+                    />
+                  </div>
                 </div>
               )}
             </div>

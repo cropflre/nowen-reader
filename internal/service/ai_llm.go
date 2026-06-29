@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -27,9 +28,19 @@ type LLMCallOptions struct {
 	Images []ImageContent
 }
 
-// CallCloudLLM 调用云端 LLM，支持重试和 token 统计。
+// CallCloudLLM 调用 LLM，支持重试和 token 统计。
+// 优先使用本地模型（如果启用且运行中），否则使用云端模型。
 // opts 可传 nil 使用默认选项。
 func CallCloudLLM(cfg AIConfig, systemPrompt, userPrompt string, opts *LLMCallOptions) (string, error) {
+	// 优先尝试本地模型
+	if cfg.EnableLocalAI && LocalAI.IsRunning() {
+		result, err := callLocalLLM(cfg, systemPrompt, userPrompt, opts)
+		if err == nil {
+			return result, nil
+		}
+		log.Printf("[AI] 本地模型调用失败，回退到云端: %v", err)
+	}
+
 	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
 		return "", fmt.Errorf("cloud AI not configured")
 	}
@@ -93,6 +104,47 @@ type tokenUsage struct {
 	PromptTokens int
 	OutputTokens int
 	TotalTokens  int
+}
+
+// callLocalLLM 调用本地模型（通过 llama.cpp 的 OpenAI Compatible API）
+func callLocalLLM(cfg AIConfig, systemPrompt, userPrompt string, opts *LLMCallOptions) (string, error) {
+	if opts == nil {
+		opts = &LLMCallOptions{}
+	}
+
+	apiURL := LocalAI.GetAPIURL()
+	maxTokens := cfg.MaxTokens
+	if opts.MaxTokens > 0 {
+		maxTokens = opts.MaxTokens
+	}
+	if maxTokens <= 0 {
+		maxTokens = 2000
+	}
+
+	temp := 0.3
+	if opts.Temperature != nil {
+		temp = *opts.Temperature
+	}
+
+	start := time.Now()
+	result, usage, err := callOpenAICompatible(cfg, apiURL, systemPrompt, userPrompt, maxTokens, temp, opts.Images)
+	duration := time.Since(start).Milliseconds()
+
+	// 记录使用量
+	record := AIUsageRecord{
+		Timestamp:    time.Now(),
+		Provider:     "local",
+		Model:        filepath.Base(cfg.LocalModelPath),
+		PromptTokens: usage.PromptTokens,
+		OutputTokens: usage.OutputTokens,
+		TotalTokens:  usage.TotalTokens,
+		Scenario:     opts.Scenario,
+		Success:      err == nil,
+		DurationMs:   duration,
+	}
+	recordUsage(record)
+
+	return result, err
 }
 
 // callCloudLLMOnce 单次调用（不重试）

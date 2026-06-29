@@ -50,6 +50,17 @@ type AIConfig struct {
 	CloudModel    string `json:"cloudModel"`
 	MaxTokens     int    `json:"maxTokens"`  // 0-1: 最大输出 token 数，0 表示使用默认值
 	MaxRetries    int    `json:"maxRetries"` // 0-2: 最大重试次数，0 表示不重试
+
+	// 本地模型配置
+	EnableLocalAI   bool   `json:"enableLocalAI"`
+	LocalEngine     string `json:"localEngine"`     // llama.cpp / vllm / custom
+	LocalBinaryPath string `json:"localBinaryPath"` // llama-server 可执行文件路径
+	LocalModelPath  string `json:"localModelPath"`  // GGUF 模型文件路径
+	LocalHost       string `json:"localHost"`        // 绑定地址，默认 127.0.0.1
+	LocalPort       int    `json:"localPort"`        // 端口，默认 11435
+	ContextSize     int    `json:"contextSize"`      // 上下文大小，默认 8192
+	Threads         int    `json:"threads"`          // CPU 线程数，默认 0 (自动)
+	GPULayers       string `json:"gpuLayers"`        // GPU 层数，"auto" 或数字
 }
 
 var defaultAIConfig = AIConfig{
@@ -60,6 +71,17 @@ var defaultAIConfig = AIConfig{
 	CloudModel:    "gpt-4o-mini",
 	MaxTokens:     2000,
 	MaxRetries:    2,
+
+	// 本地模型默认值
+	EnableLocalAI:   false,
+	LocalEngine:     "llama.cpp",
+	LocalBinaryPath: "",
+	LocalModelPath:  "",
+	LocalHost:       "127.0.0.1",
+	LocalPort:       11435,
+	ContextSize:     8192,
+	Threads:         0,
+	GPULayers:       "auto",
 }
 
 func aiConfigPath() string {

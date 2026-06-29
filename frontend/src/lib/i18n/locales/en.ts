@@ -688,6 +688,20 @@ const en: Translations = {
     scenario: "Scenario",
     recentCalls: "Recent Calls",
     duration: "Duration",
+    // Local AI
+    localAI: "Local Model (llama.cpp)",
+    localRunning: "Running",
+    localStopped: "Stopped",
+    llamaServerPath: "llama-server",
+    modelPath: "Model File",
+    startLocal: "Start",
+    stopLocal: "Stop",
+    testLocal: "Test",
+    localAdvanced: "Advanced Settings",
+    localPort: "Port",
+    contextSize: "Context Size",
+    threads: "CPU Threads",
+    gpuLayers: "GPU Layers",
   },
 
   // Duplicates

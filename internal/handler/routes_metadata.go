@@ -58,6 +58,19 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		aiAdmin.DELETE("/prompts", ai.ResetPromptTemplates)
 	}
 
+	// 本地模型管理（仅管理员）
+	localAI := &LocalAIHandler{}
+	localAIGroup := api.Group("/ai/local")
+	localAIGroup.Use(middleware.AdminRequired())
+	{
+		localAIGroup.GET("/status", localAI.GetStatus)
+		localAIGroup.POST("/start", localAI.Start)
+		localAIGroup.POST("/stop", localAI.Stop)
+		localAIGroup.POST("/test", localAI.TestConnection)
+		localAIGroup.GET("/models", localAI.ScanModels)
+		localAIGroup.PUT("/config", localAI.SaveConfig)
+	}
+
 	// AI 使用功能（需要 AI 权限）
 	aiUse := api.Group("/ai")
 	aiUse.Use(middleware.AIRequired())

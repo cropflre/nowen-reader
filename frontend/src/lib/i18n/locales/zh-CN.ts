@@ -685,6 +685,20 @@ const zhCN = {
     scenario: "场景",
     recentCalls: "最近调用",
     duration: "耗时",
+    // 本地模型
+    localAI: "本地模型 (llama.cpp)",
+    localRunning: "运行中",
+    localStopped: "已停止",
+    llamaServerPath: "llama-server 路径",
+    modelPath: "模型文件",
+    startLocal: "启动",
+    stopLocal: "停止",
+    testLocal: "测试",
+    localAdvanced: "高级设置",
+    localPort: "端口",
+    contextSize: "上下文大小",
+    threads: "CPU 线程",
+    gpuLayers: "GPU 层数",
   },
 
   // Duplicates
@@ -1951,6 +1965,20 @@ export interface Translations {
     scenario: string;
     recentCalls: string;
     duration: string;
+    // 本地模型
+    localAI: string;
+    localRunning: string;
+    localStopped: string;
+    llamaServerPath: string;
+    modelPath: string;
+    startLocal: string;
+    stopLocal: string;
+    testLocal: string;
+    localAdvanced: string;
+    localPort: string;
+    contextSize: string;
+    threads: string;
+    gpuLayers: string;
   };
   duplicates: {
     title: string;
