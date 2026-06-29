@@ -587,14 +587,14 @@ func getArchivePageImage(comicID, fp string, pageIndex int) (*PageImage, error) 
 	return &PageImage{Data: data, MimeType: mimeType}, nil
 }
 
-// getPdfPageImage renders a PDF page to PNG.
+// getPdfPageImage renders a PDF page to JPEG.
 func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d.png", pageIndex))
+	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d.jpg", pageIndex))
 
 	// Check disk cache
 	if data, err := os.ReadFile(cachePath); err == nil {
-		return &PageImage{Data: data, MimeType: "image/png"}, nil
+		return &PageImage{Data: data, MimeType: "image/jpeg"}, nil
 	}
 
 	// 动态计算用于阅读的最佳 DPI
@@ -622,7 +622,7 @@ func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 		}
 	}()
 
-	return &PageImage{Data: data, MimeType: "image/png"}, nil
+	return &PageImage{Data: data, MimeType: "image/jpeg"}, nil
 }
 
 // ============================================================

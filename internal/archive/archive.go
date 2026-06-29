@@ -1217,7 +1217,7 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 	// Method 1: mutool (from MuPDF — best quality)
 	if mutool, ok := config.LookPdfTool("mutool", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
-			out, runErr := runPdfTool(mutool, "draw", "-o", "-", "-F", "png", "-r", fmt.Sprintf("%d", dpi), fp, fmt.Sprintf("%d", pageNum))
+			out, runErr := runPdfTool(mutool, "draw", "-F", "jpeg", "-r", fmt.Sprintf("%d", dpi), "-o", "-", fp, fmt.Sprintf("%d", pageNum))
 			if runErr == nil && len(out) > 0 {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] mutool succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
@@ -1248,7 +1248,7 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 	// Method 2: pdftoppm (from poppler)
 	if pdftoppm, ok := config.LookPdfTool("pdftoppm", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
-			out, runErr := runPdfTool(pdftoppm, "-png", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
+			out, runErr := runPdfTool(pdftoppm, "-jpeg", "-jpegopt", "quality=90", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
 			if runErr == nil && len(out) > 0 {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] pdftoppm succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
@@ -1278,7 +1278,7 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 	// Windows 系统下 system32\convert.exe 是 FAT->NTFS 转换工具，必须排除
 	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok && !isWindowsSystemConvert(convert) {
 		for _, dpi := range dpiLadder {
-			out, runErr := runPdfTool(convert, "-density", fmt.Sprintf("%d", dpi), fmt.Sprintf("%s[%d]", fp, pageIndex), "png:-")
+			out, runErr := runPdfTool(convert, "-density", fmt.Sprintf("%d", dpi), "-quality", "90", fmt.Sprintf("%s[%d]", fp, pageIndex), "jpeg:-")
 			if runErr == nil && len(out) > 0 {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] imagemagick succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
