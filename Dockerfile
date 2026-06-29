@@ -92,6 +92,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     apk add --no-cache \
     p7zip \
     mupdf-tools \
+    poppler-utils \
     libwebp-tools \
     tini \
     su-exec \
