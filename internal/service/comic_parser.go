@@ -587,14 +587,20 @@ func getArchivePageImage(comicID, fp string, pageIndex int) (*PageImage, error) 
 	return &PageImage{Data: data, MimeType: mimeType}, nil
 }
 
-// getPdfPageImage renders a PDF page to JPEG.
+// getPdfPageImage renders a PDF page dynamically to JPEG or PNG.
 func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d.jpg", pageIndex))
 
-	// Check disk cache
-	if data, err := os.ReadFile(cachePath); err == nil {
+	// Check disk cache for JPEG first
+	jpgPath := filepath.Join(cacheDir, fmt.Sprintf("%d.jpg", pageIndex))
+	if data, err := os.ReadFile(jpgPath); err == nil {
 		return &PageImage{Data: data, MimeType: "image/jpeg"}, nil
+	}
+
+	// Check disk cache for PNG fallback
+	pngPath := filepath.Join(cacheDir, fmt.Sprintf("%d.png", pageIndex))
+	if data, err := os.ReadFile(pngPath); err == nil {
+		return &PageImage{Data: data, MimeType: "image/png"}, nil
 	}
 
 	// 动态计算用于阅读的最佳 DPI
@@ -604,11 +610,18 @@ func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 		targetDPI = archive.CalcReadingDPI(w, 1920)
 	}
 
-	// Render from PDF
-	data, err := archive.RenderPdfPage(fp, pageIndex, targetDPI)
+	// Render from PDF (returns data, ext, error)
+	data, ext, err := archive.RenderPdfPage(fp, pageIndex, targetDPI)
 	if err != nil {
 		return nil, fmt.Errorf("render PDF page %d: %w", pageIndex, err)
 	}
+
+	mimeType := "image/jpeg"
+	if ext == ".png" {
+		mimeType = "image/png"
+	}
+
+	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIndex, ext))
 
 	// Cache to disk (fire-and-forget)
 	go func() {
@@ -622,7 +635,7 @@ func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
 		}
 	}()
 
-	return &PageImage{Data: data, MimeType: "image/jpeg"}, nil
+	return &PageImage{Data: data, MimeType: mimeType}, nil
 }
 
 // ============================================================

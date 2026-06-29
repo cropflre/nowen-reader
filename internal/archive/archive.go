@@ -1189,7 +1189,7 @@ func CalcReadingDPI(pageWidthPt float64, targetWidthPx int) int {
 //
 // targetDPI: 可选参数，传入时使用 [targetDPI, 96] 作为降级阶梯（用于缩略图场景的动态 DPI）；
 // 不传时保持默认阶梯 [200, 120, 96]（用于页面阅读场景）。
-func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
+func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, string, error) {
 	pageNum := pageIndex + 1 // External tools use 1-based page numbers
 	var errors []string
 
@@ -1214,38 +1214,7 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 		dpiLadder = []int{200, 120, 96}
 	}
 
-	// Method 1: mutool (from MuPDF — best quality)
-	if mutool, ok := config.LookPdfTool("mutool", exec.LookPath); ok {
-		for _, dpi := range dpiLadder {
-			out, runErr := runPdfTool(mutool, "draw", "-F", "jpeg", "-r", fmt.Sprintf("%d", dpi), "-o", "-", fp, fmt.Sprintf("%d", pageNum))
-			if runErr == nil && len(out) > 0 {
-				if dpi != dpiLadder[0] {
-					log.Printf("[pdf] mutool succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
-				}
-				return out, nil
-			}
-			if runErr != nil {
-				errDetail := runErr.Error()
-				if exitErr, ok := runErr.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-					errDetail = strings.TrimSpace(string(exitErr.Stderr))
-				}
-				log.Printf("[pdf] mutool failed (dpi=%d) for %s page %d: %s", dpi, fp, pageNum, errDetail)
-				errors = append(errors, fmt.Sprintf("mutool@%d: %s", dpi, errDetail))
-				// 如果是 OOM/被杀，继续降级 dpi 重试；如果是其它语义错误（密码、损坏等）直接跳出
-				if !isResourceError(runErr, errDetail) {
-					break
-				}
-			} else {
-				log.Printf("[pdf] mutool returned empty output (dpi=%d) for %s page %d", dpi, fp, pageNum)
-				errors = append(errors, fmt.Sprintf("mutool@%d: empty output", dpi))
-				break
-			}
-		}
-	} else {
-		errors = append(errors, "mutool: not installed")
-	}
-
-	// Method 2: pdftoppm (from poppler)
+	// Method 1: pdftoppm (from poppler - best quality JPEG)
 	if pdftoppm, ok := config.LookPdfTool("pdftoppm", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
 			out, runErr := runPdfTool(pdftoppm, "-jpeg", "-jpegopt", "quality=90", "-r", fmt.Sprintf("%d", dpi), "-f", fmt.Sprintf("%d", pageNum), "-l", fmt.Sprintf("%d", pageNum), "-singlefile", fp)
@@ -1253,7 +1222,7 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] pdftoppm succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
 				}
-				return out, nil
+				return out, ".jpg", nil
 			}
 			if runErr != nil {
 				errDetail := runErr.Error()
@@ -1274,6 +1243,36 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 		errors = append(errors, "pdftoppm: not installed")
 	}
 
+	// Method 2: mutool (from MuPDF - lossless PNG fallback)
+	if mutool, ok := config.LookPdfTool("mutool", exec.LookPath); ok {
+		for _, dpi := range dpiLadder {
+			out, runErr := runPdfTool(mutool, "draw", "-F", "png", "-r", fmt.Sprintf("%d", dpi), "-o", "-", fp, fmt.Sprintf("%d", pageNum))
+			if runErr == nil && len(out) > 0 {
+				if dpi != dpiLadder[0] {
+					log.Printf("[pdf] mutool succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
+				}
+				return out, ".png", nil
+			}
+			if runErr != nil {
+				errDetail := runErr.Error()
+				if exitErr, ok := runErr.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+					errDetail = strings.TrimSpace(string(exitErr.Stderr))
+				}
+				log.Printf("[pdf] mutool failed (dpi=%d) for %s page %d: %s", dpi, fp, pageNum, errDetail)
+				errors = append(errors, fmt.Sprintf("mutool@%d: %s", dpi, errDetail))
+				if !isResourceError(runErr, errDetail) {
+					break
+				}
+			} else {
+				log.Printf("[pdf] mutool returned empty output (dpi=%d) for %s page %d", dpi, fp, pageNum)
+				errors = append(errors, fmt.Sprintf("mutool@%d: empty output", dpi))
+				break
+			}
+		}
+	} else {
+		errors = append(errors, "mutool: not installed")
+	}
+
 	// Method 3: convert from ImageMagick
 	// Windows 系统下 system32\convert.exe 是 FAT->NTFS 转换工具，必须排除
 	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok && !isWindowsSystemConvert(convert) {
@@ -1283,7 +1282,7 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 				if dpi != dpiLadder[0] {
 					log.Printf("[pdf] imagemagick succeeded at fallback dpi=%d for %s page %d", dpi, fp, pageNum)
 				}
-				return out, nil
+				return out, ".jpg", nil
 			}
 			if runErr != nil {
 				errDetail := runErr.Error()
@@ -1314,9 +1313,9 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, error) {
 	}
 
 	if allNotInstalled {
-		return nil, fmt.Errorf("no PDF renderer available (install mutool, pdftoppm, or imagemagick)")
+		return nil, "", fmt.Errorf("no PDF renderer available (install pdftoppm, mutool, or imagemagick)")
 	}
-	return nil, fmt.Errorf("render PDF page %d failed: %s", pageNum, strings.Join(errors, "; "))
+	return nil, "", fmt.Errorf("render PDF page %d failed: %s", pageNum, strings.Join(errors, "; "))
 }
 
 // isResourceError 判断是否是 OOM/被杀/信号中断等资源类错误，这种情况降低 dpi 重试有意义。

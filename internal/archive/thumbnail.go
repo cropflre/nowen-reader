@@ -1,4 +1,4 @@
-﻿package archive
+package archive
 
 import (
 	"bytes"
@@ -108,7 +108,7 @@ func generateThumbnailInternal(archivePath, comicID string) ([]byte, string, flo
 			} else {
 				dpi = 96
 			}
-			buf, renderErr = RenderPdfPage(archivePath, pg, dpi)
+			buf, _, renderErr = RenderPdfPage(archivePath, pg, dpi)
 			if renderErr == nil && len(buf) > 1024 {
 				log.Printf("[thumbnail] PDF cover from page %d for %s", pg, comicID)
 				break
