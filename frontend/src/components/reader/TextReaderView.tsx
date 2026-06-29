@@ -164,6 +164,12 @@ export default function TextReaderView({
   const [ttsSupported, setTtsSupported] = useState(false);
   const [showTtsPanel, setShowTtsPanel] = useState(false);
   const ttsUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  // TTS 会话 ID（用于防止幽灵播放）
+  const ttsSessionRef = useRef<number>(0);
+  // auto-next 定时器
+  const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 章节加载完成标志
+  const chapterLoadedRef = useRef(false);
 
   // AI 优化朗读状态
   const [aiTtsEnabled, setAiTtsEnabled] = useState(() => {
@@ -206,6 +212,7 @@ export default function TextReaderView({
 
     const url = chapters[currentPage].url;
     setLoading(true);
+    chapterLoadedRef.current = false;
 
     fetch(url)
       .then((res) => {
@@ -218,22 +225,33 @@ export default function TextReaderView({
         // Detect if content is HTML (from EPUB)
         const mime = data.mimeType || "";
         setIsHTML(mime.includes("html"));
+        chapterLoadedRef.current = true;
       })
       .catch(() => {
         setContent(t.reader.loadError);
         setIsHTML(false);
+        chapterLoadedRef.current = true;
       })
       .finally(() => {
         setLoading(false);
       });
   }, [currentPage, chapters]);
 
-  // Scroll to top on chapter change + reset swipe page
+  // Scroll to top on chapter change + reset swipe page + reset TTS state
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
     setSwipePage(0);
+    // 清除 AI TTS 状态
+    setAiTtsSegments([]);
+    setAiTtsCurrentIndex(0);
+    setAiTtsError(null);
+    // 清除 auto-next 定时器
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
   }, [currentPage]);
 
   // swipe 模式下计算章内总页数
@@ -581,9 +599,11 @@ export default function TextReaderView({
     }
   }, [comicId, currentPage, aiTtsRecap]);
 
-  // 播放单个 segment
-  const speakSegment = useCallback((text: string, onEnd: () => void) => {
+  // 播放单个 segment（带会话检查）
+  const speakSegment = useCallback((text: string, session: number, onEnd: () => void) => {
     if (!ttsSupported) return;
+    // 检查会话是否仍然有效
+    if (session !== ttsSessionRef.current) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
@@ -595,26 +615,39 @@ export default function TextReaderView({
     const zhVoice = voices.find(v => v.lang.startsWith('zh')) || voices.find(v => v.lang.includes('CN'));
     if (zhVoice) utterance.voice = zhVoice;
 
-    utterance.onend = onEnd;
+    utterance.onend = () => {
+      // 检查会话是否仍然有效
+      if (session === ttsSessionRef.current) {
+        onEnd();
+      }
+    };
     utterance.onerror = () => {
-      setTtsPlaying(false);
-      setTtsPaused(false);
+      if (session === ttsSessionRef.current) {
+        setTtsPlaying(false);
+        setTtsPaused(false);
+      }
     };
 
     ttsUtteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
   }, [ttsSupported, ttsRate]);
 
-  // 播放 AI segments 队列
-  const playSegmentsQueue = useCallback((startIndex: number) => {
+  // 播放 AI segments 队列（带会话检查）
+  const playSegmentsQueue = useCallback((startIndex: number, session: number) => {
+    // 检查会话是否仍然有效
+    if (session !== ttsSessionRef.current) return;
+
     if (startIndex >= aiTtsSegments.length) {
       // 当前章节播放完毕，自动下一章
       setTtsPlaying(false);
       setTtsPaused(false);
       if (currentPage < chapters.length - 1) {
         onPageChange(currentPage + 1);
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('novel-tts-auto-next'));
+        // 使用 ref 存储定时器，以便清除
+        autoNextTimerRef.current = setTimeout(() => {
+          if (session === ttsSessionRef.current) {
+            window.dispatchEvent(new CustomEvent('novel-tts-auto-next'));
+          }
         }, 1500);
       }
       return;
@@ -623,10 +656,10 @@ export default function TextReaderView({
     const segment = aiTtsSegments[startIndex];
     setAiTtsCurrentIndex(startIndex);
 
-    speakSegment(segment.text, () => {
+    speakSegment(segment.text, session, () => {
       // 暂停后继续播放下一个 segment
-      setTimeout(() => {
-        playSegmentsQueue(startIndex + 1);
+      const timer = setTimeout(() => {
+        playSegmentsQueue(startIndex + 1, session);
       }, segment.pauseAfterMs || 500);
     });
   }, [aiTtsSegments, currentPage, chapters.length, onPageChange, speakSegment]);
@@ -635,7 +668,14 @@ export default function TextReaderView({
   const startTTS = useCallback(async () => {
     if (!ttsSupported) return;
 
+    // 增加会话 ID，取消之前的播放
+    const session = ++ttsSessionRef.current;
     window.speechSynthesis.cancel();
+    // 清除之前的 auto-next 定时器
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
 
     // AI 优化朗读模式
     if (aiTtsEnabled && aiConfigured) {
@@ -644,16 +684,19 @@ export default function TextReaderView({
       setShowTtsPanel(true);
 
       const result = await prepareAiTts();
+      // 检查会话是否仍然有效
+      if (session !== ttsSessionRef.current) return;
+
       if (result && result.segments.length > 0) {
         // 先播放前情提要
         if (result.recap && aiTtsRecap) {
-          speakSegment(result.recap, () => {
+          speakSegment(result.recap, session, () => {
             setTimeout(() => {
-              playSegmentsQueue(0);
+              playSegmentsQueue(0, session);
             }, 800);
           });
         } else {
-          playSegmentsQueue(0);
+          playSegmentsQueue(0, session);
         }
       } else {
         // AI 失败，回退到原始朗读
@@ -662,13 +705,16 @@ export default function TextReaderView({
           setTtsPlaying(false);
           return;
         }
-        speakSegment(text, () => {
+        speakSegment(text, session, () => {
+          if (session !== ttsSessionRef.current) return;
           setTtsPlaying(false);
           setTtsPaused(false);
           if (currentPage < chapters.length - 1) {
             onPageChange(currentPage + 1);
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('novel-tts-auto-next'));
+            autoNextTimerRef.current = setTimeout(() => {
+              if (session === ttsSessionRef.current) {
+                window.dispatchEvent(new CustomEvent('novel-tts-auto-next'));
+              }
             }, 1500);
           }
         });
@@ -680,13 +726,16 @@ export default function TextReaderView({
     const text = getChapterText();
     if (!text.trim()) return;
 
-    speakSegment(text, () => {
+    speakSegment(text, session, () => {
+      if (session !== ttsSessionRef.current) return;
       setTtsPlaying(false);
       setTtsPaused(false);
       if (currentPage < chapters.length - 1) {
         onPageChange(currentPage + 1);
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('novel-tts-auto-next'));
+        autoNextTimerRef.current = setTimeout(() => {
+          if (session === ttsSessionRef.current) {
+            window.dispatchEvent(new CustomEvent('novel-tts-auto-next'));
+          }
         }, 1500);
       }
     });
@@ -708,7 +757,14 @@ export default function TextReaderView({
 
   // 停止 TTS
   const stopTTS = useCallback(() => {
+    // 增加会话 ID，使所有旧的回调失效
+    ttsSessionRef.current++;
     window.speechSynthesis?.cancel();
+    // 清除 auto-next 定时器
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
     setTtsPlaying(false);
     setTtsPaused(false);
     setAiTtsCurrentIndex(0);
@@ -717,12 +773,14 @@ export default function TextReaderView({
   // 上一句（AI 模式）
   const ttsPrevSegment = useCallback(() => {
     if (!aiTtsEnabled || aiTtsSegments.length === 0) return;
+    // 增加会话 ID，取消之前的播放
+    const session = ++ttsSessionRef.current;
     window.speechSynthesis.cancel();
     const prevIndex = Math.max(0, aiTtsCurrentIndex - 1);
     setAiTtsCurrentIndex(prevIndex);
-    speakSegment(aiTtsSegments[prevIndex].text, () => {
+    speakSegment(aiTtsSegments[prevIndex].text, session, () => {
       setTimeout(() => {
-        playSegmentsQueue(prevIndex + 1);
+        playSegmentsQueue(prevIndex + 1, session);
       }, aiTtsSegments[prevIndex].pauseAfterMs || 500);
     });
   }, [aiTtsEnabled, aiTtsSegments, aiTtsCurrentIndex, speakSegment, playSegmentsQueue]);
@@ -730,12 +788,14 @@ export default function TextReaderView({
   // 下一句（AI 模式）
   const ttsNextSegment = useCallback(() => {
     if (!aiTtsEnabled || aiTtsSegments.length === 0) return;
+    // 增加会话 ID，取消之前的播放
+    const session = ++ttsSessionRef.current;
     window.speechSynthesis.cancel();
     const nextIndex = Math.min(aiTtsSegments.length - 1, aiTtsCurrentIndex + 1);
     setAiTtsCurrentIndex(nextIndex);
-    speakSegment(aiTtsSegments[nextIndex].text, () => {
+    speakSegment(aiTtsSegments[nextIndex].text, session, () => {
       setTimeout(() => {
-        playSegmentsQueue(nextIndex + 1);
+        playSegmentsQueue(nextIndex + 1, session);
       }, aiTtsSegments[nextIndex].pauseAfterMs || 500);
     });
   }, [aiTtsEnabled, aiTtsSegments, aiTtsCurrentIndex, speakSegment, playSegmentsQueue]);
@@ -744,6 +804,16 @@ export default function TextReaderView({
   useEffect(() => {
     const handleAutoNext = () => {
       if (ttsPlaying || ttsPaused) return; // 已在播放
+      // 等待章节加载完成
+      if (!chapterLoadedRef.current) {
+        // 延迟重试
+        setTimeout(() => {
+          if (chapterLoadedRef.current && !ttsPlaying && !ttsPaused) {
+            startTTS();
+          }
+        }, 500);
+        return;
+      }
       startTTS();
     };
     window.addEventListener('novel-tts-auto-next', handleAutoNext);

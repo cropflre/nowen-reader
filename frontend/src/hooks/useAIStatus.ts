@@ -15,7 +15,10 @@ async function fetchAIStatus() {
   fetchPromise = fetch("/api/ai/status")
     .then((r) => r.json())
     .then((data) => {
-      cachedStatus = { configured: data.cloudAI?.configured ?? false };
+      // 支持 Cloud AI 和 Local AI
+      const cloudConfigured = data.cloudAI?.configured ?? false;
+      const localConfigured = data.localAI?.configured ?? false;
+      cachedStatus = { configured: cloudConfigured || localConfigured };
       notifyListeners();
     })
     .catch(() => {

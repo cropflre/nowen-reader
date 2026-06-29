@@ -15,6 +15,12 @@ type AIStatus struct {
 		Provider   string `json:"provider"`
 		Model      string `json:"model"`
 	} `json:"cloudAI"`
+	LocalAI struct {
+		Configured bool   `json:"configured"`
+		Running    bool   `json:"running"`
+		Engine     string `json:"engine"`
+		ModelPath  string `json:"modelPath"`
+	} `json:"localAI"`
 }
 
 func GetAIStatus() AIStatus {
@@ -24,6 +30,13 @@ func GetAIStatus() AIStatus {
 	status.CloudAI.Configured = cfg.EnableCloudAI && cfg.CloudAPIKey != ""
 	status.CloudAI.Provider = cfg.CloudProvider
 	status.CloudAI.Model = cfg.CloudModel
+
+	// 本地 AI 状态
+	status.LocalAI.Configured = cfg.EnableLocalAI && cfg.LocalBinaryPath != "" && cfg.LocalModelPath != ""
+	status.LocalAI.Running = LocalAI.IsRunning()
+	status.LocalAI.Engine = cfg.LocalEngine
+	status.LocalAI.ModelPath = cfg.LocalModelPath
+
 	return status
 }
 

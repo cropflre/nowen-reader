@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -29,8 +30,8 @@ func (h *AudiobookHandler) Prepare(c *gin.Context) {
 
 	// 解析请求参数
 	var req struct {
-		IncludeRecap  bool `json:"includeRecap"`
-		ForceRefresh  bool `json:"forceRefresh"`
+		IncludeRecap bool `json:"includeRecap"`
+		ForceRefresh bool `json:"forceRefresh"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// 使用默认值
@@ -55,7 +56,8 @@ func (h *AudiobookHandler) Prepare(c *gin.Context) {
 		req.ForceRefresh,
 	)
 	if err != nil {
-		// AI 调用失败，返回 fallback
+		// AI 调用失败，返回 fallback（错误信息脱敏）
+		log.Printf("[audiobook] AI 准备失败: %v", err)
 		c.JSON(http.StatusOK, gin.H{
 			"chapterIndex": chapterIndex,
 			"title":        chapterContent.Title,
@@ -71,7 +73,7 @@ func (h *AudiobookHandler) Prepare(c *gin.Context) {
 			"source":  "fallback",
 			"model":   "",
 			"cached":  false,
-			"error":   err.Error(),
+			"error":   "AI 处理失败，使用原始文本",
 		})
 		return
 	}
