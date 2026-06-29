@@ -188,6 +188,22 @@ export default function TextReaderView({
   const [aiTtsCurrentIndex, setAiTtsCurrentIndex] = useState(0);
   const [aiTtsPreparing, setAiTtsPreparing] = useState(false);
   const [aiTtsError, setAiTtsError] = useState<string | null>(null);
+  const [aiTtsCached, setAiTtsCached] = useState(false);
+
+  // 睡眠定时状态
+  const [sleepTimer, setSleepTimer] = useState<number | null>(null); // 分钟数，null 表示未设置
+  const [sleepTimerRemaining, setSleepTimerRemaining] = useState(0); // 剩余秒数
+  const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sleepTimerStartRef = useRef<number>(0);
+  const [showSleepMenu, setShowSleepMenu] = useState(false);
+
+  // 断点续听状态
+  const [resumePrompt, setResumePrompt] = useState<{
+    chapterIndex: number;
+    segmentIndex: number;
+    mode: string;
+  } | null>(null);
+
   // 自动翻页状态
   const [autoScrollActive, setAutoScrollActive] = useState(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState(() => {
@@ -585,11 +601,13 @@ export default function TextReaderView({
 
       if (data.error && data.source === 'fallback') {
         setAiTtsError(data.error);
+        setAiTtsCached(false);
         return null;
       }
 
       setAiTtsSegments(data.segments || []);
       setAiTtsCurrentIndex(0);
+      setAiTtsCached(data.cached || false);
       return data;
     } catch (err) {
       setAiTtsError(err instanceof Error ? err.message : 'AI 准备失败');
@@ -765,10 +783,140 @@ export default function TextReaderView({
       clearTimeout(autoNextTimerRef.current);
       autoNextTimerRef.current = null;
     }
+    // 清除睡眠定时器
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+    setSleepTimer(null);
+    setSleepTimerRemaining(0);
     setTtsPlaying(false);
     setTtsPaused(false);
     setAiTtsCurrentIndex(0);
+    // 清除断点续听记录
+    if (comicId) {
+      localStorage.removeItem(`novel-tts-resume-${comicId}`);
+    }
+  }, [comicId]);
+
+  // 睡眠定时器
+  const startSleepTimer = useCallback((minutes: number | 'chapter-end') => {
+    // 清除之前的定时器
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+
+    if (minutes === 'chapter-end') {
+      setSleepTimer(-1); // -1 表示本章结束停止
+      setShowSleepMenu(false);
+      return;
+    }
+
+    setSleepTimer(minutes);
+    setSleepTimerRemaining(minutes * 60);
+    sleepTimerStartRef.current = Date.now();
+    setShowSleepMenu(false);
+
+    // 启动倒计时
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - sleepTimerStartRef.current) / 1000);
+      const remaining = (minutes * 60) - elapsed;
+      if (remaining <= 0) {
+        setSleepTimer(null);
+        setSleepTimerRemaining(0);
+        stopTTS();
+        return;
+      }
+      setSleepTimerRemaining(remaining);
+      sleepTimerRef.current = setTimeout(tick, 1000);
+    };
+    sleepTimerRef.current = setTimeout(tick, 1000);
+  }, [stopTTS]);
+
+  const cancelSleepTimer = useCallback(() => {
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+    setSleepTimer(null);
+    setSleepTimerRemaining(0);
   }, []);
+
+  // 格式化剩余时间
+  const formatSleepTime = useCallback((seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  // 保存断点续听状态
+  const saveTtsResumePoint = useCallback(() => {
+    if (!comicId || !ttsPlaying) return;
+    const resumeData = {
+      chapterIndex: currentPage,
+      segmentIndex: aiTtsCurrentIndex,
+      mode: aiTtsEnabled ? 'ai' : 'original',
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(`novel-tts-resume-${comicId}`, JSON.stringify(resumeData));
+  }, [comicId, ttsPlaying, currentPage, aiTtsCurrentIndex, aiTtsEnabled]);
+
+  // 检查断点续听
+  useEffect(() => {
+    if (!comicId) return;
+    const saved = localStorage.getItem(`novel-tts-resume-${comicId}`);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        // 只提示 24 小时内的记录
+        if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
+          setResumePrompt(data);
+        } else {
+          localStorage.removeItem(`novel-tts-resume-${comicId}`);
+        }
+      } catch {
+        localStorage.removeItem(`novel-tts-resume-${comicId}`);
+      }
+    }
+  }, [comicId]);
+
+  // 继续听
+  const handleResumeTts = useCallback(async () => {
+    if (!resumePrompt) return;
+    const { chapterIndex, segmentIndex, mode } = resumePrompt;
+    setResumePrompt(null);
+
+    // 如果需要跳转章节
+    if (chapterIndex !== currentPage) {
+      onPageChange(chapterIndex);
+      // 等待章节加载后开始播放
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // 设置 AI 模式
+    if (mode === 'ai') {
+      setAiTtsEnabled(true);
+    }
+
+    // 开始播放
+    startTTS();
+  }, [resumePrompt, currentPage, onPageChange, startTTS]);
+
+  // 定期保存听书进度
+  useEffect(() => {
+    if (!ttsPlaying) return;
+    const interval = setInterval(saveTtsResumePoint, 5000);
+    return () => clearInterval(interval);
+  }, [ttsPlaying, saveTtsResumePoint]);
+
+  // 本章结束时检查睡眠定时
+  useEffect(() => {
+    if (sleepTimer === -1 && !ttsPlaying && ttsSessionRef.current > 0) {
+      // 本章播放结束，停止播放
+      setSleepTimer(null);
+    }
+  }, [sleepTimer, ttsPlaying]);
 
   // 上一句（AI 模式）
   const ttsPrevSegment = useCallback(() => {
@@ -2033,119 +2181,251 @@ export default function TextReaderView({
         </div>
       )}
 
-      {/* TTS 听书控制面板 */}
+      {/* TTS 听书控制面板 - 播放器风格 */}
       {showTtsPanel && ttsPlaying && (
         <div
-          className={`fixed bottom-16 left-1/2 z-[55] -translate-x-1/2 flex flex-col items-center gap-2 rounded-2xl px-4 py-2.5 shadow-2xl backdrop-blur-xl ${
+          className={`fixed bottom-16 left-1/2 z-[55] w-[90vw] max-w-[360px] -translate-x-1/2 rounded-2xl shadow-2xl backdrop-blur-xl ${
             isDark ? "bg-zinc-800/95 border border-zinc-700" : "bg-white/95 border border-zinc-200"
           }`}
         >
-          {/* AI 朗读进度 */}
-          {aiTtsEnabled && aiTtsSegments.length > 0 && (
-            <div className={`text-[10px] ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
-              {aiTtsPreparing ? (
-                <span className="flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  AI 处理中...
-                </span>
-              ) : (
-                <span>
-                  {aiTtsCurrentIndex + 1} / {aiTtsSegments.length}
-                  {aiTtsError && <span className="text-red-400 ml-2">({aiTtsError})</span>}
-                </span>
+          {/* 顶部信息区 */}
+          <div className={`px-4 pt-3 pb-2 border-b ${isDark ? "border-zinc-700" : "border-zinc-200"}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className={`text-xs font-medium truncate ${isDark ? "text-zinc-200" : "text-zinc-800"}`}>
+                  {chapterTitle || `第 ${currentPage + 1} 章`}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {/* 模式标签 */}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    aiTtsEnabled && aiTtsSegments.length > 0
+                      ? "bg-accent/20 text-accent"
+                      : isDark ? "bg-zinc-700 text-zinc-400" : "bg-zinc-200 text-zinc-500"
+                  }`}>
+                    {aiTtsEnabled && aiTtsSegments.length > 0 ? "AI" : "原始"}
+                  </span>
+                  {/* 进度 */}
+                  {aiTtsEnabled && aiTtsSegments.length > 0 ? (
+                    <span className={`text-[10px] ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
+                      {aiTtsCurrentIndex + 1}/{aiTtsSegments.length}
+                    </span>
+                  ) : null}
+                  {/* 睡眠定时 */}
+                  {sleepTimer !== null && (
+                    <span className={`text-[10px] flex items-center gap-0.5 ${isDark ? "text-amber-400" : "text-amber-600"}`}>
+                      <Timer className="h-3 w-3" />
+                      {sleepTimer === -1 ? "本章结束" : formatSleepTime(sleepTimerRemaining)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* 状态指示 */}
+              {aiTtsPreparing && (
+                <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" />
+              )}
+              {aiTtsError && !aiTtsPreparing && (
+                <span className="text-[10px] text-amber-400 shrink-0">已回退</span>
+              )}
+              {aiTtsCached && !aiTtsPreparing && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                  isDark ? "bg-green-500/20 text-green-400" : "bg-green-50 text-green-600"
+                }`}>缓存</span>
               )}
             </div>
-          )}
+          </div>
 
-          <div className="flex items-center gap-2">
-            {/* 上一句（AI 模式） */}
-            {aiTtsEnabled && aiTtsSegments.length > 0 && (
-              <button
-                onClick={ttsPrevSegment}
-                disabled={aiTtsCurrentIndex <= 0}
-                className={`rounded-full p-2 transition-colors disabled:opacity-30 ${
-                  isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
-                }`}
-                title="上一句"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-            )}
-
-            {/* 播放/暂停 */}
-            <button
-              onClick={toggleTTSPause}
-              className={`rounded-full p-2 transition-colors ${
-                isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
-              }`}
-              title={ttsPaused ? t.reader.ttsPause : t.reader.ttsResume}
-            >
-              {ttsPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-            </button>
-
-            {/* 停止 */}
-            <button
-              onClick={() => { stopTTS(); setShowTtsPanel(false); }}
-              className={`rounded-full p-2 transition-colors ${
-                isDark ? "hover:bg-zinc-700 text-red-400" : "hover:bg-zinc-100 text-red-500"
-              }`}
-              title={t.reader.ttsStop}
-            >
-              <Square className="h-3.5 w-3.5" />
-            </button>
-
-            {/* 下一句（AI 模式） */}
-            {aiTtsEnabled && aiTtsSegments.length > 0 && (
-              <button
-                onClick={ttsNextSegment}
-                disabled={aiTtsCurrentIndex >= aiTtsSegments.length - 1}
-                className={`rounded-full p-2 transition-colors disabled:opacity-30 ${
-                  isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
-                }`}
-                title="下一句"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            )}
-
-            {/* 分隔线 */}
-            <div className={`h-6 w-px mx-0.5 shrink-0 ${isDark ? "bg-zinc-700" : "bg-zinc-200"}`} />
-
-            {/* 语速调节 - 移动端自适应 */}
-            <div className="flex items-center gap-1 overflow-x-auto">
-              <span className={`text-[10px] shrink-0 ${isDark ? "text-zinc-500" : "text-zinc-400"}`}>{t.reader.ttsSpeed}</span>
-              {[0.5, 0.8, 1.0, 1.5, 2.0].map((rate) => (
+          {/* 控制区 */}
+          <div className="px-4 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                {/* 上一句 */}
                 <button
-                  key={rate}
-                  onClick={() => {
+                  onClick={ttsPrevSegment}
+                  disabled={!aiTtsEnabled || aiTtsSegments.length === 0 || aiTtsCurrentIndex <= 0}
+                  className={`rounded-full p-2 transition-colors disabled:opacity-30 ${
+                    isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
+                  }`}
+                  title={t.reader.aiTtsPrev || "上一句"}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+
+                {/* 播放/暂停 */}
+                <button
+                  onClick={toggleTTSPause}
+                  className={`rounded-full p-3 transition-colors ${
+                    isDark ? "hover:bg-zinc-700 text-zinc-100" : "hover:bg-zinc-100 text-zinc-800"
+                  }`}
+                  title={ttsPaused ? t.reader.ttsResume : t.reader.ttsPause}
+                >
+                  {ttsPaused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+                </button>
+
+                {/* 停止 */}
+                <button
+                  onClick={() => { stopTTS(); setShowTtsPanel(false); }}
+                  className={`rounded-full p-2 transition-colors ${
+                    isDark ? "hover:bg-zinc-700 text-red-400" : "hover:bg-zinc-100 text-red-500"
+                  }`}
+                  title={t.reader.ttsStop}
+                >
+                  <Square className="h-3.5 w-3.5" />
+                </button>
+
+                {/* 下一句 */}
+                <button
+                  onClick={ttsNextSegment}
+                  disabled={!aiTtsEnabled || aiTtsSegments.length === 0 || aiTtsCurrentIndex >= aiTtsSegments.length - 1}
+                  className={`rounded-full p-2 transition-colors disabled:opacity-30 ${
+                    isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
+                  }`}
+                  title={t.reader.aiTtsNext || "下一句"}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {/* 语速 */}
+                <select
+                  value={ttsRate}
+                  onChange={(e) => {
+                    const rate = parseFloat(e.target.value);
                     setTtsRate(rate);
-                    // 如果正在播放，需要重新开始以应用新语速
                     if (ttsPlaying && !ttsPaused) {
                       window.speechSynthesis.cancel();
                       setTimeout(() => startTTS(), 100);
                     }
                   }}
-                  className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[10px] transition-colors ${
-                    ttsRate === rate
-                      ? "bg-accent/20 text-accent font-bold"
-                      : isDark ? "text-zinc-400 hover:bg-zinc-700" : "text-zinc-500 hover:bg-zinc-100"
+                  className={`rounded-lg px-1.5 py-1 text-[10px] outline-none ${
+                    isDark ? "bg-zinc-700 text-zinc-300" : "bg-zinc-100 text-zinc-600"
                   }`}
                 >
-                  {rate}x
+                  <option value={0.5}>0.5x</option>
+                  <option value={0.8}>0.8x</option>
+                  <option value={1.0}>1.0x</option>
+                  <option value={1.5}>1.5x</option>
+                  <option value={2.0}>2.0x</option>
+                </select>
+
+                {/* 睡眠定时 */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowSleepMenu(!showSleepMenu)}
+                    className={`rounded-full p-2 transition-colors ${
+                      sleepTimer !== null
+                        ? isDark ? "text-amber-400" : "text-amber-600"
+                        : isDark ? "text-zinc-400 hover:text-zinc-200" : "text-zinc-500 hover:text-zinc-700"
+                    }`}
+                    title="睡眠定时"
+                  >
+                    <Timer className="h-4 w-4" />
+                  </button>
+                  {/* 睡眠定时菜单 */}
+                  {showSleepMenu && (
+                    <div className={`absolute bottom-full right-0 mb-2 rounded-xl shadow-xl ${
+                      isDark ? "bg-zinc-800 border border-zinc-700" : "bg-white border border-zinc-200"
+                    }`}>
+                      {sleepTimer !== null && (
+                        <button
+                          onClick={cancelSleepTimer}
+                          className={`block w-full px-4 py-2 text-left text-xs rounded-t-xl ${
+                            isDark ? "hover:bg-zinc-700 text-red-400" : "hover:bg-zinc-100 text-red-500"
+                          }`}
+                        >
+                          取消定时
+                        </button>
+                      )}
+                      <button
+                        onClick={() => startSleepTimer(15)}
+                        className={`block w-full px-4 py-2 text-left text-xs ${
+                          isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        15 分钟
+                      </button>
+                      <button
+                        onClick={() => startSleepTimer(30)}
+                        className={`block w-full px-4 py-2 text-left text-xs ${
+                          isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        30 分钟
+                      </button>
+                      <button
+                        onClick={() => startSleepTimer(60)}
+                        className={`block w-full px-4 py-2 text-left text-xs ${
+                          isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        60 分钟
+                      </button>
+                      <button
+                        onClick={() => startSleepTimer('chapter-end')}
+                        className={`block w-full px-4 py-2 text-left text-xs rounded-b-xl ${
+                          isDark ? "hover:bg-zinc-700 text-zinc-200" : "hover:bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        本章结束停止
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 关闭 */}
+                <button
+                  onClick={() => setShowTtsPanel(false)}
+                  className={`rounded-full p-2 transition-colors ${
+                    isDark ? "text-zinc-500 hover:text-zinc-300" : "text-zinc-400 hover:text-zinc-600"
+                  }`}
+                >
+                  <X className="h-3 w-3" />
                 </button>
-              ))}
+              </div>
             </div>
 
-            {/* 关闭面板按钮 */}
-            <button
-              onClick={() => setShowTtsPanel(false)}
-              className={`ml-1 shrink-0 rounded-full p-1 transition-colors ${
-                isDark ? "text-zinc-500 hover:text-zinc-300" : "text-zinc-400 hover:text-zinc-600"
-              }`}
-            >
-              <X className="h-3 w-3" />
-            </button>
+            {/* 错误提示 */}
+            {aiTtsError && !aiTtsPreparing && (
+              <div className={`mt-2 px-2 py-1.5 rounded-lg text-[10px] ${
+                isDark ? "bg-amber-500/10 text-amber-400" : "bg-amber-50 text-amber-600"
+              }`}>
+                AI 优化失败，已回退原始朗读
+              </div>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* 断点续听提示 */}
+      {resumePrompt && !ttsPlaying && (
+        <div
+          className={`fixed bottom-16 left-1/2 z-[55] -translate-x-1/2 flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl backdrop-blur-xl ${
+            isDark ? "bg-zinc-800/95 border border-zinc-700" : "bg-white/95 border border-zinc-200"
+          }`}
+        >
+          <Volume2 className={`h-5 w-5 ${isDark ? "text-accent" : "text-accent"}`} />
+          <div className="flex-1">
+            <div className={`text-xs font-medium ${isDark ? "text-zinc-200" : "text-zinc-800"}`}>
+              继续听书？
+            </div>
+            <div className={`text-[10px] ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
+              第 {resumePrompt.chapterIndex + 1} 章 · {resumePrompt.mode === 'ai' ? 'AI 朗读' : '原始朗读'}
+            </div>
+          </div>
+          <button
+            onClick={handleResumeTts}
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white"
+          >
+            继续
+          </button>
+          <button
+            onClick={() => setResumePrompt(null)}
+            className={`rounded-lg px-3 py-1.5 text-xs ${
+              isDark ? "text-zinc-400 hover:bg-zinc-700" : "text-zinc-500 hover:bg-zinc-100"
+            }`}
+          >
+            取消
+          </button>
         </div>
       )}
 

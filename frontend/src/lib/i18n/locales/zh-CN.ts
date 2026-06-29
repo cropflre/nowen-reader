@@ -320,6 +320,16 @@ const zhCN = {
     aiTtsRecap: "前情提要",
     aiTtsPrev: "上一句",
     aiTtsNext: "下一句",
+    aiTtsFallback: "AI 优化失败，已回退原始朗读",
+    aiTtsCached: "缓存",
+    sleepTimer: "睡眠定时",
+    sleepTimerCancel: "取消定时",
+    sleepTimer15: "15 分钟",
+    sleepTimer30: "30 分钟",
+    sleepTimer60: "60 分钟",
+    sleepTimerChapterEnd: "本章结束停止",
+    resumeListening: "继续听书？",
+    resumeBtn: "继续",
     autoScrolling: "自动翻页中",
     searchPlaceholder: "搜索全书内容...",
     search: "搜索",
@@ -1629,6 +1639,16 @@ export interface Translations {
     aiTtsRecap: string;
     aiTtsPrev: string;
     aiTtsNext: string;
+    aiTtsFallback: string;
+    aiTtsCached: string;
+    sleepTimer: string;
+    sleepTimerCancel: string;
+    sleepTimer15: string;
+    sleepTimer30: string;
+    sleepTimer60: string;
+    sleepTimerChapterEnd: string;
+    resumeListening: string;
+    resumeBtn: string;
     autoScrolling: string;
     searchPlaceholder: string;
     search: string;
