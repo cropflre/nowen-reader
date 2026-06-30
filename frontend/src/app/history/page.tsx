@@ -392,7 +392,7 @@ function HistoryCard({ comic }: { comic: ApiComic }) {
             </Link>
             {!finished && comic.pageCount > 0 && (
               <Link
-                href={`/comic/${comic.id}`}
+                href={comic.type === "novel" ? `/novel/${comic.id}` : `/reader/${comic.id}`}
                 className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-all"
               >
                 继续阅读
