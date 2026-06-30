@@ -299,8 +299,9 @@ func ContentMD5(data []byte) string {
 // ============================================================
 
 type zipReader struct {
-	rc      *zip.ReadCloser
-	entries []Entry
+	rc       *zip.ReadCloser
+	entries  []Entry
+	entryMap map[string]*zip.File // O(1) 查找优化
 }
 
 func newZipReader(filepath string) (*zipReader, error) {
@@ -309,13 +310,15 @@ func newZipReader(filepath string) (*zipReader, error) {
 		return nil, fmt.Errorf("open zip %s: %w", filepath, err)
 	}
 	entries := make([]Entry, 0, len(rc.File))
+	entryMap := make(map[string]*zip.File, len(rc.File))
 	for _, f := range rc.File {
 		entries = append(entries, Entry{
 			Name:        f.Name,
 			IsDirectory: f.FileInfo().IsDir(),
 		})
+		entryMap[f.Name] = f
 	}
-	return &zipReader{rc: rc, entries: entries}, nil
+	return &zipReader{rc: rc, entries: entries, entryMap: entryMap}, nil
 }
 
 func (z *zipReader) ListEntries() []Entry {
@@ -323,17 +326,17 @@ func (z *zipReader) ListEntries() []Entry {
 }
 
 func (z *zipReader) ExtractEntry(entryName string) ([]byte, error) {
-	for _, f := range z.rc.File {
-		if f.Name == entryName {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
-			}
-			defer rc.Close()
-			return io.ReadAll(rc)
-		}
+	// O(1) 查找，替代之前的 O(n) 遍历
+	f, ok := z.entryMap[entryName]
+	if !ok {
+		return nil, fmt.Errorf("entry not found: %s", entryName)
 	}
-	return nil, fmt.Errorf("entry not found: %s", entryName)
+	rc, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
 }
 
 func (z *zipReader) Close() {

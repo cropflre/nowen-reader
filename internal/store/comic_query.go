@@ -88,6 +88,7 @@ type ComicListItem struct {
 	MetadataSource           string              `json:"metadataSource"`
 	ReadingStatus            string              `json:"readingStatus"`
 	ComicType                string              `json:"type"`
+	LibraryID                string              `json:"libraryId"`
 	ExternalRating           *float64            `json:"externalRating"`
 	ExternalRatingMax        float64             `json:"externalRatingMax"`
 	ExternalRatingSource     string              `json:"externalRatingSource"`
@@ -546,7 +547,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       c."readingStatus", c."type", c."coverAspectRatio",
+		       c."readingStatus", c."type", COALESCE(c."libraryId", ''), c."coverAspectRatio",
 		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c WHERE c."id" = ?
 	`
@@ -567,7 +568,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 		&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
 		&c.Author, &c.Publisher, &year, &c.Description,
 		&c.Language, &c.Genre, &c.MetadataSource,
-		&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
+		&c.ReadingStatus, &c.ComicType, &c.LibraryID, &c.CoverAspectRatio,
 		&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
 	)
 	if err == sql.ErrNoRows {
@@ -665,7 +666,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
 		       COALESCE(ucs."readingStatus", '') AS readingStatus,
-		       c."type", c."coverAspectRatio",
+		       c."type", COALESCE(c."libraryId", ''), c."coverAspectRatio",
 		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c
 		LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?
@@ -690,7 +691,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 		&isFavRaw, &rating, &ci.SortOrder, &totalReadTime,
 		&ci.Author, &ci.Publisher, &year, &ci.Description,
 		&ci.Language, &ci.Genre, &ci.MetadataSource,
-		&ci.ReadingStatus, &ci.ComicType, &ci.CoverAspectRatio,
+		&ci.ReadingStatus, &ci.ComicType, &ci.LibraryID, &ci.CoverAspectRatio,
 		&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
 	)
 	if err == sql.ErrNoRows {

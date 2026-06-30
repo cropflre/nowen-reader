@@ -5,12 +5,26 @@ import type { ApiComic, ComicsResponse } from "./useComicTypes";
 
 /**
  * 客户端缓存：漫画列表 API 响应
- * Key = URL 查询字符串, Value = { data, timestamp }
+ * Key = userScope + URL 查询字符串, Value = { data, timestamp }
  * 缓存条目在 CACHE_TTL 毫秒后过期。
+ * userScope 用于隔离不同用户的缓存，防止权限变更后看到旧数据。
  */
 const comicsCache = new Map<string, { data: ComicsResponse; ts: number }>();
 const COMICS_CACHE_TTL = 30_000; // 30 秒
 const MAX_CACHE_ENTRIES = 20;
+
+/** 当前用户作用域，用于缓存 key 隔离不同用户的缓存 */
+let currentUserScope = "";
+
+/** 设置当前用户作用域（在 login/logout/refreshUser 时调用） */
+export function setUserScope(userId: string, role: string) {
+  const newScope = `${userId}:${role}`;
+  if (currentUserScope !== newScope) {
+    currentUserScope = newScope;
+    // 用户身份变更时清空所有缓存
+    comicsCache.clear();
+  }
+}
 
 function getCachedResponse(key: string): ComicsResponse | null {
   const entry = comicsCache.get(key);
@@ -92,7 +106,8 @@ export function useComics(options?: {
     if (options?.libraryIds && options.libraryIds.length > 0) params.set("libraryIds", options.libraryIds.join(","));
 
     const qs = params.toString();
-    const cacheKey = qs || "__default__";
+    // 缓存 key 包含用户作用域，防止不同用户间缓存串用
+    const cacheKey = `${currentUserScope}::${qs || "__default__"}`;
     const url = `/api/comics${qs ? `?${qs}` : ""}`;
 
     // Check client cache first

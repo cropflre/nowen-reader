@@ -198,7 +198,16 @@ func createTables() error {
 			"coverAspectRatio" REAL NOT NULL DEFAULT 0,
 			"type"           TEXT NOT NULL DEFAULT 'comic',
 			"readingStatus"  TEXT NOT NULL DEFAULT '',
-			"missingSince"   DATETIME
+			"missingSince"   DATETIME,
+			"libraryId"      TEXT NOT NULL DEFAULT '',
+			"relativePath"   TEXT NOT NULL DEFAULT '',
+			"md5Hash"        TEXT NOT NULL DEFAULT '',
+			"contentType"    TEXT NOT NULL DEFAULT '',
+			"comicType"      TEXT NOT NULL DEFAULT '',
+			"externalRating"          REAL,
+			"externalRatingMax"       REAL NOT NULL DEFAULT 0,
+			"externalRatingSource"    TEXT NOT NULL DEFAULT '',
+			"externalRatingUpdatedAt" TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS "Comic_filename_key" ON "Comic"("filename")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_title_idx" ON "Comic"("title")`,

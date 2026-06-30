@@ -775,6 +775,115 @@ func batchUpdateType(ids []string, newType string) {
 	}
 }
 
+// FixComicLibraryAssignments 修正已有漫画的 libraryId 和 relativePath。
+// 用于文件从一个书库移动到另一个书库后，修正数据库中的归属信息。
+// 返回值：moved = libraryId 被修正的数量，typeFixed = 类型被修正的数量。
+func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap map[string]string, fileRelPathMap map[string]string) (moved int, typeFixed int) {
+	if len(fileLibraryMap) == 0 {
+		return 0, 0
+	}
+
+	// 查询所有记录的 id、libraryId、relativePath、type
+	rows, err := db.Query(`SELECT "id", COALESCE("libraryId", ''), COALESCE("relativePath", ''), COALESCE("type", '') FROM "Comic"`)
+	if err != nil {
+		return 0, 0
+	}
+	defer rows.Close()
+
+	type comicUpdate struct {
+		ID          string
+		NewLibID    string
+		NewRelPath  string
+		NewType     string
+	}
+	var toUpdate []comicUpdate
+
+	for rows.Next() {
+		var id, libID, relPath, comicType string
+		if rows.Scan(&id, &libID, &relPath, &comicType) != nil {
+			continue
+		}
+		diskLibID, hasDisk := fileLibraryMap[id]
+		if !hasDisk {
+			continue // 磁盘上不存在的文件，跳过（会被后续删除逻辑处理）
+		}
+
+		needsUpdate := false
+		newLibID := libID
+		newRelPath := relPath
+		newType := comicType
+
+		// 修正 libraryId
+		if diskLibID != "" && libID != diskLibID {
+			newLibID = diskLibID
+			needsUpdate = true
+		}
+
+		// 修正 relativePath
+		if diskRelPath, ok := fileRelPathMap[id]; ok && diskRelPath != "" && relPath != diskRelPath {
+			newRelPath = diskRelPath
+			needsUpdate = true
+		}
+
+		// 修正 type（按来源目录严格匹配）
+		if source, ok := fileSourceMap[id]; ok {
+			if source == "comics" && comicType != "comic" {
+				newType = "comic"
+				needsUpdate = true
+				typeFixed++
+			} else if source == "novels" && comicType != "novel" {
+				newType = "novel"
+				needsUpdate = true
+				typeFixed++
+			}
+		}
+
+		if needsUpdate {
+			toUpdate = append(toUpdate, comicUpdate{
+				ID:         id,
+				NewLibID:   newLibID,
+				NewRelPath: newRelPath,
+				NewType:    newType,
+			})
+			if newLibID != libID {
+				moved++
+			}
+		}
+	}
+
+	if len(toUpdate) == 0 {
+		return 0, 0
+	}
+
+	// 批量更新
+	now := time.Now().UTC()
+	const batchSize = 500
+	for i := 0; i < len(toUpdate); i += batchSize {
+		end := i + batchSize
+		if end > len(toUpdate) {
+			end = len(toUpdate)
+		}
+		batch := toUpdate[i:end]
+
+		tx, err := db.Begin()
+		if err != nil {
+			continue
+		}
+		stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "relativePath" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
+		if err != nil {
+			tx.Rollback()
+			continue
+		}
+		for _, u := range batch {
+			stmt.Exec(u.NewLibID, u.NewRelPath, u.NewType, now, u.ID)
+		}
+		stmt.Close()
+		tx.Commit()
+	}
+
+	return moved, typeFixed
+}
+
 // MarkComicsAsMissing sets missingSince to now for the given comic IDs.
 // If missingSince is already set, it is left unchanged.
 func MarkComicsAsMissing(ids []string) error {

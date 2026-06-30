@@ -152,7 +152,8 @@ func InvalidateAllCaches() {
 // ============================================================
 
 // FindComicFilePath finds the file path for a comic by looking up its filename in DB,
-// then searching all comic directories.
+// then searching directories. 优先使用 comic.LibraryID 对应书库的 rootPaths 查找，
+// 防止跨书库读取文件。
 func FindComicFilePath(comicID string) (string, string, error) {
 	// Get filename from DB
 	comic, err := store.GetComicByID(comicID)
@@ -163,11 +164,39 @@ func FindComicFilePath(comicID string) (string, string, error) {
 	// 图片文件夹漫画：filename 以 "/" 结尾
 	isFolder := strings.HasSuffix(comic.Filename, "/")
 
-	// Search all directories for the file
+	// 优先使用 comic.LibraryID 对应书库的 rootPaths 查找
+	if comic.LibraryID != "" {
+		lib, libErr := store.GetLibraryByID(comic.LibraryID)
+		if libErr == nil && lib != nil {
+			// 获取书库的所有根路径（主路径 + 额外路径）
+			allRootPaths := []string{lib.RootPath}
+			extraPaths, epErr := store.GetLibraryRootPaths(lib.ID)
+			if epErr == nil {
+				allRootPaths = append(allRootPaths, extraPaths...)
+			}
+
+			for _, dir := range allRootPaths {
+				fp := filepath.Join(dir, comic.Filename)
+				if isFolder {
+					fp = filepath.Join(dir, strings.TrimSuffix(comic.Filename, "/"))
+					if info, statErr := os.Stat(fp); statErr == nil && info.IsDir() {
+						return fp, comic.Filename, nil
+					}
+				} else {
+					if _, statErr := os.Stat(fp); statErr == nil {
+						return fp, comic.Filename, nil
+					}
+				}
+			}
+			// 书库路径下找不到文件，不 fallback 到全局查找（防止跨库读取）
+			return "", "", fmt.Errorf("file not found in library %s for comic %s (%s)", comic.LibraryID, comicID, comic.Filename)
+		}
+	}
+
+	// 兼容旧数据：libraryId 为空或书库不存在时，允许全局查找
 	for _, dir := range config.GetAllScanDirs() {
 		fp := filepath.Join(dir, comic.Filename)
 		if isFolder {
-			// 文件夹类型：去掉尾部斜杠后检查目录是否存在
 			fp = filepath.Join(dir, strings.TrimSuffix(comic.Filename, "/"))
 			if info, err := os.Stat(fp); err == nil && info.IsDir() {
 				return fp, comic.Filename, nil
@@ -203,34 +232,38 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 
 	archiveType := archive.DetectType(fp)
 
+	// 一次性获取 comic 信息，避免重复查询
+	comic, dbErr := store.GetComicByID(comicID)
+
 	// 优先使用数据库中的 type 字段判断是否为小说
 	// 这样可以正确处理被标记为漫画的 epub 文件（图片为主的 epub）
 	isNovel := archive.IsNovelType(archiveType)
-	if archive.IsEbookType(archiveType) {
-		comic, dbErr := store.GetComicByID(comicID)
-		if dbErr == nil && comic != nil {
-			if comic.ComicType == "comic" {
-				isNovel = false // 数据库中标记为漫画，覆盖默认的小说判断
-			} else if comic.ComicType == "novel" && (archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3) {
-				// MOBI/AZW3 文件默认被标记为 novel，但可能实际是图片为主的漫画
-				// 在首次打开时进行实时检测，如果是图片为主则自动修正类型（纯 Go，无需 Calibre）
-				if archive.IsMobiImageHeavy(fp) {
-					log.Printf("[pages] Auto-detected image-heavy %s, reclassifying as comic: %s", archiveType, comic.Filename)
-					_ = store.UpdateComicType(comicID, "comic")
-					// Recalculate page count: novel mode counts chapters,
-					// comic mode needs image count
-					if imgCount, err := GetArchivePageCount(fp, true); err == nil && imgCount > 0 {
-						_ = store.UpdateComicPageCount(comicID, imgCount)
-					}
-					isNovel = false
+	if archive.IsEbookType(archiveType) && dbErr == nil && comic != nil {
+		if comic.ComicType == "comic" {
+			isNovel = false // 数据库中标记为漫画，覆盖默认的小说判断
+		} else if comic.ComicType == "novel" && (archiveType == archive.TypeMobi || archiveType == archive.TypeAzw3) {
+			// MOBI/AZW3 文件默认被标记为 novel，但可能实际是图片为主的漫画
+			// 在首次打开时进行实时检测，如果是图片为主则自动修正类型（纯 Go，无需 Calibre）
+			if archive.IsMobiImageHeavy(fp) {
+				log.Printf("[pages] Auto-detected image-heavy %s, reclassifying as comic: %s", archiveType, comic.Filename)
+				_ = store.UpdateComicType(comicID, "comic")
+				// Recalculate page count: novel mode counts chapters,
+				// comic mode needs image count
+				if imgCount, err := GetArchivePageCount(fp, true); err == nil && imgCount > 0 {
+					_ = store.UpdateComicPageCount(comicID, imgCount)
 				}
+				isNovel = false
 			}
 		}
 	}
 
-	// Check cache for entries
+	// Check cache for entries — 使用文件大小和修改时间作为缓存键，避免阅读进度更新导致缓存失效
+	cacheKey := comicID
+	if stat, statErr := os.Stat(fp); statErr == nil {
+		cacheKey = fmt.Sprintf("%s:%d:%d", comicID, stat.Size(), stat.ModTime().Unix())
+	}
 	pageListCacheMu.RLock()
-	if cached, ok := pageListCache[comicID]; ok && time.Since(cached.ts) < pageListCacheTTL && cached.isNovel == isNovel {
+	if cached, ok := pageListCache[cacheKey]; ok && time.Since(cached.ts) < pageListCacheTTL && cached.isNovel == isNovel {
 		pageListCacheMu.RUnlock()
 		result := &PagesResult{Entries: cached.entries, IsNovel: isNovel, IsPdf: cached.isPdf}
 		if isNovel {
@@ -292,9 +325,9 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 		}
 	}
 
-	// Update cache
+	// Update cache — 使用包含 updatedAt 的 key
 	pageListCacheMu.Lock()
-	pageListCache[comicID] = &pageListCacheEntry{entries: entries, chapterTitles: chapterTitles, isPdf: isPdf, isNovel: isNovel, ts: time.Now()}
+	pageListCache[cacheKey] = &pageListCacheEntry{entries: entries, chapterTitles: chapterTitles, isPdf: isPdf, isNovel: isNovel, ts: time.Now()}
 	pageListCacheMu.Unlock()
 
 	// Invalidate disk cache if page order changed (e.g. zip→spine order fix)
@@ -389,12 +422,25 @@ func GetChapterContent(comicID string, chapterIndex int) (*ChapterContent, error
 	}
 
 	// Get chapter title — prefer cache to avoid re-computing
+	// 使用与 GetComicPagesEx 一致的 cacheKey 格式（含 updatedAt）
 	title := ""
-	pageListCacheMu.RLock()
-	if cached, ok := pageListCache[comicID]; ok && cached.chapterTitles != nil && chapterIndex < len(cached.chapterTitles) {
-		title = cached.chapterTitles[chapterIndex]
-	}
-	pageListCacheMu.RUnlock()
+	func() {
+		pageListCacheMu.RLock()
+		defer pageListCacheMu.RUnlock()
+		// 尝试用 updatedAt 增强的 key 查找
+		if comic, dbErr := store.GetComicByID(comicID); dbErr == nil && comic != nil && comic.UpdatedAt != "" {
+			key := comicID + ":" + comic.UpdatedAt
+			if cached, ok := pageListCache[key]; ok && cached.chapterTitles != nil && chapterIndex < len(cached.chapterTitles) {
+				title = cached.chapterTitles[chapterIndex]
+			}
+		}
+		// 兼容旧 key（纯 comicID）
+		if title == "" {
+			if cached, ok := pageListCache[comicID]; ok && cached.chapterTitles != nil && chapterIndex < len(cached.chapterTitles) {
+				title = cached.chapterTitles[chapterIndex]
+			}
+		}
+	}()
 	if title == "" {
 		titles := getChapterTitles(reader, archiveType)
 		if titles != nil && chapterIndex < len(titles) {
@@ -517,19 +563,32 @@ func getArchivePageImage(comicID, fp string, pageIndex int) (*PageImage, error) 
 		return nil, err
 	}
 
-	// For e-book archives, use embedded image extraction
-	// (epub/mobi/azw3 readers list chapter entries, not image files)
+	// 优先从 pageListCache 获取页面列表，避免重复计算
 	var images []string
-	if archive.IsEbookType(archiveType) {
-		switch archiveType {
-		case archive.TypeMobi, archive.TypeAzw3:
-			images = archive.ListMobiEmbeddedImages(reader)
-		default:
-			images = archive.ListEpubEmbeddedImages(reader)
-		}
-	} else {
-		images = archive.GetImageEntries(reader)
+	cacheKey := comicID
+	if stat, statErr := os.Stat(fp); statErr == nil {
+		cacheKey = fmt.Sprintf("%s:%d:%d", comicID, stat.Size(), stat.ModTime().Unix())
 	}
+	pageListCacheMu.RLock()
+	if cached, ok := pageListCache[cacheKey]; ok && time.Since(cached.ts) < pageListCacheTTL {
+		images = cached.entries
+	}
+	pageListCacheMu.RUnlock()
+
+	// 如果缓存未命中，重新计算
+	if images == nil {
+		if archive.IsEbookType(archiveType) {
+			switch archiveType {
+			case archive.TypeMobi, archive.TypeAzw3:
+				images = archive.ListMobiEmbeddedImages(reader)
+			default:
+				images = archive.ListEpubEmbeddedImages(reader)
+			}
+		} else {
+			images = archive.GetImageEntries(reader)
+		}
+	}
+
 	if pageIndex < 0 || pageIndex >= len(images) {
 		return nil, fmt.Errorf("page index %d out of range (0-%d)", pageIndex, len(images)-1)
 	}
@@ -765,29 +824,58 @@ func warmupEbookComic(comicID string, archiveType archive.ArchiveType, reader ar
 	}
 }
 
-// warmupNormal 对 ZIP/7z 等支持随机访问的格式逐页预热。
+// warmupNormal 对 ZIP/7z 等支持随机访问的格式并行预热。
 func warmupNormal(reader archive.Reader, comicID string, images []string, start, end int, cacheDir string) {
-	warmed := 0
 	cacheSet := buildCacheSet(cacheDir)
+
+	// 收集需要预热的页面
+	var pagesToWarm []int
 	for i := start; i < end; i++ {
-		if cacheSetHas(cacheSet, i) {
-			continue
+		if !cacheSetHas(cacheSet, i) {
+			pagesToWarm = append(pagesToWarm, i)
 		}
-
-		entryName := images[i]
-		data, err := reader.ExtractEntry(entryName)
-		if err != nil {
-			continue
-		}
-
-		ext := strings.ToLower(filepath.Ext(entryName))
-		if err := os.MkdirAll(cacheDir, 0755); err != nil {
-			return
-		}
-		cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", i, ext))
-		_ = os.WriteFile(cachePath, data, 0644)
-		warmed++
 	}
+
+	if len(pagesToWarm) == 0 {
+		return
+	}
+
+	// 确保缓存目录存在
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return
+	}
+
+	// 并行预热，最多 4 个并发
+	warmed := 0
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+
+	for _, i := range pagesToWarm {
+		wg.Add(1)
+		go func(pageIdx int) {
+			defer wg.Done()
+			sem <- struct{}{} // 获取信号量
+			defer func() { <-sem }() // 释放信号量
+
+			entryName := images[pageIdx]
+			data, err := reader.ExtractEntry(entryName)
+			if err != nil {
+				return
+			}
+
+			ext := strings.ToLower(filepath.Ext(entryName))
+			cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIdx, ext))
+			if err := os.WriteFile(cachePath, data, 0644); err == nil {
+				mu.Lock()
+				warmed++
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
 	if warmed > 0 {
 		log.Printf("[warmup] Pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, start, end-1)
 	}

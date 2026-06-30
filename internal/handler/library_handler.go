@@ -223,6 +223,11 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 		return
 	}
 
+	// 路径变更后清理服务端缓存，防止 readerPool/pageListCache 指向旧路径
+	if req.RootPath != nil || req.RootPaths != nil {
+		service.InvalidateAllCaches()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"library": existing})
 }
 
@@ -269,6 +274,9 @@ func (h *LibraryHandler) DeleteLibrary(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete library"})
 		return
 	}
+
+	// 清理服务端内存缓存（readerPool + pageListCache）
+	service.InvalidateAllCaches()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":               true,

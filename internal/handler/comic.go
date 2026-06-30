@@ -503,13 +503,16 @@ func (h *ComicHandler) DetectDuplicates(c *gin.Context) {
 }
 
 // ============================================================
-// POST /api/sync — Trigger manual sync
+// POST /api/sync — Trigger manual sync (强制执行，跳过 cooldown)
 // ============================================================
 
 func (h *ComicHandler) TriggerSync(c *gin.Context) {
-	go service.SyncComicsToDatabase()
-	go service.RedetectEbookTypes()
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sync triggered"})
+	result := service.ForceSyncComicsToDatabase()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Force sync completed",
+		"result":  result,
+	})
 }
 
 // ============================================================
@@ -522,6 +525,8 @@ func (h *ComicHandler) CleanupInvalid(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cleanup invalid comics"})
 		return
 	}
+	// 清理服务端缓存
+	service.InvalidateAllCaches()
 	c.JSON(http.StatusOK, gin.H{"success": true, "removed": removed})
 }
 
@@ -531,6 +536,8 @@ func (h *ComicHandler) CleanupInvalid(c *gin.Context) {
 
 func (h *ComicHandler) RedetectTypes(c *gin.Context) {
 	reclassified := service.RedetectEbookTypes()
+	// 清理服务端缓存
+	service.InvalidateAllCaches()
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
 		"reclassified": reclassified,

@@ -432,8 +432,8 @@ func quickSync() (added, removed int) {
 	}
 	defer tx.Rollback()
 
-	// 创建临时表（仅在本连接/事务中存在）
-	if _, err := tx.Exec(`CREATE TEMP TABLE IF NOT EXISTS "_DiskFiles" ("id" TEXT PRIMARY KEY, "filename" TEXT, "title" TEXT, "fileSize" INTEGER)`); err != nil {
+	// 创建临时表（仅在本连接/事务中存在），包含 source/libraryId/relativePath 用于归属修复
+	if _, err := tx.Exec(`CREATE TEMP TABLE IF NOT EXISTS "_DiskFiles" ("id" TEXT PRIMARY KEY, "filename" TEXT, "title" TEXT, "fileSize" INTEGER, "source" TEXT, "libraryId" TEXT, "relativePath" TEXT)`); err != nil {
 		log.Printf("[quick-sync] Failed to create temp table: %v", err)
 		return 0, 0
 	}
@@ -441,7 +441,7 @@ func quickSync() (added, removed int) {
 	tx.Exec(`DELETE FROM "_DiskFiles"`)
 
 	// 批量插入磁盘文件到临时表
-	insertStmt, err := tx.Prepare(`INSERT OR IGNORE INTO "_DiskFiles" ("id", "filename", "title", "fileSize") VALUES (?, ?, ?, ?)`)
+	insertStmt, err := tx.Prepare(`INSERT OR IGNORE INTO "_DiskFiles" ("id", "filename", "title", "fileSize", "source", "libraryId", "relativePath") VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		log.Printf("[quick-sync] Failed to prepare insert: %v", err)
 		return 0, 0
@@ -449,7 +449,8 @@ func quickSync() (added, removed int) {
 	defer insertStmt.Close()
 
 	for _, f := range filesOnDisk {
-		if _, err := insertStmt.Exec(f.ID, f.Filename, f.Title, f.FileSize); err != nil {
+		relPath := f.Filename
+		if _, err := insertStmt.Exec(f.ID, f.Filename, f.Title, f.FileSize, f.Source, f.LibraryID, relPath); err != nil {
 			log.Printf("[quick-sync] Failed to insert temp file: %v", err)
 		}
 	}
@@ -518,16 +519,23 @@ func quickSync() (added, removed int) {
 		}
 	}
 
-	// 修正已有记录的类型：严格按来源目录决定类型
+	// 修正已有记录的类型和归属：严格按来源目录决定类型和 libraryId
 	// 漫画库目录的文件 → comic，电子书目录的文件 → novel
 	{
 		fileLibraryMap := make(map[string]string, len(filesOnDisk))
 		fileSourceMap := make(map[string]string, len(filesOnDisk))
+		fileRelPathMap := make(map[string]string, len(filesOnDisk))
 		for _, f := range filesOnDisk {
 			fileSourceMap[f.ID] = f.Source
 			fileLibraryMap[f.ID] = f.LibraryID
+			fileRelPathMap[f.ID] = f.Filename
 		}
 		store.FixComicTypesBySource(fileSourceMap)
+		// 修正 libraryId 和 relativePath（文件移动后的归属修复）
+		moved, typeFixed := store.FixComicLibraryAssignments(fileLibraryMap, fileSourceMap, fileRelPathMap)
+		if moved > 0 || typeFixed > 0 {
+			log.Printf("[quick-sync] Library assignment fixed: moved=%d, typeFixed=%d", moved, typeFixed)
+		}
 	}
 
 	// Batch delete stale comics
@@ -1127,6 +1135,71 @@ func SyncComicsToDatabase() {
 	go RedetectEbookTypes()
 }
 
+// SyncResult 保存同步结果的统计信息。
+type SyncResult struct {
+	Added       int `json:"added"`
+	Removed     int `json:"removed"`
+	Moved       int `json:"moved"`       // libraryId 修正数量
+	TypeFixed   int `json:"typeFixed"`   // 类型修正数量
+	CacheCleared bool `json:"cacheCleared"`
+}
+
+// ForceSyncComicsToDatabase 强制执行全量同步，跳过 cooldown 和 directoriesChanged 检查。
+// 用于手动触发同步，确保数据库归属、类型、缓存全部修正。
+func ForceSyncComicsToDatabase() SyncResult {
+	syncMu.Lock()
+	if syncInProgress {
+		syncMu.Unlock()
+		log.Println("[force-sync] Already in progress, skipping")
+		return SyncResult{}
+	}
+	syncInProgress = true
+	lastSyncTime = time.Now()
+	syncMu.Unlock()
+
+	defer func() {
+		syncMu.Lock()
+		syncInProgress = false
+		syncMu.Unlock()
+	}()
+
+	log.Println("[force-sync] Starting forced sync (bypassing cooldown & directory check)")
+
+	// 修复历史脏数据
+	repairMisclassifiedFolderComics()
+
+	// 执行 quickSync（包含 libraryId 归属修复）
+	added, removed := quickSync()
+	updateDirMtimes()
+
+	// 清理服务端缓存
+	InvalidateAllCaches()
+
+	// P3: 扫描新增文件后，自动按文件夹分组
+	if added > 0 {
+		go func() {
+			created, err := store.AutoGroupByDirectory()
+			if err != nil {
+				log.Printf("[auto-group] 自动分组失败: %v", err)
+			} else if created > 0 {
+				log.Printf("[auto-group] 自动创建了 %d 个系列", created)
+			}
+		}()
+		RunScanRulesForNewlyAdded()
+	}
+
+	// 重新检测已入库的 mobi/azw3 文件的内容类型
+	reclassified := RedetectEbookTypes()
+
+	log.Printf("[force-sync] Complete: added=%d, removed=%d, reclassified=%d", added, removed, reclassified)
+
+	return SyncResult{
+		Added:        added,
+		Removed:      removed,
+		CacheCleared: true,
+	}
+}
+
 // ============================================================
 // fsnotify 文件系统监控
 // ============================================================
@@ -1473,6 +1546,11 @@ func SyncLibraryByID(libraryID string) (int, error) {
 	totalAdded := len(toAdd) + len(toMove)
 	if err := store.UpdateLibraryScanStatus(libraryID, totalAdded, len(allFiles)); err != nil {
 		return totalAdded, fmt.Errorf("failed to update library scan status: %w", err)
+	}
+
+	// 单书库扫描完成后清理缓存
+	if totalAdded > 0 {
+		InvalidateAllCaches()
 	}
 
 	return totalAdded, nil
