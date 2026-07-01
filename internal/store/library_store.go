@@ -43,6 +43,34 @@ func GetAllLibraries() ([]model.Library, error) {
 	return libraries, nil
 }
 
+// GetScannableLibraries 获取所有启用且允许扫描的书库
+func GetScannableLibraries() ([]model.Library, error) {
+	rows, err := db.Query(`SELECT "id", "name", "type", "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "enabled" = 1 AND "scanEnabled" = 1 ORDER BY "sortOrder", "name"`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var libraries []model.Library
+	for rows.Next() {
+		var lib model.Library
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt); err != nil {
+			continue
+		}
+		lib.CreatedAt = createdAt
+		lib.UpdatedAt = updatedAt
+		// 填充 rootPaths（主路径 + 额外路径）
+		extraPaths, err := GetLibraryRootPaths(lib.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get root paths for library %s: %w", lib.ID, err)
+		}
+		lib.RootPaths = append([]string{lib.RootPath}, extraPaths...)
+		libraries = append(libraries, lib)
+	}
+	return libraries, nil
+}
+
 // GetLibraryByID 根据ID获取书库
 func GetLibraryByID(id string) (*model.Library, error) {
 	var lib model.Library
@@ -307,7 +335,7 @@ func GetUserAccessibleLibraryIDs(userID string) ([]string, error) {
 }
 
 // SetUserLibraryAccess 设置用户的书库访问权限
-func SetUserLibraryAccess(userID string, libraryIDs []string) error {
+func SetUserLibraryAccess(userID string, accessList []LibraryAccessReq) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -321,15 +349,18 @@ func SetUserLibraryAccess(userID string, libraryIDs []string) error {
 	}
 
 	// 插入新权限
-	stmt, err := tx.Prepare(`INSERT INTO "UserLibraryAccess" ("userId", "libraryId", "canView", "createdAt") VALUES (?, ?, 1, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO "UserLibraryAccess" ("userId", "libraryId", "canView", "canDownload", "canManage", "createdAt") VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	now := time.Now().UTC()
-	for _, libID := range libraryIDs {
-		if _, err := stmt.Exec(userID, libID, now); err != nil {
+	for _, access := range accessList {
+		if access.CanDownload || access.CanManage {
+			access.CanView = true
+		}
+		if _, err := stmt.Exec(userID, access.LibraryID, access.CanView, access.CanDownload, access.CanManage, now); err != nil {
 			return err
 		}
 	}
@@ -544,15 +575,26 @@ func UserCanViewComic(userID, comicID string) (bool, error) {
 		return false, err
 	}
 
-	// 如果漫画没有书库ID（旧数据），默认允许访问
+	// 旧数据/脏数据不能向普通用户兜底放行；管理员保留处理入口。
 	if !libraryID.Valid || libraryID.String == "" {
-		return true, nil
+		var role string
+		if err := GetUserRole(userID, &role); err != nil {
+			return false, err
+		}
+		return role == "admin", nil
 	}
 
-	// 检查该书库是否存在，如果不存在（旧数据/脏数据），默认允许访问
+	// 书库不存在同样只允许管理员进入处理。
 	var exists int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM "Library" WHERE "id" = ?`, libraryID.String).Scan(&exists); err != nil || exists == 0 {
-		return true, nil
+		if err != nil {
+			return false, err
+		}
+		var role string
+		if err := GetUserRole(userID, &role); err != nil {
+			return false, err
+		}
+		return role == "admin", nil
 	}
 
 	return UserCanViewLibrary(userID, libraryID.String)
@@ -586,7 +628,6 @@ func GetLibraryContentCounts(libraryID string) (comicCount int, novelCount int, 
 	return comicCount, novelCount, totalCount, nil
 }
 
-
 // AccessibleLibrary is a lightweight library representation for the accessible-libraries API.
 type AccessibleLibrary struct {
 	ID            string `json:"id"`
@@ -595,6 +636,7 @@ type AccessibleLibrary struct {
 	Enabled       bool   `json:"enabled"`
 	DefaultAccess string `json:"defaultAccess"`
 	ComicCount    int    `json:"comicCount"`
+	CanManage     bool   `json:"canManage"`
 }
 
 // GetAccessibleLibrariesWithCount returns all libraries the user can access,
@@ -631,6 +673,7 @@ func GetAccessibleLibrariesWithCount(userID string) ([]AccessibleLibrary, error)
 		}
 		count, _ := GetLibraryComicCount(lib.ID)
 		lib.ComicCount = count
+		lib.CanManage, _ = UserCanManageLibrary(userID, lib.ID)
 		result = append(result, lib)
 	}
 	if result == nil {

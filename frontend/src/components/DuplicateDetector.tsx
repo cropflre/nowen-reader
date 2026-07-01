@@ -161,7 +161,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
   const handleDelete = useCallback(async (comic: DuplicateComic) => {
     setDeleting(true);
     try {
-      const res = await fetch(`/api/comics/${comic.id}/delete`, { method: "DELETE" });
+      const res = await fetch(`/api/comics/${comic.id}`, { method: "DELETE" });
       if (res.ok) {
         setGroups((prev) => {
           if (!prev) return prev;
@@ -189,7 +189,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
     let deletedCount = 0;
     for (const id of toDeleteIds) {
       try {
-        const res = await fetch(`/api/comics/${id}/delete`, { method: "DELETE" });
+        const res = await fetch(`/api/comics/${id}`, { method: "DELETE" });
         if (res.ok) deletedCount++;
       } catch {
         // continue with next

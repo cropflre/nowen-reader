@@ -72,7 +72,7 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	// ============================================================
 	upload := NewUploadHandler()
 	uploadGroup := api.Group("")
-	uploadGroup.Use(middleware.AdminRequired())
+	uploadGroup.Use(middleware.AuthRequired())
 	{
 		uploadGroup.POST("/upload", upload.Upload)
 	}

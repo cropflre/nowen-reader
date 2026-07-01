@@ -3,12 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
@@ -84,7 +81,10 @@ func (h *MetadataHandler) BatchFolder(c *gin.Context) {
 	failed := 0
 
 	for i, comic := range comics {
-		filePath := findComicFile(comic.Filename)
+		var filePath string
+		if resolved, err := service.GlobalFileResolver.ResolveContentPath(comic.ID); err == nil {
+			filePath = resolved.AbsolutePath
+		}
 		if filePath == "" {
 			failed++
 			sendSSE(gin.H{
@@ -163,13 +163,3 @@ func (h *MetadataHandler) BatchFolder(c *gin.Context) {
 	})
 }
 
-// Helper: find comic file on disk across all comic directories.
-func findComicFile(filename string) string {
-	for _, dir := range config.GetAllScanDirs() {
-		fp := filepath.Join(dir, filename)
-		if _, err := os.Stat(fp); err == nil {
-			return fp
-		}
-	}
-	return ""
-}

@@ -118,7 +118,7 @@ func TestUserLibraryAccess(t *testing.T) {
 	defer DeleteLibrary(lib.ID)
 	
 	// Test Set User Library Access
-	err = SetUserLibraryAccess(testUser.ID, []string{lib.ID})
+	err = SetUserLibraryAccess(testUser.ID, []LibraryAccessReq{{LibraryID: lib.ID, CanView: true}})
 	if err != nil {
 		t.Fatalf("Failed to set user library access: %v", err)
 	}

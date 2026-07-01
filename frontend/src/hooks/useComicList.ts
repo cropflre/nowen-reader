@@ -12,6 +12,7 @@ import type { ApiComic, ComicsResponse } from "./useComicTypes";
 const comicsCache = new Map<string, { data: ComicsResponse; ts: number }>();
 const COMICS_CACHE_TTL = 30_000; // 30 秒
 const MAX_CACHE_ENTRIES = 20;
+export const LIBRARY_ACCESS_CHANGED_EVENT = "nowen-library-access-changed";
 
 /** 当前用户作用域，用于缓存 key 隔离不同用户的缓存 */
 let currentUserScope = "";
@@ -47,6 +48,14 @@ function setCachedResponse(key: string, data: ComicsResponse) {
 /** 清除所有缓存（在变更操作后调用） */
 export function invalidateComicsCache() {
   comicsCache.clear();
+}
+
+/** 通知当前页面里的漫画列表刷新权限敏感数据。 */
+export function notifyLibraryAccessChanged() {
+  invalidateComicsCache();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(LIBRARY_ACCESS_CHANGED_EVENT));
+  }
 }
 
 /**
@@ -129,7 +138,7 @@ export function useComics(options?: {
     setError(null);
 
     try {
-      const res = await fetch(url, { signal: abortController.signal });
+      const res = await fetch(url, { signal: abortController.signal, cache: "no-store" });
       if (!res.ok) throw new Error("Failed to fetch comics");
       const data: ComicsResponse = await res.json();
       // 检查请求是否被取消
@@ -167,6 +176,16 @@ export function useComics(options?: {
         abortControllerRef.current.abort();
       }
     };
+  }, [fetchComics]);
+
+  useEffect(() => {
+    const handleLibraryAccessChanged = () => {
+      initializedRef.current = false;
+      invalidateComicsCache();
+      fetchComics();
+    };
+    window.addEventListener(LIBRARY_ACCESS_CHANGED_EVENT, handleLibraryAccessChanged);
+    return () => window.removeEventListener(LIBRARY_ACCESS_CHANGED_EVENT, handleLibraryAccessChanged);
   }, [fetchComics]);
 
   const refetch = useCallback(async () => {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -159,11 +160,12 @@ func (h *MetadataHandler) Scan(c *gin.Context) {
 	}
 
 	// Find actual file path
-	filePath := findComicFile(comic.Filename)
-	if filePath == "" {
-		c.JSON(404, gin.H{"error": "Comic file not found on disk"})
+	resolved, err := service.GlobalFileResolver.ResolveContentPath(comic.ID)
+	if err != nil || resolved.AbsolutePath == "" {
+		c.JSON(404, gin.H{"error": fmt.Sprintf("找不到漫画文件: %s", comic.Filename)})
 		return
 	}
+	filePath := resolved.AbsolutePath
 
 	// Try extracting ComicInfo.xml first
 	comicInfo, _ := service.ExtractComicInfoFromArchive(filePath)
@@ -242,11 +244,12 @@ func (h *MetadataHandler) NovelScan(c *gin.Context) {
 	}
 
 	// 查找文件路径
-	filePath := findComicFile(comic.Filename)
-	if filePath == "" {
-		c.JSON(404, gin.H{"error": "File not found on disk"})
+	resolved, err := service.GlobalFileResolver.ResolveContentPath(comic.ID)
+	if err != nil || resolved.AbsolutePath == "" {
+		c.JSON(404, gin.H{"error": fmt.Sprintf("找不到漫画文件: %s", comic.Filename)})
 		return
 	}
+	filePath := resolved.AbsolutePath
 
 	// 步骤1：尝试从 EPUB OPF 提取本地元数据
 	ext := strings.ToLower(filepath.Ext(comic.Filename))

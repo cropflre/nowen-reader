@@ -115,6 +115,18 @@ func getFullSyncInterval() time.Duration {
 	return 120 * time.Second
 }
 
+func getAllLibraryRootPaths() []string {
+	libs, err := store.GetScannableLibraries()
+	if err != nil {
+		return nil
+	}
+	var dirs []string
+	for _, lib := range libs {
+		dirs = append(dirs, lib.RootPaths...)
+	}
+	return dirs
+}
+
 // ============================================================
 // Directory change detection
 // ============================================================
@@ -126,7 +138,7 @@ func directoriesChanged() bool {
 	lastDirMtimesMu.RLock()
 	defer lastDirMtimesMu.RUnlock()
 
-	for _, dir := range config.GetAllScanDirs() {
+	for _, dir := range getAllLibraryRootPaths() {
 		changed := false
 		filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
@@ -160,7 +172,7 @@ func updateDirMtimes() {
 	defer lastDirMtimesMu.Unlock()
 
 	newMap := make(map[string]time.Time)
-	for _, dir := range config.GetAllScanDirs() {
+	for _, dir := range getAllLibraryRootPaths() {
 		filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
@@ -211,7 +223,7 @@ func fileBelongsToRootPaths(filename string, rootPaths []string, rootPathSet map
 // 当 enableImageFolder=true 时，会识别"图片文件夹漫画"：如果某个子目录直接包含
 // 多张图片，则将整个目录作为一个漫画入库。novels 目录应当传入 false，避免把
 // "全是 .txt 但混入封面图"的小说目录折叠成单条漫画。
-func walkDirRecursive(root string, enableImageFolder bool) []diskFile {
+func walkDirRecursive(libraryID string, root string, enableImageFolder bool) []diskFile {
 	var files []diskFile
 	// 记录已被识别为图片文件夹漫画的目录，避免其子文件被重复处理
 	imageFolderDirs := make(map[string]bool)
@@ -246,7 +258,7 @@ func walkDirRecursive(root string, enableImageFolder bool) []diskFile {
 				// 计算文件夹总大小
 				folderSize := calcDirSize(path)
 				files = append(files, diskFile{
-					ID:       store.FilenameToID(folderFilename),
+					ID:       store.PathToID(libraryID, folderFilename),
 					Filename: folderFilename,
 					Title:    d.Name(),
 					FileSize: folderSize,
@@ -279,7 +291,7 @@ func walkDirRecursive(root string, enableImageFolder bool) []diskFile {
 		relPath = filepath.ToSlash(relPath)
 
 		files = append(files, diskFile{
-			ID:       store.FilenameToID(relPath),
+			ID:       store.PathToID(libraryID, relPath),
 			Filename: relPath,
 			Title:    store.FilenameToSmartTitle(relPath),
 			FileSize: info.Size(),
@@ -355,66 +367,40 @@ func calcDirSize(dirPath string) int64 {
 // ============================================================
 
 func quickSync() (added, removed int) {
-	allDirs := config.GetAllComicsDirs()
-	novelDirs := config.GetAllNovelsDirs()
-	// 构建电子书目录集合，用于判断文件来源
-	novelDirSet := make(map[string]bool, len(novelDirs))
-	for _, d := range novelDirs {
-		novelDirSet[d] = true
+	libraries, err := store.GetScannableLibraries()
+	if err != nil {
+		log.Printf("[quick-sync] Failed to get libraries: %v", err)
+		return 0, 0
 	}
+
 	var filesOnDisk []diskFile
 
-	// 为每个扫描目录自动创建/查找对应的书库
-	dirLibraryMap := make(map[string]string) // dirPath -> libraryID
-	for _, dir := range allDirs {
-		lib, err := store.FindOrCreateLibrary(dir, "comic")
-		if err != nil {
-			log.Printf("[Sync] Warning: failed to find/create library for %s: %v", dir, err)
-			continue
+	for _, lib := range libraries {
+		rootPaths := lib.RootPaths
+		if len(rootPaths) == 0 {
+			rootPaths = []string{lib.RootPath}
 		}
-		dirLibraryMap[dir] = lib.ID
-	}
-	for _, dir := range novelDirs {
-		if _, exists := dirLibraryMap[dir]; exists { continue }
-		lib, err := store.FindOrCreateLibrary(dir, "novel")
-		if err != nil {
-			log.Printf("[Sync] Warning: failed to find/create library for %s: %v", dir, err)
-			continue
-		}
-		dirLibraryMap[dir] = lib.ID
-	}
 
-	// 扫描漫画目录（启用图片文件夹漫画识别）
-	for _, dir := range allDirs {
-		files := walkDirRecursive(dir, true)
-		for i := range files {
-			files[i].Source = "comics"
-			files[i].LibraryID = dirLibraryMap[dir]
+		useFolderComics := lib.Type != "novel"
+		source := "comics"
+		if lib.Type == "novel" {
+			source = "novels"
+		} else if lib.Type == "mixed" {
+			source = "mixed"
 		}
-		filesOnDisk = append(filesOnDisk, files...)
-	}
 
-	// 扫描电子书目录（跳过与漫画目录重复的目录）
-	for _, dir := range novelDirs {
-		// 如果电子书目录已经在漫画目录中，跳过以避免重复扫描
-		alreadyScanned := false
-		for _, cd := range allDirs {
-			if cd == dir {
-				alreadyScanned = true
-				break
+		for _, rootPath := range rootPaths {
+			info, err := os.Stat(rootPath)
+			if err != nil || !info.IsDir() {
+				continue
 			}
+			files := walkDirRecursive(lib.ID, rootPath, useFolderComics)
+			for i := range files {
+				files[i].Source = source
+				files[i].LibraryID = lib.ID
+			}
+			filesOnDisk = append(filesOnDisk, files...)
 		}
-		if alreadyScanned {
-			continue
-		}
-		// 电子书目录禁用图片文件夹漫画识别——避免全是 .txt 的小说子目录
-		// 因为混入了一张封面图就被错误折叠成"文件夹漫画"
-		files := walkDirRecursive(dir, false)
-		for i := range files {
-			files[i].Source = "novels"
-			files[i].LibraryID = dirLibraryMap[dir]
-		}
-		filesOnDisk = append(filesOnDisk, files...)
 	}
 
 	if len(filesOnDisk) == 0 {
@@ -568,8 +554,6 @@ func fullSync() {
 		return
 	}
 
-	allDirs := config.GetAllScanDirs()
-
 	// 使用 worker pool 并发处理（默认 4 个并发 worker）
 	const numWorkers = 4
 	type workItem struct {
@@ -661,21 +645,8 @@ func fullSync() {
 	// 分发任务
 	for _, c := range comics {
 		var foundPath string
-		for _, dir := range allDirs {
-			// 图片文件夹漫画：filename 以 "/" 结尾
-			if strings.HasSuffix(c.Filename, "/") {
-				candidate := filepath.Join(dir, strings.TrimSuffix(c.Filename, "/"))
-				if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-					foundPath = candidate
-					break
-				}
-			} else {
-				candidate := filepath.Join(dir, c.Filename)
-				if _, err := os.Stat(candidate); err == nil {
-					foundPath = candidate
-					break
-				}
-			}
+		if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil {
+			foundPath = resolved.AbsolutePath
 		}
 		if foundPath == "" {
 			continue
@@ -713,8 +684,6 @@ func md5Sync() {
 	if err != nil || len(comics) == 0 {
 		return
 	}
-
-	allDirs := config.GetAllScanDirs()
 
 	numWorkers := getMD5Workers()
 	type workItem struct {
@@ -771,21 +740,8 @@ func md5Sync() {
 
 	for _, c := range comics {
 		var foundPath string
-		for _, dir := range allDirs {
-			// 图片文件夹漫画：filename 以 "/" 结尾，跳过 MD5 计算
-			if strings.HasSuffix(c.Filename, "/") {
-				candidate := filepath.Join(dir, strings.TrimSuffix(c.Filename, "/"))
-				if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-					foundPath = candidate
-					break
-				}
-			} else {
-				candidate := filepath.Join(dir, c.Filename)
-				if _, err := os.Stat(candidate); err == nil {
-					foundPath = candidate
-					break
-				}
-			}
+		if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil {
+			foundPath = resolved.AbsolutePath
 		}
 		if foundPath == "" {
 			continue
@@ -847,19 +803,13 @@ func repairMisclassifiedFolderComics() {
 		return
 	}
 
-	allDirs := config.GetAllScanDirs()
 	deleted := 0
 
 	for _, c := range folders {
 		// 还原磁盘路径：filename 形如 "TXT格式/1/"，需要拼接到某个根目录下
-		rel := strings.TrimSuffix(c.Filename, "/")
 		var foundPath string
-		for _, dir := range allDirs {
-			candidate := filepath.Join(dir, rel)
-			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-				foundPath = candidate
-				break
-			}
+		if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil {
+			foundPath = resolved.AbsolutePath
 		}
 
 		shouldDelete := false
@@ -879,7 +829,7 @@ func repairMisclassifiedFolderComics() {
 		}
 
 		if shouldDelete {
-			if err := store.DeleteComic(c.ID, allDirs, false); err == nil {
+			if err := store.DeleteComic(c.ID); err == nil {
 				deleted++
 				log.Printf("[repair-folder] 删除误折叠目录条目: %s (%s)", c.Filename, reason)
 			}
@@ -922,7 +872,6 @@ func dirContainsNovelFiles(dirPath string) bool {
 // 返回总共修正的记录数。
 func RedetectEbookTypes() int {
 	mode := config.GetSiteConfig().ScannerConfig.EbookAutoDetectMode()
-	allDirs := config.GetAllScanDirs()
 	fixed := 0
 
 	// ---------------------------------------------------------
@@ -935,12 +884,8 @@ func RedetectEbookTypes() int {
 	} else if len(comicEbooks) > 0 {
 		for _, c := range comicEbooks {
 			var foundPath string
-			for _, dir := range allDirs {
-				candidate := filepath.Join(dir, c.Filename)
-				if _, err := os.Stat(candidate); err == nil {
-					foundPath = candidate
-					break
-				}
+			if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil {
+				foundPath = resolved.AbsolutePath
 			}
 			if foundPath == "" {
 				continue
@@ -984,12 +929,8 @@ func RedetectEbookTypes() int {
 	for _, c := range novelMobi {
 		// 查找文件路径
 		var foundPath string
-		for _, dir := range allDirs {
-			candidate := filepath.Join(dir, c.Filename)
-			if _, err := os.Stat(candidate); err == nil {
-				foundPath = candidate
-				break
-			}
+		if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil {
+			foundPath = resolved.AbsolutePath
 		}
 		if foundPath == "" {
 			log.Printf("[redetect] File not found on disk: %s", c.Filename)
@@ -1045,12 +986,9 @@ func RedetectEbookTypes() int {
 	pageFixed := 0
 	for _, c := range comicEbookPageFix {
 		var foundPath string
-		for _, dir := range allDirs {
-			candidate := filepath.Join(dir, c.Filename)
-			if _, err := os.Stat(candidate); err == nil {
-				foundPath = candidate
-				break
-			}
+		resolved, err := GlobalFileResolver.ResolveContentPath(c.ID)
+		if err == nil && resolved.AbsolutePath != "" {
+			foundPath = resolved.AbsolutePath
 		}
 		if foundPath == "" {
 			continue
@@ -1255,7 +1193,7 @@ func startFSWatcher() {
 	fsWatcher = watcher
 
 	// 递归添加所有目录（漫画 + 电子书）
-	for _, dir := range config.GetAllScanDirs() {
+	for _, dir := range getAllLibraryRootPaths() {
 		if _, err := os.Stat(dir); err == nil {
 			watchDirectoriesRecursive(watcher, dir)
 			log.Printf("[fsnotify] Watching directory: %s (recursive)", dir)
@@ -1436,7 +1374,7 @@ func SyncLibraryByID(libraryID string) (int, error) {
 			missingPaths = append(missingPaths, rootPath)
 			continue
 		}
-		files := walkDirRecursive(rootPath, useFolderComics)
+		files := walkDirRecursive(libraryID, rootPath, useFolderComics)
 		allFiles = append(allFiles, files...)
 	}
 	// 如果有缺失的路径，记录警告但不中断扫描
@@ -1452,6 +1390,8 @@ func SyncLibraryByID(libraryID string) (int, error) {
 	for i := range allFiles {
 		if lib.Type == "novel" {
 			allFiles[i].Source = "novels"
+		} else if lib.Type == "mixed" {
+			allFiles[i].Source = "mixed"
 		} else {
 			allFiles[i].Source = "comics"
 		}
@@ -1563,27 +1503,13 @@ func CleanupInvalidComics() (int, error) {
 		return 0, err
 	}
 
-	allDirs := config.GetAllScanDirs()
 	var nowMissingIDs []string
 	var reappearedIDs []string
 
 	for _, c := range allComics {
 		found := false
-		for _, dir := range allDirs {
-			// image folder comic: filename ends with "/"
-			if strings.HasSuffix(c.Filename, "/") {
-				fp := filepath.Join(dir, strings.TrimSuffix(c.Filename, "/"))
-				if info, err := os.Stat(fp); err == nil && info.IsDir() {
-					found = true
-					break
-				}
-			} else {
-				fp := filepath.Join(dir, c.Filename)
-				if _, err := os.Stat(fp); err == nil {
-					found = true
-					break
-				}
-			}
+		if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil && resolved.AbsolutePath != "" {
+			found = true
 		}
 		if !found {
 			nowMissingIDs = append(nowMissingIDs, c.ID)

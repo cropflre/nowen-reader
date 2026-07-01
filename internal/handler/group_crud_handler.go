@@ -37,50 +37,52 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 
 	// 书库权限过滤：非管理员只能看到自己有权限的书库中的分组
 	var libraryIDs []string
+	filterLibraryIDs := false
 	uid := getUserID(c)
 	if uid != "" {
 		user, _ := store.GetUserByID(uid)
-		if user == nil || user.Role != "admin" {
+		requestedParam := c.Query("libraryIds")
+		if user != nil && user.Role == "admin" {
+			if requestedParam != "" {
+				for _, id := range strings.Split(requestedParam, ",") {
+					id = strings.TrimSpace(id)
+					if id != "" {
+						libraryIDs = append(libraryIDs, id)
+					}
+				}
+				filterLibraryIDs = true
+			}
+		} else {
+			filterLibraryIDs = true
 			if ids, err := store.GetUserAccessibleLibraryIDs(uid); err == nil {
 				libraryIDs = ids
 			}
-		}
-	}
 
-	// 前端传了 libraryIds 时，与可访问书库取交集（缩小范围，不越权）
-	if requestedParam := c.Query("libraryIds"); requestedParam != "" {
-		requested := strings.Split(requestedParam, ",")
-		if len(libraryIDs) > 0 {
-			// 非管理员：与可访问书库取交集
-			allowed := make(map[string]struct{}, len(libraryIDs))
-			for _, id := range libraryIDs {
-				allowed[id] = struct{}{}
-			}
-			var filtered []string
-			for _, id := range requested {
-				id = strings.TrimSpace(id)
-				if _, ok := allowed[id]; ok {
-					filtered = append(filtered, id)
+			// 前端传了 libraryIds 时，与可访问书库取交集（缩小范围，不越权）
+			if requestedParam != "" {
+				requested := strings.Split(requestedParam, ",")
+				allowed := make(map[string]struct{}, len(libraryIDs))
+				for _, id := range libraryIDs {
+					allowed[id] = struct{}{}
 				}
-			}
-			libraryIDs = filtered
-		} else {
-			// 管理员：直接使用前端传入的书库ID
-			for _, id := range requested {
-				id = strings.TrimSpace(id)
-				if id != "" {
-					libraryIDs = append(libraryIDs, id)
+				var filtered []string
+				for _, id := range requested {
+					id = strings.TrimSpace(id)
+					if _, ok := allowed[id]; ok {
+						filtered = append(filtered, id)
+					}
 				}
+				libraryIDs = filtered
 			}
 		}
 	}
 	groups, err := store.GetAllGroupsWithOptions(store.GroupListOptions{
-		UserID:        uid,
-		ContentType:   c.Query("contentType"),
-		Category:      c.Query("category"),
-		Tags:          tags,
-		FavoritesOnly: c.Query("favoritesOnly") == "true",
-		LibraryIDs:    libraryIDs,
+		UserID:           uid,
+		ContentType:      c.Query("contentType"),
+		Category:         c.Query("category"),
+		Tags:             tags,
+		FavoritesOnly:    c.Query("favoritesOnly") == "true",
+		FilterLibraryIDs: filterLibraryIDs, LibraryIDs: libraryIDs,
 	})
 	if err != nil {
 		log.Printf("[API] ListGroups error: %v", err)

@@ -556,8 +556,8 @@
   <div class="endpoint-body">
     <p class="description"><span data-en="Returns application health status, version, uptime, and Go runtime details including memory, goroutines, and OS info." data-zh="返回应用健康状态、版本、运行时间及Go运行时详情，包括内存、goroutine和操作系统信息。">Returns application health status, version, uptime, and Go runtime details including memory, goroutines, and OS info.</span></p>
 
-    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{
+	    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+	    <pre class="code-block"><code>{
   "status": "ok",
   "version": "string",
   "uptime": "string",
@@ -585,8 +585,8 @@
   <div class="endpoint-body">
     <p class="description"><span data-en="Returns the availability and configuration of the PDF rendering tools (mutool, pdftoppm, convert) on the server." data-zh="返回服务器上PDF渲染工具（mutool、pdftoppm、convert）的可用性和配置。">Returns the availability and configuration of the PDF rendering tools (mutool, pdftoppm, convert) on the server.</span></p>
 
-    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{
+	    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+	    <pre class="code-block"><code>{
   "available": true,
   "tools": {"mutool": "", "pdftoppm": "", "convert": ""},
   "active": "string",
@@ -611,8 +611,8 @@
   <div class="endpoint-body">
     <p class="description"><span data-en="Register a new user account. Rate limited (RateLimitAuth)." data-zh="注册新用户账号。有速率限制（RateLimitAuth）。">Register a new user account. Rate limited (RateLimitAuth).</span></p>
 
-    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
-    <pre class="code-block"><code>{
+	    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+	    <pre class="code-block"><code>{
   &quot;username&quot;: &quot;string (required, 3-32 chars)&quot;,
   &quot;password&quot;: &quot;string (required, min 6 chars)&quot;,
   &quot;nickname&quot;: &quot;string (optional)&quot;
@@ -2372,14 +2372,14 @@
 
     <div id="endpoints-upload" class="endpoint-group">
     <h2 class="group-title"><span data-en="9. Upload" data-zh="9. 上传">9. Upload</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
-<div class="endpoint admin-only" data-search="POST /api/upload Upload files to library" id="post-api-upload">
+<div class="endpoint auth-required" data-search="POST /api/upload Upload files to library" id="post-api-upload">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
     <span class="path">/api/upload</span>
     <span class="summary"><span data-en="Upload files to library" data-zh="上传文件到库">Upload files to library</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Upload one or more files to the comics or novels library directory. Accepts multipart/form-data with multiple file uploads. An optional category hint can disambiguate extensions that could belong to either comics or novels." data-zh="上传一个或多个文件到漫画或小说库目录。接受multipart/form-data格式的多文件上传。可选的分类提示可以区分可能属于漫画或小说的扩展名。">Upload one or more files to the comics or novels library directory. Accepts multipart/form-data with multiple file uploads. An optional category hint can disambiguate extensions that could belong to either comics or novels.</span></p>
+    <p class="description"><span data-en="Upload one or more files to a target library. Admin users may omit libraryId to use the legacy comicsDir/novelsDir flow; normal users must provide libraryId and have canManage permission for that library." data-zh="上传一个或多个文件到目标书库。管理员可省略 libraryId 以使用旧的 comicsDir/novelsDir 流程；普通用户必须提供 libraryId 并拥有该书库 canManage 权限。">Upload one or more files to a target library. Admin users may omit libraryId to use the legacy comicsDir/novelsDir flow; normal users must provide libraryId and have canManage permission for that library.</span></p>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <p class="content-type">Content-Type: multipart/form-data</p>
@@ -2388,6 +2388,7 @@
       <tbody>
         <tr><td>files</td><td>file[]</td><td>Yes</td><td>Multiple file uploads</td></tr>
         <tr><td>category</td><td>string</td><td>No</td><td>&quot;comic&quot; or &quot;novel&quot; hint for ambiguous extensions</td></tr>
+        <tr><td>libraryId</td><td>string</td><td>Required for non-admin users</td><td>Target library ID. Non-admin users need canManage permission for this library.</td></tr>
       </tbody>
     </table>
 
@@ -2402,12 +2403,12 @@
     }
   ],
   &quot;successCount&quot;: 0,
-  &quot;totalCount&quot;: 0
+  &quot;totalCount&quot;: 0,
+  &quot;libraryId&quot;: &quot;string&quot;
 }</code></pre>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
-      <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
     </div>
   </div>
 </div>
@@ -2757,7 +2758,7 @@
     </div>
 
     <div id="endpoints-library" class="endpoint-group">
-    <h2 class="group-title"><span data-en="13. Library Management" data-zh="13. 库管理">13. Library Management</span> <span class="group-badge"><span data-en="9 endpoints" data-zh="9 个接口">9 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="13. Library Management" data-zh="13. 库管理">13. Library Management</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/admin/libraries List all libraries" id="get-api-admin-libraries">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2946,7 +2947,7 @@
     <p class="description"><span data-en="Returns all libraries the current user can access, based on public access, direct grants, and group inheritance." data-zh="返回当前用户可访问的所有库，基于公开访问、直接授权和分组继承。">Returns all libraries the current user can access, based on public access, direct grants, and group inheritance.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{
+	    <pre class="code-block"><code>{
   "libraries": [
     {
       "id": "string",
@@ -2954,7 +2955,8 @@
       "type": "comic|novel|mixed",
       "enabled": true,
       "defaultAccess": "public|private",
-      "comicCount": 0
+      "comicCount": 0,
+      "canManage": true
     }
   ]
 }</code></pre>
@@ -2974,7 +2976,7 @@
     <p class="description"><span data-en="Get library access permissions for a specific user. Admin users have access to all libraries." data-zh="获取特定用户的库访问权限。管理员用户可访问所有库。">Get library access permissions for a specific user. Admin users have access to all libraries.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{
+	    <pre class="code-block"><code>{
   "userId": "string",
   "libraries": [
     {
@@ -2983,7 +2985,9 @@
       "type": "comic|novel|mixed",
       "rootPath": "string",
       "rootPaths": ["string"],
-      "canView": true
+      "canView": true,
+      "canDownload": false,
+      "canManage": false
     }
   ]
 }</code></pre>
@@ -3001,12 +3005,85 @@
     <span class="summary"><span data-en="Set user library access" data-zh="设置用户库访问权限">Set user library access</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Set library access permissions for a user. Cannot modify admin users (they have full access)." data-zh="设置用户的库访问权限。无法修改管理员用户（他们拥有完全访问权限）。">Set library access permissions for a user. Cannot modify admin users (they have full access).</span></p>
+    <p class="description"><span data-en="Set library access permissions for a user. The preferred payload is libraryAccess with canView/canDownload/canManage. Legacy libraryIds is still accepted as canView-only. Cannot modify admin users." data-zh="设置用户的库访问权限。推荐使用带 canView/canDownload/canManage 的 libraryAccess。仍兼容旧版 libraryIds，并按仅可查看处理。无法修改管理员用户。">Set library access permissions for a user. The preferred payload is libraryAccess with canView/canDownload/canManage. Legacy libraryIds is still accepted as canView-only. Cannot modify admin users.</span></p>
+
+	    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+	    <pre class="code-block"><code>{
+  "libraryAccess": [
+    {
+      "libraryId": "string",
+      "canView": true,
+      "canDownload": false,
+      "canManage": false
+    }
+  ]
+}</code></pre>
+	    <p class="description"><span data-en="Compatibility: { &quot;libraryIds&quot;: [&quot;string&quot;] } is still accepted and grants canView only. Saving canDownload or canManage automatically implies canView." data-zh="兼容说明：仍接受 { &quot;libraryIds&quot;: [&quot;string&quot;] }，并仅授予 canView。保存 canDownload 或 canManage 时会自动包含 canView。">Compatibility: { &quot;libraryIds&quot;: [&quot;string&quot;] } is still accepted and grants canView only. Saving canDownload or canManage automatically implies canView.</span></p>
+
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "success": true
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+      <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="GET /api/admin/user-groups/:id/library-access Get group library access" id="get-api-admin-user-groups-id-library-access">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/admin/user-groups/:id/library-access</span>
+    <span class="summary"><span data-en="Get group library access" data-zh="获取权限组库访问权限">Get group library access</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Get library access permissions for a specific user group. The response includes all libraries and the group permission matrix for each library." data-zh="获取指定权限组的库访问权限。响应包含全部书库及该权限组对每个书库的权限矩阵。">Get library access permissions for a specific user group. The response includes all libraries and the group permission matrix for each library.</span></p>
+
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "groupId": "string",
+  "libraries": [
+    {
+      "id": "string",
+      "name": "string",
+      "type": "comic|novel|mixed",
+      "rootPath": "string",
+      "rootPaths": ["string"],
+      "canView": true,
+      "canDownload": false,
+      "canManage": false
+    }
+  ]
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+      <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="PUT /api/admin/user-groups/:id/library-access Set group library access" id="put-api-admin-user-groups-id-library-access">
+  <div class="endpoint-header">
+    <span class="method method-PUT">PUT</span>
+    <span class="path">/api/admin/user-groups/:id/library-access</span>
+    <span class="summary"><span data-en="Set group library access" data-zh="设置权限组库访问权限">Set group library access</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Set library access permissions for a user group. The preferred payload is libraryAccess with canView/canDownload/canManage. Legacy libraryIds is still accepted as canView-only." data-zh="设置权限组的库访问权限。推荐使用带 canView/canDownload/canManage 的 libraryAccess。仍兼容旧版 libraryIds，并按仅可查看处理。">Set library access permissions for a user group. The preferred payload is libraryAccess with canView/canDownload/canManage. Legacy libraryIds is still accepted as canView-only.</span></p>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
-  "libraryIds": ["string"]
+  "libraryAccess": [
+    {
+      "libraryId": "string",
+      "canView": true,
+      "canDownload": false,
+      "canManage": false
+    }
+  ]
 }</code></pre>
+    <p class="description"><span data-en="Compatibility: { &quot;libraryIds&quot;: [&quot;string&quot;] } is still accepted and grants canView only. Saving canDownload or canManage automatically implies canView." data-zh="兼容说明：仍接受 { &quot;libraryIds&quot;: [&quot;string&quot;] }，并仅授予 canView。保存 canDownload 或 canManage 时会自动包含 canView。">Compatibility: { &quot;libraryIds&quot;: [&quot;string&quot;] } is still accepted and grants canView only. Saving canDownload or canManage automatically implies canView.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{

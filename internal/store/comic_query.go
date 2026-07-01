@@ -44,57 +44,59 @@ func ftsEscapeQuery(input string) string {
 
 // ComicListOptions 保存列表查询参数。
 type ComicListOptions struct {
-	Search         string
-	Tags           []string
-	FavoritesOnly  bool
-	SortBy         string // "title" | "addedAt" | "lastReadAt" | "rating" | "custom"
-	SortOrder      string // "asc" | "desc"
-	Page           int
-	PageSize       int
-	Category       string
-	ContentType    string // "comic" | "novel" | "" (全部)
-	ReadingStatus  string // "want" | "reading" | "finished" | "shelved" | "" (全部)
-	ExcludeGrouped bool   // 是否排除已在分组中的漫画（用于分组视图）
-	MetaFilter     string // "all" | "with" | "missing" — 按元数据状态过滤
-	UserID         string // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
-	LibraryIDs     []string // 书库过滤 — 只返回这些书库下的漫画（空=不过滤）
-	Uncategorized   bool    // 筛选没有分类关联的作品
-	Untagged        bool    // 筛选没有标签关联的作品
+	Search           string
+	Tags             []string
+	FavoritesOnly    bool
+	SortBy           string // "title" | "addedAt" | "lastReadAt" | "rating" | "custom"
+	SortOrder        string // "asc" | "desc"
+	Page             int
+	PageSize         int
+	Category         string
+	ContentType      string   // "comic" | "novel" | "" (全部)
+	ReadingStatus    string   // "want" | "reading" | "finished" | "shelved" | "" (全部)
+	ExcludeGrouped   bool     // 是否排除已在分组中的漫画（用于分组视图）
+	MetaFilter       string   // "all" | "with" | "missing" — 按元数据状态过滤
+	UserID           string   // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
+	LibraryIDs       []string // 书库过滤 — 只返回这些书库下的漫画（空=不过滤）
+	FilterLibraryIDs bool     // 如果启用，即使 LibraryIDs 为空也强制过滤（此时返回空）
+	Uncategorized    bool     // 筛选没有分类关联的作品
+	Untagged         bool     // 筛选没有标签关联的作品
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
 type ComicListItem struct {
-	ID               string              `json:"id"`
-	Filename         string              `json:"filename"`
-	Title            string              `json:"title"`
-	PageCount        int                 `json:"pageCount"`
-	FileSize         int64               `json:"fileSize"`
-	AddedAt          string              `json:"addedAt"`
-	UpdatedAt        string              `json:"updatedAt"`
-	LastReadPage     int                 `json:"lastReadPage"`
-	LastReadAt       *string             `json:"lastReadAt"`
-	IsFavorite       bool                `json:"isFavorite"`
-	Rating           *int                `json:"rating"`
-	SortOrder        int                 `json:"sortOrder"`
-	TotalReadTime    int                 `json:"totalReadTime"`
-	CoverURL         string              `json:"coverUrl"`
-	CoverAspectRatio float64             `json:"coverAspectRatio"`
-	Author           string              `json:"author"`
-	Publisher        string              `json:"publisher"`
-	Year             *int                `json:"year"`
-	Description      string              `json:"description"`
-	Language         string              `json:"language"`
-	Genre            string              `json:"genre"`
-	MetadataSource           string              `json:"metadataSource"`
-	ReadingStatus            string              `json:"readingStatus"`
-	ComicType                string              `json:"type"`
-	LibraryID                string              `json:"libraryId"`
-	ExternalRating           *float64            `json:"externalRating"`
-	ExternalRatingMax        float64             `json:"externalRatingMax"`
-	ExternalRatingSource     string              `json:"externalRatingSource"`
-	ExternalRatingUpdatedAt  string              `json:"externalRatingUpdatedAt"`
-	Tags                     []ComicTagInfo      `json:"tags"`
-	Categories               []ComicCategoryInfo `json:"categories"`
+	ID                      string              `json:"id"`
+	Filename                string              `json:"filename"`
+	Title                   string              `json:"title"`
+	PageCount               int                 `json:"pageCount"`
+	FileSize                int64               `json:"fileSize"`
+	AddedAt                 string              `json:"addedAt"`
+	UpdatedAt               string              `json:"updatedAt"`
+	LastReadPage            int                 `json:"lastReadPage"`
+	LastReadAt              *string             `json:"lastReadAt"`
+	IsFavorite              bool                `json:"isFavorite"`
+	Rating                  *int                `json:"rating"`
+	SortOrder               int                 `json:"sortOrder"`
+	TotalReadTime           int                 `json:"totalReadTime"`
+	CoverURL                string              `json:"coverUrl"`
+	CoverAspectRatio        float64             `json:"coverAspectRatio"`
+	Author                  string              `json:"author"`
+	Publisher               string              `json:"publisher"`
+	Year                    *int                `json:"year"`
+	Description             string              `json:"description"`
+	Language                string              `json:"language"`
+	Genre                   string              `json:"genre"`
+	MetadataSource          string              `json:"metadataSource"`
+	ReadingStatus           string              `json:"readingStatus"`
+	ComicType               string              `json:"type"`
+	LibraryID               string              `json:"libraryId"`
+	ExternalRating          *float64            `json:"externalRating"`
+	ExternalRatingMax       float64             `json:"externalRatingMax"`
+	ExternalRatingSource    string              `json:"externalRatingSource"`
+	ExternalRatingUpdatedAt string              `json:"externalRatingUpdatedAt"`
+	Tags                    []ComicTagInfo      `json:"tags"`
+	Categories              []ComicCategoryInfo `json:"categories"`
+	CanManage               bool                `json:"canManage,omitempty"`
 }
 
 type ComicTagInfo struct {
@@ -201,7 +203,6 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		conditions = append(conditions, `c."id" NOT IN (SELECT "comicId" FROM "ComicTag")`)
 	}
 
-
 	// MetaFilter: 按元数据状态过滤
 	if opts.MetaFilter == "with" {
 		conditions = append(conditions, `c."metadataSource" != '' AND c."metadataSource" IS NOT NULL`)
@@ -210,7 +211,20 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	}
 
 	// Library filtering: 只返回用户有权访问的书库下的漫画
-	if len(opts.LibraryIDs) > 0 {
+	if opts.FilterLibraryIDs {
+		if len(opts.LibraryIDs) > 0 {
+			placeholders := make([]string, len(opts.LibraryIDs))
+			for i, id := range opts.LibraryIDs {
+				placeholders[i] = "?"
+				args = append(args, id)
+			}
+			conditions = append(conditions, fmt.Sprintf(`c."libraryId" IN (%s)`, strings.Join(placeholders, ",")))
+		} else {
+			// 如果启用了过滤但 libraryIds 为空，说明没有任何书库权限，强制返回空结果
+			conditions = append(conditions, "1=0")
+		}
+	} else if len(opts.LibraryIDs) > 0 {
+		// 向后兼容（理论上外部调用应该都带 FilterLibraryIDs）
 		placeholders := make([]string, len(opts.LibraryIDs))
 		for i, id := range opts.LibraryIDs {
 			placeholders[i] = "?"
@@ -802,20 +816,29 @@ type RecommendationComic struct {
 }
 
 // GetAllComicsForRecommendation 返回所有漫画的推荐所需数据（分批加载标签/分类，避免 IN 参数超限）。
-func GetAllComicsForRecommendation(libraryIDs ...string) ([]RecommendationComic, error) {
+func GetAllComicsForRecommendation(filterLibraryIDs bool, libraryIDs ...string) ([]RecommendationComic, error) {
+	if filterLibraryIDs && len(libraryIDs) == 0 {
+		return []RecommendationComic{}, nil
+	}
 	var args []interface{}
-	for _, id := range libraryIDs { args = append(args, id) }
+	for _, id := range libraryIDs {
+		args = append(args, id)
+	}
 	rows, err := db.Query(`
 		SELECT "id", "title", "author", "genre",
 		       "filename", "type", "pageCount", "lastReadPage", "lastReadAt", "isFavorite",
 		       "rating", "totalReadTime"
 		FROM "Comic"
-	` + func() string {
-		if len(libraryIDs) == 0 { return "" }
+	`+func() string {
+		if len(libraryIDs) == 0 {
+			return ""
+		}
 		ph := make([]string, len(libraryIDs))
-		for i := range libraryIDs { ph[i] = "?" }
+		for i := range libraryIDs {
+			ph[i] = "?"
+		}
 		return fmt.Sprintf(` WHERE "libraryId" IN (%s)`, strings.Join(ph, ","))
-	}() + `
+	}()+`
 	`, args...)
 	if err != nil {
 		return nil, err
@@ -1257,7 +1280,3 @@ func parseSQLiteTime(s string) time.Time {
 	}
 	return time.Time{}
 }
-
-
-
-

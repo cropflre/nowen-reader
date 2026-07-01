@@ -16,7 +16,7 @@ export type { ApiComicTag, ApiComic, ComicsResponse, ApiCategory, ComicGroup, Co
 export type { ComicMetadataUpdate } from "@/api/comics";
 
 // Hook 导出
-export { useComics, invalidateComicsCache } from "./useComicList";
+export { useComics, invalidateComicsCache, notifyLibraryAccessChanged, LIBRARY_ACCESS_CHANGED_EVENT } from "./useComicList";
 export { useComicPages, useComicDetail } from "./useComicReader";
 export { useCategories } from "./useCategories";
 

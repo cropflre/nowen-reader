@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -25,6 +25,22 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { notifyLibraryAccessChanged } from "@/hooks/useComics";
+
+type LibraryPermissionField = 'canView' | 'canDownload' | 'canManage';
+type GroupLibraryRow = { id: string; name: string; canView: boolean; canDownload: boolean; canManage: boolean; rootPath: string; rootPaths?: string[]; enabled?: boolean; defaultAccess?: string; };
+
+function applyLibraryPermissionToggle(lib: GroupLibraryRow, field: LibraryPermissionField): GroupLibraryRow {
+  const next = { ...lib, [field]: !lib[field] };
+  if ((field === 'canDownload' || field === 'canManage') && next[field]) {
+    next.canView = true;
+  }
+  if (field === 'canView' && !next.canView) {
+    next.canDownload = false;
+    next.canManage = false;
+  }
+  return next;
+}
 
 export default function UserGroupManagementPanel() {
 
@@ -42,7 +58,7 @@ export default function UserGroupManagementPanel() {
   >([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [libraries, setLibraries] = useState<
-    Array<{ id: string; name: string; canView: boolean }>
+    GroupLibraryRow[]
   >([]);
   const [loadingLibs, setLoadingLibs] = useState(false);
   const [activeTab, setActiveTab] = useState<"members" | "libraries">(
@@ -155,18 +171,34 @@ export default function UserGroupManagementPanel() {
   const handleToggleLibrary = async (
     groupId: string,
     libraryId: string,
-    canView: boolean
+    field: LibraryPermissionField
   ) => {
-    const newIds = canView
-      ? libraries.filter((l) => l.canView || l.id === libraryId).map((l) => l.id)
-      : libraries
-          .filter((l) => l.canView && l.id !== libraryId)
-          .map((l) => l.id);
-    const uniqueIds = [...new Set(newIds)];
+    // We update locally first, then save everything
+    setLibraries(prev =>
+      prev.map(lib =>
+        lib.id === libraryId ? applyLibraryPermissionToggle(lib, field) : lib
+      )
+    );
+
+    // We should probably save it immediately to match old behavior
+    const updatedLibs = libraries.map(lib =>
+      lib.id === libraryId ? applyLibraryPermissionToggle(lib, field) : lib
+    );
+
+    const accessList = updatedLibs
+      .filter((lib) => lib.canView || lib.canDownload || lib.canManage)
+      .map((lib) => ({
+        libraryId: lib.id,
+        canView: !!lib.canView,
+        canDownload: !!lib.canDownload,
+        canManage: !!lib.canManage
+      }));
+
     try {
-      await setGroupLibraryAccess(groupId, uniqueIds);
-      const data = await fetchGroupLibraryAccess(groupId);
-      setLibraries(data.libraries || []);
+      await setGroupLibraryAccess(groupId, accessList);
+      notifyLibraryAccessChanged();
+      // const data = await fetchGroupLibraryAccess(groupId);
+      // setLibraries(data.libraries || []);
     } catch (err) {
       console.error("Failed to toggle library access:", err);
     }
@@ -436,27 +468,46 @@ export default function UserGroupManagementPanel() {
                       ) : (
                         <div className="space-y-1">
                           {libraries.map((lib) => (
-                            <label
+                            <div
                               key={lib.id}
-                              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-card-hover cursor-pointer"
+                              className="rounded px-2 py-2 hover:bg-card-hover"
                             >
-                              <input
-                                type="checkbox"
-                                checked={lib.canView}
-                                onChange={() =>
-                                  handleToggleLibrary(
-                                    group.id,
-                                    lib.id,
-                                    !lib.canView
-                                  )
-                                }
-                                className="rounded border-border text-accent focus:ring-accent"
-                              />
-                              <BookOpen className="h-3.5 w-3.5 text-muted" />
-                              <span className="text-sm text-foreground">
-                                {lib.name}
-                              </span>
-                            </label>
+                              <div className="mb-1.5 flex items-center gap-2">
+                                <BookOpen className="h-3.5 w-3.5 text-muted" />
+                                <span className="text-sm text-foreground">
+                                  {lib.name}
+                                </span>
+                              </div>
+                              <div className="ml-5 flex flex-wrap gap-4 text-sm">
+                                <label className="flex cursor-pointer items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={lib.canView}
+                                    onChange={() => handleToggleLibrary(group.id, lib.id, "canView")}
+                                    className="rounded border-border text-accent focus:ring-accent"
+                                  />
+                                  查看
+                                </label>
+                                <label className="flex cursor-pointer items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={lib.canDownload}
+                                    onChange={() => handleToggleLibrary(group.id, lib.id, "canDownload")}
+                                    className="rounded border-border text-accent focus:ring-accent"
+                                  />
+                                  下载
+                                </label>
+                                <label className="flex cursor-pointer items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={lib.canManage}
+                                    onChange={() => handleToggleLibrary(group.id, lib.id, "canManage")}
+                                    className="rounded border-border text-accent focus:ring-accent"
+                                  />
+                                  管理
+                                </label>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}

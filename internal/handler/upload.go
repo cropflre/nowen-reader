@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/config"
+	"github.com/nowen-reader/nowen-reader/internal/middleware"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
@@ -45,9 +46,22 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	// 可选：目标书库 ID。传入时上传到该书库的 rootPath；不传时走旧目录逻辑。
 	libraryID := strings.TrimSpace(c.PostForm("libraryId"))
 
+	user := middleware.GetCurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	// 解析目标书库（如果指定了）
 	var targetLibrary *model.Library
 	if libraryID != "" {
+		if user.Role != "admin" {
+			canManage, _ := store.UserCanManageLibrary(user.ID, libraryID)
+			if !canManage {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: no manage permission for this library"})
+				return
+			}
+		}
 		lib, err := store.GetLibraryByID(libraryID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query library"})
@@ -69,6 +83,10 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		_ = os.MkdirAll(lib.RootPath, 0755)
 		log.Printf("[Upload] Targeting library %s (%s) at %s", lib.ID, lib.Type, lib.RootPath)
 	} else {
+		if user.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "libraryId is required for non-admin users"})
+			return
+		}
 		// 旧逻辑：使用 comicsDir / novelsDir
 		comicsDir := config.GetComicsDir()
 		novelsDir := config.GetNovelsDir()
@@ -102,7 +120,12 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 			destDir = pickUploadDir(fh.Filename, categoryHint, comicsDir, novelsDir)
 		}
 
-		destPath := filepath.Join(destDir, fh.Filename)
+		safeFilename := filepath.Base(fh.Filename)
+		if safeFilename == "." || safeFilename == "/" || safeFilename == "\\" {
+			results = append(results, uploadResult{Filename: fh.Filename, Error: "Invalid filename"})
+			continue
+		}
+		destPath := filepath.Join(destDir, safeFilename)
 		if _, err := os.Stat(destPath); err == nil {
 			results = append(results, uploadResult{Filename: fh.Filename, Error: "File already exists"})
 			continue

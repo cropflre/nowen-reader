@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"math"
@@ -28,8 +28,8 @@ type ScoredComic struct {
 
 // GetRecommendations returns personalized comic recommendations.
 // seed > 0 时会在评分上添加随机扰动，使每次刷新结果不同。
-func GetRecommendations(limit int, excludeRead bool, contentType string, seed int64, libraryIDs ...string) ([]ScoredComic, error) {
-	allComics, err := store.GetAllComicsForRecommendation(libraryIDs...)
+func GetRecommendations(limit int, excludeRead bool, contentType string, seed int64, filterLibraryIDs bool, libraryIDs ...string) ([]ScoredComic, error) {
+	allComics, err := store.GetAllComicsForRecommendation(filterLibraryIDs, libraryIDs...)
 	if err != nil {
 		log.Printf("[Recommendation] GetAllComicsForRecommendation error: %v (libraryIDs=%v)", err, libraryIDs)
 		return nil, err
@@ -118,13 +118,13 @@ func GetRecommendations(limit int, excludeRead bool, contentType string, seed in
 }
 
 // GetSimilarComics returns comics similar to a given comic.
-func GetSimilarComics(comicID string, limit int, libraryIDs ...string) ([]ScoredComic, error) {
+func GetSimilarComics(comicID string, limit int, filterLibraryIDs bool, libraryIDs ...string) ([]ScoredComic, error) {
 	target, err := store.GetComicByID(comicID)
 	if err != nil || target == nil {
 		return []ScoredComic{}, nil
 	}
 
-	allComics, err := store.GetAllComicsForRecommendation(libraryIDs...)
+	allComics, err := store.GetAllComicsForRecommendation(filterLibraryIDs, libraryIDs...)
 	if err != nil {
 		return nil, err
 	}

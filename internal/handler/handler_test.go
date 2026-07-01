@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"bytes"
@@ -515,8 +515,6 @@ func TestAdminRequired(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"POST", "/api/comics/batch"},
-		{"POST", "/api/upload"},
 		{"POST", "/api/cache"},
 	}
 

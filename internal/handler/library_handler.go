@@ -263,7 +263,7 @@ func (h *LibraryHandler) DeleteLibrary(c *gin.Context) {
 
 	deletedContents := int64(0)
 	if len(ids) > 0 {
-		deletedContents, err = store.BatchDeleteComicsWithFiles(ids, nil, false)
+		deletedContents, err = store.BatchDeleteComics(ids)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete library contents"})
 			return
@@ -496,22 +496,27 @@ func (h *LibraryHandler) GetUserLibraryAccess(c *gin.Context) {
 	}
 
 	// Build access map
-	accessMap := make(map[string]bool)
+	accessMap := make(map[string]model.UserLibraryAccess)
 	for _, access := range accesses {
-		accessMap[access.LibraryID] = access.CanView
+		accessMap[access.LibraryID] = access
 	}
 
 	// Build result with all libraries
 	type libraryAccess struct {
 		model.Library
-		CanView bool `json:"canView"`
+		CanView     bool `json:"canView"`
+		CanDownload bool `json:"canDownload"`
+		CanManage   bool `json:"canManage"`
 	}
 
 	result := make([]libraryAccess, len(libraries))
 	for i, lib := range libraries {
+		access := accessMap[lib.ID]
 		result[i] = libraryAccess{
-			Library: lib,
-			CanView: accessMap[lib.ID],
+			Library:     lib,
+			CanView:     access.CanView,
+			CanDownload: access.CanDownload,
+			CanManage:   access.CanManage,
 		}
 	}
 
@@ -546,7 +551,8 @@ func (h *LibraryHandler) SetUserLibraryAccess(c *gin.Context) {
 	}
 
 	var req struct {
-		LibraryIDs []string `json:"libraryIds"`
+		LibraryIDs    []string                 `json:"libraryIds"`
+		LibraryAccess []store.LibraryAccessReq `json:"libraryAccess"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -554,7 +560,19 @@ func (h *LibraryHandler) SetUserLibraryAccess(c *gin.Context) {
 		return
 	}
 
-	if err := store.SetUserLibraryAccess(userID, req.LibraryIDs); err != nil {
+	// 兼容旧版前端：如果只传了 libraryIds 字符串数组，转换成 LibraryAccessReq
+	if len(req.LibraryAccess) == 0 && len(req.LibraryIDs) > 0 {
+		for _, id := range req.LibraryIDs {
+			req.LibraryAccess = append(req.LibraryAccess, store.LibraryAccessReq{
+				LibraryID:   id,
+				CanView:     true,
+				CanDownload: false,
+				CanManage:   false,
+			})
+		}
+	}
+
+	if err := store.SetUserLibraryAccess(userID, req.LibraryAccess); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update library access"})
 		return
 	}

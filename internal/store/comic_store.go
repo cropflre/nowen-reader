@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"fmt"
-	"os"
+
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,10 +15,35 @@ import (
 // ID 生成 (与 Node.js 保持一致: md5(filename).substring(0,12))
 // ============================================================
 
-// FilenameToID 从文件名生成稳定的 12 字符十六进制 ID。
-func FilenameToID(filename string) string {
-	h := md5.Sum([]byte(filename))
-	return fmt.Sprintf("%x", h)[:12]
+// PathToID 生成防碰撞的 ID。
+// 兼容老数据：如果该路径/文件名生成的旧 ID 已经在库中存在，并且属于当前书库（或尚未分配书库），则直接返回旧 ID。
+func PathToID(libraryID string, relativePath string) string {
+	baseName := filepath.Base(relativePath)
+
+	// 尝试两种旧哈希可能（以前的版本可能用 relativePath 或 filename 生成 hash）
+	for _, oldStr := range []string{relativePath, baseName} {
+		oldHash := md5.Sum([]byte(oldStr))
+		oldID := fmt.Sprintf("%x", oldHash)[:12]
+
+		var existLib, existRel string
+		err := db.QueryRow(`SELECT "libraryId", "relativePath" FROM "Comic" WHERE "id" = ?`, oldID).Scan(&existLib, &existRel)
+		if err == nil {
+			// 如果找到旧 ID，且该旧记录的书库等于当前书库（或旧记录无书库），且路径匹配（或旧记录无路径），则复用旧 ID
+			if (existLib == libraryID || existLib == "") && (existRel == relativePath || existRel == "") {
+				return oldID
+			}
+		}
+	}
+
+	// 新文件，使用高防撞哈希
+	if libraryID != "" {
+		newHash := md5.Sum([]byte(libraryID + ":" + relativePath))
+		return fmt.Sprintf("%x", newHash)[:12]
+	}
+	
+	// fallback
+	newHash := md5.Sum([]byte(relativePath))
+	return fmt.Sprintf("%x", newHash)[:12]
 }
 
 // FilenameToTitle 从文件名推导出标题（去掉扩展名）。
@@ -223,22 +248,22 @@ func ToggleFavorite(comicID string, userID ...string) (bool, error) {
 		newVal = 1
 	}
 
-	// 始终更新 Comic 表
-	_, err := db.Exec(`UPDATE "Comic" SET "isFavorite" = ?, "updatedAt" = ? WHERE "id" = ?`,
-		newVal, time.Now().UTC(), comicID)
-	if err != nil {
-		return false, err
-	}
-
-	// 更新 UserComicState
 	if uid != "" {
-		_, err = db.Exec(`
+		// 仅更新 UserComicState
+		_, err := db.Exec(`
 			INSERT INTO "UserComicState" ("userId", "comicId", "isFavorite")
 			VALUES (?, ?, ?)
 			ON CONFLICT("userId", "comicId") DO UPDATE SET "isFavorite" = ?
 		`, uid, comicID, newVal, newVal)
 		if err != nil {
-			return newVal == 1, err
+			return false, err
+		}
+	} else {
+		// 旧逻辑：更新 Comic 表
+		_, err := db.Exec(`UPDATE "Comic" SET "isFavorite" = ?, "updatedAt" = ? WHERE "id" = ?`,
+			newVal, time.Now().UTC(), comicID)
+		if err != nil {
+			return false, err
 		}
 	}
 
@@ -247,18 +272,22 @@ func ToggleFavorite(comicID string, userID ...string) (bool, error) {
 
 // UpdateRating 设置评分 (1-5 或 nil 清除)。
 func UpdateRating(comicID string, rating *int, userID ...string) error {
-	_, err := db.Exec(`UPDATE "Comic" SET "rating" = ?, "updatedAt" = ? WHERE "id" = ?`,
-		rating, time.Now().UTC(), comicID)
-	if err != nil {
-		return err
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
 	}
-	if len(userID) > 0 && userID[0] != "" {
-		_, err = db.Exec(`
+
+	if uid != "" {
+		_, err := db.Exec(`
 			INSERT INTO "UserComicState" ("userId", "comicId", "rating")
 			VALUES (?, ?, ?)
 			ON CONFLICT("userId", "comicId") DO UPDATE SET "rating" = ?
-		`, userID[0], comicID, rating, rating)
+		`, uid, comicID, rating, rating)
+		return err
 	}
+
+	_, err := db.Exec(`UPDATE "Comic" SET "rating" = ?, "updatedAt" = ? WHERE "id" = ?`,
+		rating, time.Now().UTC(), comicID)
 	return err
 }
 
@@ -283,33 +312,11 @@ func SetUserReadingStatus(userID, comicID, status string) error {
 	return err
 }
 
-// DeleteComic 从数据库删除漫画，可选删除磁盘文件。
-// deleteFiles 为 true 时同时删除磁盘上的文件。
-func DeleteComic(comicID string, comicsDirs []string, deleteFiles bool) error {
-	// Get filename before deleting
-	var filename string
-	err := db.QueryRow(`SELECT "filename" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&filename)
-	if err != nil {
-		return err
-	}
-
+// DeleteComic 从数据库删除漫画（不涉及磁盘文件删除）。
+func DeleteComic(comicID string) error {
 	// Delete from DB (CASCADE handles relations)
-	_, err = db.Exec(`DELETE FROM "Comic" WHERE "id" = ?`, comicID)
-	if err != nil {
-		return err
-	}
-
-	// Delete file from disk only if requested
-	if deleteFiles {
-		for _, dir := range comicsDirs {
-			fp := filepath.Join(dir, filename)
-			if _, err := os.Stat(fp); err == nil {
-				_ = os.Remove(fp)
-				break
-			}
-		}
-	}
-	return nil
+	_, err := db.Exec(`DELETE FROM "Comic" WHERE "id" = ?`, comicID)
+	return err
 }
 
 // ============================================================

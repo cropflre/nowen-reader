@@ -259,6 +259,9 @@ func SetGroupLibraryAccessFull(groupID string, permissions []GroupLibraryPermiss
 
 	now := time.Now().UTC()
 	for _, p := range permissions {
+		if p.CanDownload || p.CanManage {
+			p.CanView = true
+		}
 		if _, err := stmt.Exec(groupID, p.LibraryID, p.CanView, p.CanDownload, p.CanManage, now); err != nil {
 			return err
 		}

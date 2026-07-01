@@ -9,6 +9,7 @@ import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import { isNSFW } from "@/lib/nsfw";
 import { useTranslation } from "@/lib/i18n";
 import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { LIBRARY_ACCESS_CHANGED_EVENT } from "@/hooks/useComics";
 import type { ApiComic } from "@/hooks/useComics";
 
 const STORAGE_KEY = "continue-reading-collapsed";
@@ -111,7 +112,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
         page: "1",
       });
       if (contentType) params.set("contentType", contentType);
-      const res = await fetch(`/api/comics?${params.toString()}`, { credentials: "include" });
+      const res = await fetch(`/api/comics?${params.toString()}`, { credentials: "include", cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       const all: ApiComic[] = data.comics || [];
@@ -130,6 +131,11 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
 
   useEffect(() => {
     fetchRecent();
+  }, [fetchRecent]);
+
+  useEffect(() => {
+    window.addEventListener(LIBRARY_ACCESS_CHANGED_EVENT, fetchRecent);
+    return () => window.removeEventListener(LIBRARY_ACCESS_CHANGED_EVENT, fetchRecent);
   }, [fetchRecent]);
 
   // 从阅读器返回时刷新

@@ -94,7 +94,7 @@ func (h *ExportHandler) ExportComicsCSV(c *gin.Context) {
 		Page:     1,
 		PageSize: 0, // 全部
 		SortBy:   "title",
-		LibraryIDs: libraryIDs,
+		FilterLibraryIDs: true, LibraryIDs: libraryIDs,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -187,7 +187,7 @@ func collectExportData(userID string) (map[string]interface{}, error) {
 		Page:     1,
 		PageSize: 0, // 全部
 		SortBy:   "title",
-		LibraryIDs: libraryIDs,
+		FilterLibraryIDs: true, LibraryIDs: libraryIDs,
 		UserID:   userID,
 	})
 	if err != nil {

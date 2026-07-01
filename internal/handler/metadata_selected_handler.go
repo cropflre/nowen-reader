@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"encoding/json"
@@ -95,7 +95,11 @@ func (h *MetadataHandler) BatchSelected(c *gin.Context) {
 		}
 
 		isNovel := service.IsNovelFilename(comic.Filename)
-		filePath := findComicFile(comic.Filename)
+		resolved, err := service.GlobalFileResolver.ResolveContentPath(comic.ID)
+		filePath := ""
+		if err == nil {
+			filePath = resolved.AbsolutePath
+		}
 
 		// AI 模式：使用 AI 内容识别（封面+内页 Vision 分析）
 		if body.Mode == "ai" && aiCfg != nil {

@@ -55,7 +55,7 @@ func main() {
 
 	// Run schema migrations
 	if err := store.RunMigrations(); err != nil {
-		log.Printf("[Main] Warning: schema migration failed: %v", err)
+		log.Fatalf("[Main] Schema migration failed: %v", err)
 	}
 
 	// Rebuild FTS5 full-text search index in background (non-blocking)

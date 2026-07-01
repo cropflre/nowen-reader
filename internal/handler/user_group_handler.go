@@ -245,21 +245,26 @@ func (h *UserGroupHandler) GetLibraryAccess(c *gin.Context) {
 	}
 
 	// Build access map
-	accessMap := make(map[string]bool)
+	accessMap := make(map[string]model.GroupLibraryAccess)
 	for _, a := range accesses {
-		accessMap[a.LibraryID] = a.CanView
+		accessMap[a.LibraryID] = a
 	}
 
 	type libraryAccess struct {
 		model.Library
-		CanView bool `json:"canView"`
+		CanView     bool `json:"canView"`
+		CanDownload bool `json:"canDownload"`
+		CanManage   bool `json:"canManage"`
 	}
 
 	result := make([]libraryAccess, len(libraries))
 	for i, lib := range libraries {
+		access := accessMap[lib.ID]
 		result[i] = libraryAccess{
-			Library: lib,
-			CanView: accessMap[lib.ID],
+			Library:     lib,
+			CanView:     access.CanView,
+			CanDownload: access.CanDownload,
+			CanManage:   access.CanManage,
 		}
 	}
 
@@ -287,7 +292,8 @@ func (h *UserGroupHandler) SetLibraryAccess(c *gin.Context) {
 	}
 
 	var req struct {
-		LibraryIDs []string `json:"libraryIds"`
+		LibraryIDs    []string                       `json:"libraryIds"`
+		LibraryAccess []store.GroupLibraryPermission `json:"libraryAccess"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -295,7 +301,19 @@ func (h *UserGroupHandler) SetLibraryAccess(c *gin.Context) {
 		return
 	}
 
-	if err := store.SetGroupLibraryAccess(groupID, req.LibraryIDs); err != nil {
+	// 兼容旧版前端：如果只传了 libraryIds 字符串数组，转换成 GroupLibraryPermission
+	if len(req.LibraryAccess) == 0 && len(req.LibraryIDs) > 0 {
+		for _, id := range req.LibraryIDs {
+			req.LibraryAccess = append(req.LibraryAccess, store.GroupLibraryPermission{
+				LibraryID:   id,
+				CanView:     true,
+				CanDownload: false,
+				CanManage:   false,
+			})
+		}
+	}
+
+	if err := store.SetGroupLibraryAccessFull(groupID, req.LibraryAccess); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group library access"})
 		return
 	}

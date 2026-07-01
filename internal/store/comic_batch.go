@@ -2,8 +2,7 @@ package store
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
+
 	"strings"
 	"time"
 )
@@ -14,11 +13,6 @@ import (
 
 // BatchDeleteComics 批量删除漫画及其关联数据（仅删除数据库记录）。
 func BatchDeleteComics(comicIDs []string) (int64, error) {
-	return BatchDeleteComicsWithFiles(comicIDs, nil, false)
-}
-
-// BatchDeleteComicsWithFiles 批量删除漫画及其关联数据，可选删除磁盘文件。
-func BatchDeleteComicsWithFiles(comicIDs []string, comicsDirs []string, deleteFiles bool) (int64, error) {
 	if len(comicIDs) == 0 {
 		return 0, nil
 	}
@@ -29,21 +23,6 @@ func BatchDeleteComicsWithFiles(comicIDs []string, comicsDirs []string, deleteFi
 		args[i] = id
 	}
 	in := strings.Join(placeholders, ",")
-
-	// If deleteFiles requested, get filenames first
-	var filenames []string
-	if deleteFiles && len(comicsDirs) > 0 {
-		rows, err := db.Query(fmt.Sprintf(`SELECT "filename" FROM "Comic" WHERE "id" IN (%s)`, in), args...)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var fn string
-				if rows.Scan(&fn) == nil {
-					filenames = append(filenames, fn)
-				}
-			}
-		}
-	}
 
 	// Delete related data first (explicit, even though CASCADE should handle it)
 	db.Exec(fmt.Sprintf(`DELETE FROM "ComicTag" WHERE "comicId" IN (%s)`, in), args...)
@@ -60,47 +39,42 @@ func BatchDeleteComicsWithFiles(comicIDs []string, comicsDirs []string, deleteFi
 	// 清理空合集
 	_, _ = CleanupEmptyGroups()
 
-	// Delete files from disk
-	if deleteFiles && len(filenames) > 0 {
-		for _, fn := range filenames {
-			for _, dir := range comicsDirs {
-				fp := filepath.Join(dir, fn)
-				if _, err := os.Stat(fp); err == nil {
-					_ = os.Remove(fp)
-					break
-				}
-			}
-		}
-	}
-
 	return res.RowsAffected()
 }
 
-// BatchSetFavorite 批量设置漫画的收藏状态。
-func BatchSetFavorite(comicIDs []string, isFavorite bool) (int64, error) {
-	if len(comicIDs) == 0 {
+// BatchSetFavorite 批量设置用户个人的收藏状态。
+func BatchSetFavorite(userID string, comicIDs []string, isFavorite bool) (int64, error) {
+	if len(comicIDs) == 0 || userID == "" {
 		return 0, nil
 	}
 	val := 0
 	if isFavorite {
 		val = 1
 	}
-	placeholders := make([]string, len(comicIDs))
-	args := []interface{}{val, time.Now().UTC()}
-	for i, id := range comicIDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-	in := strings.Join(placeholders, ",")
 
-	res, err := db.Exec(
-		fmt.Sprintf(`UPDATE "Comic" SET "isFavorite" = ?, "updatedAt" = ? WHERE "id" IN (%s)`, in),
-		args...,
-	)
+	tx, err := db.Begin()
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	defer tx.Rollback()
+
+	var rowsAffected int64
+	for _, id := range comicIDs {
+		res, err := tx.Exec(`
+			INSERT INTO "UserComicState" ("userId", "comicId", "isFavorite")
+			VALUES (?, ?, ?)
+			ON CONFLICT("userId", "comicId") DO UPDATE SET "isFavorite" = ?
+		`, userID, id, val, val)
+		if err != nil {
+			return 0, err
+		}
+		n, _ := res.RowsAffected()
+		rowsAffected += n
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return rowsAffected, nil
 }
 
 // BatchAddTags 批量为漫画添加标签。
@@ -170,11 +144,11 @@ func BatchSetReadingStatus(userID string, comicIDs []string, status string) erro
 
 	// 校验合法状态
 	validStatuses := map[string]bool{
-		"":        true, // 清空状态
-		"want":    true,
-		"reading": true,
+		"":         true, // 清空状态
+		"want":     true,
+		"reading":  true,
 		"finished": true,
-		"shelved": true,
+		"shelved":  true,
 	}
 	if !validStatuses[status] {
 		return fmt.Errorf("invalid reading status: %s", status)
@@ -360,7 +334,9 @@ func BulkCreateComicsWithSource(comics []struct {
 		}
 		libID := fileLibraryMap[c.ID]
 		relPath := c.Filename
-		if libID == "" { libID = "default" }
+		if libID == "" {
+			libID = "default"
+		}
 		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, c.FileSize, comicType, libID, relPath, now, now); err != nil {
 		}
 	}
@@ -537,6 +513,7 @@ func GetComicsLibraryIDsByIDs(ids []string) (map[string]string, error) {
 	}
 	return result, nil
 }
+
 // UpdateComicPageCount 更新单个漫画的页数。
 func UpdateComicPageCount(comicID string, pageCount int) error {
 	_, err := db.Exec(`UPDATE "Comic" SET "pageCount" = ? WHERE "id" = ?`, pageCount, comicID)
@@ -565,10 +542,15 @@ func UpdateComicMD5Hash(comicID string, md5Hash string) error {
 	return err
 }
 
-// ComicFilenameExists 判断指定 filename 是否已被其他漫画占用。
-func ComicFilenameExists(filename, excludeID string) (bool, error) {
+// ComicRelativePathExists 判断同一书库内指定相对路径是否已被其他漫画占用。
+func ComicRelativePathExists(libraryID, relativePath, excludeID string) (bool, error) {
 	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "filename" = ? AND "id" <> ?`, filename, excludeID).Scan(&count)
+	err := db.QueryRow(`
+		SELECT COUNT(*) FROM "Comic"
+		WHERE COALESCE("libraryId", '') = ?
+		  AND COALESCE(NULLIF("relativePath", ''), "filename") = ?
+		  AND "id" <> ?
+	`, libraryID, relativePath, excludeID).Scan(&count)
 	return count > 0, err
 }
 
@@ -590,11 +572,11 @@ func GetComicIDsByLibraryID(libraryID string) (map[string]struct{}, error) {
 	return result, rows.Err()
 }
 
-// UpdateComicIdentityAfterMove 在物理文件移动/重命名后同步更新 Comic 主键与 filename。
-// Comic.id 由 filename 生成；相关外键依赖 ON UPDATE CASCADE 自动级联。
+// UpdateComicIdentityAfterMove 在物理文件移动/重命名后同步更新 Comic 主键与相对路径。
+// Comic.id 由相对路径生成；相关外键依赖 ON UPDATE CASCADE 自动级联。
 func UpdateComicIdentityAfterMove(oldID, newID, newFilename, newTitle string) error {
-	fields := []string{`"id" = ?`, `"filename" = ?`, `"updatedAt" = ?`}
-	args := []interface{}{newID, newFilename, time.Now().UTC()}
+	fields := []string{`"id" = ?`, `"filename" = ?`, `"relativePath" = ?`, `"updatedAt" = ?`}
+	args := []interface{}{newID, newFilename, newFilename, time.Now().UTC()}
 	if strings.TrimSpace(newTitle) != "" {
 		fields = append(fields, `"title" = ?`)
 		args = append(args, newTitle)
@@ -812,10 +794,10 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 	defer rows.Close()
 
 	type comicUpdate struct {
-		ID          string
-		NewLibID    string
-		NewRelPath  string
-		NewType     string
+		ID         string
+		NewLibID   string
+		NewRelPath string
+		NewType    string
 	}
 	var toUpdate []comicUpdate
 
@@ -981,9 +963,3 @@ func GetMissingComicIDsOlderThan(olderThan time.Duration) ([]string, error) {
 	}
 	return ids, nil
 }
-
-
-
-
-
-

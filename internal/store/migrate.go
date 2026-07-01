@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"database/sql"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/nowen-reader/nowen-reader/internal/config"
 )
 
 // ============================================================
@@ -409,6 +411,14 @@ var Migrations = []Migration{
 			`ALTER TABLE "GroupLibraryAccess" ADD COLUMN "canManage" BOOLEAN NOT NULL DEFAULT 0;`,
 		}, "\n"),
 	},
+	{
+		Version:     29,
+		Description: "Drop global filename unique index and add scoped library path unique index",
+		SQL: strings.Join([]string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS "Comic_library_path_key" ON "Comic"("libraryId", "relativePath") WHERE "libraryId" != '' AND "relativePath" != '';`,
+			`DROP INDEX IF EXISTS "Comic_filename_key";`,
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.
@@ -499,6 +509,40 @@ func RunMigrations() error {
 		log.Printf("[Migrate] Applied migration %d successfully", m.Version)
 	}
 
+	if err := initializeDefaultLibraryPaths(); err != nil {
+		log.Printf("[Migration] Warning: failed to initialize default library paths: %v", err)
+	}
+
+	return nil
+}
+
+func initializeDefaultLibraryPaths() error {
+	var rootPath string
+	err := db.QueryRow(`SELECT "rootPath" FROM "Library" WHERE "id" = 'default'`).Scan(&rootPath)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if rootPath == "" {
+		dirs := config.GetAllScanDirs()
+		if len(dirs) > 0 {
+			mainDir := dirs[0]
+			_, err = db.Exec(`UPDATE "Library" SET "rootPath" = ? WHERE "id" = 'default'`, mainDir)
+			if err != nil {
+				return err
+			}
+			if len(dirs) > 1 {
+				for _, extra := range dirs[1:] {
+					_, err := db.Exec(`INSERT INTO "library_root_paths" ("libraryId", "rootPath") VALUES ('default', ?) ON CONFLICT DO NOTHING`, extra)
+					if err != nil {
+						log.Printf("[Migration] Warning: failed to insert extra root path %s: %v", extra, err)
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -732,8 +776,3 @@ func migrateTable(sourceDB *sql.DB, tableName, selectSQL, insertSQL string) (int
 
 	return count, rows.Err()
 }
-
-
-
-
-

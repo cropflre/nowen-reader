@@ -263,9 +263,13 @@ type DuplicateComicInfo struct {
 // DetectDuplicates 通过多种策略查找重复漫画。
 // 4 pass 检测：MD5 哈希（数据库预计算）→ 大小+页数 → 标准化标题 → 模糊标题匹配。
 // libraryIDs 可选：如果非空，只在指定书库范围内检测重复。
-func DetectDuplicates(comicsDir string, libraryIDs []string) ([]DuplicateGroup, error) {
+// filterLibraryIDs 为 true 且 libraryIDs 为空时，强制返回空结果，用于无书库权限用户。
+func DetectDuplicates(comicsDir string, libraryIDs []string, filterLibraryIDs bool) ([]DuplicateGroup, error) {
 	var rows *sql.Rows
 	var err error
+	if filterLibraryIDs && len(libraryIDs) == 0 {
+		return []DuplicateGroup{}, nil
+	}
 	if len(libraryIDs) > 0 {
 		// 按书库过滤
 		query := `SELECT "id", "filename", "title", "fileSize", "pageCount", "addedAt",

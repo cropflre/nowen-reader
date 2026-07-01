@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 书库管理 API
  * 对应后端 /api/admin/libraries/*
  */
@@ -23,6 +23,7 @@ export interface Library {
   createdAt: string;
   updatedAt: string;
   comicCount: number;
+  canManage?: boolean;
 }
 
 export interface LibraryDeleteResult {
@@ -122,10 +123,17 @@ export async function deleteLibrary(id: string): Promise<LibraryDeleteResult> {
   return res.json() as Promise<LibraryDeleteResult>;
 }
 
+export interface LibraryAccess {
+  libraryId: string;
+  canView: boolean;
+  canDownload: boolean;
+  canManage: boolean;
+}
+
 // 获取用户的书库访问权限
 export async function fetchUserLibraryAccess(userId: string): Promise<{
   userId: string;
-  libraries: Array<Library & { canView: boolean }>;
+  libraries: Array<Library & LibraryAccess>;
 }> {
   const res = await fetch(`/api/admin/users/${userId}/library-access`);
   return safeJson(res);
@@ -144,12 +152,12 @@ export async function scanLibrary(
 // 设置用户的书库访问权限
 export async function setUserLibraryAccess(
   userId: string,
-  libraryIds: string[]
+  libraryAccess: LibraryAccess[]
 ): Promise<void> {
   const res = await fetch(`/api/admin/users/${userId}/library-access`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ libraryIds }),
+    body: JSON.stringify({ libraryAccess }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

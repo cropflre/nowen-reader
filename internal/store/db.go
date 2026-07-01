@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"database/sql"
@@ -112,7 +112,9 @@ type DBStats struct {
 
 // GetDBStats 返回数据库状态信息。
 func GetDBStats() *DBStats {
-	if db == nil { return nil }
+	if db == nil {
+		return nil
+	}
 	var path string
 	if err := db.QueryRow(`PRAGMA database_list`).Scan(new(int), new(string), &path); err != nil {
 		return nil
@@ -208,8 +210,9 @@ func createTables() error {
 			"externalRatingMax"       REAL NOT NULL DEFAULT 0,
 			"externalRatingSource"    TEXT NOT NULL DEFAULT '',
 			"externalRatingUpdatedAt" TEXT NOT NULL DEFAULT ''
-		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS "Comic_filename_key" ON "Comic"("filename")`,
+			)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "Comic_library_path_key" ON "Comic"("libraryId", "relativePath") WHERE "libraryId" != '' AND "relativePath" != ''`,
+		`DROP INDEX IF EXISTS "Comic_filename_key"`,
 		`CREATE INDEX IF NOT EXISTS "Comic_title_idx" ON "Comic"("title")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_isFavorite_idx" ON "Comic"("isFavorite")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_lastReadAt_idx" ON "Comic"("lastReadAt")`,
@@ -522,6 +525,3 @@ func createTables() error {
 
 	return nil
 }
-
-
-

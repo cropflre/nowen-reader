@@ -51,7 +51,7 @@ func (h *AIHandler) SemanticSearch(c *gin.Context) {
 		PageSize:   body.Limit,
 		Page:       1,
 		SortBy:     "title",
-		LibraryIDs: libraryIDs,
+		FilterLibraryIDs: true, LibraryIDs: libraryIDs,
 	})
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to fetch library"})

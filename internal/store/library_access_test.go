@@ -150,7 +150,7 @@ func TestUserCanViewLibrary_DirectAccess(t *testing.T) {
 	}
 
 	// 直接授权
-	err = SetUserLibraryAccess("user-2", []string{"lib-direct"})
+	err = SetUserLibraryAccess("user-2", []LibraryAccessReq{{LibraryID: "lib-direct", CanView: true}})
 	if err != nil {
 		t.Fatalf("SetUserLibraryAccess failed: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestUserCanViewLibrary_DisabledLibrary(t *testing.T) {
 	}
 
 	// 直接授权也不能访问 disabled 书库
-	err = SetUserLibraryAccess("user-4", []string{"lib-disabled-2"})
+	err = SetUserLibraryAccess("user-4", []LibraryAccessReq{{LibraryID: "lib-disabled-2", CanView: true}})
 	if err != nil {
 		t.Fatalf("SetUserLibraryAccess failed: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestUserCanViewComic(t *testing.T) {
 	}
 
 	// 授权后可以访问
-	err = SetUserLibraryAccess("user-5", []string{"lib-comic-b"})
+	err = SetUserLibraryAccess("user-5", []LibraryAccessReq{{LibraryID: "lib-comic-b", CanView: true}})
 	if err != nil {
 		t.Fatalf("SetUserLibraryAccess failed: %v", err)
 	}
@@ -315,6 +315,7 @@ func TestUserCanViewComic_NoLibrary(t *testing.T) {
 	}
 
 	createTestUser(t, "user-6", "nolibuser", "user")
+	createTestUser(t, "admin-legacy", "legacyadmin", "admin")
 
 	// 创建没有 libraryId 的漫画（旧数据兼容）
 	err := BulkCreateComics([]struct {
@@ -329,13 +330,96 @@ func TestUserCanViewComic_NoLibrary(t *testing.T) {
 		t.Fatalf("BulkCreateComics failed: %v", err)
 	}
 
-	// 没有 libraryId 的漫画默认允许访问
+	// 没有 libraryId 的旧数据不能向普通用户默认放行
 	ok, err := UserCanViewComic("user-6", "comic-nolib")
 	if err != nil {
 		t.Fatalf("UserCanViewComic failed: %v", err)
 	}
+	if ok {
+		t.Error("Normal user should NOT access comic without libraryId")
+	}
+
+	// 管理员保留处理旧数据的入口
+	ok, err = UserCanViewComic("admin-legacy", "comic-nolib")
+	if err != nil {
+		t.Fatalf("UserCanViewComic(admin) failed: %v", err)
+	}
 	if !ok {
-		t.Error("User should access comic without libraryId (backward compat)")
+		t.Error("Admin should access comic without libraryId for cleanup")
+	}
+}
+
+func TestUserCanViewComic_MissingLibraryDeniedToNormalUser(t *testing.T) {
+	setupTestDB(t)
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+
+	createTestUser(t, "user-missing-lib", "missinglibuser", "user")
+	createTestUser(t, "admin-missing-lib", "missinglibadmin", "admin")
+	createTestComicWithLibrary(t, "comic-missing-lib", "missing-lib.cbz", "Missing Lib Comic", "deleted-lib")
+
+	ok, err := UserCanViewComic("user-missing-lib", "comic-missing-lib")
+	if err != nil {
+		t.Fatalf("UserCanViewComic failed: %v", err)
+	}
+	if ok {
+		t.Error("Normal user should NOT access comic whose library no longer exists")
+	}
+
+	ok, err = UserCanViewComic("admin-missing-lib", "comic-missing-lib")
+	if err != nil {
+		t.Fatalf("UserCanViewComic(admin) failed: %v", err)
+	}
+	if !ok {
+		t.Error("Admin should access comic with missing library for cleanup")
+	}
+}
+
+func TestLibraryAccessPermissionImplication(t *testing.T) {
+	setupTestDB(t)
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+
+	createTestUser(t, "user-implied-view", "impliedview", "user")
+	createTestLibrary(t, "lib-implied-view", "Implied View", "private", true)
+
+	if err := SetUserLibraryAccess("user-implied-view", []LibraryAccessReq{{
+		LibraryID: "lib-implied-view",
+		CanManage: true,
+	}}); err != nil {
+		t.Fatalf("SetUserLibraryAccess failed: %v", err)
+	}
+
+	userAccess, err := GetUserLibraryAccess("user-implied-view")
+	if err != nil {
+		t.Fatalf("GetUserLibraryAccess failed: %v", err)
+	}
+	if len(userAccess) != 1 || !userAccess[0].CanView || !userAccess[0].CanManage {
+		t.Fatalf("manage permission should imply view, got %+v", userAccess)
+	}
+
+	group := &model.UserGroup{
+		ID:   "group-implied-view",
+		Name: "Group Implied View",
+	}
+	if err := CreateUserGroup(group); err != nil {
+		t.Fatalf("CreateUserGroup failed: %v", err)
+	}
+	if err := SetGroupLibraryAccessFull("group-implied-view", []GroupLibraryPermission{{
+		LibraryID:   "lib-implied-view",
+		CanDownload: true,
+	}}); err != nil {
+		t.Fatalf("SetGroupLibraryAccessFull failed: %v", err)
+	}
+
+	groupAccess, err := GetGroupLibraryAccess("group-implied-view")
+	if err != nil {
+		t.Fatalf("GetGroupLibraryAccess failed: %v", err)
+	}
+	if len(groupAccess) != 1 || !groupAccess[0].CanView || !groupAccess[0].CanDownload {
+		t.Fatalf("download permission should imply view, got %+v", groupAccess)
 	}
 }
 
@@ -394,7 +478,7 @@ func TestGetUserAccessibleLibraryIDs(t *testing.T) {
 	}
 
 	// 授权后可以看到 private
-	err = SetUserLibraryAccess("user-7", []string{"lib-acc-pri"})
+	err = SetUserLibraryAccess("user-7", []LibraryAccessReq{{LibraryID: "lib-acc-pri", CanView: true}})
 	if err != nil {
 		t.Fatalf("SetUserLibraryAccess failed: %v", err)
 	}

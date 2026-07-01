@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"github.com/gin-gonic/gin"
@@ -16,13 +16,13 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	{
 		comicsRead.GET("", comic.ListComics)
 		comicsRead.GET("/duplicates", comic.DetectDuplicates)
+		comicsRead.POST("/batch", comic.BatchOperation)
 	}
 
 	// Comics write ops (require admin)
 	comicsWrite := api.Group("/comics")
 	comicsWrite.Use(middleware.AdminRequired())
 	{
-		comicsWrite.POST("/batch", comic.BatchOperation)
 		comicsWrite.PUT("/reorder", comic.Reorder)
 	}
 
@@ -41,9 +41,9 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicByID.GET("", comic.GetComic)
 	}
 
-	// Single comic write operations (require admin)
+	// Single comic write operations (require manage permission)
 	comicByIDWrite := api.Group("/comics/:id")
-	comicByIDWrite.Use(middleware.AdminRequired())
+	comicByIDWrite.Use(middleware.RequireComicManagePermission())
 	{
 
 		// Tags per comic
@@ -58,6 +58,9 @@ func registerComicRoutes(api *gin.RouterGroup) {
 
 		// Metadata editing
 		comicByIDWrite.PUT("/metadata", comic.UpdateMetadata)
+
+		// Delete comic
+		comicByIDWrite.DELETE("", comic.DeleteComic)
 	}
 
 	// 阅读进度和状态（所有登录用户可用）
@@ -68,13 +71,6 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicByIDAuth.PUT("/reading-status", comic.SetReadingStatus)
 		comicByIDAuth.PUT("/favorite", comic.ToggleFavorite)
 		comicByIDAuth.PUT("/rating", comic.UpdateRating)
-	}
-
-	// 单本漫画管理员操作（删除等危险操作）
-	comicByIDAdmin := api.Group("/comics/:id")
-	comicByIDAdmin.Use(middleware.AdminRequired())
-	{
-		comicByIDAdmin.DELETE("/delete", comic.DeleteComic)
 	}
 
 	// ============================================================

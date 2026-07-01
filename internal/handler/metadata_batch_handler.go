@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"encoding/json"
@@ -76,11 +76,16 @@ func (h *MetadataHandler) Batch(c *gin.Context) {
 			"filename": comic.Filename,
 		}
 
-		filePath := findComicFile(comic.Filename)
+		resolved, err := service.GlobalFileResolver.ResolveContentPath(comic.ID)
+		if err != nil || resolved.AbsolutePath == "" {
+			failed++
+			continue
+		}
+		filePath := resolved.AbsolutePath
 
 		isNovel := service.IsNovelFilename(comic.Filename)
 
-		// 小说文件：优先尝试从 EPUB OPF 提取本地元数据
+		// 如果是文件夹漫画，跳过：优先尝试从 EPUB OPF 提取本地元数据
 		if isNovel && filePath != "" {
 			ext := strings.ToLower(filepath.Ext(comic.Filename))
 			if ext == ".epub" {

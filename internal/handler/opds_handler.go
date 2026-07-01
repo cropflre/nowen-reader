@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -151,19 +150,16 @@ func (h *OPDSHandler) Download(c *gin.Context) {
 		return
 	}
 
-	if err := checkComicAccess(c, comicID); err != nil {
+	if err := checkComicDownloadAccess(c, comicID); err != nil {
 		return
 	}
 
-	// Find file on disk
-	var filePath string
-	for _, dir := range config.GetAllScanDirs() {
-		fp := filepath.Join(dir, comic.Filename)
-		if _, err := os.Stat(fp); err == nil {
-			filePath = fp
-			break
-		}
+	resolved, err := service.GlobalFileResolver.ResolveContentPath(comicID)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "File not found"})
+		return
 	}
+	filePath := resolved.AbsolutePath
 
 	if filePath == "" {
 		c.JSON(404, gin.H{"error": "File not found"})

@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"fmt"
@@ -95,23 +95,32 @@ func GetDiagnostics(c *gin.Context) {
 func checkScanDirs() []DiagnosticItem {
 	var items []DiagnosticItem
 
-	dirs := config.GetAllScanDirs()
+	libs, _ := store.GetAllLibraries()
+	var dirs []string
+	for _, lib := range libs {
+		if lib.RootPath != "" {
+			dirs = append(dirs, lib.RootPath)
+		}
+		extra, _ := store.GetLibraryRootPaths(lib.ID)
+		dirs = append(dirs, extra...)
+	}
+
 	if len(dirs) == 0 {
 		items = append(items, DiagnosticItem{
 			ID:      "scan-dirs-empty",
-			Name:    "扫描目录配置",
+			Name:    "书库目录配置",
 			Status:  "error",
-			Message: "未配置任何扫描目录",
-			Hint:    "请在站点设置中配置漫画目录（ComicsDir）或小说目录（NovelsDir）",
+			Message: "未配置任何书库扫描目录",
+			Hint:    "请在书库管理中添加有效的书库目录",
 		})
 		return items
 	}
 
 	items = append(items, DiagnosticItem{
 		ID:      "scan-dirs-count",
-		Name:    "扫描目录数量",
+		Name:    "书库目录数量",
 		Status:  "ok",
-		Message: fmt.Sprintf("已配置 %d 个扫描目录", len(dirs)),
+		Message: fmt.Sprintf("已配置 %d 个书库扫描目录", len(dirs)),
 	})
 
 	for _, dir := range dirs {

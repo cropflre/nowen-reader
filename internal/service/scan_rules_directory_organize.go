@@ -94,8 +94,8 @@ func runDirectoryOrganizeAction(batchID string, ids []string, rule *config.Direc
 		}
 		updateProgress(func(p *ScanRuleProgress) { p.CurrentDir = displayDir })
 
-		sourceAbs, scanRoot, found := findComicDiskPath(oldRel)
-		if !found {
+		resolved, err := GlobalFileResolver.ResolveContentPath(id)
+		if err != nil || resolved.AbsolutePath == "" {
 			failed++
 			updateProgress(func(p *ScanRuleProgress) { p.Failed++; p.Current++ })
 			_ = store.InsertScanRuleOpLog(store.ScanRuleOpLog{
@@ -107,6 +107,8 @@ func runDirectoryOrganizeAction(batchID string, ids []string, rule *config.Direc
 			})
 			continue
 		}
+		sourceAbs := resolved.AbsolutePath
+		scanRoot := resolved.RootPath
 
 		plan := directoryOrganizePlan{
 			ComicID:     id,
@@ -155,16 +157,21 @@ func applyDirectoryMovePlan(batchID, comicID, oldRel, targetRel, sourceAbs, scan
 		return false, nil
 	}
 
-	newID := store.FilenameToID(targetRel)
+	comic, _ := store.GetComicByID(comicID)
+	libraryID := ""
+	if comic != nil {
+		libraryID = comic.LibraryID
+	}
+	newID := store.PathToID(libraryID, targetRel)
 	if newID != comicID {
 		if existing, _ := store.GetComicByID(newID); existing != nil {
 			return false, fmt.Errorf("target comic already exists in database: %s", targetRel)
 		}
 	}
-	if exists, err := store.ComicFilenameExists(targetRel, comicID); err != nil {
+	if exists, err := store.ComicRelativePathExists(libraryID, targetRel, comicID); err != nil {
 		return false, err
 	} else if exists {
-		return false, fmt.Errorf("target filename already exists in database: %s", targetRel)
+		return false, fmt.Errorf("target relative path already exists in library: %s", targetRel)
 	}
 
 	targetAbs := filepath.Join(scanRoot, filepath.FromSlash(strings.TrimSuffix(targetRel, "/")))
@@ -323,33 +330,6 @@ func cleanOrganizeDirParts(dir string) []string {
 		parts = append(parts, cleaned)
 	}
 	return parts
-}
-
-func findComicDiskPath(rel string) (absPath, scanRoot string, ok bool) {
-	rel = normalizeScanRelPath(rel)
-	if rel == "" {
-		return "", "", false
-	}
-	probeRel := strings.TrimSuffix(rel, "/")
-	for _, root := range config.GetAllScanDirs() {
-		root = strings.TrimSpace(root)
-		if root == "" {
-			continue
-		}
-		candidate := filepath.Join(root, filepath.FromSlash(probeRel))
-		info, err := os.Stat(candidate)
-		if err != nil {
-			continue
-		}
-		if strings.HasSuffix(rel, "/") && !info.IsDir() {
-			continue
-		}
-		if !strings.HasSuffix(rel, "/") && info.IsDir() {
-			continue
-		}
-		return candidate, root, true
-	}
-	return "", "", false
 }
 
 func hardlinkDirectory(sourceDir, targetDir string) error {

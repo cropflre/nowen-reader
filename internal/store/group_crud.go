@@ -70,13 +70,14 @@ type GroupComicItem struct {
 
 // GroupListOptions 分组列表查询选项。
 type GroupListOptions struct {
-	UserID        string   // 用户ID过滤
-	ContentType   string   // 内容类型过滤: "comic" | "novel" | "" (全部)
-	Category      string   // 分类过滤（slug）
-	Tags          []string // 标签过滤（标签名列表，AND 逻辑）
-	FavoritesOnly bool     // 仅返回包含收藏漫画的分组
-	LibraryIDs    []string // 书库ID过滤：只返回包含这些书库中漫画的分组
-	IncludeEmpty  bool     // 是否包含空合集（默认 false）
+	UserID           string   // 用户ID过滤
+	ContentType      string   // 内容类型过滤: "comic" | "novel" | "" (全部)
+	Category         string   // 分类过滤（slug）
+	Tags             []string // 标签过滤（标签名列表，AND 逻辑）
+	FavoritesOnly    bool     // 仅返回包含收藏漫画的分组
+	FilterLibraryIDs bool     // 如果为 true 且 LibraryIDs 为空，则强制返回空结果
+	LibraryIDs       []string // 书库ID过滤：只返回包含这些书库中漫画的分组
+	IncludeEmpty     bool     // 是否包含空合集（默认 false）
 }
 
 // GetAllGroups 获取所有分组（带漫画数量）。
@@ -107,7 +108,25 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 	}
 
 	// 书库权限过滤：只返回包含可访问书库中漫画的分组
-	if len(opts.LibraryIDs) > 0 {
+	if opts.FilterLibraryIDs {
+		if len(opts.LibraryIDs) > 0 {
+			placeholders := make([]string, len(opts.LibraryIDs))
+			for i, id := range opts.LibraryIDs {
+				placeholders[i] = "?"
+				args = append(args, id)
+			}
+			conditions = append(conditions, fmt.Sprintf(`(g."id" IN (
+				SELECT DISTINCT gi4."groupId" FROM "ComicGroupItem" gi4
+				JOIN "Comic" c4 ON c4."id" = gi4."comicId"
+				WHERE c4."libraryId" IN (%s)
+			) OR g."id" NOT IN (
+				SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
+			))`, strings.Join(placeholders, ",")))
+		} else {
+			// 如果没有任何书库权限，且有内容的分组就不该显示，但空分组可以显示
+			conditions = append(conditions, `g."id" NOT IN (SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5)`)
+		}
+	} else if len(opts.LibraryIDs) > 0 {
 		placeholders := make([]string, len(opts.LibraryIDs))
 		for i, id := range opts.LibraryIDs {
 			placeholders[i] = "?"

@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"strconv"
@@ -46,12 +46,14 @@ func (h *RecommendationHandler) GetRecommendations(c *gin.Context) {
 
 	// 获取用户可访问的书库ID
 	var libraryIDs []string
+	filterLibraryIDs := false
 	if uid := getUserID(c); uid != "" {
+		filterLibraryIDs = true
 		if ids, err := store.GetUserAccessibleLibraryIDs(uid); err == nil {
 			libraryIDs = ids
 		}
 	}
-	recommendations, err := service.GetRecommendations(limit, excludeRead, contentType, seed, libraryIDs...)
+	recommendations, err := service.GetRecommendations(limit, excludeRead, contentType, seed, filterLibraryIDs, libraryIDs...)
 	if err != nil {
 		log.Printf("[RecommendationHandler] error: %v, userID=%q, libraryIDs=%v, contentType=%q", err, getUserID(c), libraryIDs, contentType)
 		c.JSON(500, gin.H{"error": "Failed to get recommendations", "detail": err.Error()})
@@ -68,6 +70,9 @@ func (h *RecommendationHandler) GetSimilar(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "comic id required"})
 		return
 	}
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
 
 	limit := 10
 	if l := c.Query("limit"); l != "" {
@@ -77,12 +82,14 @@ func (h *RecommendationHandler) GetSimilar(c *gin.Context) {
 	}
 
 	var libraryIDs []string
+	filterLibraryIDs := false
 	if uid := getUserID(c); uid != "" {
+		filterLibraryIDs = true
 		if ids, err := store.GetUserAccessibleLibraryIDs(uid); err == nil {
 			libraryIDs = ids
 		}
 	}
-	similar, err := service.GetSimilarComics(comicID, limit, libraryIDs...)
+	similar, err := service.GetSimilarComics(comicID, limit, filterLibraryIDs, libraryIDs...)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to get similar comics"})
 		return

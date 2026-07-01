@@ -30,6 +30,7 @@ import {
   fetchUserLibraryAccess,
   setUserLibraryAccess,
   type Library,
+  type LibraryAccess,
 } from "@/api/libraries";
 import {
   fetchUserGroups,
@@ -38,6 +39,7 @@ import {
   type UserGroup,
   type GroupMember,
 } from "@/api/userGroups";
+import { notifyLibraryAccessChanged } from "@/hooks/useComics";
 
 interface UserItem {
   id: string;
@@ -48,6 +50,23 @@ interface UserItem {
 }
 
 type RegistrationMode = "open" | "invite" | "closed";
+type LibraryPermissionField = 'canView' | 'canDownload' | 'canManage';
+
+function applyLibraryPermissionToggle(access: LibraryAccess, field: LibraryPermissionField): LibraryAccess {
+  const next = { ...access, [field]: !access[field] };
+  if ((field === 'canDownload' || field === 'canManage') && next[field]) {
+    next.canView = true;
+  }
+  if (field === 'canView' && !next.canView) {
+    next.canDownload = false;
+    next.canManage = false;
+  }
+  return next;
+}
+
+function effectiveLibraryAccess(accessList: LibraryAccess[]): LibraryAccess[] {
+  return accessList.filter((access) => access.canView || access.canDownload || access.canManage);
+}
 
 const REG_MODE_OPTIONS: { value: RegistrationMode; label: string; desc: string; icon: React.ReactNode }[] = [
   { value: "open", label: "开放注册", desc: "任何人都可以自行注册", icon: <Globe className="h-4 w-4" /> },
@@ -61,6 +80,26 @@ export function UserManagementPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const toggleLibAccess = (libId: string, field: LibraryPermissionField, isEdit: boolean) => {
+    const setAccess = isEdit ? setEditLibAccess : setSelectedLibAccess;
+
+    setAccess(prev => {
+      const existingIdx = prev.findIndex(a => a.libraryId === libId);
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = applyLibraryPermissionToggle(next[existingIdx], field);
+        return next;
+      } else {
+        return [...prev, applyLibraryPermissionToggle({ libraryId: libId, canView: false, canDownload: false, canManage: false }, field)];
+      }
+    });
+  };
+
+  const getLibAccess = (libId: string, isEdit: boolean) => {
+    const list = isEdit ? editLibAccess : selectedLibAccess;
+    return list.find(a => a.libraryId === libId) || { canView: false, canDownload: false, canManage: false };
+  };
 
   // 注册策略
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>("open");
@@ -79,13 +118,13 @@ export function UserManagementPanel() {
   // 书库和权限组
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
-  const [selectedLibIds, setSelectedLibIds] = useState<string[]>([]);
+  const [selectedLibAccess, setSelectedLibAccess] = useState<LibraryAccess[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // 编辑用户
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
-  const [editLibIds, setEditLibIds] = useState<string[]>([]);
+  const [editLibAccess, setEditLibAccess] = useState<LibraryAccess[]>([]);
   const [editGroupIds, setEditGroupIds] = useState<string[]>([]);
   const [editGroupMembersMap, setEditGroupMembersMap] = useState<Record<string, string[]>>({});
   const [editLoading, setEditLoading] = useState(false);
@@ -187,9 +226,11 @@ export function UserManagementPanel() {
       const userId = data.user.id;
 
       // 2. 如果是普通用户，保存书库权限
-      if (newRole === "user" && selectedLibIds.length > 0) {
+      const selectedAccess = effectiveLibraryAccess(selectedLibAccess);
+      if (newRole === "user" && selectedAccess.length > 0) {
         try {
-          await setUserLibraryAccess(userId, selectedLibIds);
+          await setUserLibraryAccess(userId, selectedAccess);
+          notifyLibraryAccessChanged();
         } catch (err) {
           console.error("Failed to set library access:", err);
         }
@@ -217,7 +258,7 @@ export function UserManagementPanel() {
       setNewNickname("");
       setNewRole("user");
       setNewAiEnabled(false);
-      setSelectedLibIds([]);
+      setSelectedLibAccess([]);
       setSelectedGroupIds([]);
       setShowAdvanced(false);
       showMessage(`用户 "${data.user.username}" 创建成功`);
@@ -233,7 +274,7 @@ export function UserManagementPanel() {
   const handleOpenEdit = async (user: UserItem) => {
     setEditingUser(user);
     setEditLoading(true);
-    setEditLibIds([]);
+    setEditLibAccess([]);
     setEditGroupIds([]);
     setEditGroupMembersMap({});
 
@@ -241,10 +282,13 @@ export function UserManagementPanel() {
       // 获取用户的书库权限
       if (user.role !== "admin") {
         const accessData = await fetchUserLibraryAccess(user.id);
-        const userLibIds = (accessData.libraries || [])
-          .filter((l) => l.canView)
-          .map((l) => l.id);
-        setEditLibIds(userLibIds);
+        const userLibAccess = (accessData.libraries || []).map(l => ({
+          libraryId: l.id,
+          canView: !!l.canView,
+          canDownload: !!l.canDownload,
+          canManage: !!l.canManage
+        }));
+        setEditLibAccess(userLibAccess);
       }
 
       // 获取用户所属的权限组
@@ -278,7 +322,8 @@ export function UserManagementPanel() {
     try {
       // 保存书库权限（仅普通用户）
       if (editingUser.role !== "admin") {
-        await setUserLibraryAccess(editingUser.id, editLibIds);
+        await setUserLibraryAccess(editingUser.id, effectiveLibraryAccess(editLibAccess));
+        notifyLibraryAccessChanged();
       }
 
       // 保存权限组成员关系
@@ -357,19 +402,6 @@ export function UserManagementPanel() {
     }
   };
 
-  // 切换书库选择
-  const toggleLib = (libId: string, isCreate: boolean) => {
-    if (isCreate) {
-      setSelectedLibIds((prev) =>
-        prev.includes(libId) ? prev.filter((id) => id !== libId) : [...prev, libId]
-      );
-    } else {
-      setEditLibIds((prev) =>
-        prev.includes(libId) ? prev.filter((id) => id !== libId) : [...prev, libId]
-      );
-    }
-  };
-
   // 切换权限组选择
   const toggleGroup = (groupId: string, isCreate: boolean) => {
     if (isCreate) {
@@ -388,7 +420,7 @@ export function UserManagementPanel() {
     if (user.role === "admin") return ["管理员"];
     const sources: string[] = [];
     // 直接授权
-    if (editLibIds.includes(libId)) sources.push("直接授权");
+    if (editLibAccess.some(a => a.libraryId === libId && (a.canView || a.canDownload || a.canManage))) sources.push("直接授权");
     // 权限组继承
     for (const groupId of editGroupIds) {
       const groupLibs = editGroupMembersMap[groupId] || [];
@@ -583,38 +615,37 @@ export function UserManagementPanel() {
               {newRole === "user" && libraries.length > 0 && (
                 <div>
                   <label className="text-xs text-muted mb-2 block">可访问的库</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {libraries.filter((l) => l.enabled).map((lib) => (
-                      <label
+                  <div className="grid grid-cols-1 gap-2">
+                    {libraries.filter((l) => l.enabled).map((lib) => {
+                      const access = getLibAccess(lib.id, false);
+                      const isPublic = lib.defaultAccess === "public";
+                      return (
+                      <div
                         key={lib.id}
-                        className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-all ${
-                          selectedLibIds.includes(lib.id)
-                            ? "border-accent/50 bg-accent/5"
-                            : lib.defaultAccess === "public"
-                              ? "border-green-500/30 bg-green-500/5"
-                              : "border-border/30 hover:border-border/60"
-                        }`}
+                        className="flex flex-col gap-2 rounded-lg border px-3 py-2 border-border/30"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedLibIds.includes(lib.id) || lib.defaultAccess === "public"}
-                          onChange={() => toggleLib(lib.id, true)}
-                          disabled={lib.defaultAccess === "public"}
-                          className="rounded border-border text-accent focus:ring-accent"
-                        />
-                        <BookOpen className={`h-3.5 w-3.5 shrink-0 ${
-                          selectedLibIds.includes(lib.id) || lib.defaultAccess === "public"
-                            ? "text-accent"
-                            : "text-muted"
-                        }`} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm text-foreground truncate">{lib.name}</div>
-                          {lib.defaultAccess === "public" && (
-                            <div className="text-[10px] text-green-500">公开 - 所有用户可见</div>
-                          )}
+                        <div className="flex items-center gap-2.5">
+                          <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm text-foreground truncate">{lib.name}</div>
+                            {isPublic && (
+                              <div className="text-[10px] text-green-500">公开书库默认可查看</div>
+                            )}
+                          </div>
                         </div>
-                      </label>
-                    ))}
+                        <div className="flex gap-4 ml-6 text-sm">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" checked={access.canView || isPublic} disabled={isPublic} onChange={() => toggleLibAccess(lib.id, 'canView', false)} className="rounded border-border text-accent focus:ring-accent" /> 查看
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" checked={access.canDownload} onChange={() => toggleLibAccess(lib.id, 'canDownload', false)} className="rounded border-border text-accent focus:ring-accent" /> 下载
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" checked={access.canManage} onChange={() => toggleLibAccess(lib.id, 'canManage', false)} className="rounded border-border text-accent focus:ring-accent" /> 管理
+                          </label>
+                        </div>
+                      </div>
+                    )})}
                   </div>
                 </div>
               )}
@@ -669,7 +700,7 @@ export function UserManagementPanel() {
                   type="button"
                   onClick={() => {
                     setShowCreateForm(false);
-                    setSelectedLibIds([]);
+                    setSelectedLibAccess([]);
                     setSelectedGroupIds([]);
                     setShowAdvanced(false);
                   }}
@@ -872,37 +903,35 @@ export function UserManagementPanel() {
                     <label className="text-xs text-muted mb-2 block">可访问的库</label>
                     <div className="grid grid-cols-1 gap-2">
                       {libraries.filter((l) => l.enabled).map((lib) => {
-                        const isDirect = editLibIds.includes(lib.id);
+                        const access = getLibAccess(lib.id, true);
                         const isPublic = lib.defaultAccess === "public";
-                        const isChecked = isDirect || isPublic;
                         return (
-                          <label
-                            key={lib.id}
-                            className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-all ${
-                              isChecked
-                                ? "border-accent/50 bg-accent/5"
-                                : isPublic
-                                  ? "border-green-500/30 bg-green-500/5"
-                                  : "border-border/30 hover:border-border/60"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleLib(lib.id, false)}
-                              disabled={isPublic}
-                              className="rounded border-border text-accent focus:ring-accent"
-                            />
-                            <BookOpen className={`h-3.5 w-3.5 shrink-0 ${isChecked ? "text-accent" : "text-muted"}`} />
+                        <div
+                          key={lib.id}
+                          className="flex flex-col gap-2 rounded-lg border px-3 py-2 border-border/30"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted" />
                             <div className="min-w-0 flex-1">
                               <div className="text-sm text-foreground truncate">{lib.name}</div>
-                              <div className="text-[10px] text-muted">
-                                {isPublic ? "公开书库" : isDirect ? "直接授权" : "未授权"}
-                              </div>
+                              {isPublic && (
+                                <div className="text-[10px] text-green-500">公开书库默认可查看</div>
+                              )}
                             </div>
-                          </label>
-                        );
-                      })}
+                          </div>
+                          <div className="flex gap-4 ml-6 text-sm">
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" checked={access.canView || isPublic} disabled={isPublic} onChange={() => toggleLibAccess(lib.id, 'canView', true)} className="rounded border-border text-accent focus:ring-accent" /> 查看
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" checked={access.canDownload} onChange={() => toggleLibAccess(lib.id, 'canDownload', true)} className="rounded border-border text-accent focus:ring-accent" /> 下载
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" checked={access.canManage} onChange={() => toggleLibAccess(lib.id, 'canManage', true)} className="rounded border-border text-accent focus:ring-accent" /> 管理
+                            </label>
+                          </div>
+                        </div>
+                      )})}
                     </div>
                   </div>
                 )}

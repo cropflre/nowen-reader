@@ -27,6 +27,8 @@ export interface GroupMember {
 export interface GroupLibraryAccess {
   libraryId: string;
   canView: boolean;
+  canDownload: boolean;
+  canManage: boolean;
 }
 
 // ============================================================
@@ -129,6 +131,8 @@ export async function fetchGroupLibraryAccess(groupId: string): Promise<{
     rootPath: string;
     rootPaths?: string[];
     canView: boolean;
+    canDownload: boolean;
+    canManage: boolean;
   }>;
 }> {
   const res = await fetch(`/api/admin/user-groups/${groupId}/library-access`);
@@ -138,12 +142,12 @@ export async function fetchGroupLibraryAccess(groupId: string): Promise<{
 // 设置用户组书库权限
 export async function setGroupLibraryAccess(
   groupId: string,
-  libraryIds: string[]
+  libraryAccess: GroupLibraryAccess[]
 ): Promise<void> {
   const res = await fetch(`/api/admin/user-groups/${groupId}/library-access`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ libraryIds }),
+    body: JSON.stringify({ libraryAccess }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

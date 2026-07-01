@@ -196,10 +196,10 @@ func TestSessionCRUD(t *testing.T) {
 func TestComicCRUD(t *testing.T) {
 	setupTestDB(t)
 
-	// FilenameToID
-	id := FilenameToID("test-comic.cbz")
+	// PathToID
+	id := PathToID("", "test-comic.cbz")
 	if id == "" || len(id) != 12 {
-		t.Errorf("FilenameToID returned invalid ID: '%s'", id)
+		t.Errorf("PathToID returned invalid ID: '%s'", id)
 	}
 
 	// FilenameToTitle
@@ -215,9 +215,9 @@ func TestComicCRUD(t *testing.T) {
 		Title    string
 		FileSize int64
 	}{
-		{FilenameToID("comic1.cbz"), "comic1.cbz", "Comic 1", 1000},
-		{FilenameToID("comic2.cbz"), "comic2.cbz", "Comic 2", 2000},
-		{FilenameToID("comic3.cbz"), "comic3.cbz", "Comic 3", 3000},
+		{PathToID("", "comic1.cbz"), "comic1.cbz", "Comic 1", 1000},
+		{PathToID("", "comic2.cbz"), "comic2.cbz", "Comic 2", 2000},
+		{PathToID("", "comic3.cbz"), "comic3.cbz", "Comic 3", 3000},
 	}
 	if err := BulkCreateComics(comics); err != nil {
 		t.Fatalf("BulkCreateComics failed: %v", err)
@@ -578,9 +578,12 @@ func TestBatchOperations(t *testing.T) {
 		t.Fatalf("BulkCreateComics failed: %v", err)
 	}
 
+	// Ensure test user exists
+	_, _ = db.Exec(`INSERT INTO "User" ("id", "username", "password", "role") VALUES ('test-user', 'test', 'hash', 'user') ON CONFLICT DO NOTHING`)
+
 	// Batch set favorite
 	ids := []string{"batch-1", "batch-2"}
-	affected, err := BatchSetFavorite(ids, true)
+	affected, err := BatchSetFavorite("test-user", ids, true)
 	if err != nil {
 		t.Fatalf("BatchSetFavorite failed: %v", err)
 	}

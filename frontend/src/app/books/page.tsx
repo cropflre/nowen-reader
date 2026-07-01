@@ -101,6 +101,7 @@ export default function BooksPage() {
   const toast = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+
   // 会话筛选条件保持（sessionStorage）
   const [searchQuery, setSearchQuery] = useState(() => {
     if (typeof window !== "undefined") {
@@ -136,15 +137,20 @@ export default function BooksPage() {
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const [libraries, setLibraries] = useState<Library[]>([]);
 
+  // Accessible libraries for homepage tabs (all logged-in users)
+  const [accessibleLibraries, setAccessibleLibraries] = useState<Library[]>([]);
+
+  const hasManageableLibrary = useMemo(() => {
+    return isAdmin || (accessibleLibraries?.some(lib => lib.canManage) ?? false);
+  }, [isAdmin, accessibleLibraries]);
+
   // Load libraries for upload selector (admin only)
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!hasManageableLibrary) return;
     fetchLibraries()
       .then(setLibraries)
       .catch(() => {});
-  }, [isAdmin]);
-  // Accessible libraries for homepage tabs (all logged-in users)
-  const [accessibleLibraries, setAccessibleLibraries] = useState<Library[]>([]);
+  }, [hasManageableLibrary]);
 
   useEffect(() => {
     fetchAccessibleLibraries()
@@ -1262,7 +1268,7 @@ export default function BooksPage() {
 
 
                 {/* Batch Mode Toggle — 仅管理员可见 */}
-                {isAdmin && (
+                {hasManageableLibrary && (
                 <button
                   onClick={() => {
                     if (batchMode) exitBatchMode();
@@ -1804,7 +1810,7 @@ export default function BooksPage() {
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               {/* 批量删除合集 — 仅管理员可见 */}
-              {isAdmin && (
+              {hasManageableLibrary && (
               <button
                 onClick={handleBatchDeleteGroups}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
@@ -1846,7 +1852,7 @@ export default function BooksPage() {
           aiTagsLoading={aiTagsLoading}
           onAISuggestCategory={aiConfigured ? handleAIBatchSuggestCategory : undefined}
           aiCategoryLoading={aiCategoryLoading}
-          isAdmin={isAdmin}
+          isAdmin={hasManageableLibrary}
         />
       )}
 
@@ -1904,7 +1910,7 @@ export default function BooksPage() {
               }
             }, 400);
           }}
-          isAdmin={isAdmin}
+          isAdmin={hasManageableLibrary}
         />
       )}
 
@@ -1973,7 +1979,7 @@ export default function BooksPage() {
           comicId={contextMenu.comic.id}
           comicTitle={contextMenu.comic.title}
           isFavorite={contextMenu.comic.isFavorite}
-          isAdmin={isAdmin}
+          isAdmin={hasManageableLibrary}
           onClose={() => setContextMenu(null)}
           onRead={(id) => {
             const c = sortedComics.find((c) => c.id === id);

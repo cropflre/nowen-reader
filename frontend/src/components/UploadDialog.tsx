@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { uploadComics } from "@/api/comics";
-import { fetchLibraries, type Library } from "@/api/libraries";
+import { fetchAccessibleLibraries, type Library } from "@/api/libraries";
 
 // ============================================================
 // Types
@@ -89,14 +89,21 @@ export default function UploadDialog({
   // Load libraries
   useEffect(() => {
     if (open) {
-      fetchLibraries().then(setLibraries).catch(() => {});
+      fetchAccessibleLibraries().then(setLibraries).catch(() => {});
     }
   }, [open]);
 
-  // Filtered libraries
+  // Filtered libraries (must have canManage)
   const filteredLibs = libraries.filter(
-    (lib) => lib.enabled && ((lib.rootPaths && lib.rootPaths.length > 0) || lib.rootPath) && (lib.type === "mixed" || lib.type === contentType)
+    (lib) => lib.enabled && lib.canManage && (lib.type === "mixed" || lib.type === contentType)
   );
+
+  // Auto-select first library if none is selected
+  useEffect(() => {
+    if (open && !selectedLibraryId && filteredLibs.length > 0) {
+      setSelectedLibraryId(filteredLibs[0].id);
+    }
+  }, [open, filteredLibs, selectedLibraryId]);
 
   // Add files to queue
   const addFiles = useCallback((files: FileList | File[]) => {
@@ -252,7 +259,6 @@ export default function UploadDialog({
                 disabled={uploading}
                 className="mt-1 w-full rounded-xl border border-border/40 bg-background px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none disabled:opacity-50"
               >
-                <option value="">{contentType === "novel" ? "默认目录（小说）" : "默认目录（漫画）"}</option>
                 {filteredLibs.map((lib) => (
                   <option key={lib.id} value={lib.id}>
                     {lib.name} ({lib.type})
@@ -383,7 +389,7 @@ export default function UploadDialog({
           </button>
           <button
             onClick={handleUploadAll}
-            disabled={uploading || pendingCount === 0}
+            disabled={uploading || pendingCount === 0 || !selectedLibraryId}
             className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {uploading ? (

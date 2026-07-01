@@ -96,6 +96,7 @@ export default function ComicDetailPage() {
   }
 
   const { comic, loading, error: comicError, statusCode, refetch } = useComicDetail(comicId);
+  const canManage = isAdmin || !!(comic as any)?.canManage; // use as any to suppress TS error for now, since it might not be in ComicData yet
   const { categories: allCategories, refetch: refetchCategories, initCategories } = useCategories();
 
   // 监听来自刮削页面/其他标签页的同步事件，自动刷新数据
@@ -1051,7 +1052,7 @@ export default function ComicDetailPage() {
               <div className="flex-1 min-w-0">
                 {editingTitle ? (
                   <div className="flex items-center gap-2">
-                    {isAdmin ? (
+                    {canManage ? (
                     <>
                     <input
                       type="text"
@@ -1085,7 +1086,7 @@ export default function ComicDetailPage() {
                 ) : (
                   <div className="group/title flex items-center gap-2 min-w-0">
                   <h2 className="text-2xl sm:text-3xl font-bold text-foreground break-words line-clamp-2 tracking-tight">{comic.title}</h2>
-                    {isAdmin && (
+                    {canManage && (
                     <button
                       onClick={startEditTitle}
                       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted/40 opacity-100 sm:opacity-0 transition-all hover:text-foreground sm:group-hover/title:opacity-100"
@@ -1099,7 +1100,7 @@ export default function ComicDetailPage() {
                 <p className="mt-1 text-sm text-muted truncate">{comic.filename}</p>
               </div>
               {/* Favorite — 仅管理员可操作 */}
-              {isAdmin && (
+              {canManage && (
               <button
                 onClick={handleToggleFavorite}
                 className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg transition-all ${
@@ -1114,7 +1115,7 @@ export default function ComicDetailPage() {
             </div>
 
             {/* Rating — 仅管理员可操作 */}
-            {isAdmin && (
+            {canManage && (
             <div>
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">{t.comicDetail.rating}</h3>
               <div className="flex gap-1">
@@ -1362,7 +1363,7 @@ export default function ComicDetailPage() {
             })}
 
             {/* Tags — 仅管理员可编辑 */}
-            {isAdmin && (
+            {canManage && (
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t.comicDetail.tagsLabel}</h3>
@@ -1500,7 +1501,7 @@ export default function ComicDetailPage() {
             )}
 
             {/* Categories — 仅管理员可编辑 */}
-            {isAdmin && (
+            {canManage && (
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
@@ -1578,7 +1579,7 @@ export default function ComicDetailPage() {
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
                   {t.metadata?.metadataSource || "Metadata"}
                 </h3>
-                {!editingMetadata && isAdmin && (
+                {!editingMetadata && canManage && (
                   <>
                     <button
                       onClick={startEditMetadata}

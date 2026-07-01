@@ -1,4 +1,4 @@
-﻿package middleware
+package middleware
 
 import (
 	"net/http"
@@ -64,6 +64,43 @@ func AIRequired() gin.HandlerFunc {
 			return
 		}
 		c.Set(ContextKeyUser, user)
+		c.Next()
+	}
+}
+
+// RequireComicManagePermission is a middleware that requires the user to have manage access to the comic's library.
+func RequireComicManagePermission() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user := GetCurrentUser(c)
+		if user == nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		comicID := c.Param("id")
+		if comicID == "" {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Comic ID required"})
+			return
+		}
+
+		// Fast path for admin
+		if user.Role == "admin" {
+			c.Next()
+			return
+		}
+
+		comic, err := store.GetComicByID(comicID)
+		if err != nil || comic == nil {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
+			return
+		}
+
+		canManage, _ := store.UserCanManageLibrary(user.ID, comic.LibraryID)
+		if !canManage {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden: No manage permission for this library"})
+			return
+		}
+
 		c.Next()
 	}
 }

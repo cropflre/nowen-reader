@@ -79,6 +79,7 @@ func TestGzipMiddleware(t *testing.T) {
 		for i := range data {
 			data[i] = 'a'
 		}
+		c.Header("Content-Type", "text/plain")
 		c.Data(200, "text/plain", data)
 	})
 
@@ -92,7 +93,7 @@ func TestGzipMiddleware(t *testing.T) {
 	}
 
 	if w.Header().Get("Content-Encoding") != "gzip" {
-		t.Error("Expected Content-Encoding: gzip")
+		t.Errorf("Expected Content-Encoding: gzip, got: %v", w.Header())
 	}
 
 	// Verify response is valid gzip
@@ -134,6 +135,7 @@ func TestGzipMiddlewareSkipsBinaryContent(t *testing.T) {
 	r.Use(Gzip())
 	r.GET("/test", func(c *gin.Context) {
 		data := make([]byte, 2000)
+		c.Header("Content-Type", "image/png")
 		c.Data(200, "image/png", data)
 	})
 

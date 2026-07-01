@@ -8,18 +8,36 @@ import {
   AlertTriangle,
   RefreshCw,
   Shield,
+  BookOpen
 } from "lucide-react";
 import {
   fetchUserLibraryAccess,
   setUserLibraryAccess,
   type Library as LibraryType,
+  type LibraryAccess
 } from "@/api/libraries";
+import { notifyLibraryAccessChanged } from "@/hooks/useComics";
 
 interface UserLibraryAccessPanelProps {
   userId: string;
   username: string;
   isAdmin: boolean;
   onClose: () => void;
+}
+
+type LibraryPermissionField = 'canView' | 'canDownload' | 'canManage';
+type LibraryAccessRow = LibraryType & LibraryAccess;
+
+function applyLibraryPermissionToggle(lib: LibraryAccessRow, field: LibraryPermissionField): LibraryAccessRow {
+  const next = { ...lib, [field]: !lib[field] };
+  if ((field === 'canDownload' || field === 'canManage') && next[field]) {
+    next.canView = true;
+  }
+  if (field === 'canView' && !next.canView) {
+    next.canDownload = false;
+    next.canManage = false;
+  }
+  return next;
 }
 
 export function UserLibraryAccessPanel({
@@ -29,7 +47,7 @@ export function UserLibraryAccessPanel({
   onClose,
 }: UserLibraryAccessPanelProps) {
   const [libraries, setLibraries] = useState<
-    Array<LibraryType & { canView: boolean }>
+    LibraryAccessRow[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,10 +84,10 @@ export function UserLibraryAccessPanel({
     fetchAccess();
   }, [fetchAccess]);
 
-  const handleToggle = (libraryId: string) => {
+  const handleToggle = (libraryId: string, field: LibraryPermissionField) => {
     setLibraries((prev) =>
       prev.map((lib) =>
-        lib.id === libraryId ? { ...lib, canView: !lib.canView } : lib
+        lib.id === libraryId ? applyLibraryPermissionToggle(lib, field) : lib
       )
     );
   };
@@ -77,10 +95,16 @@ export function UserLibraryAccessPanel({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const libraryIds = libraries
-        .filter((lib) => lib.canView)
-        .map((lib) => lib.id);
-      await setUserLibraryAccess(userId, libraryIds);
+      const accessList = libraries
+        .filter((lib) => lib.canView || lib.canDownload || lib.canManage)
+        .map((lib) => ({
+          libraryId: lib.id,
+          canView: !!lib.canView,
+          canDownload: !!lib.canDownload,
+          canManage: !!lib.canManage
+        }));
+      await setUserLibraryAccess(userId, accessList);
+      notifyLibraryAccessChanged();
       showMessage("书库权限更新成功");
       setTimeout(() => onClose(), 1000);
     } catch (err) {
@@ -165,29 +189,16 @@ export function UserLibraryAccessPanel({
       ) : (
         <>
           <div className="space-y-2 mb-4">
-            {libraries.map((lib) => (
+            {libraries.map((lib) => {
+              const isPublic = lib.defaultAccess === "public";
+              return (
               <div
                 key={lib.id}
-                className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${
-                  lib.canView
-                    ? "border-accent/50 bg-accent/5"
-                    : "border-border hover:border-accent/30"
-                }`}
-                onClick={() => handleToggle(lib.id)}
+                className="flex flex-col gap-2 rounded-lg border px-3 py-2 border-border/30"
               >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-lg ${
-                      lib.canView ? "bg-accent/10" : "bg-card-hover"
-                    }`}
-                  >
-                    <Library
-                      className={`h-4 w-4 ${
-                        lib.canView ? "text-accent" : "text-muted"
-                      }`}
-                    />
-                  </div>
-                  <div>
+                <div className="flex items-center gap-2.5">
+                  <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted" />
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium text-foreground">{lib.name}</div>
                     <div className="text-sm text-muted">
                       {(lib.rootPaths && lib.rootPaths.length > 0 ? lib.rootPaths : [lib.rootPath]).map((path, index) => (
@@ -196,20 +207,19 @@ export function UserLibraryAccessPanel({
                     </div>
                   </div>
                 </div>
-                <div
-                  className={`w-10 h-6 rounded-full transition-colors ${
-                    lib.canView ? "bg-accent" : "bg-muted/30"
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                      lib.canView ? "translate-x-5" : "translate-x-1"
-                    }`}
-                    style={{ marginTop: "4px" }}
-                  />
+                <div className="flex gap-4 ml-6 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={lib.canView || isPublic} disabled={isPublic} onChange={() => handleToggle(lib.id, 'canView')} className="rounded border-border text-accent focus:ring-accent" /> 查看
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={!!lib.canDownload} onChange={() => handleToggle(lib.id, 'canDownload')} className="rounded border-border text-accent focus:ring-accent" /> 下载
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={!!lib.canManage} onChange={() => handleToggle(lib.id, 'canManage')} className="rounded border-border text-accent focus:ring-accent" /> 管理
+                  </label>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
 
           <div className="flex items-center gap-2">

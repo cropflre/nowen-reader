@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import "time"
 
@@ -143,6 +143,7 @@ type Comic struct {
 	// Relations (populated by queries)
 	Tags       []Tag      `json:"tags,omitempty"`
 	Categories []Category `json:"categories,omitempty"`
+	CanManage  bool       `json:"canManage,omitempty"`
 }
 
 // ============================================================

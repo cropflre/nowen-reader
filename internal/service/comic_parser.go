@@ -155,60 +155,11 @@ func InvalidateAllCaches() {
 // then searching directories. 优先使用 comic.LibraryID 对应书库的 rootPaths 查找，
 // 防止跨书库读取文件。
 func FindComicFilePath(comicID string) (string, string, error) {
-	// Get filename from DB
-	comic, err := store.GetComicByID(comicID)
-	if err != nil || comic == nil {
-		return "", "", fmt.Errorf("comic not found: %s", comicID)
+	resolved, err := GlobalFileResolver.ResolveContentPath(comicID)
+	if err != nil {
+		return "", "", err
 	}
-
-	// 图片文件夹漫画：filename 以 "/" 结尾
-	isFolder := strings.HasSuffix(comic.Filename, "/")
-
-	// 优先使用 comic.LibraryID 对应书库的 rootPaths 查找
-	if comic.LibraryID != "" {
-		lib, libErr := store.GetLibraryByID(comic.LibraryID)
-		if libErr == nil && lib != nil {
-			// 获取书库的所有根路径（主路径 + 额外路径）
-			allRootPaths := []string{lib.RootPath}
-			extraPaths, epErr := store.GetLibraryRootPaths(lib.ID)
-			if epErr == nil {
-				allRootPaths = append(allRootPaths, extraPaths...)
-			}
-
-			for _, dir := range allRootPaths {
-				fp := filepath.Join(dir, comic.Filename)
-				if isFolder {
-					fp = filepath.Join(dir, strings.TrimSuffix(comic.Filename, "/"))
-					if info, statErr := os.Stat(fp); statErr == nil && info.IsDir() {
-						return fp, comic.Filename, nil
-					}
-				} else {
-					if _, statErr := os.Stat(fp); statErr == nil {
-						return fp, comic.Filename, nil
-					}
-				}
-			}
-			// 书库路径下找不到文件，不 fallback 到全局查找（防止跨库读取）
-			return "", "", fmt.Errorf("file not found in library %s for comic %s (%s)", comic.LibraryID, comicID, comic.Filename)
-		}
-	}
-
-	// 兼容旧数据：libraryId 为空或书库不存在时，允许全局查找
-	for _, dir := range config.GetAllScanDirs() {
-		fp := filepath.Join(dir, comic.Filename)
-		if isFolder {
-			fp = filepath.Join(dir, strings.TrimSuffix(comic.Filename, "/"))
-			if info, err := os.Stat(fp); err == nil && info.IsDir() {
-				return fp, comic.Filename, nil
-			}
-		} else {
-			if _, err := os.Stat(fp); err == nil {
-				return fp, comic.Filename, nil
-			}
-		}
-	}
-
-	return "", "", fmt.Errorf("file not found on disk for comic %s (%s)", comicID, comic.Filename)
+	return resolved.AbsolutePath, resolved.RelativePath, nil
 }
 
 // ============================================================
