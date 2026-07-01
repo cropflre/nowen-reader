@@ -39,6 +39,7 @@ import {
   type UserGroup,
   type GroupMember,
 } from "@/api/userGroups";
+import { notifyLibraryAccessChanged } from "@/hooks/useComics";
 
 interface UserItem {
   id: string;
@@ -229,6 +230,7 @@ export function UserManagementPanel() {
       if (newRole === "user" && selectedAccess.length > 0) {
         try {
           await setUserLibraryAccess(userId, selectedAccess);
+          notifyLibraryAccessChanged();
         } catch (err) {
           console.error("Failed to set library access:", err);
         }
@@ -321,6 +323,7 @@ export function UserManagementPanel() {
       // 保存书库权限（仅普通用户）
       if (editingUser.role !== "admin") {
         await setUserLibraryAccess(editingUser.id, effectiveLibraryAccess(editLibAccess));
+        notifyLibraryAccessChanged();
       }
 
       // 保存权限组成员关系

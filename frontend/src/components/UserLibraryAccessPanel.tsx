@@ -16,6 +16,7 @@ import {
   type Library as LibraryType,
   type LibraryAccess
 } from "@/api/libraries";
+import { notifyLibraryAccessChanged } from "@/hooks/useComics";
 
 interface UserLibraryAccessPanelProps {
   userId: string;
@@ -103,6 +104,7 @@ export function UserLibraryAccessPanel({
           canManage: !!lib.canManage
         }));
       await setUserLibraryAccess(userId, accessList);
+      notifyLibraryAccessChanged();
       showMessage("书库权限更新成功");
       setTimeout(() => onClose(), 1000);
     } catch (err) {

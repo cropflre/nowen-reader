@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { notifyLibraryAccessChanged } from "@/hooks/useComics";
 
 type LibraryPermissionField = 'canView' | 'canDownload' | 'canManage';
 type GroupLibraryRow = { id: string; name: string; canView: boolean; canDownload: boolean; canManage: boolean; rootPath: string; rootPaths?: string[]; enabled?: boolean; defaultAccess?: string; };
@@ -195,6 +196,7 @@ export default function UserGroupManagementPanel() {
 
     try {
       await setGroupLibraryAccess(groupId, accessList);
+      notifyLibraryAccessChanged();
       // const data = await fetchGroupLibraryAccess(groupId);
       // setLibraries(data.libraries || []);
     } catch (err) {

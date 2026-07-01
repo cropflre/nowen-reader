@@ -262,11 +262,11 @@ GET /api/comics?readingStatus=finished
 | POST | `/api/recommendations/ai-reasons` | AI 推荐理由 |
 | GET | `/api/health` | 健康检查 |
 | GET/PUT | `/api/site-settings` | 站点设置 |
-| POST | `/api/upload` | 文件上传 🔒管理员 |
+| POST | `/api/upload` | 文件上传 🔒（管理员或目标书库 canManage） |
 
 ### `POST /api/upload`
 
-- **认证**: 管理员
+- **认证**: 登录用户。管理员可上传到任意启用书库；普通用户必须传 `libraryId` 且对该书库拥有 `canManage` 权限。
 - **Content-Type**: `multipart/form-data`
 
 #### 参数
@@ -275,7 +275,7 @@ GET /api/comics?readingStatus=finished
 |:---|:---|:---:|:---|
 | `files` | File[] | 必填 | 上传文件列表（表单字段名必须为 `files`） |
 | `category` | string | 可选 | `comic` 或 `novel`，帮助后端判断歧义扩展名（如 `.azw3`） |
-| `libraryId` | string | 可选 | 目标书库 ID，不传则使用旧目录逻辑 |
+| `libraryId` | string | 普通用户必填 | 目标书库 ID；普通用户必须拥有该书库 `canManage` 权限。不传时仅管理员可使用旧目录逻辑 |
 
 #### 行为
 
@@ -290,7 +290,7 @@ GET /api/comics?readingStatus=finished
 
 **不传 `libraryId` 时**：
 
-- 完全兼容旧逻辑
+- 仅管理员可用，完全兼容旧逻辑
 - 漫画文件写入 `comicsDir`，小说文件写入 `novelsDir`
 - 根据 `category` 和文件扩展名自动判断目标目录
 
@@ -305,7 +305,7 @@ GET /api/comics?readingStatus=finished
 | HTTP 状态码 | 场景 |
 |:---:|:---|
 | 400 | 没有上传文件 / `libraryId` 不存在 / Library 已禁用 / Library rootPath 为空 |
-| 401/403 | 未登录或非管理员 |
+| 401/403 | 未登录 / 普通用户未传 `libraryId` / 对目标书库无 `canManage` 权限 |
 | 200（单文件级别） | 文件已存在 / 不支持的格式 / 文件类型与书库类型不匹配（按单文件报告在 `results` 中） |
 
 #### 响应示例
@@ -414,10 +414,127 @@ GET /api/comics?readingStatus=finished
 | POST | `/api/admin/libraries` | 创建书库 |
 | PUT | `/api/admin/libraries/:id` | 更新书库 |
 | DELETE | `/api/admin/libraries/:id` | 删除书库 |
+| POST | `/api/admin/libraries/:id/scan` | 扫描指定书库 |
+| POST | `/api/admin/libraries/:id/delete-preview` | 删除书库预览（不删除源文件） |
+| GET | `/api/libraries/accessible` | 获取当前用户可访问书库 🔒 |
 | GET | `/api/admin/users/:id/library-access` | 获取用户书库访问权限 |
 | PUT | `/api/admin/users/:id/library-access` | 设置用户书库访问权限 |
+| GET | `/api/admin/user-groups/:id/library-access` | 获取权限组书库访问权限 |
+| PUT | `/api/admin/user-groups/:id/library-access` | 设置权限组书库访问权限 |
 
 > 普通用户只能访问被授权的书库。列表接口按用户可访问书库自动过滤，详情/图片/PDF/章节/OPDS 等资源接口无权限返回 403。
+
+### 书库字段
+
+书库对象包含多目录和权限相关字段：
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "type": "comic|novel|mixed",
+  "rootPath": "string",
+  "rootPaths": ["string"],
+  "enabled": true,
+  "sortOrder": 0,
+  "defaultAccess": "public|private",
+  "scanEnabled": true,
+  "lastScanAt": null,
+  "lastScanAdded": 0,
+  "lastScanTotal": 0,
+  "comicCount": 0
+}
+```
+
+- `rootPath` 是主目录；`rootPaths` 包含主目录和额外目录。
+- 文件解析按漫画记录的 `libraryId + relativePath` 在该书库所有根目录内查找，不再按全局文件名唯一定位。
+- 书库内通过 `libraryId + relativePath` 去重，不同书库允许相同文件名。
+
+### 当前用户可访问书库
+
+```
+GET /api/libraries/accessible
+```
+
+响应中仅包含当前用户可查看的启用书库，并附带该用户是否可管理：
+
+```json
+{
+  "libraries": [
+    {
+      "id": "string",
+      "name": "string",
+      "type": "comic|novel|mixed",
+      "enabled": true,
+      "defaultAccess": "public|private",
+      "comicCount": 0,
+      "canManage": true
+    }
+  ]
+}
+```
+
+### 用户/权限组书库权限
+
+用户和权限组的书库权限均为三列权限矩阵：
+
+- `canView`: 可查看书库内容。
+- `canDownload`: 可下载书库内容。
+- `canManage`: 可上传、管理该书库内容。
+- 保存时 `canDownload` 或 `canManage` 会自动包含 `canView`。
+- 兼容旧请求体 `{ "libraryIds": ["lib-id"] }`，等价于对这些书库设置 `canView=true`、`canDownload=false`、`canManage=false`。
+
+#### 获取用户书库权限
+
+```
+GET /api/admin/users/:id/library-access
+```
+
+```json
+{
+  "userId": "string",
+  "libraries": [
+    {
+      "id": "string",
+      "name": "string",
+      "type": "comic|novel|mixed",
+      "rootPath": "string",
+      "rootPaths": ["string"],
+      "canView": true,
+      "canDownload": false,
+      "canManage": false
+    }
+  ]
+}
+```
+
+#### 设置用户书库权限
+
+```
+PUT /api/admin/users/:id/library-access
+```
+
+```json
+{
+  "libraryAccess": [
+    {
+      "libraryId": "string",
+      "canView": true,
+      "canDownload": false,
+      "canManage": false
+    }
+  ]
+}
+```
+
+#### 获取/设置权限组书库权限
+
+```
+GET /api/admin/user-groups/:id/library-access
+PUT /api/admin/user-groups/:id/library-access
+```
+
+响应和请求体与用户书库权限相同，响应顶层字段为 `groupId`。
 
 
 | 方法 | 路径 | 说明 |
