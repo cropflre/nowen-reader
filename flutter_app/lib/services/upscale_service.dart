@@ -106,8 +106,12 @@ class UpscaleService {
     _currentScale = scale;
 
     // 读取输入/输出名称 (ONNX model metadata)
-    _inputName = _session?.inputNames.first;
-    _outputName = _session?.outputNames.first;
+    _inputName = (_session?.inputNames ?? []).isNotEmpty
+        ? _session!.inputNames.first
+        : null;
+    _outputName = (_session?.outputNames ?? []).isNotEmpty
+        ? _session!.outputNames.first
+        : null;
   }
 
   /// 当前 session 是否就绪
@@ -179,6 +183,9 @@ class UpscaleService {
 
     if (_session == null) {
       throw Exception('ONNX session not loaded. Call loadSession() first.');
+    }
+    if (_inputName == null || _outputName == null) {
+      throw Exception('Model I/O names not available');
     }
 
     // 2. 解码
@@ -263,7 +270,7 @@ class UpscaleService {
   Future<void> enqueuePrefetch(List<PrefetchItem> items) async {
     if (!isSessionReady) return;
     _prefetchQueue.addAll(items);
-    _processPrefetchQueue();
+    await _processPrefetchQueue();
   }
 
   Future<void> _processPrefetchQueue() async {
