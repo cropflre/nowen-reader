@@ -21,6 +21,12 @@ class ReaderSettings {
   final bool doubleCoverAlone;
   /// 双页模式贴合（去除中间缝隙），让两页在屏幕中央对齐拼接
   final bool doublePageNoGap;
+  /// AI 图片超分辨率
+  final bool imageUpscaling;
+  /// 超分放大倍数 (2 或 4)
+  final int upscaleScale;
+  /// 超分模型 ID
+  final String upscaleModel;
 
   const ReaderSettings({
     this.mode = ComicReadingMode.single,
@@ -30,6 +36,9 @@ class ReaderSettings {
     this.autoPageInterval = 10,
     this.doubleCoverAlone = true,
     this.doublePageNoGap = true,
+    this.imageUpscaling = false,
+    this.upscaleScale = 2,
+    this.upscaleModel = 'realesrgan-anime',
   });
 
   ReaderSettings copyWith({
@@ -40,6 +49,9 @@ class ReaderSettings {
     int? autoPageInterval,
     bool? doubleCoverAlone,
     bool? doublePageNoGap,
+    bool? imageUpscaling,
+    int? upscaleScale,
+    String? upscaleModel,
   }) {
     return ReaderSettings(
       mode: mode ?? this.mode,
@@ -49,6 +61,9 @@ class ReaderSettings {
       autoPageInterval: autoPageInterval ?? this.autoPageInterval,
       doubleCoverAlone: doubleCoverAlone ?? this.doubleCoverAlone,
       doublePageNoGap: doublePageNoGap ?? this.doublePageNoGap,
+      imageUpscaling: imageUpscaling ?? this.imageUpscaling,
+      upscaleScale: upscaleScale ?? this.upscaleScale,
+      upscaleModel: upscaleModel ?? this.upscaleModel,
     );
   }
 
@@ -63,6 +78,9 @@ class ReaderSettings {
       autoPageInterval: prefs.getInt('reader_autoPageInterval') ?? 10,
       doubleCoverAlone: prefs.getBool('reader_doubleCoverAlone') ?? true,
       doublePageNoGap: prefs.getBool('reader_doublePageNoGap') ?? true,
+      imageUpscaling: prefs.getBool('reader_imageUpscaling') ?? false,
+      upscaleScale: prefs.getInt('reader_upscaleScale') ?? 2,
+      upscaleModel: prefs.getString('reader_upscaleModel') ?? 'realesrgan-anime',
     );
   }
 
@@ -76,6 +94,9 @@ class ReaderSettings {
     await prefs.setInt('reader_autoPageInterval', autoPageInterval);
     await prefs.setBool('reader_doubleCoverAlone', doubleCoverAlone);
     await prefs.setBool('reader_doublePageNoGap', doublePageNoGap);
+    await prefs.setBool('reader_imageUpscaling', imageUpscaling);
+    await prefs.setInt('reader_upscaleScale', upscaleScale);
+    await prefs.setString('reader_upscaleModel', upscaleModel);
   }
 }
 
@@ -273,6 +294,32 @@ class _ReaderSettingsPanelState extends State<ReaderSettingsPanel> {
                         _update(s);
                       },
                     ),
+                    const SizedBox(height: 16),
+
+                    // ── AI 超分设置 ──
+                    _SectionTitle(icon: Icons.auto_fix_high, title: 'AI 超分'),
+                    const SizedBox(height: 8),
+                    _SwitchRow(
+                      label: '图片超分辨率',
+                      value: _settings.imageUpscaling,
+                      onChanged: (v) =>
+                          _update(_settings.copyWith(imageUpscaling: v)),
+                    ),
+                    if (_settings.imageUpscaling) ...[
+                      const SizedBox(height: 8),
+                      _SettingLabel('放大倍数'),
+                      const SizedBox(height: 6),
+                      _ToggleGroup<int>(
+                        value: _settings.upscaleScale,
+                        items: const [
+                          _ToggleItem(2, '2x'),
+                          _ToggleItem(4, '4x'),
+                        ],
+                        onChanged: (v) =>
+                            _update(_settings.copyWith(upscaleScale: v)),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     const SizedBox(height: 16),
 
                     // ── 行为设置 ──
