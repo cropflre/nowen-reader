@@ -271,6 +271,9 @@ final dioProvider = Provider<Dio>((ref) {
   return client.dio;
 });
 
+/// Dio 客户端 Provider — 供 upscale 等非请求场景使用
+final dioClientProvider = dioProvider;
+
 // ============================================================
 // 工具函数
 // ============================================================
