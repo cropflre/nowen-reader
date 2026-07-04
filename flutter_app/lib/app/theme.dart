@@ -212,5 +212,227 @@ class AppTheme {
       ),
     ),
 
-    // 页面过渡动画 (default 过渡)
+  );
+
+  // ─── 暗色主题 ───
+  static const _darkBg = Color(0xFF0F0F0F);
+  static const _darkSurface = Color(0xFF1A1A1A);
+  static const _darkCard = Color(0xFF222222);
+  static const _darkBorder = Color(0xFF2E2E2E);
+
+  static final darkTheme = ThemeData(
+    useMaterial3: true,
+    colorSchemeSeed: _seedColor,
+    brightness: Brightness.dark,
+    scaffoldBackgroundColor: _darkBg,
+
+    // 文字排版
+    textTheme: _buildTextTheme(Brightness.dark),
+
+    // AppBar
+    appBarTheme: AppBarTheme(
+      centerTitle: false,
+      elevation: 0,
+      scrolledUnderElevation: 0.5,
+      backgroundColor: _darkBg.withOpacity(0.95),
+      surfaceTintColor: Colors.transparent,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      titleTextStyle: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: Colors.white,
+        letterSpacing: -0.5,
+      ),
+      iconTheme: const IconThemeData(
+        color: Colors.white70,
+        size: 22,
+      ),
+    ),
+
+    // 卡片
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: _darkCard,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+      ),
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+    ),
+
+    // 输入框
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: _darkSurface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: BorderSide(color: _seedColor.withOpacity(0.8), width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      hintStyle: const TextStyle(
+        color: Color(0xFF666666),
+        fontSize: 15,
+        fontWeight: FontWeight.w400,
+      ),
+    ),
+
+    // 填充按钮
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(double.infinity, 52),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+        ),
+        elevation: 0,
+      ),
+    ),
+
+    // 轮廓按钮
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+        ),
+        side: const BorderSide(color: _darkBorder),
+        textStyle: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ),
+
+    // 底部导航栏
+    navigationBarTheme: NavigationBarThemeData(
+      height: 68,
+      elevation: 0,
+      backgroundColor: _darkBg,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: _seedColor.withOpacity(0.15),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(size: 24, color: Color(0xFF818CF8));
+        }
+        return const IconThemeData(size: 22, color: Color(0xFF555555));
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF818CF8),
+          );
+        }
+        return const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF555555),
+        );
+      }),
+    ),
+
+    // 芯片
+    chipTheme: ChipThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+      ),
+      side: BorderSide.none,
+      elevation: 0,
+      pressElevation: 0,
+    ),
+
+    // 对话框
+    dialogTheme: DialogThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusLg),
+      ),
+      surfaceTintColor: Colors.transparent,
+      backgroundColor: _darkCard,
+      elevation: 8,
+    ),
+
+    // 底部弹出面板
+    bottomSheetTheme: BottomSheetThemeData(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      backgroundColor: _darkSurface,
+      surfaceTintColor: Colors.transparent,
+      showDragHandle: true,
+    ),
+
+    // 分割线
+    dividerTheme: DividerThemeData(
+      color: _darkBorder.withOpacity(0.6),
+      thickness: 0.5,
+      space: 0.5,
+    ),
+
+    // 列表项
+    listTileTheme: ListTileThemeData(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+      ),
+      visualDensity: const VisualDensity(vertical: -0.5),
+    ),
+
+    // 弹出菜单
+    popupMenuTheme: PopupMenuThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+      ),
+      surfaceTintColor: Colors.transparent,
+      color: _darkCard,
+      elevation: 4,
+    ),
+
+    // SnackBar
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+      ),
+    ),
+
+  );
+
+  // ─── 文字排版 ───
+  static TextTheme _buildTextTheme(Brightness brightness) {
+    final color = brightness == Brightness.light ? _warmGray900 : Colors.white;
+    final subColor = brightness == Brightness.light ? _warmGray500 : const Color(0xFF999999);
+
+    return TextTheme(
+      displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: color, letterSpacing: -1.0, height: 1.2),
+      displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.8, height: 1.2),
+      displaySmall: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.5, height: 1.3),
+      headlineLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.4, height: 1.3),
+      headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.3, height: 1.3),
+      headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: color, letterSpacing: -0.2, height: 1.4),
+      titleLarge: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: color, letterSpacing: -0.1),
+      titleMedium: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: color),
+      titleSmall: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color),
+      bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w400, color: color, height: 1.5),
+      bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: color, height: 1.5),
+      bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: subColor, height: 1.4),
+      labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color, letterSpacing: 0.1),
+      labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: subColor),
+      labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: subColor, letterSpacing: 0.3),
+    );
   }
+}
