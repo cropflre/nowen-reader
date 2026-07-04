@@ -30,9 +30,6 @@ class AuthenticatedImage extends StatefulWidget {
   /// 输出: 处理后的 bytes（放大/滤镜等）
   final Future<Uint8List> Function(Uint8List bytes)? onBytesLoaded;
 
-  /// 是否正在放大处理中
-  final bool upscaling;
-
   const AuthenticatedImage({
     super.key,
     required this.imageUrl,
@@ -46,7 +43,6 @@ class AuthenticatedImage extends StatefulWidget {
     this.pageIndex,
     this.isThumbnail = false,
     this.onBytesLoaded,
-    this.upscaling = false,
   });
 
   @override
@@ -170,27 +166,12 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading || widget.upscaling) {
+    if (_loading) {
       return widget.placeholder ??
-          SizedBox(
-            width: widget.width,
-            height: widget.height,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // 放大处理中：显示原始图片做背景
-                if (widget.upscaling && _imageBytes != null)
-                  Image.memory(
-                    _imageBytes!,
-                    fit: widget.fit,
-                    alignment: widget.alignment,
-                    width: widget.width,
-                    height: widget.height,
-                  ),
-                // 加载指示器
-                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ],
-            ),
+          const SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
     }
 
