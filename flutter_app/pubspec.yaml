@@ -37,6 +37,8 @@ dependencies:
   path_provider: ^2.1.5
   # 文件选择（上传功能）
   file_picker: ^8.0.0
+  # ONNX Runtime (本地 AI 图片超分辨率)
+  onnxruntime: ^1.4.1
 
 dev_dependencies:
   flutter_test:

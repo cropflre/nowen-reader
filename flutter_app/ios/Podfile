@@ -1,0 +1,9 @@
+# flutter_app/ios/Podfile
+platform :ios, '16.0'
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
