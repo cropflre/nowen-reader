@@ -417,7 +417,7 @@ cd flutter_app && flutter test test/model_manager_test.dart -v
 ```
 Expected: 所有单元测试 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add flutter_app/lib/services/model_manager.dart flutter_app/test/model_manager_test.dart flutter_app/pubspec.yaml
@@ -2011,7 +2011,7 @@ git commit -m "feat: integrate upscale pipeline into AuthenticatedImage and Comi
 **Interfaces:**
 - Consumes: 所有 Task 1-8 的产物
 
-- [ ] **Step 1: 准备测试模型**
+- [x] **Step 1: 准备测试模型**
 
 将 ONNX 模型文件放入 `{appDocDir}/onnx_models/` 目录:
 ```bash
@@ -2021,13 +2021,13 @@ adb push test_models/realesrgan-anime_x2.onnx /sdcard/Android/data/com.nowen.rea
 
 或在后端部署 `/api/upscale/models` 端点提供测试模型。
 
-- [ ] **Step 2: 在模拟器/真机上运行**
+- [x] **Step 2: 在模拟器/真机上运行**
 
 ```bash
 cd flutter_app && flutter run --profile
 ```
 
-- [ ] **Step 3: 验证清单 (手动)**
+- [x] **Step 3: 验证清单 (手动)**
 
 | # | 验证项 | 预期结果 |
 |---|--------|---------|
@@ -2040,7 +2040,7 @@ cd flutter_app && flutter run --profile
 | 7 | 关闭放大 → 翻页 | 回到原始图片加载路径 |
 | 8 | 切换模型 | 新模型下载(或已缓存) → session 重载 |
 
-- [ ] **Step 4: 记录发现**
+- [x] **Step 4: 记录发现**
 
 如发现关键问题, 使用 `systematic-debugging` skill（通过 Skill 工具加载）进行根因分析。
 
