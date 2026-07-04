@@ -91,12 +91,19 @@ class ModelStateNotifier extends StateNotifier<ModelState> {
 
   /// 初始化时检查模型状态
   Future<void> checkModel(String modelId, int scale) async {
-    final ready = await _modelManager.isModelReady(modelId, scale);
-    state = state.copyWith(
-      status: ready ? ModelProviderStatus.ready : ModelProviderStatus.notDownloaded,
-      currentModelId: modelId,
-      currentScale: scale,
-    );
+    try {
+      final ready = await _modelManager.isModelReady(modelId, scale);
+      state = state.copyWith(
+        status: ready ? ModelProviderStatus.ready : ModelProviderStatus.notDownloaded,
+        currentModelId: modelId,
+        currentScale: scale,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: ModelProviderStatus.error,
+        errorMessage: e.toString(),
+      );
+    }
   }
 
   /// 开始下载模型
