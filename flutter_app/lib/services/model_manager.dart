@@ -81,11 +81,8 @@ class UpscaleModelManifest {
   }
 
   UpscaleModelInfo? getModel(String id) {
-    try {
-      return models.firstWhere((m) => m.id == id);
-    } catch (_) {
-      return null;
-    }
+    final idx = models.indexWhere((m) => m.id == id);
+    return idx >= 0 ? models[idx] : null;
   }
 }
 
