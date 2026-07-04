@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import '../services/upscale_service.dart';
 import '../data/api/api_client.dart';
 import '../data/services/cache_service.dart';
 
@@ -24,6 +25,14 @@ class AuthenticatedImage extends StatefulWidget {
   final int? pageIndex;
   final bool isThumbnail;
 
+  /// 放大后处理回调（可选）
+  /// 输入: 原始图片 bytes
+  /// 输出: 处理后的 bytes（放大/滤镜等）
+  final Future<Uint8List> Function(Uint8List bytes)? onBytesLoaded;
+
+  /// 是否正在放大处理中
+  final bool upscaling;
+
   const AuthenticatedImage({
     super.key,
     required this.imageUrl,
@@ -36,6 +45,8 @@ class AuthenticatedImage extends StatefulWidget {
     this.comicId,
     this.pageIndex,
     this.isThumbnail = false,
+    this.onBytesLoaded,
+    this.upscaling = false,
   });
 
   @override
@@ -120,7 +131,17 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
       }
 
       final response = await dio.get<List<int>>(widget.imageUrl);
-      final bytes = Uint8List.fromList(response.data!);
+      var bytes = Uint8List.fromList(response.data!);
+
+      // 放大后处理
+      if (widget.onBytesLoaded != null && !widget.isThumbnail) {
+        try {
+          bytes = await widget.onBytesLoaded!(bytes);
+        } catch (e) {
+          debugPrint('[AuthenticatedImage] onBytesLoaded error: $e');
+          // 放大失败时使用原始 bytes
+        }
+      }
 
       // 加入内存缓存（简单 LRU 策略：超过上限清空一半）
       if (_cache.length >= _maxCacheSize) {
@@ -149,12 +170,27 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading || widget.upscaling) {
       return widget.placeholder ??
           SizedBox(
             width: widget.width,
             height: widget.height,
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // 放大处理中：显示原始图片做背景
+                if (widget.upscaling && _imageBytes != null)
+                  Image.memory(
+                    _imageBytes!,
+                    fit: widget.fit,
+                    alignment: widget.alignment,
+                    width: widget.width,
+                    height: widget.height,
+                  ),
+                // 加载指示器
+                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+            ),
           );
     }
 
@@ -188,8 +224,15 @@ class AuthenticatedImageProvider extends ImageProvider<AuthenticatedImageProvide
   final String url;
   final String? comicId;
   final int? pageIndex;
+  final bool enableUpscaling;
+  final int upscaleScale;
 
-  const AuthenticatedImageProvider(this.url, {this.comicId, this.pageIndex});
+  const AuthenticatedImageProvider(this.url, {
+    this.comicId,
+    this.pageIndex,
+    this.enableUpscaling = false,
+    this.upscaleScale = 2,
+  });
 
   @override
   Future<AuthenticatedImageProvider> obtainKey(ImageConfiguration configuration) {
@@ -228,7 +271,17 @@ class AuthenticatedImageProvider extends ImageProvider<AuthenticatedImageProvide
     }
 
     final response = await dio.get<List<int>>(url);
-    final bytes = Uint8List.fromList(response.data!);
+    var bytes = Uint8List.fromList(response.data!);
+
+    // 3. 放大处理
+    if (enableUpscaling && comicId != null && pageIndex != null) {
+      try {
+        bytes = await upscaleService.upscale(bytes, comicId!, pageIndex!, upscaleScale);
+      } catch (e) {
+        debugPrint('[AuthenticatedImageProvider] Upscale error: $e');
+      }
+    }
+
     final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
     return decode(buffer);
   }
@@ -236,13 +289,15 @@ class AuthenticatedImageProvider extends ImageProvider<AuthenticatedImageProvide
   @override
   bool operator ==(Object other) {
     if (other is AuthenticatedImageProvider) {
-      return url == other.url;
+      return url == other.url &&
+          enableUpscaling == other.enableUpscaling &&
+          upscaleScale == other.upscaleScale;
     }
     return false;
   }
 
   @override
-  int get hashCode => url.hashCode;
+  int get hashCode => Object.hash(url, enableUpscaling, upscaleScale);
 
   @override
   String toString() => 'AuthenticatedImageProvider("$url")';

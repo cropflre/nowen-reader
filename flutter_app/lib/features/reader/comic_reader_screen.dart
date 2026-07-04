@@ -8,6 +8,9 @@ import 'package:photo_view/photo_view.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../services/upscale_service.dart';
+import '../../services/upscale_cache.dart';
+import '../../services/model_manager.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/reader_settings_panel.dart';
 import 'novel_reader_screen.dart';
@@ -42,6 +45,9 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   // 提前缓存 API 引用，避免 dispose 后 ref 不可用
   late final ComicApi _api;
 
+  // 模型管理器（用于放大）
+  late final ModelManager _modelManager;
+
   // 设置
   ReaderSettings _settings = const ReaderSettings();
 
@@ -56,6 +62,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     _pageController = PageController(initialPage: _currentPage);
     // 提前缓存 API 引用
     _api = ref.read(comicApiProvider);
+    _modelManager = ModelManager(ref.read(dioClientProvider));
     // 全屏沉浸模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _loadSettings();
@@ -155,6 +162,36 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     _api.updateProgress(widget.comicId, _currentPage).catchError((_) {});
   }
 
+  /// 图片放大后处理回调（传递给 AuthenticatedImage）
+  Future<Uint8List> _onImageBytesLoaded(Uint8List bytes, {required int pageIndex}) async {
+    if (!_settings.imageUpscaling) return bytes;
+
+    try {
+      // 检查缓存
+      if (await upscaleCache.has(widget.comicId, pageIndex, _settings.upscaleScale)) {
+        final cached = await upscaleCache.get(widget.comicId, pageIndex, _settings.upscaleScale);
+        if (cached != null) return cached;
+      }
+
+      // 执行放大
+      return await upscaleService.upscale(
+        bytes, widget.comicId, pageIndex, _settings.upscaleScale,
+      );
+    } catch (e) {
+      debugPrint('[Reader] Upscale failed for page $pageIndex: $e');
+      return bytes; // 失败时返回原始图片
+    }
+  }
+
+  Future<void> _loadUpscaleSession(String modelId, int scale) async {
+    try {
+      final path = await _modelManager.getModelPath(modelId, scale);
+      await upscaleService.loadSession(path, modelId, scale);
+    } catch (e) {
+      debugPrint('[Reader] Failed to load upscale session: $e');
+    }
+  }
+
   void _onPageChanged(int page) {
     setState(() => _currentPage = page);
     // 每翻5页自动保存
@@ -208,6 +245,19 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
       _autoPageTimer?.cancel();
       _autoPage = false;
     }
+
+    // 放大开关/倍率/模型变更时管理 session
+    if (s.imageUpscaling != _settings.imageUpscaling ||
+        s.upscaleModel != _settings.upscaleModel ||
+        s.upscaleScale != _settings.upscaleScale) {
+      if (s.imageUpscaling) {
+        // 异步加载 session，不阻塞 UI
+        _loadUpscaleSession(s.upscaleModel, s.upscaleScale);
+      } else {
+        upscaleService.clearPrefetchQueue();
+      }
+    }
+
     setState(() => _settings = s);
   }
 
@@ -290,6 +340,8 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
             imageUrl,
             comicId: widget.comicId,
             pageIndex: index,
+            enableUpscaling: _settings.imageUpscaling,
+            upscaleScale: _settings.upscaleScale,
           ),
           minScale: PhotoViewComputedScale.contained,
           maxScale: PhotoViewComputedScale.covered * 3,
@@ -377,6 +429,8 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
               imageUrl,
               comicId: widget.comicId,
               pageIndex: pages[0],
+              enableUpscaling: _settings.imageUpscaling,
+              upscaleScale: _settings.upscaleScale,
             ),
             minScale: PhotoViewComputedScale.contained,
             maxScale: PhotoViewComputedScale.covered * 3,
@@ -412,6 +466,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
                 pageIndex: leftPage,
                 fit: BoxFit.contain,
                 alignment: noGap ? Alignment.centerRight : Alignment.center,
+                onBytesLoaded: (bytes) => _onImageBytesLoaded(bytes, pageIndex: leftPage),
                 placeholder: const Center(child: CircularProgressIndicator()),
                 errorWidget: const Center(
                   child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
@@ -425,6 +480,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
                 pageIndex: rightPage,
                 fit: BoxFit.contain,
                 alignment: noGap ? Alignment.centerLeft : Alignment.center,
+                onBytesLoaded: (bytes) => _onImageBytesLoaded(bytes, pageIndex: rightPage),
                 placeholder: const Center(child: CircularProgressIndicator()),
                 errorWidget: const Center(
                   child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
@@ -468,6 +524,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
             fit: _settings.fitMode == FitMode.width
                 ? BoxFit.fitWidth
                 : BoxFit.contain,
+            onBytesLoaded: (bytes) => _onImageBytesLoaded(bytes, pageIndex: index),
             placeholder: SizedBox(
               height: MediaQuery.of(context).size.height,
               child: const Center(child: CircularProgressIndicator()),
