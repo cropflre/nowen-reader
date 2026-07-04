@@ -229,8 +229,8 @@ class UpscaleService {
       tileResults.add(TileResult(
         x: rect.left.toInt(),
         y: rect.top.toInt(),
-        width: tileW * scale,
-        height: tileH * scale,
+        width: tileW,
+        height: tileH,
         data: outputData,
       ));
 
@@ -247,12 +247,8 @@ class UpscaleService {
         width * scale,
       );
     } else {
-      // 多 tile 合并 (含重叠区域处理)
-      // 合并实现见 UpscaleProcessor.mergeTiles — 需要实际实现
-      outputRgba = UpscaleProcessor.nchwFloatToRgba(
-        tileResults[0].data, // 简化: 处理单 tile 结果
-        height * scale,
-        width * scale,
+      outputRgba = UpscaleProcessor.mergeTiles(
+        width, height, scale, _config.tileOverlap, tileResults,
       );
     }
 
