@@ -1,0 +1,6 @@
+# context_compression: off | beta
+context_compression: off
+# review_mode: off | standard | thorough
+review_mode: off
+# auto_transition: true | false
+auto_transition: true

@@ -1,0 +1,14 @@
+{
+  "change": "onnx-image-upscaler",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "c9e865a3a9386af3282ddaba517447f24ff03dadb267cfc24adfe3f07e227433",
+  "files": [
+    { "path": "openspec/changes/onnx-image-upscaler/proposal.md", "sha256": "8821c1b22dc96b96635ff216c21672df31c28147c890a3c0baca9b337b5fc066" },
+    { "path": "openspec/changes/onnx-image-upscaler/design.md", "sha256": "269659fc182bd508ca88bdf1598a6cea2d8d9fadc96432bd295e891362a588b3" },
+    { "path": "openspec/changes/onnx-image-upscaler/tasks.md", "sha256": "8c387d19a8a2237a4cf826599aa187188547a609c3464c85e8cf553aefed3fd7" },
+    { "path": "openspec/changes/onnx-image-upscaler/specs/local-ai-upscaling/spec.md", "sha256": "f0d4e1457d0da6240cf839d75bb795d1027598c2f77334cff6621b1b4d14e0cd" }
+  ]
+}

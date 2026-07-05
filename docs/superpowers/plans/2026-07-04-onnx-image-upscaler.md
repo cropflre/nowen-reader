@@ -2,6 +2,7 @@
 change: onnx-image-upscaler
 design-doc: docs/superpowers/specs/2026-07-04-onnx-image-upscaler-design.md
 base-ref: b73aad897e6b0160a6491591165e15f435544038
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 # ONNX Image Upscaler — 实现计划
@@ -26,6 +27,7 @@ base-ref: b73aad897e6b0160a6491591165e15f435544038
 - 不修改后端代码，模型下载 URL 从现有 API /api/upscale/models 获取
 - 遵循现有代码风格: 全局单例模式 (如 `cacheService`)、`ReaderSettings` 持久化模式、Riverpod provider 模式
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ## File Structure
@@ -49,6 +51,7 @@ base-ref: b73aad897e6b0160a6491591165e15f435544038
 | `flutter_app/lib/widgets/authenticated_image.dart` | `AuthenticatedImage` 增加可选 `onBytesLoaded` 回调和放大 loading 状态 |
 | `flutter_app/lib/features/reader/comic_reader_screen.dart` | `ComicReaderScreen` 接入 UpscaleService 预取和放大流程 |
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 1: 基础设施 — 依赖配置与原生平台设置
@@ -124,6 +127,7 @@ git add flutter_app/pubspec.yaml flutter_app/android/app/build.gradle.kts flutte
 git commit -m "feat: add onnxruntime dependency and native platform config"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 2: ModelManager — 模型下载与生命周期管理
@@ -424,6 +428,7 @@ git add flutter_app/lib/services/model_manager.dart flutter_app/test/model_manag
 git commit -m "feat: add ModelManager for ONNX model download and lifecycle"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 3: UpscaleProcessor — 图像预处理与后处理
@@ -748,6 +753,7 @@ git add flutter_app/lib/services/upscale_processor.dart flutter_app/test/upscale
 git commit -m "feat: add UpscaleProcessor for image-tensor conversion and tiling"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 4: UpscaleCache — 放大结果磁盘缓存
@@ -949,6 +955,7 @@ git add flutter_app/lib/services/upscale_cache.dart flutter_app/test/upscale_cac
 git commit -m "feat: add UpscaleCache with LRU eviction and 500MB limit"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 5: UpscaleService — 推理管线与 session 管理
@@ -1290,6 +1297,7 @@ git add flutter_app/lib/services/upscale_service.dart flutter_app/test/upscale_s
 git commit -m "feat: add UpscaleService with ONNX session management and inference pipeline"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 6: UpscaleProvider — Riverpod 状态管理
@@ -1543,6 +1551,7 @@ git add flutter_app/lib/providers/upscale_provider.dart flutter_app/test/upscale
 git commit -m "feat: add UpscaleProvider with Riverpod state management for upscale service"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 7: ReaderSettings + 设置面板 UI
@@ -1709,6 +1718,7 @@ git add flutter_app/lib/widgets/reader_settings_panel.dart flutter_app/test/read
 git commit -m "feat: add image upscaling toggle to ReaderSettings and settings panel UI"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 8: AuthenticatedImage + ComicReaderScreen 集成
@@ -2001,6 +2011,7 @@ git add flutter_app/lib/widgets/authenticated_image.dart flutter_app/lib/feature
 git commit -m "feat: integrate upscale pipeline into AuthenticatedImage and ComicReaderScreen"
 ```
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ### Task 9: 端到端手工验证
@@ -2044,6 +2055,7 @@ cd flutter_app && flutter run --profile
 
 如发现关键问题, 使用 `systematic-debugging` skill（通过 Skill 工具加载）进行根因分析。
 
+archived-with: 2026-07-05-onnx-image-upscaler
 ---
 
 ## 自检查
