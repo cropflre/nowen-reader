@@ -12,7 +12,7 @@ import (
 
 const (
 	SessionCookie = "nowen_session"
-	SessionMaxAge = 30 * 24 * 60 * 60 // 30 days in seconds
+	SessionMaxAge = 10 * 365 * 24 * 60 * 60 // 10 years in seconds
 )
 
 // contextKey constants
@@ -132,7 +132,7 @@ func GetCurrentUser(c *gin.Context) *model.AuthUser {
 		return nil
 	}
 
-	// 自动续期：当 Session 剩余有效期不足 7 天时，自动延长到 30 天
+	// 自动续期：当 Session 剩余有效期不足 7 天时，自动延长到 10 年
 	const renewThreshold = 7 * 24 * time.Hour
 	if time.Until(session.ExpiresAt) < renewThreshold {
 		newExpiry := time.Now().Add(time.Duration(SessionMaxAge) * time.Second)
