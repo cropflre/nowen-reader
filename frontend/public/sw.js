@@ -1,7 +1,7 @@
 // NowenReader Service Worker
 // 注意：升级缓存版本号会让旧版本的缓存（含可能损坏的页面响应）被自动清理。
-const CACHE_NAME = "nowen-reader-v3";
-const STATIC_CACHE = "nowen-static-v3";
+const CACHE_NAME = "nowen-reader-v4";
+const STATIC_CACHE = "nowen-static-v4";
 const IMAGE_CACHE = "nowen-images-v6";
 const API_CACHE = "nowen-api-v3";
 
@@ -47,6 +47,13 @@ self.addEventListener("fetch", (event) => {
   // Skip non-http(s) schemes (e.g. chrome-extension://)
   if (!url.protocol.startsWith("http")) return;
 
+  // PDF.js worker uses a stable URL and must always match the current app build.
+  // Never serve it from an old service-worker cache.
+  if (url.pathname.endsWith("/pdf.worker.min.mjs")) {
+    event.respondWith(networkOnlyNoStore(request));
+    return;
+  }
+
   // API requests: Network first, fallback to cache
   if (url.pathname.startsWith("/api/")) {
     // Cache comic thumbnails and pages aggressively
@@ -71,9 +78,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets (JS, CSS, fonts, images): Cache first
+  // Static assets (JS, ESM, CSS, fonts, images): Cache first.
+  // Content-hashed modules are safe to keep indefinitely; the stable PDF worker
+  // was handled above and is intentionally excluded from this cache.
   if (
-    url.pathname.match(/\.(js|css|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico)$/) ||
+    url.pathname.match(/\.(js|mjs|css|wasm|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico)$/) ||
     url.pathname.startsWith("/_next/static/")
   ) {
     event.respondWith(cacheFirstStrategy(request, STATIC_CACHE));
@@ -89,6 +98,20 @@ self.addEventListener("fetch", (event) => {
   // Default: Network first
   event.respondWith(networkFirstStrategy(request, CACHE_NAME));
 });
+
+async function networkOnlyNoStore(request) {
+  try {
+    return await fetch(request, { cache: "no-store" });
+  } catch {
+    return new Response("PDF worker unavailable", {
+      status: 503,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+}
 
 // Cache-first strategy (good for static assets and images)
 async function cacheFirstStrategy(request, cacheName, maxAge) {
@@ -203,8 +226,24 @@ self.addEventListener("message", (event) => {
     self.skipWaiting();
   }
   if (event.data?.type === "CLEAR_CACHE") {
-    caches.keys().then((names) => {
-      names.forEach((name) => caches.delete(name));
-    });
+    event.waitUntil(
+      caches.keys().then((names) => Promise.all(names.map((name) => caches.delete(name))))
+    );
+  }
+  if (event.data?.type === "INVALIDATE_CACHE" && event.data.urlPattern) {
+    const pattern = String(event.data.urlPattern);
+    event.waitUntil(
+      caches.keys().then(async (names) => {
+        await Promise.all(names.map(async (name) => {
+          const cache = await caches.open(name);
+          const requests = await cache.keys();
+          await Promise.all(
+            requests
+              .filter((request) => request.url.includes(pattern))
+              .map((request) => cache.delete(request))
+          );
+        }));
+      })
+    );
   }
 });
