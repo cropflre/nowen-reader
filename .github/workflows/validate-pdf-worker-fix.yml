@@ -17,11 +17,28 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Vet
+      - name: Vet and capture diagnostics
+        id: vet
         shell: bash
-        run: go vet ./... 2>&1 | tee go-vet.log
+        run: |
+          set +e
+          go vet ./... > go-vet.log 2>&1
+          status=$?
+          cat go-vet.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload vet diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-worker-go-vet
+          path: go-vet.log
+          if-no-files-found: error
       - name: Test SPA handler
         run: go test ./internal/handler -run 'TestSPAHandler' -count=1
+      - name: Verify vet
+        if: always()
+        run: test "${{ steps.vet.outputs.status }}" = "0"
 
   frontend:
     runs-on: ubuntu-latest
