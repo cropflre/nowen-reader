@@ -95,6 +95,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	{
 		imgRead.GET("/page/:pageIndex", img.GetPageImage)
 		imgRead.GET("/pdf", img.GetPdfFile)
+		imgRead.GET("/pdf-range", img.GetPdfRangeFile)
 		imgRead.GET("/chapter/:chapterIndex", img.GetChapterContent)
 		imgRead.GET("/epub-resource/*resourcePath", img.GetEpubResource)
 		imgRead.GET("/embedded-images", img.GetEmbeddedImages)
