@@ -16,6 +16,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@/components/reader/PdfView": ["./src/components/reader/PdfViewOptimized.tsx"],
+      "@/components/reader/ReaderToolbar": ["./src/components/reader/ReaderToolbarOptimized.tsx"],
       "@/*": ["./src/*"],
       "next/navigation": ["./src/shims/next/navigation.ts"],
       "next/link": ["./src/shims/next/link.tsx"],
