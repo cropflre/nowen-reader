@@ -32,17 +32,26 @@ function verifyStablePdfWorker(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), verifyStablePdfWorker()],
   resolve: {
-    alias: {
-      // Map @/ to frontend/src
-      "@": path.resolve(__dirname, "src"),
+    alias: [
+      // 精确入口优先于通用 @ 别名：保留原组件作为基础实现，优化层负责
+      // 超大 PDF Range 加载和进度条请求合并。
+      {
+        find: "@/components/reader/PdfView",
+        replacement: path.resolve(__dirname, "src/components/reader/PdfViewOptimized.tsx"),
+      },
+      {
+        find: "@/components/reader/ReaderToolbar",
+        replacement: path.resolve(__dirname, "src/components/reader/ReaderToolbarOptimized.tsx"),
+      },
+      { find: "@", replacement: path.resolve(__dirname, "src") },
       // Next.js shims — redirect Next.js imports to our compatibility layer
-      "next/navigation": path.resolve(__dirname, "src/shims/next/navigation.ts"),
-      "next/link": path.resolve(__dirname, "src/shims/next/link.tsx"),
-      "next/image": path.resolve(__dirname, "src/shims/next/image.tsx"),
-      "next/dynamic": path.resolve(__dirname, "src/shims/next/dynamic.tsx"),
-      "next/headers": path.resolve(__dirname, "src/shims/next/headers.ts"),
-      "next/font/google": path.resolve(__dirname, "src/shims/next/font/google.ts"),
-    },
+      { find: "next/navigation", replacement: path.resolve(__dirname, "src/shims/next/navigation.ts") },
+      { find: "next/link", replacement: path.resolve(__dirname, "src/shims/next/link.tsx") },
+      { find: "next/image", replacement: path.resolve(__dirname, "src/shims/next/image.tsx") },
+      { find: "next/dynamic", replacement: path.resolve(__dirname, "src/shims/next/dynamic.tsx") },
+      { find: "next/headers", replacement: path.resolve(__dirname, "src/shims/next/headers.ts") },
+      { find: "next/font/google", replacement: path.resolve(__dirname, "src/shims/next/font/google.ts") },
+    ],
   },
   server: {
     port: 5090,
