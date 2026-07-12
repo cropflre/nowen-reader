@@ -19,8 +19,26 @@ jobs:
           cache: true
       - name: Run focused backend tests
         run: go test ./internal/store ./internal/service ./internal/handler
-      - name: Build server
-        run: go build -o /tmp/nowen-reader-server ./cmd/server
+      - name: Build server and capture diagnostics
+        id: server-build
+        shell: bash
+        run: |
+          set +e
+          go build -o /tmp/nowen-reader-server ./cmd/server > server-build.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat server-build.log
+          exit 0
+      - name: Upload server build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-build-diagnostics
+          path: server-build.log
+          if-no-files-found: error
+      - name: Verify server build
+        if: always()
+        run: test "${{ steps.server-build.outputs.status }}" = "0"
 
   frontend:
     runs-on: ubuntu-latest
