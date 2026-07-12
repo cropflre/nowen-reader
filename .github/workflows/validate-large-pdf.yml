@@ -22,8 +22,25 @@ jobs:
           mkdir -p web/dist
           printf '<!doctype html><title>validation</title>' > web/dist/index.html
       - run: go vet ./...
-      - run: go test ./internal/handler -run 'TestServePDFRangeContent' -count=1
+      - name: Test PDF range and capture diagnostics
+        id: backend-test
+        shell: bash
+        run: |
+          set +e
+          go test ./internal/handler -run 'TestServePDFRangeContent' -count=1 -v > pdf-range-test.log 2>&1
+          status=$?
+          cat pdf-range-test.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pdf-range-test-log
+          path: pdf-range-test.log
       - run: go build -o /tmp/nowen-reader-server ./cmd/server
+      - name: Verify PDF range tests
+        if: always()
+        run: test "${{ steps.backend-test.outputs.status }}" = "0"
 
   frontend:
     runs-on: ubuntu-latest
@@ -38,6 +55,23 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npm run build
+      - name: Build frontend and capture diagnostics
+        id: frontend-build
+        shell: bash
+        run: |
+          set +e
+          npm run build > frontend-build.log 2>&1
+          status=$?
+          cat frontend-build.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: large-pdf-frontend-build-log
+          path: frontend/frontend-build.log
       - name: Verify stable worker
-        run: test -f dist/assets/pdf.worker.min.mjs
+        if: always()
+        run: |
+          test "${{ steps.frontend-build.outputs.status }}" = "0"
+          test -f dist/assets/pdf.worker.min.mjs
