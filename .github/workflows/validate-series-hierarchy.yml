@@ -20,7 +20,7 @@ jobs:
       - name: Run focused backend tests
         run: go test ./internal/store ./internal/service ./internal/handler
       - name: Build server
-        run: go build ./cmd/server
+        run: go build -o /tmp/nowen-reader-server ./cmd/server
 
   frontend:
     runs-on: ubuntu-latest
