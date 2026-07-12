@@ -1,0 +1,42 @@
+name: Validate large PDF optimization
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare frontend embed placeholder
+        run: |
+          mkdir -p web/dist
+          printf '<!doctype html><title>validation</title>' > web/dist/index.html
+      - run: go vet ./...
+      - run: go test ./internal/handler -run 'TestServePDFRangeContent' -count=1
+      - run: go build -o /tmp/nowen-reader-server ./cmd/server
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: test -f dist/assets/pdf.worker.min.mjs
