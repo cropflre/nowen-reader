@@ -37,6 +37,18 @@ export default function ReaderToolbarOptimized({
     window.dispatchEvent(new CustomEvent(PDF_PAGE_PREVIEW_EVENT, { detail: { page } }));
   }, []);
 
+  const finishInteraction = useCallback(() => {
+    if (!interactingRef.current) return;
+    interactingRef.current = false;
+    onInteracting?.(false);
+    clearPreviewTimer();
+    emitPreview(null);
+
+    const target = pendingPageRef.current;
+    pendingPageRef.current = null;
+    if (target !== null) onPageChange(target);
+  }, [clearPreviewTimer, emitPreview, onInteracting, onPageChange]);
+
   const handlePageChange = useCallback((page: number) => {
     if (!interactingRef.current) {
       onPageChange(page);
@@ -52,24 +64,31 @@ export default function ReaderToolbarOptimized({
   }, [clearPreviewTimer, emitPreview, onPageChange]);
 
   const handleInteracting = useCallback((interacting: boolean) => {
-    interactingRef.current = interacting;
-    onInteracting?.(interacting);
-
-    if (interacting) return;
-
-    clearPreviewTimer();
-    emitPreview(null);
-    const target = pendingPageRef.current;
-    pendingPageRef.current = null;
-    if (target !== null) {
-      onPageChange(target);
+    if (interacting) {
+      interactingRef.current = true;
+      onInteracting?.(true);
+      return;
     }
-  }, [clearPreviewTimer, emitPreview, onInteracting, onPageChange]);
+    finishInteraction();
+  }, [finishInteraction, onInteracting]);
 
-  useEffect(() => () => {
-    clearPreviewTimer();
-    emitPreview(null);
-  }, [clearPreviewTimer, emitPreview]);
+  useEffect(() => {
+    // 用户可能在滑块外释放鼠标/手指。全局收尾可避免工具栏永久停留在
+    // interacting 状态，也保证最终目标页只提交一次。
+    const finish = () => finishInteraction();
+    window.addEventListener("mouseup", finish);
+    window.addEventListener("touchend", finish);
+    window.addEventListener("touchcancel", finish);
+    window.addEventListener("blur", finish);
+    return () => {
+      window.removeEventListener("mouseup", finish);
+      window.removeEventListener("touchend", finish);
+      window.removeEventListener("touchcancel", finish);
+      window.removeEventListener("blur", finish);
+      clearPreviewTimer();
+      emitPreview(null);
+    };
+  }, [clearPreviewTimer, emitPreview, finishInteraction]);
 
   return (
     <ReaderToolbarBase
