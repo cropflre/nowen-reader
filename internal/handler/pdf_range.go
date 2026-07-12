@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/archive"
@@ -87,9 +86,7 @@ func escapeHeaderFilename(value string) string {
 		}
 	}
 	if len(result) == 0 {
-		return "document-" + strconv.FormatInt(infoFallbackUnix(), 10) + ".pdf"
+		return "document.pdf"
 	}
 	return string(result)
 }
-
-var infoFallbackUnix = func() int64 { return 0 }
