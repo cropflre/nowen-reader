@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, type ComponentProps } from "react";
 import ReaderToolbarBase from "./ReaderToolbar";
 
+export type { ReaderTheme } from "./ReaderToolbar";
 export const PDF_PAGE_PREVIEW_EVENT = "nowen-reader:pdf-page-preview";
 
 type ReaderToolbarProps = ComponentProps<typeof ReaderToolbarBase>;
