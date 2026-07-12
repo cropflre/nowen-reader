@@ -77,18 +77,19 @@ func (h *SPAHandler) RegisterRoutes(r *gin.Engine) {
 }
 
 // serveFileOrFallback serves a static file if it exists, otherwise falls back to index.html.
-// This is the standard SPA routing pattern.
+// Requests that clearly target static assets must never receive index.html: browsers reject
+// HTML returned for an ESM worker/chunk and surface an opaque dynamic-import error.
 func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
-	path := c.Request.URL.Path
+	requestPath := c.Request.URL.Path
 
 	// Don't serve SPA for API routes — return 404
-	if strings.HasPrefix(path, "/api/") {
+	if strings.HasPrefix(requestPath, "/api/") {
 		c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
 		return
 	}
 
 	// Clean path
-	cleanPath := strings.TrimPrefix(path, "/")
+	cleanPath := strings.TrimPrefix(requestPath, "/")
 	if cleanPath == "" {
 		cleanPath = "index.html"
 	}
@@ -98,8 +99,8 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 	if err == nil {
 		defer f.Close()
 
-		stat, err := f.Stat()
-		if err == nil && !stat.IsDir() {
+		stat, statErr := f.Stat()
+		if statErr == nil && !stat.IsDir() {
 			// File exists, serve it with appropriate headers
 			h.setStaticHeaders(c, cleanPath)
 			if rs, ok := f.(io.ReadSeeker); ok {
@@ -107,18 +108,20 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 			} else {
 				// Fallback: read all and write
 				data, _ := io.ReadAll(f)
-				c.Data(http.StatusOK, "", data)
+				c.Data(http.StatusOK, c.Writer.Header().Get("Content-Type"), data)
 			}
 			return
 		}
 
 		// If it's a directory, try index.html inside it
-		if stat != nil && stat.IsDir() {
-			indexFile, err := h.fileSystem.Open(cleanPath + "/index.html")
-			if err == nil {
+		if statErr == nil && stat.IsDir() {
+			indexFile, indexErr := h.fileSystem.Open(cleanPath + "/index.html")
+			if indexErr == nil {
 				defer indexFile.Close()
-				indexStat, err := indexFile.Stat()
-				if err == nil {
+				indexStat, indexStatErr := indexFile.Stat()
+				if indexStatErr == nil {
+					c.Header("Content-Type", "text/html; charset=utf-8")
+					c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 					if rs, ok := indexFile.(io.ReadSeeker); ok {
 						http.ServeContent(c.Writer, c.Request, indexStat.Name(), indexStat.ModTime(), rs)
 					} else {
@@ -129,6 +132,15 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 				}
 			}
 		}
+	}
+
+	// Missing JS/CSS/worker/image files are real 404s. Returning index.html with 200
+	// makes PDF.js report "Failed to fetch dynamically imported module" and also
+	// lets a service worker cache the wrong response under an asset URL.
+	if isStaticAssetRequest(cleanPath) {
+		c.Header("Cache-Control", "no-store")
+		c.Status(http.StatusNotFound)
+		return
 	}
 
 	// File doesn't exist — serve index.html for SPA client-side routing
@@ -143,8 +155,30 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 }
 
-// setStaticHeaders sets appropriate cache headers for static assets.
+// setStaticHeaders sets appropriate content and cache headers for static assets.
 func (h *SPAHandler) setStaticHeaders(c *gin.Context, path string) {
+	ext := strings.ToLower(filepath.Ext(path))
+
+	// Go's MIME database can vary by OS. ESM workers must always be JavaScript,
+	// otherwise Chromium refuses to start the module worker.
+	switch ext {
+	case ".js", ".mjs":
+		c.Header("Content-Type", "text/javascript; charset=utf-8")
+	case ".css":
+		c.Header("Content-Type", "text/css; charset=utf-8")
+	case ".json":
+		c.Header("Content-Type", "application/json; charset=utf-8")
+	case ".wasm":
+		c.Header("Content-Type", "application/wasm")
+	}
+
+	// The PDF worker intentionally has a stable URL. It must be revalidated on
+	// every app update so an old worker is never paired with a new pdfjs-dist API.
+	if filepath.Base(path) == "pdf.worker.min.mjs" {
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		return
+	}
+
 	// Hashed assets (JS, CSS with content hash) — immutable
 	if isHashedAsset(path) {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
@@ -152,7 +186,6 @@ func (h *SPAHandler) setStaticHeaders(c *gin.Context, path string) {
 	}
 
 	// Images, fonts — long cache
-	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
 		".woff", ".woff2", ".ttf", ".eot":
@@ -170,27 +203,32 @@ func (h *SPAHandler) setStaticHeaders(c *gin.Context, path string) {
 	c.Header("Cache-Control", "public, max-age=3600") // 1 hour
 }
 
-// isHashedAsset detects files with content-hash patterns in the name.
-// e.g., "assets/index-abc123.js", "_next/static/chunks/abc123.js"
-func isHashedAsset(path string) bool {
-	// Next.js static files
-	if strings.Contains(path, "_next/static/") {
+func isStaticAssetRequest(path string) bool {
+	normalized := strings.ToLower(strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "/"))
+	if strings.HasPrefix(normalized, "assets/") || strings.HasPrefix(normalized, "_next/static/") {
 		return true
 	}
-	// Vite-style hashed assets
-	if strings.Contains(path, "assets/") {
-		ext := filepath.Ext(path)
-		base := strings.TrimSuffix(filepath.Base(path), ext)
-		// Pattern: name-hash or name.hash
-		if strings.Contains(base, "-") || strings.Contains(base, ".") {
-			parts := strings.Split(base, "-")
-			if len(parts) >= 2 {
-				hash := parts[len(parts)-1]
-				if len(hash) >= 8 {
-					return true
-				}
-			}
-		}
+
+	switch filepath.Ext(normalized) {
+	case ".js", ".mjs", ".css", ".map", ".json", ".wasm",
+		".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
+		".woff", ".woff2", ".ttf", ".eot":
+		return true
+	default:
+		return false
 	}
-	return false
+}
+
+// isHashedAsset detects files generated into immutable asset directories.
+func isHashedAsset(path string) bool {
+	normalized := strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "/")
+
+	// Next.js static files are content-addressed.
+	if strings.HasPrefix(normalized, "_next/static/") {
+		return true
+	}
+
+	// Vite emits generated assets under assets/. The one intentionally stable
+	// asset (pdf.worker.min.mjs) is handled before this function is called.
+	return strings.HasPrefix(normalized, "assets/")
 }
