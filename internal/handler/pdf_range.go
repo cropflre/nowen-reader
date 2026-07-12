@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/archive"
@@ -69,8 +70,15 @@ func servePDFRangeContent(w http.ResponseWriter, r *http.Request, file *os.File,
 	header.Set("X-Accel-Buffering", "no")
 	header.Set("X-Content-Type-Options", "nosniff")
 
-	// Do not set Content-Length here. http.ServeContent must calculate the
-	// correct full or partial length and emit 206/Content-Range for Range
+	// ServeContent does not infer Content-Length for a HEAD response when a
+	// Content-Encoding header is present. The frontend uses HEAD to decide when
+	// to enable large-file mode, so expose the full size explicitly for HEAD only.
+	if r.Method == http.MethodHead {
+		header.Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	}
+
+	// Do not set Content-Length for GET here. http.ServeContent must calculate
+	// the correct full or partial length and emit 206/Content-Range for Range
 	// requests. Writing the full file length up front breaks large-file seeks.
 	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
