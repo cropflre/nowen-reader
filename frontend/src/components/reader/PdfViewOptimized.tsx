@@ -181,7 +181,7 @@ export default function PdfViewOptimized({
           useSystemFonts: true,
         });
         loadingTaskRef.current = loadingTask;
-        loadingTask.onProgress = ({ loaded }) => {
+        loadingTask.onProgress = ({ loaded }: { loaded: number; total: number }) => {
           if (!cancelled) setLoadedBytes(loaded);
         };
 
