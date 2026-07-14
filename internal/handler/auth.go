@@ -218,6 +218,10 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 
 	user := middleware.GetCurrentUser(c)
+	if c.GetHeader("Authorization") != "" && user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"user":             user,
 		"needsSetup":       false,

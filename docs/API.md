@@ -16,6 +16,73 @@ NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 | POST | `/api/auth/users` | 创建用户 🔒管理员 |
 | PUT | `/api/auth/users` | 更新用户 🔒管理员 |
 | DELETE | `/api/auth/users` | 删除用户 🔒管理员 |
+| GET | `/api/auth/api-keys` | 当前用户的 API Key 列表 🔒浏览器会话 |
+| POST | `/api/auth/api-keys` | 创建 API Key 🔒浏览器会话 |
+| DELETE | `/api/auth/api-keys/:id` | 撤销一个 API Key 🔒浏览器会话 |
+| DELETE | `/api/auth/api-keys` | 撤销当前用户全部 API Key 🔒浏览器会话 |
+| GET | `/api/admin/users/:id/api-keys` | 查看指定用户的 API Key 元数据 🔒管理员浏览器会话 |
+| DELETE | `/api/admin/users/:id/api-keys` | 撤销指定用户全部 API Key 🔒管理员浏览器会话 |
+
+### API Key 认证
+
+除登录、注册等公开接口外，需要认证的接口支持浏览器 Session Cookie 或 API Key。API Key 通过请求头发送：
+
+```http
+Authorization: Bearer nwr_<key-id>_<secret>
+```
+
+- API Key 绑定到创建它的用户，不单独保存角色、用户组或书库权限。
+- 每次请求都使用用户当前的角色与 `canView`、`canDownload`、`canManage` 权限；管理员 Key 拥有该管理员当时的完整权限。
+- 用户权限、用户组、角色或书库授权发生变化后，已有 Key 会立即按新权限生效。
+- 请求只要携带 `Authorization` 头，就优先按 Bearer Key 认证；Key 错误、过期或已撤销时返回 `401`，不会退回 Cookie。
+- 不支持通过 URL 查询参数传递 API Key。
+- API Key 管理接口仅接受浏览器 Session Cookie。API Key 本身不能查看、创建或撤销 Key。
+- 服务端仅保存 Key 的 SHA-256 摘要；完整 Key 只在创建成功的响应中返回一次。
+- 删除用户时会同时删除该用户的全部 API Key。修改密码不会自动撤销 Key，可使用全部撤销接口主动失效。
+
+#### 创建 API Key
+
+```http
+POST /api/auth/api-keys
+Content-Type: application/json
+
+{
+  "name": "家庭自动化",
+  "currentPassword": "当前账户密码",
+  "expiresInDays": 365
+}
+```
+
+`name` 为 1-64 个字符。`expiresInDays` 省略时默认 365 天，传 `0` 表示永不过期，最大为 3650 天。创建成功返回 `201`：
+
+```json
+{
+  "apiKey": {
+    "id": "uuid",
+    "userId": "uuid",
+    "name": "家庭自动化",
+    "keyPrefix": "nwr_12345678...",
+    "expiresAt": "2027-07-14T00:00:00Z",
+    "lastUsedAt": null,
+    "revokedAt": null,
+    "createdAt": "2026-07-14T00:00:00Z"
+  },
+  "key": "nwr_<key-id>_<secret>"
+}
+```
+
+列表接口只返回 `apiKey` 元数据，不会再次返回完整 `key` 或摘要。单个撤销成功返回 `204`。
+
+撤销当前用户全部 Key 需要再次验证密码：
+
+```http
+DELETE /api/auth/api-keys
+Content-Type: application/json
+
+{"currentPassword": "当前账户密码"}
+```
+
+管理员接口只能查看指定用户的 Key 元数据或全部撤销，不能替其他用户创建 Key。
 
 ## 📚 漫画
 

@@ -9,6 +9,7 @@ func registerAuthRoutes(api *gin.RouterGroup) {
 	// Auth routes (Phase 1)
 	// ============================================================
 	auth := NewAuthHandler()
+	apiKeys := NewAPIKeyHandler()
 
 	authGroup := api.Group("/auth")
 	{
@@ -27,6 +28,22 @@ func registerAuthRoutes(api *gin.RouterGroup) {
 		usersGroup.POST("", auth.CreateUserByAdmin)
 		usersGroup.PUT("", auth.UpdateUser)
 		usersGroup.DELETE("", auth.DeleteUserHandler)
+	}
+
+	apiKeyGroup := api.Group("/auth/api-keys")
+	apiKeyGroup.Use(middleware.SessionRequired())
+	{
+		apiKeyGroup.GET("", apiKeys.List)
+		apiKeyGroup.POST("", middleware.RateLimitAuth(), apiKeys.Create)
+		apiKeyGroup.DELETE("/:id", apiKeys.Revoke)
+		apiKeyGroup.DELETE("", middleware.RateLimitAuth(), apiKeys.RevokeAll)
+	}
+
+	adminAPIKeyGroup := api.Group("/admin/users/:id/api-keys")
+	adminAPIKeyGroup.Use(middleware.SessionRequired(), middleware.AdminRequired())
+	{
+		adminAPIKeyGroup.GET("", apiKeys.AdminList)
+		adminAPIKeyGroup.DELETE("", apiKeys.AdminRevokeAll)
 	}
 
 }

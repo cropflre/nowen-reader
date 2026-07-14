@@ -17,10 +17,23 @@ const (
 
 // contextKey constants
 const (
-	ContextKeyUser = "auth_user"
+	ContextKeyUser       = "auth_user"
+	ContextKeyCredential = "auth_credential"
 )
 
-// AuthRequired is a middleware that requires a valid session.
+type CredentialType string
+
+const (
+	CredentialSession CredentialType = "session"
+	CredentialAPIKey  CredentialType = "api_key"
+)
+
+type RequestCredential struct {
+	Type CredentialType
+	ID   string
+}
+
+// AuthRequired accepts either a valid browser session or API key.
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := GetCurrentUser(c)
@@ -29,6 +42,19 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 		c.Set(ContextKeyUser, user)
+		c.Next()
+	}
+}
+
+// SessionRequired only accepts a browser session. It protects credential
+// management endpoints from being called with an API key.
+func SessionRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user := getCurrentSessionUser(c)
+		if user == nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Browser session required"})
+			return
+		}
 		c.Next()
 	}
 }
@@ -105,14 +131,58 @@ func RequireComicManagePermission() gin.HandlerFunc {
 	}
 }
 
-// GetCurrentUser extracts and validates the session from the request cookie.
-// Returns nil if no valid session found.
+// GetCurrentUser resolves the explicit Bearer API key first, then falls back to
+// the session cookie only when no Authorization header is present.
 func GetCurrentUser(c *gin.Context) *model.AuthUser {
-	// Check if already resolved in this request
-	if u, exists := c.Get(ContextKeyUser); exists {
-		if user, ok := u.(*model.AuthUser); ok {
+	if user := getContextUser(c); user != nil {
+		return user
+	}
+
+	if authorization := c.GetHeader("Authorization"); authorization != "" {
+		parts := strings.Fields(authorization)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			return nil
+		}
+
+		key, user, err := store.AuthenticateAPIKey(parts[1])
+		if err != nil || key == nil || user == nil {
+			return nil
+		}
+
+		authUser := authUserFromModel(user)
+		setAuthenticatedUser(c, authUser, RequestCredential{Type: CredentialAPIKey, ID: key.ID})
+		return authUser
+	}
+
+	return getCurrentSessionUser(c)
+}
+
+// GetCurrentCredential returns the credential selected for this request.
+func GetCurrentCredential(c *gin.Context) *RequestCredential {
+	credential, exists := c.Get(ContextKeyCredential)
+	if !exists {
+		return nil
+	}
+	result, ok := credential.(RequestCredential)
+	if !ok {
+		return nil
+	}
+	return &result
+}
+
+func getCurrentSessionUser(c *gin.Context) *model.AuthUser {
+	if user := getContextUser(c); user != nil {
+		credential := GetCurrentCredential(c)
+		if credential != nil && credential.Type == CredentialSession {
 			return user
 		}
+		return nil
+	}
+
+	// An explicit Authorization header always wins and cannot fall back to a
+	// browser cookie, even when it is malformed or invalid.
+	if c.GetHeader("Authorization") != "" {
+		return nil
 	}
 
 	token, err := c.Cookie(SessionCookie)
@@ -141,14 +211,32 @@ func GetCurrentUser(c *gin.Context) *model.AuthUser {
 		}
 	}
 
-	authUser := &model.AuthUser{
+	authUser := authUserFromModel(user)
+	setAuthenticatedUser(c, authUser, RequestCredential{Type: CredentialSession, ID: session.ID})
+	return authUser
+}
+
+func getContextUser(c *gin.Context) *model.AuthUser {
+	if value, exists := c.Get(ContextKeyUser); exists {
+		user, _ := value.(*model.AuthUser)
+		return user
+	}
+	return nil
+}
+
+func setAuthenticatedUser(c *gin.Context, user *model.AuthUser, credential RequestCredential) {
+	c.Set(ContextKeyUser, user)
+	c.Set(ContextKeyCredential, credential)
+}
+
+func authUserFromModel(user *model.User) *model.AuthUser {
+	return &model.AuthUser{
 		ID:        user.ID,
 		Username:  user.Username,
 		Nickname:  user.Nickname,
 		Role:      user.Role,
 		AiEnabled: user.AiEnabled,
 	}
-	return authUser
 }
 
 // IsRequestSecure determines if the request is over HTTPS.

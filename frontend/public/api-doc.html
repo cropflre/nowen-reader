@@ -601,7 +601,8 @@
     </div>
 
     <div id="endpoints-auth" class="endpoint-group">
-    <h2 class="group-title"><span data-en="2. Auth" data-zh="2. 认证">2. Auth</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="2. Auth" data-zh="2. 认证">2. Auth</span> <span class="group-badge"><span data-en="14 endpoints" data-zh="14 个接口">14 endpoints</span></span></h2>
+    <p class="description"><span data-en="Protected endpoints accept the browser session cookie or Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;. API keys always use the owner's current role, groups, and library permissions. An explicit invalid, expired, or revoked Bearer key returns 401 and never falls back to the cookie. API key management endpoints require a browser session and never accept an API key." data-zh="受保护接口支持浏览器会话 Cookie 或 Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;。API Key 始终使用所属用户当前的角色、用户组和书库权限。只要显式携带了无效、过期或已撤销的 Bearer Key，就返回 401，不会退回 Cookie。API Key 管理接口仅接受浏览器会话，不接受 API Key。">Protected endpoints accept the browser session cookie or Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;. API keys always use the owner's current role, groups, and library permissions. An explicit invalid, expired, or revoked Bearer key returns 401 and never falls back to the cookie. API key management endpoints require a browser session and never accept an API key.</span></p>
 <div class="endpoint auth-required" data-search="POST /api/auth/register register new user" id="post-api-auth-register">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
@@ -806,6 +807,117 @@
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+      <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/auth/api-keys list current user API keys browser session" id="get-api-auth-api-keys">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/auth/api-keys</span>
+    <span class="summary"><span data-en="List current user's API keys" data-zh="列出当前用户的 API Key">List current user's API keys</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns safe metadata for active, expired, and revoked keys. Plaintext keys and hashes are never returned. Requires a browser session; Bearer API keys are rejected." data-zh="返回有效、过期和已撤销 Key 的安全元数据，不返回完整 Key 或摘要。仅接受浏览器会话，Bearer API Key 会被拒绝。">Returns safe metadata for active, expired, and revoked keys. Plaintext keys and hashes are never returned. Requires a browser session; Bearer API keys are rejected.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "apiKeys": [{
+    "id": "uuid",
+    "userId": "uuid",
+    "name": "string",
+    "keyPrefix": "nwr_12345678...",
+    "expiresAt": "datetime|null",
+    "lastUsedAt": "datetime|null",
+    "revokedAt": "datetime|null",
+    "createdAt": "datetime"
+  }]
+}</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Browser Session Required" data-zh="需要浏览器会话">Browser Session Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="POST /api/auth/api-keys create API key browser session password" id="post-api-auth-api-keys">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/auth/api-keys</span>
+    <span class="summary"><span data-en="Create an API key" data-zh="创建 API Key">Create an API key</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Creates a user-bound key after verifying the current password. The complete key is returned once and the response is marked no-store. expiresInDays defaults to 365; 0 means no expiry; maximum 3650." data-zh="验证当前密码后创建绑定用户的 Key。完整 Key 只返回一次，响应带有 no-store。expiresInDays 默认 365；0 表示永不过期；最大 3650。">Creates a user-bound key after verifying the current password. The complete key is returned once and the response is marked no-store. expiresInDays defaults to 365; 0 means no expiry; maximum 3650.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{
+  "name": "string (required, 1-64 chars)",
+  "currentPassword": "string (required)",
+  "expiresInDays": 365
+}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">201</span></h4>
+    <pre class="code-block"><code>{
+  "apiKey": {"id": "uuid", "name": "string", "keyPrefix": "nwr_12345678...", "expiresAt": "datetime|null", "lastUsedAt": null, "revokedAt": null, "createdAt": "datetime"},
+  "key": "nwr_&lt;key-id&gt;_&lt;secret&gt;"
+}</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Browser Session Required" data-zh="需要浏览器会话">Browser Session Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="DELETE /api/auth/api-keys/:id revoke one API key browser session" id="delete-api-auth-api-keys-id">
+  <div class="endpoint-header">
+    <span class="method method-DELETE">DELETE</span>
+    <span class="path">/api/auth/api-keys/:id</span>
+    <span class="summary"><span data-en="Revoke one API key" data-zh="撤销一个 API Key">Revoke one API key</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Immediately revokes one active key owned by the current user. A revoked key cannot be restored." data-zh="立即撤销当前用户拥有的一个有效 Key。已撤销的 Key 无法恢复。">Immediately revokes one active key owned by the current user. A revoked key cannot be restored.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">204</span></h4>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Browser Session Required" data-zh="需要浏览器会话">Browser Session Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="DELETE /api/auth/api-keys revoke all current user API keys browser session password" id="delete-api-auth-api-keys">
+  <div class="endpoint-header">
+    <span class="method method-DELETE">DELETE</span>
+    <span class="path">/api/auth/api-keys</span>
+    <span class="summary"><span data-en="Revoke all current user's API keys" data-zh="撤销当前用户全部 API Key">Revoke all current user's API keys</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Revokes every active API key owned by the current user after verifying the current password." data-zh="验证当前密码后撤销当前用户拥有的全部有效 API Key。">Revokes every active API key owned by the current user after verifying the current password.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{"currentPassword": "string (required)"}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{"revokedCount": 0}</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Browser Session Required" data-zh="需要浏览器会话">Browser Session Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="GET /api/admin/users/:id/api-keys list user API keys admin browser session" id="get-api-admin-users-id-api-keys">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/admin/users/:id/api-keys</span>
+    <span class="summary"><span data-en="List a user's API key metadata" data-zh="查看指定用户的 API Key 元数据">List a user's API key metadata</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Lists safe key metadata for the specified user. Administrators cannot retrieve plaintext keys or create keys for another user." data-zh="列出指定用户的安全 Key 元数据。管理员不能获取完整 Key，也不能替其他用户创建 Key。">Lists safe key metadata for the specified user. Administrators cannot retrieve plaintext keys or create keys for another user.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{"apiKeys": [APIKeyMetadata, ...]}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Browser Session Required" data-zh="需要浏览器会话">Browser Session Required</span></span>
+      <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="DELETE /api/admin/users/:id/api-keys revoke user API keys admin browser session" id="delete-api-admin-users-id-api-keys">
+  <div class="endpoint-header">
+    <span class="method method-DELETE">DELETE</span>
+    <span class="path">/api/admin/users/:id/api-keys</span>
+    <span class="summary"><span data-en="Revoke all API keys for a user" data-zh="撤销指定用户的全部 API Key">Revoke all API keys for a user</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Immediately revokes every active API key owned by the specified user." data-zh="立即撤销指定用户拥有的全部有效 API Key。">Immediately revokes every active API key owned by the specified user.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{"revokedCount": 0}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Browser Session Required" data-zh="需要浏览器会话">Browser Session Required</span></span>
       <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
     </div>
   </div>

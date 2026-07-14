@@ -33,6 +33,20 @@ type UserSession struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// APIKey is a revocable authentication credential owned by a user. SecretHash
+// is stored server-side only; the plaintext key is returned once at creation.
+type APIKey struct {
+	ID         string     `json:"id"`
+	UserID     string     `json:"userId,omitempty"`
+	Name       string     `json:"name"`
+	KeyPrefix  string     `json:"keyPrefix"`
+	SecretHash string     `json:"-"`
+	ExpiresAt  *time.Time `json:"expiresAt"`
+	LastUsedAt *time.Time `json:"lastUsedAt"`
+	RevokedAt  *time.Time `json:"revokedAt"`
+	CreatedAt  time.Time  `json:"createdAt"`
+}
+
 // ============================================================
 // Library System (书库权限)
 // ============================================================
