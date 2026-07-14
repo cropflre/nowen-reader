@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,7 +56,7 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, string, float64, er
 			_ = os.Remove(cachePath)
 			log.Printf("[thumbnail] discarded stale PDF placeholder cache for %s", comicID)
 		} else {
-			return data, "image/webp", 0, nil
+			return data, ThumbnailMimeType(data), 0, nil
 		}
 	}
 
@@ -69,7 +70,7 @@ func GenerateThumbnail(archivePath, comicID string) ([]byte, string, float64, er
 		if err != nil {
 			return nil, "", 0, fmt.Errorf("thumbnail not found after wait for %s", comicID)
 		}
-		return data, "image/webp", 0, nil
+		return data, ThumbnailMimeType(data), 0, nil
 	}
 
 	// 当前 goroutine 负责生成，完成后通知等待者
@@ -431,6 +432,25 @@ func toPNG(imgData []byte) ([]byte, error) {
 // quality 85 for user uploads.
 func ResizeImageToWebP(imgData []byte, width, height, quality int) ([]byte, string, error) {
 	return resizeToWebP(imgData, width, height, quality)
+}
+
+// ThumbnailEncoderPriority returns the external encoders used before the
+// built-in Go JPEG fallback.
+func ThumbnailEncoderPriority() []string {
+	return []string{"cwebp", "ffmpeg"}
+}
+
+// ThumbnailMimeType detects the actual cached image format. Cache filenames
+// keep a stable .webp suffix even when the native fallback produced JPEG data.
+func ThumbnailMimeType(data []byte) string {
+	if len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
+		return "image/webp"
+	}
+	mimeType := http.DetectContentType(data)
+	if strings.HasPrefix(mimeType, "image/") {
+		return mimeType
+	}
+	return "application/octet-stream"
 }
 
 // ThumbnailCacheName returns the canonical cache filename for a comic thumbnail.

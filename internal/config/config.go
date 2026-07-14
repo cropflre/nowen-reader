@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -544,16 +545,25 @@ func ResolvePdfTool(name string) string {
 // 注意：本函数定义在 config 包，避免 archive 包反向依赖；调用方传入查询结果即可。
 // 返回 (路径, 是否找到)。
 func LookPdfTool(name string, lookPath func(string) (string, error)) (string, bool) {
-	if p := ResolvePdfTool(name); p != "" {
+	if p := ResolvePdfTool(name); p != "" && isUsablePdfTool(name, p, runtime.GOOS) {
 		return p, true
 	}
 	if lookPath == nil {
 		return "", false
 	}
-	if p, err := lookPath(name); err == nil && p != "" {
+	if p, err := lookPath(name); err == nil && p != "" && isUsablePdfTool(name, p, runtime.GOOS) {
 		return p, true
 	}
 	return "", false
+}
+
+func isUsablePdfTool(name, toolPath, goos string) bool {
+	if !strings.EqualFold(name, "convert") || goos != "windows" {
+		return true
+	}
+	path := strings.ToLower(strings.ReplaceAll(toolPath, `\`, "/"))
+	return !strings.Contains(path, "/windows/system32/") &&
+		!strings.Contains(path, "/windows/syswow64/")
 }
 
 // DatabaseURL returns the SQLite database path.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/archive"
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
@@ -277,10 +278,10 @@ func checkDataDir() []DiagnosticItem {
 func checkPdfRenderer() []DiagnosticItem {
 	var items []DiagnosticItem
 
-	tools := []string{"mutool", "pdftoppm", "convert"}
+	tools, _ := detectPdfRenderers(exec.LookPath)
 	var found []string
-	for _, name := range tools {
-		if p, ok := config.LookPdfTool(name, exec.LookPath); ok && p != "" {
+	for _, name := range archive.PDFRendererPriority() {
+		if tools[name] != "" {
 			found = append(found, name)
 		}
 	}
@@ -298,9 +299,9 @@ func checkPdfRenderer() []DiagnosticItem {
 		case "windows":
 			hint = "请下载 mutool（MuPDF）并放入 PATH，或在站点设置中配置 PdfRendererPath"
 		case "darwin":
-			hint = "建议执行: brew install mupdf-tools 或 brew install poppler"
+			hint = "建议执行: brew install poppler（优先）或 brew install mupdf-tools"
 		default:
-			hint = "Docker 镜像已内置。如非 Docker 部署: apt install mupdf-tools 或 apk add mupdf-tools"
+			hint = "Docker 镜像已内置。如非 Docker 部署，优先安装 poppler-utils，也可安装 mupdf-tools 或 ImageMagick"
 		}
 		items = append(items, DiagnosticItem{
 			ID:      "pdf-renderer",
@@ -316,44 +317,33 @@ func checkPdfRenderer() []DiagnosticItem {
 
 // checkThumbnailTools 检查缩略图生成工具
 func checkThumbnailTools() []DiagnosticItem {
-	var items []DiagnosticItem
+	return checkThumbnailToolsWithLookup(exec.LookPath)
+}
 
-	// 检查 vips（libvips）- Go 项目常用的图片处理库
-	// 也检查 ImageMagick 的 convert
-	thumbnailTools := []struct {
-		name string
-		cmd  string
-	}{
-		{"vips", "vips"},
-		{"convert (ImageMagick)", "convert"},
-		{"ffmpeg", "ffmpeg"},
-	}
-
+func checkThumbnailToolsWithLookup(lookPath executableLookup) []DiagnosticItem {
 	var found []string
-	for _, tool := range thumbnailTools {
-		if _, err := exec.LookPath(tool.cmd); err == nil {
-			found = append(found, tool.name)
+	for _, name := range archive.ThumbnailEncoderPriority() {
+		if _, err := lookPath(name); err == nil {
+			found = append(found, name)
 		}
 	}
 
 	if len(found) > 0 {
-		items = append(items, DiagnosticItem{
+		return []DiagnosticItem{{
 			ID:      "thumbnail-tools",
 			Name:    "缩略图工具",
 			Status:  "ok",
-			Message: fmt.Sprintf("可用工具: %v", found),
-		})
-	} else {
-		items = append(items, DiagnosticItem{
-			ID:      "thumbnail-tools",
-			Name:    "缩略图工具",
-			Status:  "warning",
-			Message: "未检测到缩略图生成工具",
-			Hint:    "缩略图功能可能受限。建议安装 vips 或 ImageMagick",
-		})
+			Message: fmt.Sprintf("外部编码器可用: %v；Go 原生兜底可用", found),
+		}}
 	}
 
-	return items
+	return []DiagnosticItem{{
+		ID:      "thumbnail-tools",
+		Name:    "缩略图工具",
+		Status:  "ok",
+		Message: "未检测到 cwebp 或 ffmpeg，将使用 Go 原生 JPEG 兜底",
+		Hint:    "可选安装 libwebp-tools（cwebp），以获得更好的质量和内存表现",
+	}}
 }
 
 // checkDatabase 检查数据库状态

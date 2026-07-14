@@ -658,11 +658,11 @@ func GetComicThumbnail(comicID string) ([]byte, string, float64, error) {
 	if dbErr == nil && comic != nil && strings.TrimSpace(comic.CoverImageURL) != "" {
 		cachePath := filepath.Join(config.GetThumbnailsDir(), archive.ThumbnailCacheName(comicID))
 		if data, err := os.ReadFile(cachePath); err == nil && len(data) > 0 {
-			return data, "image/webp", 0, nil
+			return data, archive.ThumbnailMimeType(data), 0, nil
 		}
 		if err := cacheCoverAsThumbnail(comicID, comic.CoverImageURL); err == nil {
 			if data, readErr := os.ReadFile(cachePath); readErr == nil && len(data) > 0 {
-				return data, "image/webp", 0, nil
+				return data, archive.ThumbnailMimeType(data), 0, nil
 			}
 		} else {
 			log.Printf("[thumbnail] external cover failed for %s, falling back to archive cover: %v", comicID, err)

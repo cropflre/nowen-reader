@@ -21,11 +21,11 @@
 
 ## 缩略图不显示
 
-确保安装了 `libwebp-tools`（cwebp 命令）。Docker 镜像已内置。如仍不显示，在 **设置** 中手动触发缩略图批量生成。
+缩略图依次使用 `cwebp`、`ffmpeg`，均不可用时自动降级为 Go 原生 JPEG。Docker 镜像已内置首选的 `cwebp`。如仍不显示，请在 **系统诊断** 查看实际编码器状态，并在 **设置** 中手动触发缩略图批量生成。
 
 ## PDF 无法渲染
 
-PDF 渲染需要 `mupdf-tools`（mutool 命令）。Docker 镜像已内置。手动安装二进制时需自行安装该工具。
+PDF 渲染依次使用 `pdftoppm`、`mutool`、ImageMagick `convert`。Docker 镜像已内置 `poppler-utils` 和 `mupdf-tools`；非 Docker 部署优先安装 `poppler-utils`。
 
 ## 如何配置 AI？
 

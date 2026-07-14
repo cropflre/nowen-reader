@@ -106,16 +106,17 @@ export default function PdfRendererBanner({
                 <div>
                   Debian/Ubuntu：
                   <code className="mx-1 rounded bg-amber-100 px-1 dark:bg-amber-800/40">
-                    apt install mupdf-tools
+                    apt install poppler-utils
                   </code>
                   ；Alpine：
                   <code className="mx-1 rounded bg-amber-100 px-1 dark:bg-amber-800/40">
-                    apk add mupdf-tools
+                    apk add poppler-utils
                   </code>
                   ；macOS：
                   <code className="mx-1 rounded bg-amber-100 px-1 dark:bg-amber-800/40">
-                    brew install mupdf-tools
+                    brew install poppler
                   </code>
+                  （也可使用 mupdf-tools）
                 </div>
               )}
 

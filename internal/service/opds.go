@@ -61,7 +61,7 @@ type atomAuthor struct {
 type atomLink struct {
 	Rel  string `xml:"rel,attr"`
 	Href string `xml:"href,attr"`
-	Type string `xml:"type,attr"`
+	Type string `xml:"type,attr,omitempty"`
 }
 
 type atomEntry struct {
@@ -157,8 +157,8 @@ func GenerateAcquisitionFeed(baseURL, title, feedID string, comics []OPDSComic, 
 			Published: comic.AddedAt,
 			Content:   &atomContent{Type: "text", Text: description},
 			Links: []atomLink{
-				{Rel: "http://opds-spec.org/image", Href: "/api/comics/" + comic.ID + "/thumbnail", Type: "image/webp"},
-				{Rel: "http://opds-spec.org/image/thumbnail", Href: "/api/comics/" + comic.ID + "/thumbnail", Type: "image/webp"},
+				{Rel: "http://opds-spec.org/image", Href: "/api/comics/" + comic.ID + "/thumbnail"},
+				{Rel: "http://opds-spec.org/image/thumbnail", Href: "/api/comics/" + comic.ID + "/thumbnail"},
 				{Rel: "http://opds-spec.org/acquisition", Href: "/api/opds/download/" + comic.ID, Type: mimeType},
 				{Rel: "http://opds-spec.org/acquisition/open-access", Href: "/api/comics/" + comic.ID + "/page/0", Type: "image/jpeg"},
 			},

@@ -1309,8 +1309,8 @@ func RenderPdfPage(fp string, pageIndex int, targetDPI ...int) ([]byte, string, 
 	}
 
 	// Method 3: convert from ImageMagick
-	// Windows 系统下 system32\convert.exe 是 FAT->NTFS 转换工具，必须排除
-	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok && !isWindowsSystemConvert(convert) {
+	// LookPdfTool 会排除 Windows system32 中用于 FAT/NTFS 的同名 convert.exe。
+	if convert, ok := config.LookPdfTool("convert", exec.LookPath); ok {
 		for _, dpi := range dpiLadder {
 			out, runErr := runPdfTool(convert, "-density", fmt.Sprintf("%d", dpi), "-quality", "90", fmt.Sprintf("%s[%d]", fp, pageIndex), "jpeg:-")
 			if runErr == nil && len(out) > 0 {
@@ -1375,12 +1375,7 @@ func isResourceError(err error, detail string) bool {
 	return false
 }
 
-// isWindowsSystemConvert 检测是否是 Windows 自带的 system32\convert.exe（FAT->NTFS 转换工具，不是 ImageMagick）。
-// Linux/Docker 环境下永远返回 false。
-func isWindowsSystemConvert(path string) bool {
-	if runtime.GOOS != "windows" {
-		return false
-	}
-	low := strings.ToLower(filepath.ToSlash(path))
-	return strings.Contains(low, "/windows/system32/") || strings.Contains(low, "/windows/syswow64/")
+// PDFRendererPriority returns the exact fallback order used by RenderPdfPage.
+func PDFRendererPriority() []string {
+	return []string{"pdftoppm", "mutool", "convert"}
 }

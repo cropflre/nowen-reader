@@ -155,6 +155,30 @@ func TestSupportedExtensions(t *testing.T) {
 	}
 }
 
+func TestUsablePdfToolRejectsWindowsSystemConvert(t *testing.T) {
+	tests := []struct {
+		name     string
+		tool     string
+		path     string
+		goos     string
+		expected bool
+	}{
+		{name: "system32 convert", tool: "convert", path: `C:\Windows\System32\convert.exe`, goos: "windows", expected: false},
+		{name: "syswow64 convert", tool: "convert", path: `C:\Windows\SysWOW64\convert.exe`, goos: "windows", expected: false},
+		{name: "imagemagick convert", tool: "convert", path: `C:\Program Files\ImageMagick\convert.exe`, goos: "windows", expected: true},
+		{name: "non-windows convert", tool: "convert", path: "/usr/bin/convert", goos: "linux", expected: true},
+		{name: "other renderer", tool: "pdftoppm", path: `C:\Windows\System32\pdftoppm.exe`, goos: "windows", expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if actual := isUsablePdfTool(tt.tool, tt.path, tt.goos); actual != tt.expected {
+				t.Fatalf("isUsablePdfTool(%q, %q, %q) = %v, want %v", tt.tool, tt.path, tt.goos, actual, tt.expected)
+			}
+		})
+	}
+}
+
 func TestImageExtensions(t *testing.T) {
 	images := []string{"test.jpg", "test.jpeg", "test.png", "test.gif", "test.webp", "test.bmp", "test.avif"}
 	for _, f := range images {
