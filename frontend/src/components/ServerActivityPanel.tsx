@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Activity, Clock } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { formatAppVersion } from "@/lib/version";
 
 /**
  * 圆形仪表盘
@@ -128,7 +129,7 @@ export default function ServerActivityPanel() {
       <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
         <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 pulse-dot" />
         <span className="text-xs font-medium text-emerald-400">{t.dashboard?.running || "运行中"}</span>
-        <span className="text-[10px] text-emerald-400/60 ml-auto">v{health.version}</span>
+        <span className="text-[10px] text-emerald-400/60 ml-auto">{formatAppVersion(health.version)}</span>
       </div>
 
       {/* 圆形仪表盘组 */}

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
+import { formatAppVersion } from "@/lib/version";
 import { useReaderOptions } from "@/hooks/useReaderOptions";
 import { defaultReaderOptions } from "@/types/reader";
 import dynamic from "next/dynamic";
@@ -926,7 +927,7 @@ function AboutPanel() {
           <div className="flex items-center gap-2 flex-wrap justify-center">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
               <Sparkles className="h-3 w-3" />
-              {versionInfo ? `v${versionInfo.version}` : "..."}
+              {formatAppVersion(versionInfo?.version)}
             </span>
             {versionInfo?.runtime && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-xs text-muted">
@@ -996,8 +997,5 @@ function AboutPanel() {
     </div>
   );
 }
-
-
-
 
 

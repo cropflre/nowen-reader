@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,8 +35,9 @@ func main() {
 	// ============================================================
 	// Banner
 	// ============================================================
+	displayVersion := formatVersionForDisplay(Version)
 	fmt.Println("┌─────────────────────────────────────────┐")
-	fmt.Println("│         NowenReader v" + Version + padRight(Version, 19) + "│")
+	fmt.Println("│         NowenReader " + displayVersion + padRight(displayVersion, 20) + "│")
 	fmt.Println("│     高性能自托管漫画管理平台              │")
 	fmt.Println("└─────────────────────────────────────────┘")
 	log.Printf("[Main] Version: %s, Build: %s, Commit: %s", Version, BuildTime, GitCommit)
@@ -224,4 +226,18 @@ func padRight(s string, width int) string {
 		result[i] = ' '
 	}
 	return string(result)
+}
+
+func formatVersionForDisplay(value string) string {
+	version := strings.TrimSpace(value)
+	if version == "" {
+		return "..."
+	}
+
+	withoutPrefix := strings.TrimLeft(version, "vV")
+	if withoutPrefix != "" && withoutPrefix[0] >= '0' && withoutPrefix[0] <= '9' {
+		return "v" + withoutPrefix
+	}
+
+	return version
 }

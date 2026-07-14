@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { X, Info, Brain, Globe, Github, ExternalLink, HardDrive } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
+import { formatAppVersion } from "@/lib/version";
 import dynamic from "next/dynamic";
 
 const LoadingSkeleton = () => (
@@ -187,7 +188,7 @@ function AboutPanel() {
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Version</span>
-          <span className="text-foreground">{versionInfo ? versionInfo.version : "..."}</span>
+          <span className="text-foreground">{formatAppVersion(versionInfo?.version)}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Backend</span>
