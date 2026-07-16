@@ -40,6 +40,15 @@ Authorization: Bearer nwr_<key-id>_<secret>
 - 服务端仅保存 Key 的 SHA-256 摘要；完整 Key 只在创建成功的响应中返回一次。
 - 删除用户时会同时删除该用户的全部 API Key。修改密码不会自动撤销 Key，可使用全部撤销接口主动失效。
 
+OPDS 1.2 接口还支持 HTTP Basic Auth，方便不支持 Bearer 请求头的目录客户端：
+
+```text
+用户名：API Key 所属用户的用户名
+密码：完整 API Key（nwr_...）
+```
+
+Basic Auth 仅用于 `/api/opds` 及其子路径；用户名必须与 API Key 所属用户一致。不要填写账户登录密码，也不支持把 API Key 放入 URL 查询参数。在不可信局域网或公网使用时必须通过 HTTPS 传输。
+
 #### 创建 API Key
 
 ```http
@@ -352,7 +361,9 @@ GET /api/comics?readingStatus=finished
 | GET | `/api/opds/all` | 全部漫画 |
 | GET | `/api/opds/recent` | 最近更新 |
 | GET | `/api/opds/favorites` | 收藏列表 |
+| GET | `/api/opds/search.xml` | OpenSearch 搜索描述 |
 | GET | `/api/opds/search` | OPDS 搜索 |
+| GET | `/api/opds/cover/:id` | OPDS 漫画封面 |
 | GET | `/api/opds/download/:id` | 下载原始文件 |
 | GET | `/api/recommendations` | 个性化推荐 |
 | GET | `/api/recommendations/similar/:id` | 相似推荐 |
@@ -360,6 +371,27 @@ GET /api/comics?readingStatus=finished
 | GET | `/api/health` | 健康检查 |
 | GET/PUT | `/api/site-settings` | 站点设置 |
 | POST | `/api/upload` | 文件上传 🔒（管理员或目标书库 canManage） |
+
+### OPDS 1.2
+
+- **认证**：支持浏览器 Session Cookie、`Authorization: Bearer <API Key>`，以及“用户名 + API Key”形式的 HTTP Basic Auth。
+- **内容范围**：只返回 `Comic.type=comic`、所属 `Library.type=comic` 且书库已启用的内容。小说不会出现在目录、搜索、最近更新或收藏中。
+- **文件格式**：CBZ/ZIP、CBR/RAR、CB7/7Z 和 PDF。EPUB、TXT 等小说格式不进入 OPDS。
+- **权限**：OPDS 是获取目录，只返回当前用户拥有 `canDownload` 权限的书库内容。公开书库或仅有 `canView` 权限不会自动获得 OPDS 下载权限。
+- **直链保护**：封面与下载接口都会重新校验身份、下载权限、内容类型和书库状态。小说或不支持格式的 ID 返回 `404`，无下载权限返回 `403`。
+- **Feed 类型**：`/api/opds` 返回 `kind=navigation`；列表与搜索返回 `kind=acquisition`。
+- **搜索发现**：根目录通过 `rel=search` 指向 `/api/opds/search.xml`，搜索模板使用 `/api/opds/search?q={searchTerms}`。
+- **分页**：`all`、`recent`、`favorites` 和 `search` 支持 `page`、`pageSize`。默认每页 100 条，`pageSize` 最大 500；响应包含 OpenSearch 统计及 `first`、`last`、`previous`、`next` 链接。
+- **收藏隔离**：`favorites` 读取当前用户的 `UserComicState`，不会混用其他用户或旧的全局收藏字段。
+- **获取方式**：条目只提供受认证保护的标准 acquisition 文件链接，不声明 `open-access`，也不提供 OPDS-PSE 逐页流式接口。
+
+搜索参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+|:---|:---|:---:|:---|
+| `q` | string | 是 | 匹配漫画标题或作者 |
+| `page` | integer | 否 | 页码，从 1 开始 |
+| `pageSize` | integer | 否 | 每页数量，默认 100，最大 500 |
 
 ### `POST /api/upload`
 

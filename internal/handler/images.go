@@ -97,6 +97,8 @@ func checkLibraryManageAccess(c *gin.Context, libraryID string) error {
 
 type ImageHandler struct{}
 
+const contextKeyPrivateImageCache = "private_image_cache"
+
 // NewImageHandler creates a new ImageHandler.
 func NewImageHandler() *ImageHandler {
 	return &ImageHandler{}
@@ -285,6 +287,12 @@ func (h *ImageHandler) GetThumbnail(c *gin.Context) {
 			strconv.FormatInt(stat.Size(), 36),
 		)
 	}
+	cacheControl := "public, max-age=300, must-revalidate"
+	if c.GetBool(contextKeyPrivateImageCache) {
+		cacheControl = "private, max-age=300, must-revalidate"
+		c.Header("Vary", "Authorization, Cookie")
+	}
+	c.Header("Cache-Control", cacheControl)
 
 	// Check If-None-Match for 304
 	if c.GetHeader("If-None-Match") == etag {
@@ -294,7 +302,6 @@ func (h *ImageHandler) GetThumbnail(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", mimeType)
-	c.Header("Cache-Control", "public, max-age=300, must-revalidate")
 	c.Header("Content-Length", strconv.Itoa(len(thumbnail)))
 	c.Header("ETag", etag)
 	c.Data(http.StatusOK, mimeType, thumbnail)
@@ -867,7 +874,6 @@ func (h *ImageHandler) GetEmbeddedImage(c *gin.Context) {
 	c.Header("ETag", etag)
 	c.Data(http.StatusOK, img.MimeType, img.Data)
 }
-
 
 
 

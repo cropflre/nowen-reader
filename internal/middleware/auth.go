@@ -46,6 +46,36 @@ func AuthRequired() gin.HandlerFunc {
 	}
 }
 
+// OPDSAuthRequired accepts browser sessions, Bearer API keys, and HTTP Basic
+// credentials where the username is the API key owner's username and the
+// password is the API key. Basic authentication is intentionally scoped to
+// OPDS routes for compatibility with catalog clients.
+func OPDSAuthRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if user := GetCurrentUser(c); user != nil {
+			c.Set(ContextKeyUser, user)
+			c.Next()
+			return
+		}
+
+		username, token, ok := c.Request.BasicAuth()
+		if ok && username != "" && token != "" {
+			key, user, err := store.AuthenticateAPIKey(token)
+			if err == nil && key != nil && user != nil && user.Username == username {
+				authUser := authUserFromModel(user)
+				setAuthenticatedUser(c, authUser, RequestCredential{Type: CredentialAPIKey, ID: key.ID})
+				c.Next()
+				return
+			}
+		}
+
+		c.Header("WWW-Authenticate", `Basic realm="Nowen Reader OPDS", charset="UTF-8"`)
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("Vary", "Authorization, Cookie")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	}
+}
+
 // SessionRequired only accepts a browser session. It protects credential
 // management endpoints from being called with an API key.
 func SessionRequired() gin.HandlerFunc {

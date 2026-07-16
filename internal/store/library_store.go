@@ -334,6 +334,61 @@ func GetUserAccessibleLibraryIDs(userID string) ([]string, error) {
 	return ids, nil
 }
 
+// GetUserDownloadableLibraryIDs returns enabled libraries whose content the
+// user may acquire. Public visibility does not imply download permission.
+func GetUserDownloadableLibraryIDs(userID string) ([]string, error) {
+	if userID == "" {
+		return []string{}, nil
+	}
+
+	var role string
+	if err := db.QueryRow(`SELECT "role" FROM "User" WHERE "id" = ?`, userID).Scan(&role); err != nil {
+		return nil, err
+	}
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if role == "admin" {
+		rows, err = db.Query(`SELECT "id" FROM "Library" WHERE "enabled" = 1`)
+	} else {
+		rows, err = db.Query(`
+			SELECT DISTINCT l."id"
+			FROM "Library" l
+			WHERE l."enabled" = 1 AND (
+				EXISTS (
+					SELECT 1 FROM "UserLibraryAccess" ula
+					WHERE ula."userId" = ? AND ula."libraryId" = l."id" AND ula."canDownload" = 1
+				)
+				OR EXISTS (
+					SELECT 1
+					FROM "GroupLibraryAccess" gla
+					JOIN "UserGroupMember" ugm ON ugm."groupId" = gla."groupId"
+					WHERE ugm."userId" = ? AND gla."libraryId" = l."id" AND gla."canDownload" = 1
+				)
+			)
+		`, userID, userID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // SetUserLibraryAccess 设置用户的书库访问权限
 func SetUserLibraryAccess(userID string, accessList []LibraryAccessReq) error {
 	tx, err := db.Begin()

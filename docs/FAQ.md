@@ -39,6 +39,10 @@ PDF 渲染依次使用 `pdftoppm`、`mutool`、ImageMagick `convert`。Docker �
 http://你的IP:6680/api/opds
 ```
 
+Mihon 可通过第三方 OPDS 插件使用同一地址。客户端要求用户名和密码时，请填写 NowenReader 用户名，并把该用户创建的完整 API Key 作为密码；不要填写账户登录密码。在不可信局域网或公网使用时，请通过 HTTPS 访问。
+
+OPDS 目录只包含已启用漫画书库中的 CBZ/ZIP、CBR/RAR、CB7/7Z 和 PDF，且用户必须拥有对应书库的下载权限。小说、仅可查看的书库和已停用书库不会出现在目录中。当前实现为标准 OPDS 1.2 文件获取，不包含 OPDS-PSE 逐页流式阅读。
+
 ## 上传文件会保存到哪里？
 
 取决于是否选择了目标书库：

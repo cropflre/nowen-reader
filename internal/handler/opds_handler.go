@@ -3,6 +3,9 @@ package handler
 import (
 	"fmt"
 	"io"
+	"mime"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,247 +17,280 @@ import (
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
-const opdsMIMEType = "application/atom+xml;profile=opds-catalog;kind=navigation"
+const (
+	opdsDefaultPageSize = 100
+	opdsMaxPageSize     = 500
+)
 
-type OPDSHandler struct{}
+type OPDSHandler struct {
+	images *ImageHandler
+}
 
-func NewOPDSHandler() *OPDSHandler { return &OPDSHandler{} }
+func NewOPDSHandler() *OPDSHandler {
+	return &OPDSHandler{images: NewImageHandler()}
+}
 
 func getBaseURL(c *gin.Context) string {
 	scheme := "http"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+	if c.Request.TLS != nil {
 		scheme = "https"
 	}
-	return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
+	if forwardedProto := strings.ToLower(firstForwardedValue(c.GetHeader("X-Forwarded-Proto"))); forwardedProto == "http" || forwardedProto == "https" {
+		scheme = forwardedProto
+	}
+	host := c.Request.Host
+	if forwardedHost := firstForwardedValue(c.GetHeader("X-Forwarded-Host")); forwardedHost != "" {
+		host = forwardedHost
+	}
+	return fmt.Sprintf("%s://%s", scheme, host)
+}
+
+func firstForwardedValue(value string) string {
+	if index := strings.Index(value, ","); index >= 0 {
+		value = value[:index]
+	}
+	return strings.TrimSpace(value)
 }
 
 // GET /api/opds
 func (h *OPDSHandler) Root(c *gin.Context) {
-	baseURL := getBaseURL(c)
-	xml := service.GenerateRootCatalog(baseURL)
-	c.Data(200, opdsMIMEType, []byte(xml))
+	setOPDSPrivateResponseHeaders(c)
+	xml := service.GenerateRootCatalog(getBaseURL(c))
+	c.Data(http.StatusOK, service.OPDSNavigationMIME, []byte(xml))
 }
 
-// opdsDefaultPageSize 是 OPDS 分页的默认每页数量，避免万级数据一次性返回。
-const opdsDefaultPageSize = 100
-
-// parseOPDSPagination 从查询参数中解析 OPDS 分页参数。
-func parseOPDSPagination(c *gin.Context) (limit, offset int) {
-	limit = opdsDefaultPageSize
-	offset = 0
-	if ps := c.Query("pageSize"); ps != "" {
-		if n, err := strconv.Atoi(ps); err == nil && n > 0 {
-			limit = n
-			if limit > 500 {
-				limit = 500 // 上限保护
-			}
-		}
-	}
-	if p := c.Query("page"); p != "" {
-		if n, err := strconv.Atoi(p); err == nil && n > 1 {
-			offset = (n - 1) * limit
-		}
-	}
-	return
+// GET /api/opds/search.xml
+func (h *OPDSHandler) SearchDescription(c *gin.Context) {
+	setOPDSPrivateResponseHeaders(c)
+	xml := service.GenerateOpenSearchDescription(getBaseURL(c))
+	c.Data(http.StatusOK, service.OpenSearchMIME, []byte(xml))
 }
 
-// GET /api/opds/all —— 支持分页（?page=1&pageSize=100）
+// GET /api/opds/all
 func (h *OPDSHandler) All(c *gin.Context) {
-	baseURL := getBaseURL(c)
-	limit, offset := parseOPDSPagination(c)
-	filterWhere, filterArgs := opdsLibraryFilter(c)
-	comics, err := store.GetOPDSComics(filterWhere, filterArgs, store.TitleSortOrderSQL("c", "ASC"), limit, offset)
-	if err != nil {
-		c.Data(500, "text/plain", []byte("Failed to get comics"))
-		return
-	}
-
-	opdsComics := toOPDSComics(comics)
-	xml := service.GenerateAcquisitionFeed(baseURL, "All Comics", baseURL+"/api/opds/all", opdsComics, "/api/opds/all")
-	c.Data(200, opdsMIMEType, []byte(xml))
+	h.renderAcquisitionFeed(c, "All Comics", store.OPDSQueryOptions{Sort: store.OPDSSortTitle})
 }
 
 // GET /api/opds/recent
 func (h *OPDSHandler) Recent(c *gin.Context) {
-	baseURL := getBaseURL(c)
-	filterWhere, filterArgs := opdsLibraryFilter(c)
-	comics, err := store.GetOPDSComics(filterWhere, filterArgs, `ORDER BY c."addedAt" DESC`, 50)
-	if err != nil {
-		c.Data(500, "text/plain", []byte("Failed to get comics"))
-		return
-	}
-
-	opdsComics := toOPDSComics(comics)
-	xml := service.GenerateAcquisitionFeed(baseURL, "Recently Added", baseURL+"/api/opds/recent", opdsComics, "/api/opds/recent")
-	c.Data(200, opdsMIMEType, []byte(xml))
+	h.renderAcquisitionFeed(c, "Recently Added", store.OPDSQueryOptions{Sort: store.OPDSSortRecent})
 }
 
-// GET /api/opds/favorites —— 支持分页
+// GET /api/opds/favorites
 func (h *OPDSHandler) Favorites(c *gin.Context) {
-	baseURL := getBaseURL(c)
-	limit, offset := parseOPDSPagination(c)
-	filterWhere, filterArgs := opdsLibraryFilter(c)
-	where := `WHERE c."isFavorite" = 1`
-	var args []interface{}
-	if filterWhere != "" {
-		where = where + " AND " + strings.TrimPrefix(filterWhere, "WHERE ")
-		args = append(args, filterArgs...)
-	}
-	comics, err := store.GetOPDSComics(where, args, store.TitleSortOrderSQL("c", "ASC"), limit, offset)
-	if err != nil {
-		c.Data(500, "text/plain", []byte("Failed to get comics"))
-		return
-	}
-
-	opdsComics := toOPDSComics(comics)
-	xml := service.GenerateAcquisitionFeed(baseURL, "Favorites", baseURL+"/api/opds/favorites", opdsComics, "/api/opds/favorites")
-	c.Data(200, opdsMIMEType, []byte(xml))
+	h.renderAcquisitionFeed(c, "Favorites", store.OPDSQueryOptions{
+		UserID:        getOPDSUserID(c),
+		FavoritesOnly: true,
+		Sort:          store.OPDSSortTitle,
+	})
 }
 
-// GET /api/opds/search?q=... —— 支持分页
+// GET /api/opds/search?q=...
 func (h *OPDSHandler) Search(c *gin.Context) {
-	query := c.Query("q")
+	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
-		c.Data(400, "text/plain", []byte("q parameter required"))
+		c.Data(http.StatusBadRequest, "text/plain; charset=utf-8", []byte("q parameter required"))
+		return
+	}
+	h.renderAcquisitionFeed(c, "Search: "+query, store.OPDSQueryOptions{
+		Search: query,
+		Sort:   store.OPDSSortTitle,
+	})
+}
+
+func (h *OPDSHandler) renderAcquisitionFeed(c *gin.Context, title string, opts store.OPDSQueryOptions) {
+	userID := getOPDSUserID(c)
+	libraryIDs, err := store.GetUserDownloadableLibraryIDs(userID)
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to resolve library access"))
+		return
+	}
+
+	page, pageSize := parseOPDSPagination(c)
+	opts.LibraryIDs = libraryIDs
+	opts.Limit = pageSize
+	opts.Offset = (page - 1) * pageSize
+	rows, total, err := store.GetOPDSComics(opts)
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to get comics"))
 		return
 	}
 
 	baseURL := getBaseURL(c)
-	searchPattern := "%" + query + "%"
-	filterWhere, filterArgs := opdsLibraryFilter(c)
-	where := `WHERE (c."title" LIKE ? OR c."author" LIKE ?)`
-	args := []interface{}{searchPattern, searchPattern}
-	if filterWhere != "" {
-		where = where + " AND " + strings.TrimPrefix(filterWhere, "WHERE ")
-		args = append(args, filterArgs...)
-	}
+	pagination := buildOPDSPagination(c, page, pageSize, total)
+	xml := service.GenerateAcquisitionFeed(service.OPDSAcquisitionFeedOptions{
+		BaseURL:    baseURL,
+		Title:      title,
+		FeedID:     opdsFeedID(baseURL, c),
+		Comics:     toOPDSComics(rows),
+		Pagination: pagination,
+	})
+	setOPDSPrivateResponseHeaders(c)
+	c.Data(http.StatusOK, service.OPDSAcquisitionMIME, []byte(xml))
+}
 
-	limit, offset := parseOPDSPagination(c)
-	comics, err := store.GetOPDSComics(where, args, store.TitleSortOrderSQL("c", "ASC"), limit, offset)
-	if err != nil {
-		c.Data(500, "text/plain", []byte("Failed to search"))
+func parseOPDSPagination(c *gin.Context) (page, pageSize int) {
+	page = 1
+	pageSize = opdsDefaultPageSize
+	if value, err := strconv.Atoi(c.Query("page")); err == nil && value > 0 {
+		page = value
+	}
+	if value, err := strconv.Atoi(c.Query("pageSize")); err == nil && value > 0 {
+		pageSize = value
+	}
+	if pageSize > opdsMaxPageSize {
+		pageSize = opdsMaxPageSize
+	}
+	return page, pageSize
+}
+
+func buildOPDSPagination(c *gin.Context, page, pageSize, total int) service.OPDSPagination {
+	lastPage := 1
+	startIndex := 0
+	if total > 0 {
+		lastPage = (total + pageSize - 1) / pageSize
+		startIndex = (page-1)*pageSize + 1
+	}
+	result := service.OPDSPagination{
+		SelfHref:     opdsPageHref(c, page, pageSize),
+		FirstHref:    opdsPageHref(c, 1, pageSize),
+		LastHref:     opdsPageHref(c, lastPage, pageSize),
+		TotalResults: total,
+		ItemsPerPage: pageSize,
+		StartIndex:   startIndex,
+	}
+	if page > 1 {
+		result.PreviousHref = opdsPageHref(c, page-1, pageSize)
+	}
+	if page < lastPage {
+		result.NextHref = opdsPageHref(c, page+1, pageSize)
+	}
+	return result
+}
+
+func opdsPageHref(c *gin.Context, page, pageSize int) string {
+	query := cloneURLValues(c.Request.URL.Query())
+	query.Set("page", strconv.Itoa(page))
+	query.Set("pageSize", strconv.Itoa(pageSize))
+	return (&url.URL{Path: c.Request.URL.Path, RawQuery: query.Encode()}).String()
+}
+
+func opdsFeedID(baseURL string, c *gin.Context) string {
+	query := make(url.Values)
+	if search := strings.TrimSpace(c.Query("q")); search != "" {
+		query.Set("q", search)
+	}
+	feedURL := &url.URL{Path: c.Request.URL.Path, RawQuery: query.Encode()}
+	return strings.TrimRight(baseURL, "/") + feedURL.String()
+}
+
+func cloneURLValues(values url.Values) url.Values {
+	clone := make(url.Values, len(values))
+	for key, entries := range values {
+		clone[key] = append([]string(nil), entries...)
+	}
+	return clone
+}
+
+// GET /api/opds/cover/:id
+func (h *OPDSHandler) Cover(c *gin.Context) {
+	comic, ok := getOPDSPublication(c.Param("id"))
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
 		return
 	}
-
-	opdsComics := toOPDSComics(comics)
-	xml := service.GenerateAcquisitionFeed(baseURL, "Search: "+query, baseURL+"/api/opds/search?q="+query, opdsComics, "/api/opds/search?q="+query)
-	c.Data(200, opdsMIMEType, []byte(xml))
+	if err := checkComicDownloadAccess(c, comic.ID); err != nil {
+		return
+	}
+	c.Set(contextKeyPrivateImageCache, true)
+	h.images.GetThumbnail(c)
 }
 
 // GET /api/opds/download/:id
 func (h *OPDSHandler) Download(c *gin.Context) {
-	comicID := c.Param("id")
-	comic, err := store.GetComicByID(comicID)
-	if err != nil || comic == nil {
-		c.JSON(404, gin.H{"error": "Comic not found"})
+	comic, ok := getOPDSPublication(c.Param("id"))
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found"})
+		return
+	}
+	if err := checkComicDownloadAccess(c, comic.ID); err != nil {
 		return
 	}
 
-	if err := checkComicDownloadAccess(c, comicID); err != nil {
+	resolved, err := service.GlobalFileResolver.ResolveContentPath(comic.ID)
+	if err != nil || resolved.AbsolutePath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
 	}
 
-	resolved, err := service.GlobalFileResolver.ResolveContentPath(comicID)
+	file, err := os.Open(resolved.AbsolutePath)
 	if err != nil {
-		c.JSON(404, gin.H{"error": "File not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
 	}
-	filePath := resolved.AbsolutePath
+	defer file.Close()
 
-	if filePath == "" {
-		c.JSON(404, gin.H{"error": "File not found"})
-		return
-	}
-
-	ext := strings.ToLower(filepath.Ext(comic.Filename))
-	var contentType string
-	switch ext {
-	case ".cbz", ".zip":
-		contentType = "application/x-cbz"
-	case ".cbr", ".rar":
-		contentType = "application/x-cbr"
-	case ".cb7", ".7z":
-		contentType = "application/x-cb7"
-	case ".pdf":
-		contentType = "application/pdf"
-	case ".epub":
-		contentType = "application/epub+zip"
-	case ".txt":
-		contentType = "text/plain; charset=utf-8"
-	default:
-		contentType = "application/octet-stream"
-	}
-
-	f, err := os.Open(filePath)
+	info, err := file.Stat()
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to open file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
 		return
 	}
-	defer f.Close()
-
-	fi, _ := f.Stat()
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, comic.Filename))
-	c.Header("Content-Length", fmt.Sprintf("%d", fi.Size()))
+	contentType, _ := service.OPDSAcquisitionMIMEForFilename(comic.Filename)
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(comic.Filename)})
+	c.Header("Content-Disposition", disposition)
+	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
 	c.Header("Content-Type", contentType)
-	c.Status(200)
-	io.Copy(c.Writer, f)
+	setOPDSPrivateResponseHeaders(c)
+	c.Status(http.StatusOK)
+	_, _ = io.Copy(c.Writer, file)
 }
 
-// getOPDSUserID 从 OPDS 请求中提取当前用户 ID。
+func setOPDSPrivateResponseHeaders(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Vary", "Authorization, Cookie")
+}
+
+func getOPDSPublication(comicID string) (*store.ComicListItem, bool) {
+	comic, err := store.GetComicByID(comicID)
+	if err != nil || comic == nil || comic.ComicType != "comic" || comic.LibraryID == "" {
+		return nil, false
+	}
+	if _, supported := service.OPDSAcquisitionMIMEForFilename(comic.Filename); !supported {
+		return nil, false
+	}
+	library, err := store.GetLibraryByID(comic.LibraryID)
+	if err != nil || library == nil || !library.Enabled || library.Type != "comic" {
+		return nil, false
+	}
+	return comic, true
+}
+
 func getOPDSUserID(c *gin.Context) string {
-	if u, exists := c.Get("auth_user"); exists {
-		if user, ok := u.(*model.AuthUser); ok {
+	if value, exists := c.Get("auth_user"); exists {
+		if user, ok := value.(*model.AuthUser); ok {
 			return user.ID
 		}
 	}
 	return ""
 }
 
-// opdsLibraryFilter 返回基于用户书库权限的 WHERE 子句片段和参数。
-// 管理员或空用户不过滤。
-func opdsLibraryFilter(c *gin.Context) (string, []interface{}) {
-	uid := getOPDSUserID(c)
-	if uid == "" {
-		return "WHERE 1 = 0", nil
-	}
-	ids, err := store.GetUserAccessibleLibraryIDs(uid)
-	if err != nil {
-		return "WHERE 1 = 0", nil
-	}
-	if len(ids) == 0 {
-		return "WHERE 1 = 0", nil
-	}
-	var role string
-	_ = store.GetUserRole(uid, &role)
-	if role == "admin" {
-		return "", nil
-	}
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	return fmt.Sprintf(`WHERE c."libraryId" IN (%s)`, strings.Join(placeholders, ",")), args
-}
-
 func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 	comics := make([]service.OPDSComic, 0, len(rows))
-	for _, r := range rows {
+	for _, row := range rows {
 		comics = append(comics, service.OPDSComic{
-			ID:          r.ID,
-			Title:       r.Title,
-			Author:      r.Author,
-			Description: r.Description,
-			Language:    r.Language,
-			Genre:       r.Genre,
-			Publisher:   r.Publisher,
-			Year:        r.Year,
-			PageCount:   r.PageCount,
-			AddedAt:     r.AddedAt,
-			UpdatedAt:   r.UpdatedAt,
-			Tags:        r.Tags,
-			Filename:    r.Filename,
+			ID:          row.ID,
+			Title:       row.Title,
+			Author:      row.Author,
+			Description: row.Description,
+			Language:    row.Language,
+			Genre:       row.Genre,
+			Publisher:   row.Publisher,
+			Year:        row.Year,
+			PageCount:   row.PageCount,
+			AddedAt:     row.AddedAt,
+			UpdatedAt:   row.UpdatedAt,
+			Tags:        row.Tags,
+			Filename:    row.Filename,
 		})
 	}
 	return comics

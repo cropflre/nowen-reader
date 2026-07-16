@@ -980,24 +980,95 @@ type OPDSComicRow struct {
 	Filename    string
 }
 
-// GetOPDSComics 返回适用于 OPDS feed 生成的漫画数据。支持分页参数。
-func GetOPDSComics(where string, args []interface{}, orderBy string, limit int, offset ...int) ([]OPDSComicRow, error) {
+type OPDSSort string
+
+const (
+	OPDSSortTitle  OPDSSort = "title"
+	OPDSSortRecent OPDSSort = "recent"
+)
+
+// OPDSQueryOptions is deliberately narrower than the general comic query.
+// OPDS is an acquisition catalog, so callers must provide the current user's
+// downloadable library IDs.
+type OPDSQueryOptions struct {
+	LibraryIDs    []string
+	UserID        string
+	Search        string
+	FavoritesOnly bool
+	Sort          OPDSSort
+	Limit         int
+	Offset        int
+}
+
+// GetOPDSComics returns comic-only publications from enabled comic libraries.
+// Unsupported publication formats and novels are excluded at the query layer.
+func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
+	conditions := []string{
+		`c."type" = 'comic'`,
+		`l."type" = 'comic'`,
+		`l."enabled" = 1`,
+		`(
+			LOWER(c."filename") LIKE '%.cbz'
+			OR LOWER(c."filename") LIKE '%.zip'
+			OR LOWER(c."filename") LIKE '%.cbr'
+			OR LOWER(c."filename") LIKE '%.rar'
+			OR LOWER(c."filename") LIKE '%.cb7'
+			OR LOWER(c."filename") LIKE '%.7z'
+			OR LOWER(c."filename") LIKE '%.pdf'
+		)`,
+	}
+	args := make([]interface{}, 0, len(opts.LibraryIDs)+3)
+
+	if len(opts.LibraryIDs) == 0 {
+		conditions = append(conditions, `1 = 0`)
+	} else {
+		placeholders := make([]string, len(opts.LibraryIDs))
+		for i, id := range opts.LibraryIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		conditions = append(conditions, fmt.Sprintf(`c."libraryId" IN (%s)`, strings.Join(placeholders, ",")))
+	}
+
+	if opts.FavoritesOnly {
+		conditions = append(conditions, `EXISTS (
+			SELECT 1 FROM "UserComicState" ucs
+			WHERE ucs."comicId" = c."id" AND ucs."userId" = ? AND ucs."isFavorite" = 1
+		)`)
+		args = append(args, opts.UserID)
+	}
+	if search := strings.TrimSpace(opts.Search); search != "" {
+		conditions = append(conditions, `(c."title" LIKE ? OR c."author" LIKE ?)`)
+		pattern := "%" + search + "%"
+		args = append(args, pattern, pattern)
+	}
+
+	fromWhere := `FROM "Comic" c JOIN "Library" l ON l."id" = c."libraryId" WHERE ` + strings.Join(conditions, " AND ")
+	var total int
+	if err := db.QueryRow(`SELECT COUNT(*) `+fromWhere, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	orderBy := TitleSortOrderSQL("c", "ASC")
+	if opts.Sort == OPDSSortRecent {
+		orderBy = `ORDER BY c."addedAt" DESC, c."id" ASC`
+	}
 	query := fmt.Sprintf(`
 		SELECT c."id", c."title", c."author", c."description", c."language",
 		       c."genre", c."publisher", c."year", c."pageCount",
 		       c."addedAt", c."updatedAt", c."filename"
-		FROM "Comic" c %s %s
-	`, where, orderBy)
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
-		if len(offset) > 0 && offset[0] > 0 {
-			query += fmt.Sprintf(" OFFSET %d", offset[0])
+		%s %s
+	`, fromWhere, orderBy)
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+		if opts.Offset > 0 {
+			query += fmt.Sprintf(" OFFSET %d", opts.Offset)
 		}
 	}
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -1063,7 +1134,7 @@ func GetOPDSComics(where string, args []interface{}, orderBy string, limit int, 
 		}
 	}
 
-	return comics, nil
+	return comics, total, nil
 }
 
 // ============================================================

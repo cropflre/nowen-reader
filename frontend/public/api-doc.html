@@ -602,7 +602,7 @@
 
     <div id="endpoints-auth" class="endpoint-group">
     <h2 class="group-title"><span data-en="2. Auth" data-zh="2. 认证">2. Auth</span> <span class="group-badge"><span data-en="14 endpoints" data-zh="14 个接口">14 endpoints</span></span></h2>
-    <p class="description"><span data-en="Protected endpoints accept the browser session cookie or Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;. API keys always use the owner's current role, groups, and library permissions. An explicit invalid, expired, or revoked Bearer key returns 401 and never falls back to the cookie. API key management endpoints require a browser session and never accept an API key." data-zh="受保护接口支持浏览器会话 Cookie 或 Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;。API Key 始终使用所属用户当前的角色、用户组和书库权限。只要显式携带了无效、过期或已撤销的 Bearer Key，就返回 401，不会退回 Cookie。API Key 管理接口仅接受浏览器会话，不接受 API Key。">Protected endpoints accept the browser session cookie or Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;. API keys always use the owner's current role, groups, and library permissions. An explicit invalid, expired, or revoked Bearer key returns 401 and never falls back to the cookie. API key management endpoints require a browser session and never accept an API key.</span></p>
+    <p class="description"><span data-en="Protected endpoints accept the browser session cookie or Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;. API keys always use the owner's current role, groups, and library permissions. OPDS routes additionally accept HTTP Basic Auth with the account username and the complete API key as the password; account passwords and query-string keys are not accepted. An explicit invalid, expired, or revoked key returns 401 and never falls back to the cookie. API key management endpoints require a browser session and never accept an API key." data-zh="受保护接口支持浏览器会话 Cookie 或 Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;。API Key 始终使用所属用户当前的角色、用户组和书库权限。OPDS 路由还支持 HTTP Basic Auth：用户名填写账户用户名，密码填写完整 API Key；不接受账户密码或 URL 查询参数中的 Key。显式携带无效、过期或已撤销的 Key 时返回 401，不会退回 Cookie。API Key 管理接口仅接受浏览器会话，不接受 API Key。">Protected endpoints accept the browser session cookie or Authorization: Bearer nwr_&lt;key-id&gt;_&lt;secret&gt;. API keys always use the owner's current role, groups, and library permissions. OPDS routes additionally accept HTTP Basic Auth with the account username and the complete API key as the password; account passwords and query-string keys are not accepted. An explicit invalid, expired, or revoked key returns 401 and never falls back to the cookie. API key management endpoints require a browser session and never accept an API key.</span></p>
 <div class="endpoint auth-required" data-search="POST /api/auth/register register new user" id="post-api-auth-register">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
@@ -5901,7 +5901,8 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-opds" class="endpoint-group">
-    <h2 class="group-title"><span data-en="23. OPDS" data-zh="23. OPDS">23. OPDS</span> <span class="group-badge"><span data-en="6 endpoints" data-zh="6 个接口">6 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="23. OPDS" data-zh="23. OPDS">23. OPDS</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
+    <p class="description"><span data-en="Comic-only OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. Only supported files in enabled comic libraries with canDownload permission are exposed. Novels, view-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded." data-zh="仅漫画的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开已启用漫画书库中、当前用户拥有 canDownload 权限的受支持文件；不包含小说、仅可查看书库、已停用书库或 OPDS-PSE 逐页流式接口。">Comic-only OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. Only supported files in enabled comic libraries with canDownload permission are exposed. Novels, view-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded.</span></p>
 <div class="endpoint auth-required" data-search="GET /api/opds OPDS catalog root" id="get-api-opds">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -5909,14 +5910,14 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS catalog root" data-zh="OPDS目录根">OPDS catalog root</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns the OPDS 1.2 catalog root feed as application/atom+xml. Serves as the entry point for OPDS-compatible reading applications." data-zh="返回OPDS 1.2目录根订阅源，格式为application/atom+xml。作为OPDS兼容阅读应用的入口。">Returns the OPDS 1.2 catalog root feed as application/atom+xml. Serves as the entry point for OPDS-compatible reading applications.</span></p>
+    <p class="description"><span data-en="Returns the OPDS 1.2 navigation root and links to all comics, recently added comics, favorites, and the OpenSearch description." data-zh="返回 OPDS 1.2 导航根目录，并链接到全部漫画、最近添加、收藏和 OpenSearch 搜索描述。">Returns the OPDS 1.2 navigation root and links to all comics, recently added comics, favorites, and the OpenSearch description.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>Content-Type: application/atom+xml
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=navigation
 
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
 &lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot; xmlns:opds=&quot;http://opds-spec.org/2010/catalog&quot;&gt;
-  &lt;title&gt;Nowen Reader Catalog&lt;/title&gt;
+  &lt;title&gt;NowenReader Comics&lt;/title&gt;
   ...
 &lt;/feed&gt;</code></pre>
 
@@ -5933,7 +5934,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS all comics feed" data-zh="OPDS所有漫画订阅">OPDS all comics feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a paginated OPDS XML feed of all comics in the library." data-zh="返回库中所有漫画的分页OPDS XML订阅源。">Returns a paginated OPDS XML feed of all comics in the library.</span></p>
+    <p class="description"><span data-en="Returns a naturally sorted acquisition feed containing downloadable comic publications only. The response includes OpenSearch totals and standard pagination links." data-zh="返回按自然标题顺序排列的获取订阅源，只包含可下载漫画。响应包含 OpenSearch 总数和标准分页链接。">Returns a naturally sorted acquisition feed containing downloadable comic publications only. The response includes OpenSearch totals and standard pagination links.</span></p>
 
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
@@ -5945,7 +5946,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </table>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>Content-Type: application/atom+xml
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=acquisition
 
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
 &lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot;&gt;
@@ -5966,10 +5967,19 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS recent comics feed" data-zh="OPDS最近漫画订阅">OPDS recent comics feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns an OPDS XML feed of the 50 most recently added comics." data-zh="返回最近添加的50个漫画的OPDS XML订阅源。">Returns an OPDS XML feed of the 50 most recently added comics.</span></p>
+    <p class="description"><span data-en="Returns a paginated acquisition feed ordered by added time descending. The same comic-only and canDownload filters as /all apply." data-zh="返回按添加时间倒序排列的分页获取订阅源，使用与 /all 相同的漫画限定和 canDownload 权限过滤。">Returns a paginated acquisition feed ordered by added time descending. The same comic-only and canDownload filters as /all apply.</span></p>
+
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody>
+        <tr><td>page</td><td>int</td><td>No</td><td>Page number (default 1)</td></tr>
+        <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (max 500, default 100)</td></tr>
+      </tbody>
+    </table>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>Content-Type: application/atom+xml
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=acquisition
 
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
 &lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot;&gt;
@@ -5990,19 +6000,19 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS favorites feed" data-zh="OPDS收藏订阅">OPDS favorites feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a paginated OPDS XML feed of the user's favorite comics." data-zh="返回用户收藏漫画的分页OPDS XML订阅源。">Returns a paginated OPDS XML feed of the user's favorite comics.</span></p>
+    <p class="description"><span data-en="Returns the current user's downloadable favorite comics from UserComicState. Favorites belonging to other users and the legacy global favorite field are ignored." data-zh="返回当前用户在 UserComicState 中收藏且可下载的漫画。不会读取其他用户的收藏，也不会使用旧的全局收藏字段。">Returns the current user's downloadable favorite comics from UserComicState. Favorites belonging to other users and the legacy global favorite field are ignored.</span></p>
 
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
       <tbody>
         <tr><td>page</td><td>int</td><td>No</td><td>Page number</td></tr>
-        <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page</td></tr>
+        <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (max 500, default 100)</td></tr>
       </tbody>
     </table>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>Content-Type: application/atom+xml
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=acquisition
 
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
 &lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot;&gt;
@@ -6016,6 +6026,27 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
+<div class="endpoint auth-required" data-search="GET /api/opds/search.xml OPDS OpenSearch description" id="get-api-opds-search-xml">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/opds/search.xml</span>
+    <span class="summary"><span data-en="OPDS OpenSearch description" data-zh="OPDS OpenSearch 搜索描述">OPDS OpenSearch description</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns the OpenSearch description referenced by the catalog's search relation. The template targets /api/opds/search?q={searchTerms}." data-zh="返回目录 search 关系引用的 OpenSearch 描述，搜索模板指向 /api/opds/search?q={searchTerms}。">Returns the OpenSearch description referenced by the catalog's search relation. The template targets /api/opds/search?q={searchTerms}.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>Content-Type: application/opensearchdescription+xml
+
+&lt;OpenSearchDescription xmlns=&quot;http://a9.com/-/spec/opensearch/1.1/&quot;&gt;
+  &lt;ShortName&gt;NowenReader&lt;/ShortName&gt;
+  ...
+&lt;/OpenSearchDescription&gt;</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+    </div>
+  </div>
+</div>
+
 <div class="endpoint auth-required" data-search="GET /api/opds/search OPDS search feed" id="get-api-opds-search">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -6023,20 +6054,20 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS search feed" data-zh="OPDS搜索订阅">OPDS search feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a paginated OPDS XML feed of comics matching the search query." data-zh="返回匹配搜索查询的漫画的分页OPDS XML订阅源。">Returns a paginated OPDS XML feed of comics matching the search query.</span></p>
+    <p class="description"><span data-en="Returns a paginated acquisition feed matching comic title or author. Search values and pagination links are URL encoded and retain the query." data-zh="返回匹配漫画标题或作者的分页获取订阅源。搜索值和分页链接会正确进行 URL 编码并保留查询条件。">Returns a paginated acquisition feed matching comic title or author. Search values and pagination links are URL encoded and retain the query.</span></p>
 
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
       <tbody>
-        <tr><td>q</td><td>string</td><td>Yes</td><td>Search query</td></tr>
+        <tr><td>q</td><td>string</td><td>Yes</td><td>Comic title or author query</td></tr>
         <tr><td>page</td><td>int</td><td>No</td><td>Page number</td></tr>
-        <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page</td></tr>
+        <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (max 500, default 100)</td></tr>
       </tbody>
     </table>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>Content-Type: application/atom+xml
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=acquisition
 
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
 &lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot;&gt;
@@ -6050,6 +6081,28 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
+<div class="endpoint auth-required" data-search="GET /api/opds/cover/:id OPDS comic cover" id="get-api-opds-cover-id">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/opds/cover/:id</span>
+    <span class="summary"><span data-en="OPDS comic cover" data-zh="OPDS 漫画封面">OPDS comic cover</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns the comic thumbnail using its actual image Content-Type. Rechecks that the item is a supported comic in an enabled comic library and that the user has download permission." data-zh="返回漫画缩略图并使用实际图片 Content-Type。接口会重新检查该条目属于已启用漫画书库、格式受支持，且当前用户拥有下载权限。">Returns the comic thumbnail using its actual image Content-Type. Rechecks that the item is a supported comic in an enabled comic library and that the user has download permission.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody><tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr></tbody>
+    </table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>Binary image response
+Content-Type: actual thumbnail media type</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+    </div>
+  </div>
+</div>
+
 <div class="endpoint auth-required" data-search="GET /api/opds/download/:id OPDS comic file download" id="get-api-opds-download-id">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -6057,7 +6110,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS comic file download" data-zh="OPDS漫画文件下载">OPDS comic file download</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Downloads the comic file with the appropriate Content-Type for OPDS acquisition links." data-zh="下载漫画文件，使用适合OPDS获取链接的Content-Type。">Downloads the comic file with the appropriate Content-Type for OPDS acquisition links.</span></p>
+    <p class="description"><span data-en="Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Novel and unsupported-format IDs return 404; missing download permission returns 403." data-zh="重新检查内容类型、已启用漫画书库归属和 canDownload 权限后下载受支持的漫画文件。小说和不支持格式的 ID 返回 404；缺少下载权限返回 403。">Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Novel and unsupported-format IDs return 404; missing download permission returns 403.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
@@ -6070,7 +6123,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>Binary file download
 
-Content-Type: varies by file type (e.g. application/zip, application/pdf, application/epub+zip)</code></pre>
+Content-Type: application/x-cbz | application/x-cbr | application/x-cb7 | application/pdf</code></pre>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>

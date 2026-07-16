@@ -102,16 +102,18 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		comicByIDAI.POST("/ai-translate-page", ai.TranslatePage)
 	}
 
-	// OPDS protocol — require auth (cookie or query token)
+	// OPDS 1.2 protocol — browser session, Bearer API key, or scoped Basic API key.
 	opds := NewOPDSHandler()
 	opdsGroup := api.Group("/opds")
-	opdsGroup.Use(middleware.AuthRequired())
+	opdsGroup.Use(middleware.OPDSAuthRequired())
 	{
 		opdsGroup.GET("", opds.Root)
 		opdsGroup.GET("/all", opds.All)
 		opdsGroup.GET("/recent", opds.Recent)
 		opdsGroup.GET("/favorites", opds.Favorites)
+		opdsGroup.GET("/search.xml", opds.SearchDescription)
 		opdsGroup.GET("/search", opds.Search)
+		opdsGroup.GET("/cover/:id", opds.Cover)
 		opdsGroup.GET("/download/:id", opds.Download)
 	}
 

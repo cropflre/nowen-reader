@@ -3,20 +3,21 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// ============================================================
-// OPDS 1.2 Atom XML Feed Generator
-// ============================================================
-
 const (
-	opdsNS              = "http://www.w3.org/2005/Atom"
-	opdsCatalogNS       = "http://opds-spec.org/2010/catalog"
-	opdsMIME            = "application/atom+xml;profile=opds-catalog;kind=navigation"
-	opdsAcquisitionMIME = "application/atom+xml;profile=opds-catalog;kind=acquisition"
-	dcNS                = "http://purl.org/dc/elements/1.1/"
+	OPDSNavigationMIME  = "application/atom+xml;profile=opds-catalog;kind=navigation"
+	OPDSAcquisitionMIME = "application/atom+xml;profile=opds-catalog;kind=acquisition"
+	OpenSearchMIME      = "application/opensearchdescription+xml"
+
+	opdsNS        = "http://www.w3.org/2005/Atom"
+	opdsCatalogNS = "http://opds-spec.org/2010/catalog"
+	dctermsNS     = "http://purl.org/dc/terms/"
+	openSearchNS  = "http://a9.com/-/spec/opensearch/1.1/"
 )
 
 // OPDSComic holds comic data for OPDS feed generation.
@@ -36,21 +37,40 @@ type OPDSComic struct {
 	Filename    string
 }
 
-// ============================================================
-// XML structures
-// ============================================================
+type OPDSPagination struct {
+	SelfHref     string
+	FirstHref    string
+	LastHref     string
+	NextHref     string
+	PreviousHref string
+	TotalResults int
+	ItemsPerPage int
+	StartIndex   int
+}
+
+type OPDSAcquisitionFeedOptions struct {
+	BaseURL    string
+	Title      string
+	FeedID     string
+	Comics     []OPDSComic
+	Pagination OPDSPagination
+}
 
 type atomFeed struct {
-	XMLName xml.Name    `xml:"feed"`
-	XMLNS   string      `xml:"xmlns,attr"`
-	OPDS    string      `xml:"xmlns:opds,attr,omitempty"`
-	DC      string      `xml:"xmlns:dc,attr,omitempty"`
-	ID      string      `xml:"id"`
-	Title   string      `xml:"title"`
-	Updated string      `xml:"updated"`
-	Author  *atomAuthor `xml:"author,omitempty"`
-	Links   []atomLink  `xml:"link"`
-	Entries []atomEntry `xml:"entry"`
+	XMLName      xml.Name    `xml:"feed"`
+	XMLNS        string      `xml:"xmlns,attr"`
+	OPDS         string      `xml:"xmlns:opds,attr,omitempty"`
+	DCTerms      string      `xml:"xmlns:dcterms,attr,omitempty"`
+	OpenSearch   string      `xml:"xmlns:opensearch,attr,omitempty"`
+	ID           string      `xml:"id"`
+	Title        string      `xml:"title"`
+	Updated      string      `xml:"updated"`
+	Author       *atomAuthor `xml:"author,omitempty"`
+	Links        []atomLink  `xml:"link"`
+	TotalResults *int        `xml:"opensearch:totalResults,omitempty"`
+	ItemsPerPage *int        `xml:"opensearch:itemsPerPage,omitempty"`
+	StartIndex   *int        `xml:"opensearch:startIndex,omitempty"`
+	Entries      []atomEntry `xml:"entry"`
 }
 
 type atomAuthor struct {
@@ -59,20 +79,25 @@ type atomAuthor struct {
 }
 
 type atomLink struct {
-	Rel  string `xml:"rel,attr"`
-	Href string `xml:"href,attr"`
-	Type string `xml:"type,attr,omitempty"`
+	Rel   string `xml:"rel,attr"`
+	Href  string `xml:"href,attr"`
+	Type  string `xml:"type,attr,omitempty"`
+	Title string `xml:"title,attr,omitempty"`
 }
 
 type atomEntry struct {
 	Title      string         `xml:"title"`
 	ID         string         `xml:"id"`
-	Updated    string         `xml:"updated,omitempty"`
+	Updated    string         `xml:"updated"`
 	Published  string         `xml:"published,omitempty"`
-	Content    *atomContent   `xml:"content,omitempty"`
+	Summary    *atomContent   `xml:"summary,omitempty"`
 	Links      []atomLink     `xml:"link"`
 	Author     *atomAuthor    `xml:"author,omitempty"`
 	Categories []atomCategory `xml:"category,omitempty"`
+	Language   string         `xml:"dcterms:language,omitempty"`
+	Publisher  string         `xml:"dcterms:publisher,omitempty"`
+	Issued     string         `xml:"dcterms:issued,omitempty"`
+	Extent     string         `xml:"dcterms:extent,omitempty"`
 }
 
 type atomContent struct {
@@ -82,134 +107,219 @@ type atomContent struct {
 
 type atomCategory struct {
 	Term  string `xml:"term,attr"`
-	Label string `xml:"label,attr"`
+	Label string `xml:"label,attr,omitempty"`
 }
 
-// ============================================================
-// Feed generators
-// ============================================================
+type openSearchDescription struct {
+	XMLName       xml.Name      `xml:"OpenSearchDescription"`
+	XMLNS         string        `xml:"xmlns,attr"`
+	ShortName     string        `xml:"ShortName"`
+	Description   string        `xml:"Description"`
+	InputEncoding string        `xml:"InputEncoding"`
+	URL           openSearchURL `xml:"Url"`
+}
 
-// GenerateRootCatalog creates the OPDS root navigation feed.
+type openSearchURL struct {
+	Type     string `xml:"type,attr"`
+	Template string `xml:"template,attr"`
+}
+
+// GenerateRootCatalog creates the OPDS 1.2 root navigation feed.
 func GenerateRootCatalog(baseURL string) string {
 	now := time.Now().UTC().Format(time.RFC3339)
+	root := absoluteOPDSURL(baseURL, "/api/opds")
 
 	feed := atomFeed{
 		XMLNS:   opdsNS,
 		OPDS:    opdsCatalogNS,
-		ID:      baseURL + "/api/opds",
-		Title:   "NowenReader OPDS Catalog",
+		ID:      root,
+		Title:   "NowenReader Comics",
 		Updated: now,
 		Author:  &atomAuthor{Name: "NowenReader", URI: baseURL},
 		Links: []atomLink{
-			{Rel: "self", Href: "/api/opds", Type: opdsMIME},
-			{Rel: "start", Href: "/api/opds", Type: opdsMIME},
-			{Rel: "search", Href: "/api/opds/search?q={searchTerms}", Type: opdsAcquisitionMIME},
+			{Rel: "self", Href: root, Type: OPDSNavigationMIME},
+			{Rel: "start", Href: root, Type: OPDSNavigationMIME},
+			{Rel: "search", Href: absoluteOPDSURL(baseURL, "/api/opds/search.xml"), Type: OpenSearchMIME},
 		},
 		Entries: []atomEntry{
-			{
-				Title:   "All Comics",
-				ID:      baseURL + "/api/opds/all",
-				Updated: now,
-				Content: &atomContent{Type: "text", Text: "Browse all comics in the library"},
-				Links:   []atomLink{{Rel: "subsection", Href: "/api/opds/all", Type: opdsAcquisitionMIME}},
-			},
-			{
-				Title:   "Recently Added",
-				ID:      baseURL + "/api/opds/recent",
-				Updated: now,
-				Content: &atomContent{Type: "text", Text: "Recently added comics"},
-				Links:   []atomLink{{Rel: "subsection", Href: "/api/opds/recent", Type: opdsAcquisitionMIME}},
-			},
-			{
-				Title:   "Favorites",
-				ID:      baseURL + "/api/opds/favorites",
-				Updated: now,
-				Content: &atomContent{Type: "text", Text: "Favorite comics"},
-				Links:   []atomLink{{Rel: "subsection", Href: "/api/opds/favorites", Type: opdsAcquisitionMIME}},
-			},
+			newNavigationEntry(baseURL, now, "All Comics", "/api/opds/all", "Browse all downloadable comics", "subsection"),
+			newNavigationEntry(baseURL, now, "Recently Added", "/api/opds/recent", "Recently added comics", "http://opds-spec.org/sort/new"),
+			newNavigationEntry(baseURL, now, "Favorites", "/api/opds/favorites", "Your favorite comics", "http://opds-spec.org/shelf"),
 		},
 	}
 
-	return marshalFeed(feed)
+	return marshalOPDSXML(feed)
 }
 
-// GenerateAcquisitionFeed creates an OPDS acquisition feed.
-func GenerateAcquisitionFeed(baseURL, title, feedID string, comics []OPDSComic, selfHref string) string {
+func newNavigationEntry(baseURL, updated, title, href, description, rel string) atomEntry {
+	absoluteHref := absoluteOPDSURL(baseURL, href)
+	return atomEntry{
+		Title:   title,
+		ID:      absoluteHref,
+		Updated: updated,
+		Summary: &atomContent{Type: "text", Text: description},
+		Links:   []atomLink{{Rel: rel, Href: absoluteHref, Type: OPDSAcquisitionMIME}},
+	}
+}
+
+// GenerateOpenSearchDescription publishes the OPDS search template.
+func GenerateOpenSearchDescription(baseURL string) string {
+	description := openSearchDescription{
+		XMLNS:         openSearchNS,
+		ShortName:     "NowenReader",
+		Description:   "Search the NowenReader comic catalog",
+		InputEncoding: "UTF-8",
+		URL: openSearchURL{
+			Type:     OPDSAcquisitionMIME,
+			Template: absoluteOPDSURL(baseURL, "/api/opds/search?q={searchTerms}"),
+		},
+	}
+	return marshalOPDSXML(description)
+}
+
+// GenerateAcquisitionFeed creates a paginated OPDS 1.2 acquisition feed.
+func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 	now := time.Now().UTC().Format(time.RFC3339)
-
-	var entries []atomEntry
-	for _, comic := range comics {
-		ext := "zip"
-		if idx := strings.LastIndex(comic.Filename, "."); idx >= 0 {
-			ext = strings.ToLower(comic.Filename[idx+1:])
+	entries := make([]atomEntry, 0, len(opts.Comics))
+	for _, comic := range opts.Comics {
+		mimeType, ok := OPDSAcquisitionMIMEForFilename(comic.Filename)
+		if !ok {
+			continue
 		}
-		mimeType := mimeTypeForExt(ext)
 
-		description := comic.Description
-		if description == "" {
+		description := strings.TrimSpace(comic.Description)
+		if description == "" && comic.PageCount > 0 {
 			description = fmt.Sprintf("%d pages", comic.PageCount)
+		}
+		title := strings.TrimSpace(comic.Title)
+		if title == "" {
+			title = strings.TrimSuffix(filepath.Base(comic.Filename), filepath.Ext(comic.Filename))
 		}
 
 		entry := atomEntry{
-			Title:     comic.Title,
-			ID:        "urn:nowen:" + comic.ID,
-			Updated:   comic.UpdatedAt,
-			Published: comic.AddedAt,
-			Content:   &atomContent{Type: "text", Text: description},
+			Title:     title,
+			ID:        "urn:nowen:comic:" + comic.ID,
+			Updated:   validAtomDate(comic.UpdatedAt, now),
+			Published: validAtomDate(comic.AddedAt, ""),
 			Links: []atomLink{
-				{Rel: "http://opds-spec.org/image", Href: "/api/comics/" + comic.ID + "/thumbnail"},
-				{Rel: "http://opds-spec.org/image/thumbnail", Href: "/api/comics/" + comic.ID + "/thumbnail"},
-				{Rel: "http://opds-spec.org/acquisition", Href: "/api/opds/download/" + comic.ID, Type: mimeType},
-				{Rel: "http://opds-spec.org/acquisition/open-access", Href: "/api/comics/" + comic.ID + "/page/0", Type: "image/jpeg"},
+				{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
+				{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
+				{Rel: "http://opds-spec.org/acquisition", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/download/"+comic.ID), Type: mimeType},
 			},
+			Language:  strings.TrimSpace(comic.Language),
+			Publisher: strings.TrimSpace(comic.Publisher),
 		}
-
-		if comic.Author != "" {
-			entry.Author = &atomAuthor{Name: comic.Author}
+		if description != "" {
+			entry.Summary = &atomContent{Type: "text", Text: description}
 		}
-
-		for _, tag := range comic.Tags {
-			entry.Categories = append(entry.Categories, atomCategory{Term: tag, Label: tag})
+		if author := strings.TrimSpace(comic.Author); author != "" {
+			entry.Author = &atomAuthor{Name: author}
 		}
-
+		if comic.Year > 0 {
+			entry.Issued = strconv.Itoa(comic.Year)
+		}
+		if comic.PageCount > 0 {
+			entry.Extent = fmt.Sprintf("%d pages", comic.PageCount)
+		}
+		entry.Categories = opdsCategories(comic.Genre, comic.Tags)
 		entries = append(entries, entry)
 	}
 
+	total := opts.Pagination.TotalResults
+	itemsPerPage := opts.Pagination.ItemsPerPage
+	startIndex := opts.Pagination.StartIndex
 	feed := atomFeed{
-		XMLNS:   opdsNS,
-		OPDS:    opdsCatalogNS,
-		DC:      dcNS,
-		ID:      feedID,
-		Title:   title,
-		Updated: now,
+		XMLNS:        opdsNS,
+		OPDS:         opdsCatalogNS,
+		DCTerms:      dctermsNS,
+		OpenSearch:   openSearchNS,
+		ID:           opts.FeedID,
+		Title:        opts.Title,
+		Updated:      now,
+		Author:       &atomAuthor{Name: "NowenReader", URI: opts.BaseURL},
+		TotalResults: &total,
+		ItemsPerPage: &itemsPerPage,
+		StartIndex:   &startIndex,
 		Links: []atomLink{
-			{Rel: "self", Href: selfHref, Type: opdsAcquisitionMIME},
-			{Rel: "start", Href: "/api/opds", Type: opdsMIME},
-			{Rel: "search", Href: "/api/opds/search?q={searchTerms}", Type: opdsAcquisitionMIME},
+			{Rel: "self", Href: absoluteOPDSURL(opts.BaseURL, opts.Pagination.SelfHref), Type: OPDSAcquisitionMIME},
+			{Rel: "start", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds"), Type: OPDSNavigationMIME},
+			{Rel: "search", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/search.xml"), Type: OpenSearchMIME},
 		},
 		Entries: entries,
 	}
+	appendPaginationLink := func(rel, href string) {
+		if href != "" {
+			feed.Links = append(feed.Links, atomLink{Rel: rel, Href: absoluteOPDSURL(opts.BaseURL, href), Type: OPDSAcquisitionMIME})
+		}
+	}
+	appendPaginationLink("first", opts.Pagination.FirstHref)
+	appendPaginationLink("last", opts.Pagination.LastHref)
+	appendPaginationLink("previous", opts.Pagination.PreviousHref)
+	appendPaginationLink("next", opts.Pagination.NextHref)
 
-	return marshalFeed(feed)
+	return marshalOPDSXML(feed)
 }
 
-func mimeTypeForExt(ext string) string {
-	switch ext {
-	case "cbz", "zip":
-		return "application/x-cbz"
-	case "cbr", "rar":
-		return "application/x-cbr"
-	case "cb7", "7z":
-		return "application/x-cb7"
-	case "pdf":
-		return "application/pdf"
+// OPDSAcquisitionMIMEForFilename returns the comic publication media type.
+func OPDSAcquisitionMIMEForFilename(filename string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".cbz", ".zip":
+		return "application/x-cbz", true
+	case ".cbr", ".rar":
+		return "application/x-cbr", true
+	case ".cb7", ".7z":
+		return "application/x-cb7", true
+	case ".pdf":
+		return "application/pdf", true
 	default:
-		return "application/octet-stream"
+		return "", false
 	}
 }
 
-func marshalFeed(feed atomFeed) string {
-	data, err := xml.MarshalIndent(feed, "", "  ")
+func opdsCategories(genre string, tags []string) []atomCategory {
+	seen := make(map[string]struct{})
+	values := make([]string, 0, len(tags)+2)
+	values = append(values, strings.FieldsFunc(genre, func(r rune) bool {
+		return r == ',' || r == ';' || r == '/' || r == '\uFF0C' || r == '\uFF1B'
+	})...)
+	values = append(values, tags...)
+
+	categories := make([]atomCategory, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		categories = append(categories, atomCategory{Term: value, Label: value})
+	}
+	return categories
+}
+
+func validAtomDate(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return fallback
+	}
+	return parsed.UTC().Format(time.RFC3339)
+}
+
+func absoluteOPDSURL(baseURL, href string) string {
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+		return href
+	}
+	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(href, "/")
+}
+
+func marshalOPDSXML(value interface{}) string {
+	data, err := xml.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return ""
 	}
