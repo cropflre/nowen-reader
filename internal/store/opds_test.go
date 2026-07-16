@@ -61,6 +61,9 @@ func TestGetUserDownloadableLibraryIDs(t *testing.T) {
 
 func TestGetOPDSComicsIsComicOnlyAndUserScoped(t *testing.T) {
 	setupTestDB(t)
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
 	for _, user := range []*model.User{
 		{ID: "opds-a", Username: "opds-a", Password: "hashed", Role: "user"},
 		{ID: "opds-b", Username: "opds-b", Password: "hashed", Role: "user"},
@@ -126,6 +129,111 @@ func TestGetOPDSComicsIsComicOnlyAndUserScoped(t *testing.T) {
 	}
 	if total != 0 || len(empty) != 0 {
 		t.Fatalf("empty library access returned %v, total=%d", opdsRowIDs(empty), total)
+	}
+}
+
+func TestGetOPDSSeriesFiltersAccessFormatsAndPreservesOrder(t *testing.T) {
+	setupTestDB(t)
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	createOPDSTestLibrary(t, "series-download", "comic", true)
+	createOPDSTestLibrary(t, "series-other", "comic", true)
+
+	createOPDSTestComic(t, "series-v1", "Work/Work 01.cbz", "comic", "series-download")
+	createOPDSTestComic(t, "series-v2", "Work/Season 1/Work 02.pdf", "comic", "series-download")
+	createOPDSTestComic(t, "series-unsupported", "Work/Work 03.epub", "comic", "series-download")
+	createOPDSTestComic(t, "series-single", "Single/Single 01.cbz", "comic", "series-download")
+	createOPDSTestComic(t, "series-single-unsupported", "Single/Single 02.epub", "comic", "series-download")
+	createOPDSTestComic(t, "series-foreign-1", "Other/Other 01.cbz", "comic", "series-other")
+	createOPDSTestComic(t, "series-foreign-2", "Other/Other 02.cbz", "comic", "series-other")
+
+	if err := ReplaceDetectedSeries("series-download", []DetectedSeries{
+		{
+			ID:               "series-visible",
+			LibraryID:        "series-download",
+			RootRelativePath: "Work",
+			Title:            "Work",
+			SortTitle:        "work",
+			CoverComicID:     "series-unsupported",
+			Sections: []DetectedSeriesSection{{
+				ID:              "series-section",
+				Title:           "Season 1",
+				RelativePath:    "Work/Season 1",
+				SortIndex:       0,
+				DetectionSource: "directory",
+			}},
+			Items: []DetectedSeriesItem{
+				{ComicID: "series-v2", SectionID: "series-section", SortIndex: 1, DisplayLabel: "02"},
+				{ComicID: "series-v1", SortIndex: 0, DisplayLabel: "01"},
+				{ComicID: "series-unsupported", SortIndex: 2, DisplayLabel: "03"},
+			},
+		},
+		{
+			ID:               "series-hidden-single",
+			LibraryID:        "series-download",
+			RootRelativePath: "Single",
+			Title:            "Single",
+			SortTitle:        "single",
+			Items: []DetectedSeriesItem{
+				{ComicID: "series-single", SortIndex: 0},
+				{ComicID: "series-single-unsupported", SortIndex: 1},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("ReplaceDetectedSeries(download) failed: %v", err)
+	}
+	if err := ReplaceDetectedSeries("series-other", []DetectedSeries{{
+		ID:               "series-foreign",
+		LibraryID:        "series-other",
+		RootRelativePath: "Other",
+		Title:            "Other",
+		SortTitle:        "other",
+		Items: []DetectedSeriesItem{
+			{ComicID: "series-foreign-1", SortIndex: 0},
+			{ComicID: "series-foreign-2", SortIndex: 1},
+		},
+	}}); err != nil {
+		t.Fatalf("ReplaceDetectedSeries(other) failed: %v", err)
+	}
+
+	empty, total, err := GetOPDSSeries(OPDSSeriesQueryOptions{})
+	if err != nil || total != 0 || len(empty) != 0 {
+		t.Fatalf("empty access series = %#v, total=%d, err=%v", empty, total, err)
+	}
+	series, total, err := GetOPDSSeries(OPDSSeriesQueryOptions{LibraryIDs: []string{"series-download"}})
+	if err != nil {
+		t.Fatalf("GetOPDSSeries failed: %v", err)
+	}
+	if total != 1 || len(series) != 1 || series[0].ID != "series-visible" || series[0].ItemCount != 2 {
+		t.Fatalf("filtered series = %#v, total=%d; want visible two-item series", series, total)
+	}
+	if series[0].CoverComicID != "series-v1" && series[0].CoverComicID != "series-v2" {
+		t.Fatalf("unsupported cover did not fall back to a publishable comic: %#v", series[0])
+	}
+
+	comics, total, err := GetOPDSComics(OPDSQueryOptions{
+		LibraryIDs: []string{"series-download"},
+		SeriesID:   "series-visible",
+	})
+	if err != nil {
+		t.Fatalf("GetOPDSComics(series) failed: %v", err)
+	}
+	if total != 2 || len(comics) != 2 || comics[0].ID != "series-v1" || comics[1].ID != "series-v2" {
+		t.Fatalf("series comics = %#v, total=%d; want v1 then v2", comics, total)
+	}
+	if comics[0].SeriesID != "series-visible" || comics[1].SectionTitle != "Season 1" || comics[1].DisplayLabel != "02" {
+		t.Fatalf("series metadata missing from comics: %#v", comics)
+	}
+
+	all, _, err := GetOPDSComics(OPDSQueryOptions{LibraryIDs: []string{"series-download"}})
+	if err != nil {
+		t.Fatalf("GetOPDSComics(all) failed: %v", err)
+	}
+	for _, comic := range all {
+		if comic.ID == "series-single" && comic.SeriesID != "" {
+			t.Fatalf("single publishable member received a dead series relation: %#v", comic)
+		}
 	}
 }
 

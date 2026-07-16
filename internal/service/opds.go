@@ -35,6 +35,15 @@ type OPDSComic struct {
 	UpdatedAt   string
 	Tags        []string
 	Filename    string
+	SeriesID    string
+	SeriesTitle string
+}
+
+type OPDSSeries struct {
+	ID        string
+	Title     string
+	ItemCount int
+	UpdatedAt string
 }
 
 type OPDSPagination struct {
@@ -53,6 +62,14 @@ type OPDSAcquisitionFeedOptions struct {
 	Title      string
 	FeedID     string
 	Comics     []OPDSComic
+	Pagination OPDSPagination
+}
+
+type OPDSSeriesFeedOptions struct {
+	BaseURL    string
+	Title      string
+	FeedID     string
+	Series     []OPDSSeries
 	Pagination OPDSPagination
 }
 
@@ -142,24 +159,74 @@ func GenerateRootCatalog(baseURL string) string {
 			{Rel: "search", Href: absoluteOPDSURL(baseURL, "/api/opds/search.xml"), Type: OpenSearchMIME},
 		},
 		Entries: []atomEntry{
-			newNavigationEntry(baseURL, now, "All Comics", "/api/opds/all", "Browse all downloadable comics", "subsection"),
-			newNavigationEntry(baseURL, now, "Recently Added", "/api/opds/recent", "Recently added comics", "http://opds-spec.org/sort/new"),
-			newNavigationEntry(baseURL, now, "Favorites", "/api/opds/favorites", "Your favorite comics", "http://opds-spec.org/shelf"),
+			newNavigationEntry(baseURL, now, "All Comics", "/api/opds/all", "Browse all downloadable comics", "subsection", OPDSAcquisitionMIME),
+			newNavigationEntry(baseURL, now, "Series", "/api/opds/series", "Browse comics grouped by series", "subsection", OPDSNavigationMIME),
+			newNavigationEntry(baseURL, now, "Recently Added", "/api/opds/recent", "Recently added comics", "http://opds-spec.org/sort/new", OPDSAcquisitionMIME),
+			newNavigationEntry(baseURL, now, "Favorites", "/api/opds/favorites", "Your favorite comics", "http://opds-spec.org/shelf", OPDSAcquisitionMIME),
 		},
 	}
 
 	return marshalOPDSXML(feed)
 }
 
-func newNavigationEntry(baseURL, updated, title, href, description, rel string) atomEntry {
+func newNavigationEntry(baseURL, updated, title, href, description, rel, feedType string) atomEntry {
 	absoluteHref := absoluteOPDSURL(baseURL, href)
 	return atomEntry{
 		Title:   title,
 		ID:      absoluteHref,
 		Updated: updated,
 		Summary: &atomContent{Type: "text", Text: description},
-		Links:   []atomLink{{Rel: rel, Href: absoluteHref, Type: OPDSAcquisitionMIME}},
+		Links:   []atomLink{{Rel: rel, Href: absoluteHref, Type: feedType}},
 	}
+}
+
+// GenerateSeriesNavigationFeed creates the series branch of the catalog.
+func GenerateSeriesNavigationFeed(opts OPDSSeriesFeedOptions) string {
+	now := time.Now().UTC().Format(time.RFC3339)
+	entries := make([]atomEntry, 0, len(opts.Series))
+	for _, series := range opts.Series {
+		title := strings.TrimSpace(series.Title)
+		if title == "" {
+			title = "Untitled Series"
+		}
+		href := absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+series.ID)
+		entry := atomEntry{
+			Title:   title,
+			ID:      "urn:nowen:series:" + series.ID,
+			Updated: validAtomDate(series.UpdatedAt, now),
+			Summary: &atomContent{Type: "text", Text: fmt.Sprintf("%d comics", series.ItemCount)},
+			Links: []atomLink{
+				{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+series.ID+"/cover")},
+				{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+series.ID+"/cover")},
+				{Rel: "subsection", Href: href, Type: OPDSAcquisitionMIME},
+			},
+		}
+		entries = append(entries, entry)
+	}
+
+	total := opts.Pagination.TotalResults
+	itemsPerPage := opts.Pagination.ItemsPerPage
+	startIndex := opts.Pagination.StartIndex
+	feed := atomFeed{
+		XMLNS:        opdsNS,
+		OPDS:         opdsCatalogNS,
+		OpenSearch:   openSearchNS,
+		ID:           opts.FeedID,
+		Title:        opts.Title,
+		Updated:      now,
+		Author:       &atomAuthor{Name: "NowenReader", URI: opts.BaseURL},
+		TotalResults: &total,
+		ItemsPerPage: &itemsPerPage,
+		StartIndex:   &startIndex,
+		Links: []atomLink{
+			{Rel: "self", Href: absoluteOPDSURL(opts.BaseURL, opts.Pagination.SelfHref), Type: OPDSNavigationMIME},
+			{Rel: "start", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds"), Type: OPDSNavigationMIME},
+			{Rel: "search", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/search.xml"), Type: OpenSearchMIME},
+		},
+		Entries: entries,
+	}
+	appendOPDSPaginationLinks(&feed, opts.BaseURL, opts.Pagination, OPDSNavigationMIME)
+	return marshalOPDSXML(feed)
 }
 
 // GenerateOpenSearchDescription publishes the OPDS search template.
@@ -209,6 +276,14 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 			Language:  strings.TrimSpace(comic.Language),
 			Publisher: strings.TrimSpace(comic.Publisher),
 		}
+		if comic.SeriesID != "" {
+			entry.Links = append(entry.Links, atomLink{
+				Rel:   "collection",
+				Href:  absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+comic.SeriesID),
+				Type:  OPDSAcquisitionMIME,
+				Title: strings.TrimSpace(comic.SeriesTitle),
+			})
+		}
 		if description != "" {
 			entry.Summary = &atomContent{Type: "text", Text: description}
 		}
@@ -247,17 +322,26 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 		},
 		Entries: entries,
 	}
-	appendPaginationLink := func(rel, href string) {
-		if href != "" {
-			feed.Links = append(feed.Links, atomLink{Rel: rel, Href: absoluteOPDSURL(opts.BaseURL, href), Type: OPDSAcquisitionMIME})
-		}
-	}
-	appendPaginationLink("first", opts.Pagination.FirstHref)
-	appendPaginationLink("last", opts.Pagination.LastHref)
-	appendPaginationLink("previous", opts.Pagination.PreviousHref)
-	appendPaginationLink("next", opts.Pagination.NextHref)
+	appendOPDSPaginationLinks(&feed, opts.BaseURL, opts.Pagination, OPDSAcquisitionMIME)
 
 	return marshalOPDSXML(feed)
+}
+
+func appendOPDSPaginationLinks(feed *atomFeed, baseURL string, pagination OPDSPagination, feedType string) {
+	links := []struct {
+		rel  string
+		href string
+	}{
+		{rel: "first", href: pagination.FirstHref},
+		{rel: "last", href: pagination.LastHref},
+		{rel: "previous", href: pagination.PreviousHref},
+		{rel: "next", href: pagination.NextHref},
+	}
+	for _, link := range links {
+		if link.href != "" {
+			feed.Links = append(feed.Links, atomLink{Rel: link.rel, Href: absoluteOPDSURL(baseURL, link.href), Type: feedType})
+		}
+	}
 }
 
 // OPDSAcquisitionMIMEForFilename returns the comic publication media type.

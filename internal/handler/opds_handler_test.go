@@ -44,6 +44,9 @@ func TestOPDSBasicAPIKeyAuthentication(t *testing.T) {
 
 func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
 	router := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
 	user, token := createOPDSTestUserAndKey(t, "opds-reader", "opds-reader")
 	createOPDSHandlerLibrary(t, "opds-download-lib", "comic", true)
 	createOPDSHandlerLibrary(t, "opds-view-lib", "comic", true)
@@ -86,6 +89,75 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
 	novelDownload := performOPDSBasicRequest(router, "/api/opds/download/opds-novel", user.Username, token)
 	if novelDownload.Code != http.StatusNotFound {
 		t.Fatalf("direct novel download returned %d, want 404: %s", novelDownload.Code, novelDownload.Body.String())
+	}
+}
+
+func TestOPDSSeriesFeedsAreDownloadScopedAndFlattenSections(t *testing.T) {
+	router := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	user, token := createOPDSTestUserAndKey(t, "opds-series-user", "opds-series-user")
+	createOPDSHandlerLibrary(t, "opds-series-download", "comic", true)
+	createOPDSHandlerLibrary(t, "opds-series-view", "comic", true)
+	createOPDSHandlerComic(t, "opds-series-v1", "Work/Work 01.cbz", "comic", "opds-series-download")
+	createOPDSHandlerComic(t, "opds-series-v2", "Work/Season 1/Work 02.pdf", "comic", "opds-series-download")
+	createOPDSHandlerComic(t, "opds-view-v1", "Private/Private 01.cbz", "comic", "opds-series-view")
+	createOPDSHandlerComic(t, "opds-view-v2", "Private/Private 02.cbz", "comic", "opds-series-view")
+
+	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{
+		{LibraryID: "opds-series-download", CanDownload: true},
+		{LibraryID: "opds-series-view", CanView: true},
+	}); err != nil {
+		t.Fatalf("SetUserLibraryAccess failed: %v", err)
+	}
+	if _, err := store.DB().Exec(`
+		INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "manualLocked") VALUES
+		('opds-series-visible', 'opds-series-download', 'Work', 'Work', 'work', 'opds-series-v1', 1),
+		('opds-series-private', 'opds-series-view', 'Private', 'Private', 'private', 'opds-view-v1', 1);
+		INSERT INTO "ComicSeriesSection" ("id", "seriesId", "title", "relativePath", "sortIndex") VALUES
+		('opds-series-section', 'opds-series-visible', 'Season 1', 'Work/Season 1', 0);
+		INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel") VALUES
+		('opds-series-visible', NULL, 'opds-series-v1', 0, '01'),
+		('opds-series-visible', 'opds-series-section', 'opds-series-v2', 1, '02'),
+		('opds-series-private', NULL, 'opds-view-v1', 0, '01'),
+		('opds-series-private', NULL, 'opds-view-v2', 1, '02')
+	`); err != nil {
+		t.Fatalf("insert OPDS series failed: %v", err)
+	}
+
+	list := performOPDSBasicRequest(router, "/api/opds/series", user.Username, token)
+	if list.Code != http.StatusOK {
+		t.Fatalf("OPDS series returned %d: %s", list.Code, list.Body.String())
+	}
+	if contentType := list.Header().Get("Content-Type"); !strings.HasPrefix(contentType, service.OPDSNavigationMIME) {
+		t.Fatalf("series Content-Type = %q, want navigation feed", contentType)
+	}
+	if !strings.Contains(list.Body.String(), "opds-series-visible") || strings.Contains(list.Body.String(), "opds-series-private") {
+		t.Fatalf("series list did not enforce download access: %s", list.Body.String())
+	}
+
+	detail := performOPDSBasicRequest(router, "/api/opds/series/opds-series-visible", user.Username, token)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("OPDS series detail returned %d: %s", detail.Code, detail.Body.String())
+	}
+	body := detail.Body.String()
+	first := strings.Index(body, "<title>01</title>")
+	second := strings.Index(body, "<title>Season 1 - 02</title>")
+	if first < 0 || second < 0 || first >= second {
+		t.Fatalf("series items were not flattened in order: %s", body)
+	}
+	if !strings.Contains(body, `rel="collection" href="http://example.com/api/opds/series/opds-series-visible"`) {
+		t.Fatalf("series detail entries are missing collection relation: %s", body)
+	}
+
+	all := performOPDSBasicRequest(router, "/api/opds/all", user.Username, token)
+	if !strings.Contains(all.Body.String(), `rel="collection" href="http://example.com/api/opds/series/opds-series-visible"`) {
+		t.Fatalf("flat feed entries are missing collection relation: %s", all.Body.String())
+	}
+	denied := performOPDSBasicRequest(router, "/api/opds/series/opds-series-private", user.Username, token)
+	if denied.Code != http.StatusNotFound {
+		t.Fatalf("view-only series returned %d, want 404: %s", denied.Code, denied.Body.String())
 	}
 }
 

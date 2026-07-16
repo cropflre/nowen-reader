@@ -16,6 +16,7 @@ func TestRootCatalogIsNavigationFeedWithOpenSearch(t *testing.T) {
 		`href="http://example.test/api/opds/search.xml"`,
 		`type="` + OpenSearchMIME + `"`,
 		`href="http://example.test/api/opds/all"`,
+		`href="http://example.test/api/opds/series" type="` + OPDSNavigationMIME + `"`,
 		`href="http://example.test/api/opds/recent"`,
 		`href="http://example.test/api/opds/favorites"`,
 	} {
@@ -59,6 +60,8 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 			UpdatedAt:   "2025-02-03T04:05:06Z",
 			Tags:        []string{"Drama", "Complete"},
 			Filename:    "comic.cbz",
+			SeriesID:    "series-1",
+			SeriesTitle: "Series One",
 		}},
 		Pagination: OPDSPagination{
 			SelfHref:     "/api/opds/search?page=2&pageSize=1&q=%E4%B9%A6",
@@ -83,6 +86,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		`rel="previous"`,
 		`href="http://example.test/api/opds/cover/comic-1"`,
 		`href="http://example.test/api/opds/download/comic-1" type="application/x-cbz"`,
+		`rel="collection" href="http://example.test/api/opds/series/series-1" type="` + OPDSAcquisitionMIME + `" title="Series One"`,
 		`<dcterms:language>zh-CN</dcterms:language>`,
 		`<dcterms:publisher>Publisher</dcterms:publisher>`,
 		`<dcterms:issued>2025</dcterms:issued>`,
@@ -95,6 +99,41 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 	}
 	if strings.Contains(feed, "acquisition/open-access") {
 		t.Fatalf("authenticated acquisition feed must not claim open access: %s", feed)
+	}
+}
+
+func TestSeriesNavigationFeedLinksToSeriesAndCover(t *testing.T) {
+	feed := GenerateSeriesNavigationFeed(OPDSSeriesFeedOptions{
+		BaseURL: "http://example.test",
+		Title:   "Series",
+		FeedID:  "http://example.test/api/opds/series",
+		Series: []OPDSSeries{{
+			ID:        "series-1",
+			Title:     "Series One",
+			ItemCount: 3,
+			UpdatedAt: "2025-02-03T04:05:06Z",
+		}},
+		Pagination: OPDSPagination{
+			SelfHref:     "/api/opds/series?page=1&pageSize=100",
+			FirstHref:    "/api/opds/series?page=1&pageSize=100",
+			LastHref:     "/api/opds/series?page=1&pageSize=100",
+			TotalResults: 1,
+			ItemsPerPage: 100,
+			StartIndex:   1,
+		},
+	})
+	assertValidXML(t, feed)
+
+	for _, expected := range []string{
+		`type="` + OPDSNavigationMIME + `"`,
+		`<id>urn:nowen:series:series-1</id>`,
+		`<summary type="text">3 comics</summary>`,
+		`href="http://example.test/api/opds/series/series-1/cover"`,
+		`rel="subsection" href="http://example.test/api/opds/series/series-1" type="` + OPDSAcquisitionMIME + `"`,
+	} {
+		if !strings.Contains(feed, expected) {
+			t.Fatalf("series feed missing %q: %s", expected, feed)
+		}
 	}
 }
 
