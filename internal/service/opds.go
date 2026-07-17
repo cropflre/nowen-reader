@@ -348,7 +348,7 @@ func appendOPDSPaginationLinks(feed *atomFeed, baseURL string, pagination OPDSPa
 func OPDSAcquisitionMIMEForFilename(filename string) (string, bool) {
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".cbz", ".zip":
-		return "application/x-cbz", true
+		return "application/vnd.comicbook+zip", true
 	case ".cbr", ".rar":
 		return "application/x-cbr", true
 	case ".cb7", ".7z":

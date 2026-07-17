@@ -1,8 +1,13 @@
 package handler
 
 import (
+	"archive/zip"
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +94,86 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
 	novelDownload := performOPDSBasicRequest(router, "/api/opds/download/opds-novel", user.Username, token)
 	if novelDownload.Code != http.StatusNotFound {
 		t.Fatalf("direct novel download returned %d, want 404: %s", novelDownload.Code, novelDownload.Body.String())
+	}
+}
+
+func TestOPDSDownloadSupportsFullRangeAndHeadRequests(t *testing.T) {
+	router := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	user, token := createOPDSTestUserAndKey(t, "opds-range", "opds-range")
+
+	libraryDir := t.TempDir()
+	library := &model.Library{
+		ID:            "opds-range-lib",
+		Name:          "opds-range-lib",
+		Type:          "comic",
+		RootPath:      libraryDir,
+		Enabled:       true,
+		DefaultAccess: "private",
+		ScanEnabled:   true,
+	}
+	if err := store.CreateLibrary(library); err != nil {
+		t.Fatalf("CreateLibrary failed: %v", err)
+	}
+
+	filename := "Range Comic.cbz"
+	content := createTestCBZ(t)
+	if err := os.WriteFile(filepath.Join(libraryDir, filename), content, 0o600); err != nil {
+		t.Fatalf("write test CBZ failed: %v", err)
+	}
+	createOPDSHandlerComic(t, "opds-range-comic", filename, "comic", library.ID)
+	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{{
+		LibraryID:   library.ID,
+		CanDownload: true,
+	}}); err != nil {
+		t.Fatalf("SetUserLibraryAccess failed: %v", err)
+	}
+
+	full := performOPDSRequest(router, http.MethodGet, "/api/opds/download/opds-range-comic", user.Username, token, nil)
+	if full.Code != http.StatusOK {
+		t.Fatalf("full download returned %d: %s", full.Code, full.Body.String())
+	}
+	if got := full.Header().Get("Content-Type"); got != "application/vnd.comicbook+zip" {
+		t.Fatalf("full Content-Type = %q", got)
+	}
+	if got := full.Header().Get("Accept-Ranges"); got != "bytes" {
+		t.Fatalf("full Accept-Ranges = %q, want bytes", got)
+	}
+	if got := full.Header().Get("Content-Length"); got != strconv.Itoa(len(content)) {
+		t.Fatalf("full Content-Length = %q, want %d", got, len(content))
+	}
+	if !bytes.Equal(full.Body.Bytes(), content) {
+		t.Fatal("full download content differs from the source file")
+	}
+	if _, err := zip.NewReader(bytes.NewReader(full.Body.Bytes()), int64(full.Body.Len())); err != nil {
+		t.Fatalf("downloaded CBZ is not a valid ZIP: %v", err)
+	}
+
+	const tailSize = 22
+	rangeHeader := map[string]string{"Range": "bytes=-22"}
+	partial := performOPDSRequest(router, http.MethodGet, "/api/opds/download/opds-range-comic", user.Username, token, rangeHeader)
+	if partial.Code != http.StatusPartialContent {
+		t.Fatalf("range download returned %d: %s", partial.Code, partial.Body.String())
+	}
+	expectedRange := "bytes " + strconv.Itoa(len(content)-tailSize) + "-" + strconv.Itoa(len(content)-1) + "/" + strconv.Itoa(len(content))
+	if got := partial.Header().Get("Content-Range"); got != expectedRange {
+		t.Fatalf("Content-Range = %q, want %q", got, expectedRange)
+	}
+	if !bytes.Equal(partial.Body.Bytes(), content[len(content)-tailSize:]) {
+		t.Fatal("range response does not contain the requested ZIP tail")
+	}
+
+	head := performOPDSRequest(router, http.MethodHead, "/api/opds/download/opds-range-comic", user.Username, token, nil)
+	if head.Code != http.StatusOK {
+		t.Fatalf("HEAD download returned %d: %s", head.Code, head.Body.String())
+	}
+	if head.Body.Len() != 0 {
+		t.Fatalf("HEAD response body length = %d, want 0", head.Body.Len())
+	}
+	if got := head.Header().Get("Content-Length"); got != strconv.Itoa(len(content)) {
+		t.Fatalf("HEAD Content-Length = %q, want %d", got, len(content))
 	}
 }
 
@@ -219,9 +304,33 @@ func createOPDSHandlerComic(t *testing.T, id, filename, comicType, libraryID str
 }
 
 func performOPDSBasicRequest(router *gin.Engine, path, username, token string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodGet, path, nil)
+	return performOPDSRequest(router, http.MethodGet, path, username, token, nil)
+}
+
+func performOPDSRequest(router *gin.Engine, method, path, username, token string, headers map[string]string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, path, nil)
 	request.SetBasicAuth(username, token)
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	return response
+}
+
+func createTestCBZ(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	entry, err := writer.Create("001.txt")
+	if err != nil {
+		t.Fatalf("create test CBZ entry failed: %v", err)
+	}
+	if _, err := entry.Write([]byte("page")); err != nil {
+		t.Fatalf("write test CBZ entry failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close test CBZ failed: %v", err)
+	}
+	return buffer.Bytes()
 }

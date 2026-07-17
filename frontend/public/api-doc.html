@@ -6163,14 +6163,14 @@ Content-Type: actual thumbnail media type</code></pre>
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="GET /api/opds/download/:id OPDS comic file download" id="get-api-opds-download-id">
+<div class="endpoint auth-required" data-search="GET HEAD /api/opds/download/:id OPDS comic file range download" id="get-api-opds-download-id">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/opds/download/:id</span>
     <span class="summary"><span data-en="OPDS comic file download" data-zh="OPDS漫画文件下载">OPDS comic file download</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Novel and unsupported-format IDs return 404; missing download permission returns 403." data-zh="重新检查内容类型、已启用漫画书库归属和 canDownload 权限后下载受支持的漫画文件。小说和不支持格式的 ID 返回 404；缺少下载权限返回 403。">Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Novel and unsupported-format IDs return 404; missing download permission returns 403.</span></p>
+    <p class="description"><span data-en="Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Supports HEAD and HTTP byte ranges for large-file and ZIP central-directory access. Novel and unsupported-format IDs return 404; missing download permission returns 403." data-zh="重新检查内容类型、已启用漫画书库归属和 canDownload 权限后下载受支持的漫画文件。支持 HEAD 和 HTTP 字节范围请求，便于客户端读取大文件及 ZIP 中央目录。小说和不支持格式的 ID 返回 404；缺少下载权限返回 403。">Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Supports HEAD and HTTP byte ranges for large-file and ZIP central-directory access. Novel and unsupported-format IDs return 404; missing download permission returns 403.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
@@ -6180,10 +6180,12 @@ Content-Type: actual thumbnail media type</code></pre>
       </tbody>
     </table>
 
-    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200 / 206</span></h4>
     <pre class="code-block"><code>Binary file download
 
-Content-Type: application/x-cbz | application/x-cbr | application/x-cb7 | application/pdf</code></pre>
+Accept-Ranges: bytes
+Content-Range: bytes start-end/size (range requests)
+Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-cb7 | application/pdf</code></pre>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>

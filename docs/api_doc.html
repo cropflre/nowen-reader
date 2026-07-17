@@ -5750,14 +5750,14 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="GET /api/opds/download/:id OPDS comic file download" id="get-api-opds-download-id">
+<div class="endpoint auth-required" data-search="GET HEAD /api/opds/download/:id OPDS comic file range download" id="get-api-opds-download-id">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/opds/download/:id</span>
     <span class="summary">OPDS comic file download</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Downloads the comic file with the appropriate Content-Type for OPDS acquisition links.</p>
+    <p class="description">Downloads a supported comic file with permission checks. Supports HEAD and HTTP byte ranges for large-file and ZIP central-directory access.</p>
 
     <h4>Path Parameters</h4>
     <table class="params-table">
@@ -5767,10 +5767,12 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
       </tbody>
     </table>
 
-    <h4>Response <span class="status-code">200</span></h4>
+    <h4>Response <span class="status-code">200 / 206</span></h4>
     <pre class="code-block"><code>Binary file download
 
-Content-Type: varies by file type (e.g. application/zip, application/pdf, application/epub+zip)</code></pre>
+Accept-Ranges: bytes
+Content-Range: bytes start-end/size (range requests)
+Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-cb7 | application/pdf</code></pre>
 
     <div class="badges">
       <span class="badge badge-auth">Auth Required</span>

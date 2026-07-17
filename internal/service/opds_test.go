@@ -85,7 +85,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		`rel="next"`,
 		`rel="previous"`,
 		`href="http://example.test/api/opds/cover/comic-1"`,
-		`href="http://example.test/api/opds/download/comic-1" type="application/x-cbz"`,
+		`href="http://example.test/api/opds/download/comic-1" type="application/vnd.comicbook+zip"`,
 		`rel="collection" href="http://example.test/api/opds/series/series-1" type="` + OPDSAcquisitionMIME + `" title="Series One"`,
 		`<dcterms:language>zh-CN</dcterms:language>`,
 		`<dcterms:publisher>Publisher</dcterms:publisher>`,
@@ -180,7 +180,7 @@ func TestUnsupportedPublicationIsNotSerialized(t *testing.T) {
 
 func TestOPDSAcquisitionMIMEForFilename(t *testing.T) {
 	tests := map[string]string{
-		"book.cbz": "application/x-cbz",
+		"book.cbz": "application/vnd.comicbook+zip",
 		"book.CBR": "application/x-cbr",
 		"book.cb7": "application/x-cb7",
 		"book.pdf": "application/pdf",

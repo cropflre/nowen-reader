@@ -3,7 +3,6 @@ package handler
 import (
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"net/url"
@@ -295,7 +294,7 @@ func (h *OPDSHandler) renderCover(c *gin.Context, comicID string) {
 	c.Data(http.StatusOK, mimeType, thumbnail)
 }
 
-// GET /api/opds/download/:id
+// GET/HEAD /api/opds/download/:id
 func (h *OPDSHandler) Download(c *gin.Context) {
 	comic, ok := getOPDSPublication(c.Param("id"))
 	if !ok {
@@ -320,18 +319,19 @@ func (h *OPDSHandler) Download(c *gin.Context) {
 	defer file.Close()
 
 	info, err := file.Stat()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+	if err != nil || !info.Mode().IsRegular() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
 	}
 	contentType, _ := service.OPDSAcquisitionMIMEForFilename(comic.Filename)
 	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(comic.Filename)})
 	c.Header("Content-Disposition", disposition)
-	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
 	c.Header("Content-Type", contentType)
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("X-Accel-Buffering", "no")
+	c.Header("X-Content-Type-Options", "nosniff")
 	setOPDSPrivateResponseHeaders(c)
-	c.Status(http.StatusOK)
-	_, _ = io.Copy(c.Writer, file)
+	http.ServeContent(c.Writer, c.Request, filepath.Base(comic.Filename), info.ModTime(), file)
 }
 
 func setOPDSPrivateResponseHeaders(c *gin.Context) {
