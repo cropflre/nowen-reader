@@ -56,6 +56,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 			Publisher:   "Publisher",
 			Year:        2025,
 			PageCount:   42,
+			FileSize:    123456,
 			AddedAt:     "2025-01-02T03:04:05Z",
 			UpdatedAt:   "2025-02-03T04:05:06Z",
 			Tags:        []string{"Drama", "Complete"},
@@ -85,7 +86,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		`rel="next"`,
 		`rel="previous"`,
 		`href="http://example.test/api/opds/cover/comic-1"`,
-		`href="http://example.test/api/opds/download/comic-1" type="application/vnd.comicbook+zip"`,
+		`href="http://example.test/api/opds/download/comic-1/comic.cbz" type="application/vnd.comicbook+zip" length="123456"`,
 		`rel="collection" href="http://example.test/api/opds/series/series-1" type="` + OPDSAcquisitionMIME + `" title="Series One"`,
 		`<dcterms:language>zh-CN</dcterms:language>`,
 		`<dcterms:publisher>Publisher</dcterms:publisher>`,
@@ -193,6 +194,14 @@ func TestOPDSAcquisitionMIMEForFilename(t *testing.T) {
 	}
 	if _, ok := OPDSAcquisitionMIMEForFilename("novel.epub"); ok {
 		t.Fatal("EPUB must not be exposed by the comic-only OPDS catalog")
+	}
+}
+
+func TestOPDSDownloadPathIncludesEscapedBasename(t *testing.T) {
+	got := opdsDownloadPath("comic-1", "Series/Comic 01 [中文].cbz")
+	want := "/api/opds/download/comic-1/Comic%2001%20%5B%E4%B8%AD%E6%96%87%5D.cbz"
+	if got != want {
+		t.Fatalf("opdsDownloadPath() = %q, want %q", got, want)
 	}
 }
 

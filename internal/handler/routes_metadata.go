@@ -119,6 +119,8 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		opdsGroup.GET("/cover/:id", opds.Cover)
 		opdsGroup.GET("/download/:id", opds.Download)
 		opdsGroup.HEAD("/download/:id", opds.Download)
+		opdsGroup.GET("/download/:id/:filename", opds.Download)
+		opdsGroup.HEAD("/download/:id/:filename", opds.Download)
 	}
 
 	// Recommendations — require auth

@@ -367,7 +367,8 @@ GET /api/comics?readingStatus=finished
 | GET | `/api/opds/search.xml` | OpenSearch 搜索描述 |
 | GET | `/api/opds/search` | OPDS 搜索 |
 | GET | `/api/opds/cover/:id` | OPDS 漫画封面 |
-| GET/HEAD | `/api/opds/download/:id` | 下载原始文件，支持字节范围请求 |
+| GET/HEAD | `/api/opds/download/:id/:filename` | 下载原始文件，支持字节范围请求 |
+| GET/HEAD | `/api/opds/download/:id` | 兼容旧版下载地址 |
 | GET | `/api/recommendations` | 个性化推荐 |
 | GET | `/api/recommendations/similar/:id` | 相似推荐 |
 | POST | `/api/recommendations/ai-reasons` | AI 推荐理由 |
@@ -381,6 +382,7 @@ GET /api/comics?readingStatus=finished
 - **内容范围**：只返回 `Comic.type=comic`、所属 `Library.type=comic` 且书库已启用的内容。小说不会出现在目录、搜索、最近更新或收藏中。
 - **文件格式**：CBZ/ZIP、CBR/RAR、CB7/7Z 和 PDF。EPUB、TXT 等小说格式不进入 OPDS。
 - **分段下载**：下载接口支持 `HEAD` 和 HTTP Range。合法范围请求返回 `206 Partial Content`、`Content-Range` 与分段 `Content-Length`，便于客户端读取大型 CBZ/PDF 的尾部目录。
+- **下载发现**：Feed 中的 acquisition URL 以经过转义的真实文件名结尾，并通过 Atom `length` 属性提供文件字节数。旧版不带文件名的下载地址继续可用。
 - **媒体类型**：CBZ/ZIP 使用标准媒体类型 `application/vnd.comicbook+zip`；CBR/RAR、CB7/7Z 和 PDF 分别使用对应的漫画归档或 PDF 媒体类型。
 - **权限**：OPDS 是获取目录，只返回当前用户拥有 `canDownload` 权限的书库内容。公开书库或仅有 `canView` 权限不会自动获得 OPDS 下载权限。
 - **合集导航**：根目录包含 `/api/opds/series` 入口。该接口返回 `kind=navigation`，每个合集链接到 `/api/opds/series/:id` 获取 Feed；合集内按现有篇章和成员顺序扁平排列，篇章名会作为条目标题前缀。

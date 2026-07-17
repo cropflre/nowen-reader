@@ -5750,20 +5750,21 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="GET HEAD /api/opds/download/:id OPDS comic file range download" id="get-api-opds-download-id">
+<div class="endpoint auth-required" data-search="GET HEAD /api/opds/download/:id/:filename OPDS comic file range download" id="get-api-opds-download-id">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
-    <span class="path">/api/opds/download/:id</span>
+    <span class="path">/api/opds/download/:id/:filename</span>
     <span class="summary">OPDS comic file download</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Downloads a supported comic file with permission checks. Supports HEAD and HTTP byte ranges for large-file and ZIP central-directory access.</p>
+    <p class="description">Downloads a supported comic file with permission checks. Feed links include the escaped source filename and Atom length metadata for older clients. The filename-free path remains available as a legacy alias. Supports HEAD and HTTP byte ranges.</p>
 
     <h4>Path Parameters</h4>
     <table class="params-table">
       <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+        <tr><td>filename</td><td>string</td><td>Yes</td><td>Escaped source filename used for client format detection</td></tr>
       </tbody>
     </table>
 

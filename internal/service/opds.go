@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type OPDSComic struct {
 	Publisher   string
 	Year        int
 	PageCount   int
+	FileSize    int64
 	AddedAt     string
 	UpdatedAt   string
 	Tags        []string
@@ -96,10 +98,11 @@ type atomAuthor struct {
 }
 
 type atomLink struct {
-	Rel   string `xml:"rel,attr"`
-	Href  string `xml:"href,attr"`
-	Type  string `xml:"type,attr,omitempty"`
-	Title string `xml:"title,attr,omitempty"`
+	Rel    string `xml:"rel,attr"`
+	Href   string `xml:"href,attr"`
+	Type   string `xml:"type,attr,omitempty"`
+	Title  string `xml:"title,attr,omitempty"`
+	Length string `xml:"length,attr,omitempty"`
 }
 
 type atomEntry struct {
@@ -271,7 +274,12 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 			Links: []atomLink{
 				{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
 				{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
-				{Rel: "http://opds-spec.org/acquisition", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/download/"+comic.ID), Type: mimeType},
+				{
+					Rel:    "http://opds-spec.org/acquisition",
+					Href:   absoluteOPDSURL(opts.BaseURL, opdsDownloadPath(comic.ID, comic.Filename)),
+					Type:   mimeType,
+					Length: opdsFileLength(comic.FileSize),
+				},
 			},
 			Language:  strings.TrimSpace(comic.Language),
 			Publisher: strings.TrimSpace(comic.Publisher),
@@ -325,6 +333,21 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 	appendOPDSPaginationLinks(&feed, opts.BaseURL, opts.Pagination, OPDSAcquisitionMIME)
 
 	return marshalOPDSXML(feed)
+}
+
+func opdsDownloadPath(comicID, filename string) string {
+	name := filepath.Base(strings.TrimSpace(filename))
+	if name == "" || name == "." {
+		return "/api/opds/download/" + comicID
+	}
+	return "/api/opds/download/" + comicID + "/" + url.PathEscape(name)
+}
+
+func opdsFileLength(fileSize int64) string {
+	if fileSize <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(fileSize, 10)
 }
 
 func appendOPDSPaginationLinks(feed *atomFeed, baseURL string, pagination OPDSPagination, feedType string) {

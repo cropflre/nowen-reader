@@ -974,6 +974,7 @@ type OPDSComicRow struct {
 	Publisher    string
 	Year         int
 	PageCount    int
+	FileSize     int64
 	AddedAt      string
 	UpdatedAt    string
 	Tags         []string
@@ -1102,7 +1103,7 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 	}
 	query := fmt.Sprintf(`
 		SELECT c."id", c."title", c."author", c."description", c."language",
-		       c."genre", c."publisher", c."year", c."pageCount",
+		       c."genre", c."publisher", c."year", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt", c."filename",
 		       COALESCE(cs."id", ''), COALESCE(cs."title", ''),
 		       COALESCE(css."title", ''), COALESCE(csi."displayLabel", '')
@@ -1129,7 +1130,7 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Author, &c.Description, &c.Language,
-			&c.Genre, &c.Publisher, &year, &c.PageCount,
+			&c.Genre, &c.Publisher, &year, &c.PageCount, &c.FileSize,
 			&addedAt, &updatedAt, &c.Filename, &c.SeriesID, &c.SeriesTitle,
 			&c.SectionTitle, &c.DisplayLabel,
 		); err != nil {

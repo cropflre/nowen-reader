@@ -402,6 +402,7 @@ func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 			Publisher:   row.Publisher,
 			Year:        row.Year,
 			PageCount:   row.PageCount,
+			FileSize:    row.FileSize,
 			AddedAt:     row.AddedAt,
 			UpdatedAt:   row.UpdatedAt,
 			Tags:        row.Tags,

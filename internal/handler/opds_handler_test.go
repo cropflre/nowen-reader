@@ -131,7 +131,8 @@ func TestOPDSDownloadSupportsFullRangeAndHeadRequests(t *testing.T) {
 		t.Fatalf("SetUserLibraryAccess failed: %v", err)
 	}
 
-	full := performOPDSRequest(router, http.MethodGet, "/api/opds/download/opds-range-comic", user.Username, token, nil)
+	downloadPath := "/api/opds/download/opds-range-comic/Range%20Comic.cbz"
+	full := performOPDSRequest(router, http.MethodGet, downloadPath, user.Username, token, nil)
 	if full.Code != http.StatusOK {
 		t.Fatalf("full download returned %d: %s", full.Code, full.Body.String())
 	}
@@ -153,7 +154,7 @@ func TestOPDSDownloadSupportsFullRangeAndHeadRequests(t *testing.T) {
 
 	const tailSize = 22
 	rangeHeader := map[string]string{"Range": "bytes=-22"}
-	partial := performOPDSRequest(router, http.MethodGet, "/api/opds/download/opds-range-comic", user.Username, token, rangeHeader)
+	partial := performOPDSRequest(router, http.MethodGet, downloadPath, user.Username, token, rangeHeader)
 	if partial.Code != http.StatusPartialContent {
 		t.Fatalf("range download returned %d: %s", partial.Code, partial.Body.String())
 	}
@@ -165,7 +166,7 @@ func TestOPDSDownloadSupportsFullRangeAndHeadRequests(t *testing.T) {
 		t.Fatal("range response does not contain the requested ZIP tail")
 	}
 
-	head := performOPDSRequest(router, http.MethodHead, "/api/opds/download/opds-range-comic", user.Username, token, nil)
+	head := performOPDSRequest(router, http.MethodHead, downloadPath, user.Username, token, nil)
 	if head.Code != http.StatusOK {
 		t.Fatalf("HEAD download returned %d: %s", head.Code, head.Body.String())
 	}
@@ -174,6 +175,11 @@ func TestOPDSDownloadSupportsFullRangeAndHeadRequests(t *testing.T) {
 	}
 	if got := head.Header().Get("Content-Length"); got != strconv.Itoa(len(content)) {
 		t.Fatalf("HEAD Content-Length = %q, want %d", got, len(content))
+	}
+
+	legacy := performOPDSRequest(router, http.MethodGet, "/api/opds/download/opds-range-comic", user.Username, token, nil)
+	if legacy.Code != http.StatusOK || !bytes.Equal(legacy.Body.Bytes(), content) {
+		t.Fatalf("legacy filename-free download failed with status %d", legacy.Code)
 	}
 }
 
