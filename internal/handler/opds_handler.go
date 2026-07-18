@@ -341,7 +341,7 @@ func setOPDSPrivateResponseHeaders(c *gin.Context) {
 
 func getOPDSPublication(comicID string) (*store.ComicListItem, bool) {
 	comic, err := store.GetComicByID(comicID)
-	if err != nil || comic == nil || comic.ComicType != "comic" || comic.LibraryID == "" {
+	if err != nil || comic == nil || comic.LibraryID == "" {
 		return nil, false
 	}
 	if _, supported := service.OPDSAcquisitionMIMEForFilename(comic.Filename); !supported {

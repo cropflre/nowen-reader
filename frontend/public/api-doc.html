@@ -5902,7 +5902,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
 
     <div id="endpoints-opds" class="endpoint-group">
     <h2 class="group-title"><span data-en="23. OPDS" data-zh="23. OPDS">23. OPDS</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
-    <p class="description"><span data-en="Comic-only OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. Only supported files in enabled comic libraries with canDownload permission are exposed. The catalog includes an explicit series branch and collection relations; novels, view-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded." data-zh="仅漫画的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开已启用漫画书库中、当前用户拥有 canDownload 权限的受支持文件，并提供明确的合集导航和 collection 关系；不包含小说、仅可查看书库、已停用书库或 OPDS-PSE 逐页流式接口。">Comic-only OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. Only supported files in enabled comic libraries with canDownload permission are exposed. The catalog includes an explicit series branch and collection relations; novels, view-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded.</span></p>
+    <p class="description"><span data-en="Comic-library OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole, while EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible. View-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded." data-zh="以漫画书库为边界的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开 Library.type 为 comic、已启用且当前用户拥有 canDownload 权限的书库中的受支持文件。Library.type 为 novel 的小说书库整体排除，但漫画书库中的 EPUB、MOBI、AZW3、TXT 和 HTML 文件仍可发布；仅可查看书库、已停用书库和 OPDS-PSE 逐页流式接口也不接入。">Comic-library OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole, while EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible. View-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded.</span></p>
 <div class="endpoint auth-required" data-search="GET /api/opds OPDS catalog root" id="get-api-opds">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -5934,7 +5934,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS all comics feed" data-zh="OPDS所有漫画订阅">OPDS all comics feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a naturally sorted acquisition feed containing downloadable comic publications only. The response includes OpenSearch totals and standard pagination links." data-zh="返回按自然标题顺序排列的获取订阅源，只包含可下载漫画。响应包含 OpenSearch 总数和标准分页链接。">Returns a naturally sorted acquisition feed containing downloadable comic publications only. The response includes OpenSearch totals and standard pagination links.</span></p>
+    <p class="description"><span data-en="Returns a naturally sorted acquisition feed containing supported downloadable publications from enabled comic libraries. The response includes OpenSearch totals and standard pagination links." data-zh="返回按自然标题顺序排列的获取订阅源，包含已启用漫画书库中的受支持可下载内容。响应包含 OpenSearch 总数和标准分页链接。">Returns a naturally sorted acquisition feed containing supported downloadable publications from enabled comic libraries. The response includes OpenSearch totals and standard pagination links.</span></p>
 
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
@@ -5967,7 +5967,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS recent comics feed" data-zh="OPDS最近漫画订阅">OPDS recent comics feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a paginated acquisition feed ordered by added time descending. The same comic-only and canDownload filters as /all apply." data-zh="返回按添加时间倒序排列的分页获取订阅源，使用与 /all 相同的漫画限定和 canDownload 权限过滤。">Returns a paginated acquisition feed ordered by added time descending. The same comic-only and canDownload filters as /all apply.</span></p>
+    <p class="description"><span data-en="Returns a paginated acquisition feed ordered by added time descending. The same comic-library and canDownload filters as /all apply." data-zh="返回按添加时间倒序排列的分页获取订阅源，使用与 /all 相同的漫画书库边界和 canDownload 权限过滤。">Returns a paginated acquisition feed ordered by added time descending. The same comic-library and canDownload filters as /all apply.</span></p>
 
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
@@ -6033,7 +6033,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS series navigation feed" data-zh="OPDS 合集导航">OPDS series navigation feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a paginated navigation feed of series containing at least two downloadable supported comics after permission and format filtering. Each entry links to the series acquisition feed and cover." data-zh="返回分页的合集导航 Feed。合集经过下载权限和格式过滤后必须仍包含至少两本受支持漫画；每个条目链接到合集获取 Feed 和合集封面。">Returns a paginated navigation feed of series containing at least two downloadable supported comics after permission and format filtering. Each entry links to the series acquisition feed and cover.</span></p>
+    <p class="description"><span data-en="Returns a paginated navigation feed of series containing at least two downloadable supported publications from comic libraries after permission and format filtering. EPUB, MOBI, and AZW3 members in comic libraries count toward the series. Each entry links to the series acquisition feed and cover." data-zh="返回分页的合集导航 Feed。合集经过下载权限和格式过滤后，必须仍包含至少两本来自漫画书库的受支持内容；漫画书库中的 EPUB、MOBI 和 AZW3 成员会计入合集。每个条目链接到合集获取 Feed 和合集封面。">Returns a paginated navigation feed of series containing at least two downloadable supported publications from comic libraries after permission and format filtering. EPUB, MOBI, and AZW3 members in comic libraries count toward the series. Each entry links to the series acquisition feed and cover.</span></p>
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
@@ -6055,7 +6055,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS series acquisition feed" data-zh="OPDS 合集漫画列表">OPDS series acquisition feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns downloadable comic files in the series order. Sections are flattened and their names prefix item titles. Every entry includes a standard collection relation back to this feed. Inaccessible, missing, or filtered-to-single-item series return 404." data-zh="按合集顺序返回可下载漫画文件。篇章会被扁平化，并作为条目标题前缀；每个条目都包含指回该 Feed 的标准 collection 关系。无权限、不存在或过滤后不足两本的合集返回 404。">Returns downloadable comic files in the series order. Sections are flattened and their names prefix item titles. Every entry includes a standard collection relation back to this feed. Inaccessible, missing, or filtered-to-single-item series return 404.</span></p>
+    <p class="description"><span data-en="Returns downloadable supported publications from a comic-library series in series order. Sections are flattened and their names prefix item titles. Every entry includes a standard collection relation back to this feed. Inaccessible, missing, or filtered-to-single-item series return 404." data-zh="按合集顺序返回漫画书库合集中的可下载受支持内容。篇章会被扁平化，并作为条目标题前缀；每个条目都包含指回该 Feed 的标准 collection 关系。无权限、不存在或过滤后不足两本的合集返回 404。">Returns downloadable supported publications from a comic-library series in series order. Sections are flattened and their names prefix item titles. Every entry includes a standard collection relation back to this feed. Inaccessible, missing, or filtered-to-single-item series return 404.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><tbody><tr><td>id</td><td>string</td><td>Yes</td><td>Series ID</td></tr></tbody></table>
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
@@ -6148,7 +6148,7 @@ Content-Type: actual thumbnail media type</code></pre>
     <span class="summary"><span data-en="OPDS comic cover" data-zh="OPDS 漫画封面">OPDS comic cover</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns the comic thumbnail using its actual image Content-Type. Rechecks that the item is a supported comic in an enabled comic library and that the user has download permission." data-zh="返回漫画缩略图并使用实际图片 Content-Type。接口会重新检查该条目属于已启用漫画书库、格式受支持，且当前用户拥有下载权限。">Returns the comic thumbnail using its actual image Content-Type. Rechecks that the item is a supported comic in an enabled comic library and that the user has download permission.</span></p>
+    <p class="description"><span data-en="Returns the publication thumbnail using its actual image Content-Type. Rechecks that the item has a supported format, belongs to an enabled comic library, and the user has download permission." data-zh="返回条目缩略图并使用实际图片 Content-Type。接口会重新检查该条目格式受支持、属于已启用漫画书库，且当前用户拥有下载权限。">Returns the publication thumbnail using its actual image Content-Type. Rechecks that the item has a supported format, belongs to an enabled comic library, and the user has download permission.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
@@ -6170,7 +6170,7 @@ Content-Type: actual thumbnail media type</code></pre>
     <span class="summary"><span data-en="OPDS comic file download" data-zh="OPDS漫画文件下载">OPDS comic file download</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Feed links include the escaped source filename and Atom length metadata for older clients; /api/opds/download/:id remains available as a legacy alias. Supports HEAD and HTTP byte ranges." data-zh="重新检查内容类型、已启用漫画书库归属和 canDownload 权限后下载受支持的漫画文件。Feed 链接包含转义后的源文件名和 Atom length 字节数，以兼容旧客户端；/api/opds/download/:id 继续作为旧版别名。支持 HEAD 和 HTTP 字节范围请求。">Downloads a supported comic publication after rechecking content type, enabled comic library membership, and canDownload permission. Feed links include the escaped source filename and Atom length metadata for older clients; /api/opds/download/:id remains available as a legacy alias. Supports HEAD and HTTP byte ranges.</span></p>
+    <p class="description"><span data-en="Downloads a supported publication after rechecking its format, enabled comic library membership, and canDownload permission. Supported formats are CBZ/ZIP, CBR/RAR, CB7/7Z, PDF, EPUB, MOBI, AZW3, TXT, and HTML/HTM. Feed links include the escaped source filename and Atom length metadata for older clients; /api/opds/download/:id remains available as a legacy alias. Supports HEAD and HTTP byte ranges." data-zh="重新检查文件格式、已启用漫画书库归属和 canDownload 权限后下载受支持内容。支持 CBZ/ZIP、CBR/RAR、CB7/7Z、PDF、EPUB、MOBI、AZW3、TXT 和 HTML/HTM。Feed 链接包含转义后的源文件名和 Atom length 字节数，以兼容旧客户端；/api/opds/download/:id 继续作为旧版别名。支持 HEAD 和 HTTP 字节范围请求。">Downloads a supported publication after rechecking its format, enabled comic library membership, and canDownload permission. Supported formats are CBZ/ZIP, CBR/RAR, CB7/7Z, PDF, EPUB, MOBI, AZW3, TXT, and HTML/HTM. Feed links include the escaped source filename and Atom length metadata for older clients; /api/opds/download/:id remains available as a legacy alias. Supports HEAD and HTTP byte ranges.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
@@ -6186,7 +6186,9 @@ Content-Type: actual thumbnail media type</code></pre>
 
 Accept-Ranges: bytes
 Content-Range: bytes start-end/size (range requests)
-Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-cb7 | application/pdf</code></pre>
+Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-cb7 | application/pdf |
+              application/epub+zip | application/x-mobipocket-ebook |
+              application/vnd.amazon.mobi8-ebook | text/plain | text/html</code></pre>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>

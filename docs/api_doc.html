@@ -5602,6 +5602,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
 
     <div id="endpoints-opds" class="endpoint-group">
     <h2 class="group-title">23. OPDS <span class="group-badge">6 endpoints</span></h2>
+    <p class="description">OPDS uses the library type as its content boundary. It exposes supported files only from enabled libraries whose <code>Library.type</code> is <code>comic</code> and for which the current user has download permission. Libraries whose type is <code>novel</code> are excluded as a whole; EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible.</p>
 <div class="endpoint auth-required" data-search="GET /api/opds OPDS catalog root" id="get-api-opds">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -5633,7 +5634,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary">OPDS all comics feed</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns a paginated OPDS XML feed of all comics in the library.</p>
+    <p class="description">Returns a paginated OPDS XML feed of supported downloadable publications from enabled comic libraries.</p>
 
     <h4>Query Parameters</h4>
     <table class="params-table">
@@ -5666,7 +5667,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary">OPDS recent comics feed</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns an OPDS XML feed of the 50 most recently added comics.</p>
+    <p class="description">Returns an OPDS XML feed of recently added supported publications from enabled comic libraries.</p>
 
     <h4>Response <span class="status-code">200</span></h4>
     <pre class="code-block"><code>Content-Type: application/atom+xml
@@ -5690,7 +5691,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary">OPDS favorites feed</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns a paginated OPDS XML feed of the user's favorite comics.</p>
+    <p class="description">Returns a paginated OPDS XML feed of the user's downloadable favorite publications from enabled comic libraries.</p>
 
     <h4>Query Parameters</h4>
     <table class="params-table">
@@ -5723,7 +5724,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary">OPDS search feed</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns a paginated OPDS XML feed of comics matching the search query.</p>
+    <p class="description">Returns a paginated OPDS XML feed of supported publications in enabled comic libraries matching the search query.</p>
 
     <h4>Query Parameters</h4>
     <table class="params-table">
@@ -5757,7 +5758,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary">OPDS comic file download</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Downloads a supported comic file with permission checks. Feed links include the escaped source filename and Atom length metadata for older clients. The filename-free path remains available as a legacy alias. Supports HEAD and HTTP byte ranges.</p>
+    <p class="description">Downloads a supported publication from an enabled comic library with permission checks. Supported formats are CBZ/ZIP, CBR/RAR, CB7/7Z, PDF, EPUB, MOBI, AZW3, TXT, and HTML/HTM. The filename-free path remains available as a legacy alias. Supports HEAD and HTTP byte ranges.</p>
 
     <h4>Path Parameters</h4>
     <table class="params-table">
@@ -5773,7 +5774,9 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
 
 Accept-Ranges: bytes
 Content-Range: bytes start-end/size (range requests)
-Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-cb7 | application/pdf</code></pre>
+Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-cb7 | application/pdf |
+              application/epub+zip | application/x-mobipocket-ebook |
+              application/vnd.amazon.mobi8-ebook | text/plain | text/html</code></pre>
 
     <div class="badges">
       <span class="badge badge-auth">Auth Required</span>

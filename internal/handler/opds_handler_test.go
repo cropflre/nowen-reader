@@ -47,7 +47,7 @@ func TestOPDSBasicAPIKeyAuthentication(t *testing.T) {
 	}
 }
 
-func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
+func TestOPDSFeedRequiresDownloadAccessAndExcludesNovelLibraries(t *testing.T) {
 	router := setupTestRouter(t)
 	if err := store.RunMigrations(); err != nil {
 		t.Fatalf("RunMigrations failed: %v", err)
@@ -57,6 +57,7 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
 	createOPDSHandlerLibrary(t, "opds-view-lib", "comic", true)
 	createOPDSHandlerLibrary(t, "opds-novel-lib", "novel", true)
 	createOPDSHandlerComic(t, "opds-download-comic", "Download Comic.cbz", "comic", "opds-download-lib")
+	createOPDSHandlerComic(t, "opds-download-ebook", "Download Ebook.epub", "novel", "opds-download-lib")
 	createOPDSHandlerComic(t, "opds-view-comic", "View Comic.cbz", "comic", "opds-view-lib")
 	createOPDSHandlerComic(t, "opds-novel", "Novel.epub", "novel", "opds-novel-lib")
 
@@ -68,7 +69,7 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
 		t.Fatalf("SetUserLibraryAccess failed: %v", err)
 	}
 
-	response := performOPDSBasicRequest(router, "/api/opds/all?page=1&pageSize=1", user.Username, token)
+	response := performOPDSBasicRequest(router, "/api/opds/all?page=1&pageSize=10", user.Username, token)
 	if response.Code != http.StatusOK {
 		t.Fatalf("OPDS all returned %d: %s", response.Code, response.Body.String())
 	}
@@ -79,15 +80,17 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovels(t *testing.T) {
 		t.Fatalf("acquisition Cache-Control = %q, want private, no-store", cacheControl)
 	}
 	body := response.Body.String()
-	if !strings.Contains(body, "opds-download-comic") {
-		t.Fatalf("downloadable comic missing from feed: %s", body)
+	for _, expected := range []string{"opds-download-comic", "opds-download-ebook"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("downloadable comic-library publication %q missing from feed: %s", expected, body)
+		}
 	}
 	for _, forbidden := range []string{"opds-view-comic", "opds-novel"} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("forbidden publication %q leaked into feed: %s", forbidden, body)
 		}
 	}
-	if !strings.Contains(body, `<opensearch:totalResults>1</opensearch:totalResults>`) {
+	if !strings.Contains(body, `<opensearch:totalResults>2</opensearch:totalResults>`) {
 		t.Fatalf("feed total does not reflect permission and type filters: %s", body)
 	}
 
@@ -180,6 +183,30 @@ func TestOPDSDownloadSupportsFullRangeAndHeadRequests(t *testing.T) {
 	legacy := performOPDSRequest(router, http.MethodGet, "/api/opds/download/opds-range-comic", user.Username, token, nil)
 	if legacy.Code != http.StatusOK || !bytes.Equal(legacy.Body.Bytes(), content) {
 		t.Fatalf("legacy filename-free download failed with status %d", legacy.Code)
+	}
+
+	ebookFilename := "Comic Ebook.epub"
+	ebookContent := []byte("epub transport")
+	if err := os.WriteFile(filepath.Join(libraryDir, ebookFilename), ebookContent, 0o600); err != nil {
+		t.Fatalf("write test EPUB failed: %v", err)
+	}
+	createOPDSHandlerComic(t, "opds-ebook-comic", ebookFilename, "novel", library.ID)
+	ebook := performOPDSRequest(
+		router,
+		http.MethodGet,
+		"/api/opds/download/opds-ebook-comic/Comic%20Ebook.epub",
+		user.Username,
+		token,
+		nil,
+	)
+	if ebook.Code != http.StatusOK {
+		t.Fatalf("comic-library EPUB download returned %d: %s", ebook.Code, ebook.Body.String())
+	}
+	if got := ebook.Header().Get("Content-Type"); got != "application/epub+zip" {
+		t.Fatalf("EPUB Content-Type = %q", got)
+	}
+	if !bytes.Equal(ebook.Body.Bytes(), ebookContent) {
+		t.Fatal("comic-library EPUB download content differs from source")
 	}
 }
 

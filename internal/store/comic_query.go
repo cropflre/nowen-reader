@@ -985,7 +985,7 @@ type OPDSComicRow struct {
 	DisplayLabel string
 }
 
-// OPDSSeriesRow is a comic-only series exposed by the OPDS catalog.
+// OPDSSeriesRow is a series from a comic library exposed by the OPDS catalog.
 type OPDSSeriesRow struct {
 	ID           string
 	Title        string
@@ -1032,14 +1032,20 @@ func opdsPublicationFormatCondition(alias string) string {
 		OR LOWER(%[1]s) LIKE '%%.cb7'
 		OR LOWER(%[1]s) LIKE '%%.7z'
 		OR LOWER(%[1]s) LIKE '%%.pdf'
+		OR LOWER(%[1]s) LIKE '%%.epub'
+		OR LOWER(%[1]s) LIKE '%%.mobi'
+		OR LOWER(%[1]s) LIKE '%%.azw3'
+		OR LOWER(%[1]s) LIKE '%%.txt'
+		OR LOWER(%[1]s) LIKE '%%.html'
+		OR LOWER(%[1]s) LIKE '%%.htm'
 	)`, filename)
 }
 
-// GetOPDSComics returns comic-only publications from enabled comic libraries.
-// Unsupported publication formats and novels are excluded at the query layer.
+// GetOPDSComics returns supported publications from enabled comic libraries.
+// Library type is the content boundary; novel libraries are excluded even when
+// they contain a file format also used by comic libraries.
 func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 	conditions := []string{
-		`c."type" = 'comic'`,
 		`l."type" = 'comic'`,
 		`l."enabled" = 1`,
 		opdsPublicationFormatCondition("c"),
@@ -1083,7 +1089,7 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 			FROM "ComicSeriesItem" csi2
 			JOIN "ComicSeries" cs2 ON cs2."id" = csi2."seriesId"
 			JOIN "Comic" c2 ON c2."id" = csi2."comicId" AND c2."libraryId" = cs2."libraryId"
-			WHERE c2."type" = 'comic' AND ` + opdsPublicationFormatCondition("c2") + `
+			WHERE ` + opdsPublicationFormatCondition("c2") + `
 			GROUP BY csi2."seriesId"
 			HAVING COUNT(DISTINCT c2."id") >= 2
 		) publishable_series ON publishable_series."seriesId" = csi."seriesId"
@@ -1188,8 +1194,8 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 	return comics, total, nil
 }
 
-// GetOPDSSeries returns only series that still contain at least two
-// downloadable, supported comic publications after applying library access.
+// GetOPDSSeries returns series from comic libraries that still contain at least
+// two downloadable, supported publications after applying library access.
 func GetOPDSSeries(opts OPDSSeriesQueryOptions) ([]OPDSSeriesRow, int, error) {
 	if len(opts.LibraryIDs) == 0 {
 		return []OPDSSeriesRow{}, 0, nil
@@ -1204,7 +1210,6 @@ func GetOPDSSeries(opts OPDSSeriesQueryOptions) ([]OPDSSeriesRow, int, error) {
 	conditions := []string{
 		`s."libraryId" IN (` + strings.Join(placeholders, ",") + `)`,
 		`c."libraryId" = s."libraryId"`,
-		`c."type" = 'comic'`,
 		`l."type" = 'comic'`,
 		`l."enabled" = 1`,
 		opdsPublicationFormatCondition("c"),

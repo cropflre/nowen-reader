@@ -99,7 +99,7 @@ func GetComicSeriesSourceFingerprint() (string, error) {
 		       COALESCE(MAX(CAST(c."updatedAt" AS TEXT)), '')
 		FROM "Comic" c
 		JOIN "Library" l ON l."id" = c."libraryId"
-		WHERE l."enabled" = 1 AND l."type" = 'comic' AND c."type" = 'comic'
+		WHERE l."enabled" = 1 AND l."type" = 'comic'
 	`).Scan(&comicCount, &comicPathLength, &comicUpdatedAt)
 	if err != nil {
 		return "", err
@@ -118,7 +118,7 @@ func GetSeriesSourceItems(libraryID string) ([]SeriesSourceItem, error) {
 		SELECT c."id", c."title", c."filename", COALESCE(NULLIF(c."relativePath", ''), c."filename")
 		FROM "Comic" c
 		JOIN "Library" l ON l."id" = c."libraryId"
-		WHERE c."libraryId" = ? AND l."type" = 'comic' AND c."type" = 'comic'
+		WHERE c."libraryId" = ? AND l."type" = 'comic'
 		ORDER BY c."relativePath", c."filename"
 	`, libraryID)
 	if err != nil {

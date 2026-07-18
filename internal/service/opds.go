@@ -378,6 +378,16 @@ func OPDSAcquisitionMIMEForFilename(filename string) (string, bool) {
 		return "application/x-cb7", true
 	case ".pdf":
 		return "application/pdf", true
+	case ".epub":
+		return "application/epub+zip", true
+	case ".mobi":
+		return "application/x-mobipocket-ebook", true
+	case ".azw3":
+		return "application/vnd.amazon.mobi8-ebook", true
+	case ".txt":
+		return "text/plain", true
+	case ".html", ".htm":
+		return "text/html", true
 	default:
 		return "", false
 	}

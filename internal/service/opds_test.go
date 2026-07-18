@@ -167,24 +167,29 @@ func TestUnsupportedPublicationIsNotSerialized(t *testing.T) {
 		BaseURL: "http://example.test",
 		Title:   "Library",
 		FeedID:  "urn:test:library",
-		Comics:  []OPDSComic{{ID: "novel-1", Title: "Novel", Filename: "novel.epub"}},
+		Comics:  []OPDSComic{{ID: "unsupported-1", Title: "Unsupported", Filename: "document.docx"}},
 		Pagination: OPDSPagination{
 			SelfHref:     "/api/opds/all?page=1&pageSize=100",
 			TotalResults: 0,
 			ItemsPerPage: 100,
 		},
 	})
-	if strings.Contains(feed, "novel-1") || strings.Contains(feed, "Novel") {
+	if strings.Contains(feed, "unsupported-1") || strings.Contains(feed, "Unsupported") {
 		t.Fatalf("unsupported publication leaked into OPDS feed: %s", feed)
 	}
 }
 
 func TestOPDSAcquisitionMIMEForFilename(t *testing.T) {
 	tests := map[string]string{
-		"book.cbz": "application/vnd.comicbook+zip",
-		"book.CBR": "application/x-cbr",
-		"book.cb7": "application/x-cb7",
-		"book.pdf": "application/pdf",
+		"book.cbz":  "application/vnd.comicbook+zip",
+		"book.CBR":  "application/x-cbr",
+		"book.cb7":  "application/x-cb7",
+		"book.pdf":  "application/pdf",
+		"book.epub": "application/epub+zip",
+		"book.mobi": "application/x-mobipocket-ebook",
+		"book.azw3": "application/vnd.amazon.mobi8-ebook",
+		"book.txt":  "text/plain",
+		"book.html": "text/html",
 	}
 	for filename, expected := range tests {
 		actual, ok := OPDSAcquisitionMIMEForFilename(filename)
@@ -192,8 +197,8 @@ func TestOPDSAcquisitionMIMEForFilename(t *testing.T) {
 			t.Fatalf("OPDSAcquisitionMIMEForFilename(%q) = %q, %v; want %q, true", filename, actual, ok, expected)
 		}
 	}
-	if _, ok := OPDSAcquisitionMIMEForFilename("novel.epub"); ok {
-		t.Fatal("EPUB must not be exposed by the comic-only OPDS catalog")
+	if _, ok := OPDSAcquisitionMIMEForFilename("document.docx"); ok {
+		t.Fatal("unsupported document format must not be exposed by OPDS")
 	}
 }
 
