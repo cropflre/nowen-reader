@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/cache_provider.dart';
 import '../../data/services/cache_service.dart';
+import '../../data/services/offline_library_service.dart';
 
 class CacheScreen extends ConsumerStatefulWidget {
   const CacheScreen({super.key});
@@ -239,7 +241,8 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
     final latest = ref.read(authProvider);
     if (latest.connectionStatus == ServerConnectionStatus.online) {
       if (latest.user != null) {
-        context.go('/');
+        await _syncOfflineProgress(latest.serverUrl);
+        if (mounted) context.go('/');
       } else {
         context.go('/login');
       }
@@ -250,6 +253,35 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('服务器仍不可达，继续使用离线模式')),
       );
+    }
+  }
+
+  Future<void> _syncOfflineProgress(String serverUrl) async {
+    final api = ref.read(comicApiProvider);
+    final entries = ref.read(cacheEntriesProvider);
+    final normalizedServer = serverUrl.replaceAll(RegExp(r'/+$'), '');
+
+    for (final entry in entries.where((item) => item.isNovel)) {
+      final manifest =
+          await offlineLibraryService.getManifest(entry.comicId);
+      final manifestServer =
+          (manifest?.serverUrl ?? '').replaceAll(RegExp(r'/+$'), '');
+      if (manifestServer.isNotEmpty &&
+          manifestServer != normalizedServer) {
+        continue;
+      }
+
+      final progress = await offlineLibraryService.loadProgress(
+        entry.comicId,
+        manifest?.serverUrl ?? serverUrl,
+      );
+      if (progress <= 0) continue;
+
+      try {
+        await api.updateProgress(entry.comicId, progress);
+      } catch (_) {
+        // 单本同步失败不阻断其余缓存和联网恢复。
+      }
     }
   }
 
