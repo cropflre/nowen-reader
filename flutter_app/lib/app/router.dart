@@ -39,6 +39,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isCachePage = location == '/cache';
       final isOfflineReader = location.startsWith('/offline/novel/');
 
+      if (authState.isLoading &&
+          authState.connectionStatus == ServerConnectionStatus.unknown) {
+        return null;
+      }
+
       if (!hasServer && !isServerPage) return '/server';
 
       if (authState.connectionStatus == ServerConnectionStatus.offline) {
