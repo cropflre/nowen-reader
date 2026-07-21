@@ -1,12 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../data/providers/auth_provider.dart';
 import '../../data/providers/cache_provider.dart';
 import '../../data/services/cache_service.dart';
-import '../../data/api/api_client.dart';
-import '../../widgets/animations.dart';
 
-/// 离线缓存管理页面
 class CacheScreen extends ConsumerStatefulWidget {
   const CacheScreen({super.key});
 
@@ -15,60 +16,94 @@ class CacheScreen extends ConsumerStatefulWidget {
 }
 
 class _CacheScreenState extends ConsumerState<CacheScreen> {
+  Timer? _reconnectTimer;
+  bool _checkingConnection = false;
+
   @override
   void initState() {
     super.initState();
-    // 初始化缓存服务
     cacheService.init().then((_) {
+      if (!mounted) return;
       ref.read(cacheEntriesProvider.notifier).refresh();
     });
+
+    _reconnectTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _retryConnection(silent: true),
+    );
+  }
+
+  @override
+  void dispose() {
+    _reconnectTimer?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final auth = ref.watch(authProvider);
     final entries = ref.watch(cacheEntriesProvider);
     final totalSize = ref.watch(totalCacheSizeProvider);
+    final completed = entries.where((entry) => entry.isComplete).length;
+    final downloading = entries
+        .where((entry) => entry.status == CacheStatus.downloading)
+        .length;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('离线缓存'),
+        title: const Text('离线书架'),
         actions: [
+          IconButton(
+            tooltip: '服务器设置',
+            onPressed: () => context.go('/server'),
+            icon: const Icon(Icons.dns_rounded),
+          ),
           if (entries.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.delete_sweep_rounded),
               tooltip: '清空所有缓存',
-              onPressed: () => _confirmClearAll(context),
+              onPressed: _confirmClearAll,
+              icon: const Icon(Icons.delete_sweep_rounded),
             ),
         ],
       ),
       body: Column(
         children: [
-          // ─── 顶部统计卡片 ───
-          _buildSummaryCard(context, cs, entries, totalSize),
-
-          // ─── 缓存设置 ───
-          _CacheSettingsCard(),
-
-          // ─── 缓存列表 ───
+          if (auth.isOffline) _buildOfflineBanner(auth),
+          _buildSummary(
+            completed: completed,
+            downloading: downloading,
+            totalSize: totalSize,
+          ),
+          const _CacheSettingsCard(),
           Expanded(
             child: entries.isEmpty
-                ? _buildEmptyState(context, cs)
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) {
-                      return SlideAndFade(
-                        delay: Duration(milliseconds: index * 50),
-                        child: _CacheEntryCard(
-                          entry: entries[index],
-                          onDelete: () => _deleteEntry(entries[index].comicId),
-                          onPause: () => _pauseEntry(entries[index].comicId),
-                          onResume: () =>
-                              _resumeEntry(entries[index].comicId),
-                        ),
-                      );
+                ? _buildEmptyState(auth.isOffline)
+                : RefreshIndicator(
+                    onRefresh: () async {
+                      await cacheService.init();
+                      ref.read(cacheEntriesProvider.notifier).refresh();
+                      if (auth.isOffline) {
+                        await _retryConnection(silent: true);
+                      }
                     },
+                    child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        return _CacheEntryCard(
+                          entry: entry,
+                          offline: auth.isOffline,
+                          onOpen: entry.isNovel && entry.cachedPages > 0
+                              ? () => _openNovel(entry)
+                              : null,
+                          onDelete: () => _deleteEntry(entry.comicId),
+                          onPause: () => _pauseEntry(entry.comicId),
+                          onResume: () => _resumeEntry(entry.comicId),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -76,111 +111,168 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
     );
   }
 
-  Widget _buildSummaryCard(BuildContext context, ColorScheme cs,
-      List<CacheEntry> entries, String totalSize) {
-    final cachedCount = entries.where((e) => e.isComplete).length;
-    final downloadingCount =
-        entries.where((e) => e.status == CacheStatus.downloading).length;
-
+  Widget _buildOfflineBanner(AuthState auth) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [cs.primary, cs.primary.withOpacity(0.75)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: cs.primary.withOpacity(0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      color: colors.errorContainer,
+      child: Row(
+        children: [
+          Icon(
+            Icons.cloud_off_rounded,
+            color: colors.onErrorContainer,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '当前离线，已缓存小说仍可阅读。'
+              '${auth.serverUrl.isEmpty ? '' : '\n${auth.serverUrl}'}',
+              style: TextStyle(color: colors.onErrorContainer),
+            ),
+          ),
+          TextButton(
+            onPressed: _checkingConnection
+                ? null
+                : () => _retryConnection(silent: false),
+            child: Text(_checkingConnection ? '检测中…' : '重新连接'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSummary({
+    required int completed,
+    required int downloading,
+    required String totalSize,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer,
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
-          _StatItem(
+          _SummaryItem(
             icon: Icons.download_done_rounded,
-            label: '已缓存',
-            value: '$cachedCount 本',
-            color: Colors.white,
+            label: '可离线',
+            value: '$completed 本',
           ),
-          _Divider(),
-          _StatItem(
+          const _SummaryDivider(),
+          _SummaryItem(
             icon: Icons.downloading_rounded,
             label: '下载中',
-            value: '$downloadingCount 本',
-            color: Colors.white,
+            value: '$downloading 本',
           ),
-          _Divider(),
-          _StatItem(
+          const _SummaryDivider(),
+          _SummaryItem(
             icon: Icons.storage_rounded,
             label: '占用空间',
             value: totalSize,
-            color: Colors.white,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, ColorScheme cs) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.cloud_download_outlined,
-            size: 72,
-            color: cs.onSurfaceVariant.withOpacity(0.2),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无离线缓存',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant.withOpacity(0.5),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '在书籍详情页点击"缓存离线"即可下载',
-            style: TextStyle(
-              fontSize: 13,
-              color: cs.onSurfaceVariant.withOpacity(0.4),
+  Widget _buildEmptyState(bool offline) {
+    final colors = Theme.of(context).colorScheme;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.16),
+        Icon(
+          offline
+              ? Icons.cloud_off_rounded
+              : Icons.cloud_download_outlined,
+          size: 72,
+          color: colors.onSurfaceVariant.withOpacity(0.25),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '暂无离线缓存',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          offline
+              ? '联网后在书籍详情页点击“缓存离线”'
+              : '在书籍详情页点击“缓存离线”即可下载',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: colors.onSurfaceVariant),
+        ),
+        if (offline) ...[
+          const SizedBox(height: 20),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: () => context.go('/server'),
+              icon: const Icon(Icons.settings_ethernet_rounded),
+              label: const Text('检查服务器地址'),
             ),
           ),
         ],
-      ),
+      ],
     );
+  }
+
+  void _openNovel(CacheEntry entry) {
+    context.push(
+      '/offline/novel/${Uri.encodeComponent(entry.comicId)}',
+    );
+  }
+
+  Future<void> _retryConnection({required bool silent}) async {
+    if (_checkingConnection || !mounted) return;
+    final auth = ref.read(authProvider);
+    if (!auth.isOffline || auth.serverUrl.isEmpty) return;
+
+    setState(() => _checkingConnection = true);
+    await ref.read(authProvider.notifier).checkAuth();
+    if (!mounted) return;
+    setState(() => _checkingConnection = false);
+
+    final latest = ref.read(authProvider);
+    if (latest.connectionStatus == ServerConnectionStatus.online) {
+      if (latest.user != null) {
+        context.go('/');
+      } else {
+        context.go('/login');
+      }
+      return;
+    }
+
+    if (!silent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('服务器仍不可达，继续使用离线模式')),
+      );
+    }
   }
 
   Future<void> _deleteEntry(String comicId) async {
-    final confirm = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('删除缓存'),
-        content: const Text('确定要删除该书籍的离线缓存吗？'),
+        content: const Text('确定删除这本书的离线缓存吗？'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('删除'),
           ),
         ],
       ),
     );
-    if (confirm == true) {
+
+    if (confirmed == true) {
       await ref.read(cacheEntriesProvider.notifier).deleteCache(comicId);
     }
   }
@@ -190,136 +282,102 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
   }
 
   Future<void> _resumeEntry(String comicId) async {
-    final serverUrl = ref.read(apiClientProvider).serverUrl;
+    final auth = ref.read(authProvider);
+    if (auth.isOffline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('恢复下载需要连接服务器')),
+      );
+      return;
+    }
+
     await ref.read(cacheEntriesProvider.notifier).resumeDownload(
           comicId: comicId,
-          serverUrl: serverUrl,
+          serverUrl: auth.serverUrl,
         );
   }
 
-  Future<void> _confirmClearAll(BuildContext context) async {
-    final confirm = await showDialog<bool>(
+  Future<void> _confirmClearAll() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('清空所有缓存'),
-        content: const Text('确定要删除所有离线缓存吗？此操作不可恢复。'),
+        content: const Text('此操作会删除所有离线书籍和本地阅读进度，且不可恢复。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('清空'),
           ),
         ],
       ),
     );
-    if (confirm == true) {
+
+    if (confirmed == true) {
       await ref.read(cacheEntriesProvider.notifier).clearAll();
     }
   }
 }
 
-// ─── 缓存设置卡片 ───
+class _CacheSettingsCard extends StatefulWidget {
+  const _CacheSettingsCard();
 
-class _CacheSettingsCard extends ConsumerStatefulWidget {
   @override
-  ConsumerState<_CacheSettingsCard> createState() => _CacheSettingsCardState();
+  State<_CacheSettingsCard> createState() => _CacheSettingsCardState();
 }
 
-class _CacheSettingsCardState extends ConsumerState<_CacheSettingsCard> {
+class _CacheSettingsCardState extends State<_CacheSettingsCard> {
   bool _wifiOnly = false;
   bool _loaded = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _load();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> _load() async {
     await cacheService.init();
-    if (mounted) {
-      setState(() {
-        _wifiOnly = cacheService.wifiOnly;
-        _loaded = true;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _wifiOnly = cacheService.wifiOnly;
+      _loaded = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     if (!_loaded) return const SizedBox.shrink();
-
-    return Container(
+    return Card(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: const Icon(Icons.wifi_rounded, size: 18, color: Colors.blue),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '仅 Wi-Fi 下载',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurface,
-                  ),
-                ),
-                Text(
-                  '开启后仅在 Wi-Fi 环境下自动缓存',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: _wifiOnly,
-            onChanged: (v) async {
-              setState(() => _wifiOnly = v);
-              await cacheService.saveSettings(wifiOnly: v);
-            },
-          ),
-        ],
+      child: SwitchListTile(
+        value: _wifiOnly,
+        secondary: const Icon(Icons.wifi_rounded),
+        title: const Text('仅 Wi-Fi 下载'),
+        subtitle: const Text('开启后仅在 Wi-Fi 环境下自动缓存'),
+        onChanged: (value) async {
+          setState(() => _wifiOnly = value);
+          await cacheService.saveSettings(wifiOnly: value);
+        },
       ),
     );
   }
 }
 
-// ─── 缓存条目卡片 ───
-
 class _CacheEntryCard extends StatelessWidget {
   final CacheEntry entry;
+  final bool offline;
+  final VoidCallback? onOpen;
   final VoidCallback onDelete;
   final VoidCallback onPause;
   final VoidCallback onResume;
 
   const _CacheEntryCard({
     required this.entry,
+    required this.offline,
+    required this.onOpen,
     required this.onDelete,
     required this.onPause,
     required this.onResume,
@@ -327,166 +385,132 @@ class _CacheEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDownloading = entry.status == CacheStatus.downloading;
-    final isPaused = entry.status == CacheStatus.paused;
-    final isFailed = entry.status == CacheStatus.failed;
-    final isComplete = entry.isComplete;
+    final colors = Theme.of(context).colorScheme;
+    final downloading = entry.status == CacheStatus.downloading;
+    final paused = entry.status == CacheStatus.paused;
+    final failed = entry.status == CacheStatus.failed;
 
-    return Container(
+    return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
             children: [
-              // 类型图标
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: entry.isNovel
-                      ? Colors.orange.withOpacity(0.1)
-                      : cs.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  entry.isNovel
-                      ? Icons.menu_book_rounded
-                      : Icons.auto_stories_rounded,
-                  size: 20,
-                  color: entry.isNovel ? Colors.orange : cs.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // 标题和状态
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.title.isNotEmpty ? entry.title : entry.comicId,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: entry.isNovel
+                        ? Colors.orange.withOpacity(0.12)
+                        : colors.primaryContainer,
+                    child: Icon(
+                      entry.isNovel
+                          ? Icons.menu_book_rounded
+                          : Icons.auto_stories_rounded,
+                      color: entry.isNovel ? Colors.orange : colors.primary,
                     ),
-                    const SizedBox(height: 3),
-                    Row(
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _StatusBadge(status: entry.status),
-                        const SizedBox(width: 8),
                         Text(
-                          _formatBytes(entry.totalBytes),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSurfaceVariant.withOpacity(0.5),
-                          ),
+                          entry.title.isEmpty ? entry.comicId : entry.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            _StatusBadge(status: entry.status),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${entry.cachedPages}/${entry.totalPages} · '
+                              '${_formatBytes(entry.totalBytes)}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              // 操作按钮
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (isDownloading)
+                  ),
+                  if (downloading)
                     IconButton(
-                      icon: const Icon(Icons.pause_rounded),
                       tooltip: '暂停',
                       onPressed: onPause,
-                      iconSize: 20,
+                      icon: const Icon(Icons.pause_rounded),
                     ),
-                  if (isPaused || isFailed)
+                  if (paused || failed)
                     IconButton(
+                      tooltip: offline ? '联网后继续' : '继续下载',
+                      onPressed: offline ? null : onResume,
                       icon: const Icon(Icons.play_arrow_rounded),
-                      tooltip: '继续',
-                      onPressed: onResume,
-                      iconSize: 20,
                     ),
                   IconButton(
-                    icon: Icon(Icons.delete_outline_rounded,
-                        color: cs.error.withOpacity(0.7)),
                     tooltip: '删除',
                     onPressed: onDelete,
-                    iconSize: 20,
+                    icon: Icon(
+                      Icons.delete_outline_rounded,
+                      color: colors.error,
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
-
-          // 进度条（下载中或未完成时显示）
-          if (!isComplete || isDownloading) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: entry.progress,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      minHeight: 6,
+              if (!entry.isComplete || downloading) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: entry.progress),
+              ],
+              if (entry.isNovel && entry.cachedPages > 0) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: onOpen,
+                    icon: const Icon(Icons.menu_book_rounded),
+                    label: Text(
+                      entry.isComplete ? '离线阅读' : '阅读已缓存章节',
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  '${entry.cachedPages}/${entry.totalPages}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurfaceVariant.withOpacity(0.6),
+              ],
+              if (failed && entry.errorMessage != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    entry.errorMessage!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: colors.error, fontSize: 12),
                   ),
                 ),
               ],
-            ),
-          ],
-
-          // 错误信息
-          if (isFailed && entry.errorMessage != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: cs.errorContainer.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '下载失败: ${entry.errorMessage}',
-                style: TextStyle(fontSize: 11, color: cs.error),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  String _formatBytes(int bytes) {
+  static String _formatBytes(int bytes) {
     if (bytes < 1024) return '${bytes}B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
-    return '${(bytes / 1024 / 1024).toStringAsFixed(1)}MB';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)}MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)}GB';
   }
 }
 
-// ─── 状态徽章 ───
-
 class _StatusBadge extends StatelessWidget {
   final CacheStatus status;
+
   const _StatusBadge({required this.status});
 
   @override
@@ -508,50 +532,45 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
+          color: color,
           fontSize: 10,
           fontWeight: FontWeight.w600,
-          color: color,
         ),
       ),
     );
   }
 }
 
-// ─── 辅助组件 ───
-
-class _StatItem extends StatelessWidget {
+class _SummaryItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final Color color;
 
-  const _StatItem({
+  const _SummaryItem({
     required this.icon,
     required this.label,
     required this.value,
-    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Expanded(
       child: Column(
         children: [
-          Icon(icon, color: color.withOpacity(0.9), size: 22),
+          Icon(icon, color: colors.onPrimaryContainer),
           const SizedBox(height: 6),
           Text(
             value,
             style: TextStyle(
-              color: color,
-              fontSize: 16,
+              color: colors.onPrimaryContainer,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 2),
           Text(
             label,
             style: TextStyle(
-              color: color.withOpacity(0.7),
+              color: colors.onPrimaryContainer.withOpacity(0.7),
               fontSize: 11,
             ),
           ),
@@ -561,13 +580,18 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _Divider extends StatelessWidget {
+class _SummaryDivider extends StatelessWidget {
+  const _SummaryDivider();
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 0.5,
-      height: 40,
-      color: Colors.white.withOpacity(0.3),
+      width: 1,
+      height: 44,
+      color: Theme.of(context)
+          .colorScheme
+          .onPrimaryContainer
+          .withOpacity(0.18),
     );
   }
 }
