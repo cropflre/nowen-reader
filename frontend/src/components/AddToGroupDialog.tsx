@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { X, FolderPlus, Layers, Plus, Search } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { fetchGroups, addComicsToGroup, createGroup } from "@/api/groups";
+import { fetchGroups, addComicsToGroup, addSeriesToGroup, createGroup } from "@/api/groups";
 import type { ComicGroup } from "@/hooks/useComicTypes";
 
 interface AddToGroupDialogProps {
@@ -45,7 +45,22 @@ export default function AddToGroupDialog({
 
   const handleAddToGroup = useCallback(
     async (groupId: number) => {
-      const ok = await addComicsToGroup(groupId, comicIds);
+      const realComicIds: string[] = [];
+      const realSeriesIds: string[] = [];
+      for (const id of comicIds) {
+        if (id.startsWith("series__")) {
+          realSeriesIds.push(id.replace("series__", ""));
+        } else {
+          realComicIds.push(id);
+        }
+      }
+      let ok = true;
+      if (realComicIds.length > 0) {
+        ok = (await addComicsToGroup(groupId, realComicIds)) && ok;
+      }
+      if (realSeriesIds.length > 0) {
+        ok = (await addSeriesToGroup(groupId, realSeriesIds)) && ok;
+      }
       if (ok) {
         onDone();
       }
@@ -57,7 +72,16 @@ export default function AddToGroupDialog({
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const result = await createGroup(newName.trim(), comicIds);
+      const realComicIds: string[] = [];
+      const realSeriesIds: string[] = [];
+      for (const id of comicIds) {
+        if (id.startsWith("series__")) {
+          realSeriesIds.push(id.replace("series__", ""));
+        } else {
+          realComicIds.push(id);
+        }
+      }
+      const result = await createGroup(newName.trim(), realComicIds, realSeriesIds);
       if (result.success) {
         onDone();
       }

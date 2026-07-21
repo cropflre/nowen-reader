@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
@@ -168,6 +168,7 @@ export default function CollectionsPage() {
       page: String(createComicPage),
       pageSize: "12",
       contentType: createContentType,
+      seriesView: "true",
     });
     if (createComicDebouncedSearch) params.set("search", createComicDebouncedSearch);
     fetch(`/api/comics?${params}`)
@@ -305,8 +306,16 @@ export default function CollectionsPage() {
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      const comicIds = Array.from(selectedComicIds);
-      const result = await createGroup(createName.trim(), comicIds.length > 0 ? comicIds : undefined);
+      const comicIds: string[] = [];
+      const seriesIds: string[] = [];
+      for (const id of Array.from(selectedComicIds)) {
+        if (id.startsWith("series__")) {
+          seriesIds.push(id.replace("series__", ""));
+        } else {
+          comicIds.push(id);
+        }
+      }
+      const result = await createGroup(createName.trim(), comicIds.length > 0 ? comicIds : undefined, seriesIds.length > 0 ? seriesIds : undefined);
       if (result.success) {
         toast.success(tGroup.createGroup || "合集已创建");
         setShowCreateDialog(false);
@@ -1047,6 +1056,7 @@ export default function CollectionsPage() {
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {createComics.map((comic) => {
                     const isSelected = selectedComicIds.has(comic.id);
+                    const isSeries = comic.id.startsWith("series__");
                     return (
                       <button
                         key={comic.id}
@@ -1071,6 +1081,11 @@ export default function CollectionsPage() {
                         }`}>
                           {isSelected && <Check className="h-3 w-3" />}
                         </div>
+                        {isSeries && (
+                          <div className="absolute top-1 right-1 z-10 rounded bg-accent/90 px-1 py-0.5 text-[9px] font-medium text-white shadow-sm">
+                            作品
+                          </div>
+                        )}
                         {/* 封面 */}
                         <div className="relative w-full aspect-[3/4] overflow-hidden rounded-md bg-background mb-1">
                           {comic.coverUrl ? (

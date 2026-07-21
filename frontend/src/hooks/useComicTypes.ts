@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 漫画相关的共享类型定义
  * 被所有 useComic*.ts hooks 和 api/comics.ts 共用
  */
@@ -97,6 +97,16 @@ export interface GroupComicItem {
   type?: string; // "comic" | "novel"
 }
 
+export interface GroupSeriesItem {
+  id: string;
+  title: string;
+  rootRelativePath: string;
+  coverComicId: string;
+  coverUrl: string;
+  sortIndex: number;
+  comics: GroupComicItem[];
+}
+
 export interface ComicGroupDetail {
   id: number;
   name: string;
@@ -113,6 +123,7 @@ export interface ComicGroupDetail {
   createdAt: string;
   updatedAt: string;
   comicCount: number;
+  seriesList?: GroupSeriesItem[];
   comics: GroupComicItem[];
 }
 

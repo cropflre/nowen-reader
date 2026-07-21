@@ -39,9 +39,9 @@ export async function fetchGroupDetail(groupId: number, contentType?: string): P
 }
 
 /** 创建分组 */
-export async function createGroup(name: string, comicIds?: string[]): Promise<{ success: boolean; id?: number }> {
+export async function createGroup(name: string, comicIds?: string[], seriesIds?: string[]): Promise<{ success: boolean; id?: number }> {
   try {
-    const data: any = await apiClient.post("/api/groups", { name, comicIds: comicIds || [] });
+    const data: any = await apiClient.post("/api/groups", { name, comicIds: comicIds || [], seriesIds: seriesIds || [] });
     return { success: true, id: data.id };
   } catch {
     return { success: false };
@@ -82,7 +82,7 @@ export async function updateGroupMetadata(
   }
 }
 
-/** 从第一本漫画继承元数据到系�?*/
+/** 从第一本漫画继承元数据到系?*/
 export async function inheritGroupMetadata(groupId: number): Promise<boolean> {
   try {
     await apiClient.post(`/api/groups/${groupId}/inherit-metadata`);
@@ -103,10 +103,10 @@ export async function deleteGroup(groupId: number): Promise<boolean> {
 }
 
 // ============================================================
-// 分组内漫画管�?
+// 分组内漫画管?
 // ============================================================
 
-/** 添加漫画到分�?*/
+/** 添加漫画到分组 */
 export async function addComicsToGroup(groupId: number, comicIds: string[]): Promise<boolean> {
   try {
     await apiClient.post(`/api/groups/${groupId}/comics`, { comicIds });
@@ -116,7 +116,7 @@ export async function addComicsToGroup(groupId: number, comicIds: string[]): Pro
   }
 }
 
-/** 从分组移除漫�?*/
+/** 从分组移除漫画 */
 export async function removeComicFromGroup(groupId: number, comicId: string): Promise<boolean> {
   try {
     await apiClient.delete(`/api/groups/${groupId}/comics/${comicId}`);
@@ -126,7 +126,27 @@ export async function removeComicFromGroup(groupId: number, comicId: string): Pr
   }
 }
 
-/** 重新排序分组内漫�?*/
+/** 添加目录作品到分组 */
+export async function addSeriesToGroup(groupId: number, seriesIds: string[]): Promise<boolean> {
+  try {
+    await apiClient.post(`/api/groups/${groupId}/series`, { seriesIds });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 从分组移除目录作品 */
+export async function removeSeriesFromGroup(groupId: number, seriesId: string): Promise<boolean> {
+  try {
+    await apiClient.delete(`/api/groups/${groupId}/series/${seriesId}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 重新排序分组内漫?*/
 export async function reorderGroupComics(groupId: number, comicIds: string[]): Promise<boolean> {
   try {
     await apiClient.put(`/api/groups/${groupId}/reorder`, { comicIds });
