@@ -8,6 +8,7 @@ import '../../utils/tts_service.dart';
 
 import '../../data/api/comic_api.dart';
 import '../../data/services/cache_service.dart';
+import '../../data/services/reading_activity_tracker.dart';
 import 'novel_settings.dart';
 import 'novel_panels.dart';
 
@@ -83,9 +84,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   // 阅读会话
   late final ComicApi _api;
-  int? _sessionId;
-  DateTime? _sessionStart;
-  bool _sessionEnded = false;
+  late final ReadingActivityTracker _activity;
 
   // 搜索用：缓存章节内容
   final Map<int, String> _chapterCache = {};
@@ -95,6 +94,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     super.initState();
     _currentChapter = widget.initialChapter;
     _api = ref.read(comicApiProvider);
+    _activity = ReadingActivityTracker(api: _api, comicId: widget.comicId);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initTTS();
     _loadSettings();
@@ -112,8 +112,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     _timeTimer?.cancel();
     _tts.stop();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    _saveProgressDirect();
-    _endSessionDirect();
+    _activity.dispose();
     _scrollController.dispose();
     _swipePageController.dispose();
     super.dispose();
@@ -408,7 +407,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         _loading = false;
         _loadError = null;
       });
-      _startSession();
+      _activity.start(_currentChapter, _totalChapters);
       _loadChapter(_currentChapter);
     } catch (e) {
       if (mounted) {
@@ -458,8 +457,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       }
       // 延迟计算swipe总页数
       _computeSwipePages();
-      // 保存进度
-      if (index % 3 == 0) _saveProgress();
+      _activity.updatePage(index, _totalChapters);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -636,51 +634,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   }
 
   // ============================================================
-  // 会话管理
-  // ============================================================
-
-  Future<void> _startSession() async {
-    try {
-      _sessionId = await _api.startSession(widget.comicId, _currentChapter);
-      _sessionStart = DateTime.now();
-    } catch (_) {}
-  }
-
-  Future<void> _endSession() async {
-    if (_sessionId == null || _sessionStart == null || _sessionEnded) return;
-    _sessionEnded = true;
-    final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    try {
-      await _api.endSession(_sessionId!, _currentChapter, duration);
-    } catch (_) {}
-  }
-
-  void _endSessionDirect() {
-    if (_sessionId == null || _sessionStart == null || _sessionEnded) return;
-    _sessionEnded = true;
-    final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    _api.endSession(_sessionId!, _currentChapter, duration).catchError((_) {});
-  }
-
-  Future<void> _saveProgress() async {
-    try {
-      await _api.updateProgress(widget.comicId, _currentChapter);
-    } catch (_) {}
-  }
-
-  void _saveProgressDirect() {
-    _api.updateProgress(widget.comicId, _currentChapter).catchError((_) {});
-  }
-
-  // ============================================================
   // 导航
   // ============================================================
 
   Future<void> _onWillPop() async {
     _stopTTS();
     _autoScrollTimer?.cancel();
-    await _saveProgress();
-    await _endSession();
+    await _activity.finish();
     if (mounted) Navigator.of(context).pop();
   }
 

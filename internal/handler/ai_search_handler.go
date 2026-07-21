@@ -48,9 +48,9 @@ func (h *AIHandler) SemanticSearch(c *gin.Context) {
 
 	// 获取库中所有作品的基本信息作为候选
 	result, err := store.GetAllComics(store.ComicListOptions{
-		PageSize:   body.Limit,
-		Page:       1,
-		SortBy:     "title",
+		PageSize:         body.Limit,
+		Page:             1,
+		SortBy:           "title",
 		FilterLibraryIDs: true, LibraryIDs: libraryIDs,
 	})
 	if err != nil {
@@ -132,7 +132,7 @@ func (h *AIHandler) GenerateReadingInsight(c *gin.Context) {
 	}
 
 	// 获取年度报告（当前年）
-	yearlyReport, _ := store.GetYearlyReadingReport(currentYear())
+	yearlyReport, _ := store.GetYearlyReadingReport(currentYear(), getUserID(c))
 
 	// 构建统计摘要给 AI
 	statsData := map[string]interface{}{

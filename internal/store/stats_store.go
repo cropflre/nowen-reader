@@ -26,9 +26,9 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 
 	// 基础统计
 	var totalReadTime, totalSessions, totalComicsRead int
-	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession" WHERE 1=1`+userCondNoAlias, userArgs...).
+	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession" WHERE "duration" > 0`+userCondNoAlias, userArgs...).
 		Scan(&totalReadTime, &totalSessions)
-	db.QueryRow(`SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession" WHERE 1=1`+userCondNoAlias, userArgs...).
+	db.QueryRow(`SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession" WHERE "duration" > 0`+userCondNoAlias, userArgs...).
 		Scan(&totalComicsRead)
 
 	result["totalReadTime"] = totalReadTime
@@ -43,7 +43,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 		       rs."duration", rs."startPage", rs."endPage"
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
-		WHERE 1=1`+userCond+`
+		WHERE rs."duration" > 0`+userCond+`
 		ORDER BY rs."startedAt" DESC
 		LIMIT 50
 	`, recentArgs...)
@@ -83,7 +83,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	dailyRows, err := db.Query(`
 		SELECT DATE(rs."startedAt") as d, SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ?`+userCond+`
+		WHERE rs."startedAt" >= ? AND rs."duration" > 0`+userCond+`
 		GROUP BY d
 		ORDER BY d ASC
 	`, dailyArgs...)
@@ -111,7 +111,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 		SELECT strftime('%Y-%m', rs."startedAt") as m,
 		       SUM(rs."duration"), COUNT(*), COUNT(DISTINCT rs."comicId")
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ?`+userCond+`
+		WHERE rs."startedAt" >= ? AND rs."duration" > 0`+userCond+`
 		GROUP BY m
 		ORDER BY m ASC
 	`, monthlyArgs...)
@@ -138,7 +138,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 		SELECT c."genre", SUM(rs."duration") as totalTime, COUNT(DISTINCT c."id") as comicCount
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
-		WHERE c."genre" != ''`+userCond+`
+		WHERE c."genre" != '' AND rs."duration" > 0`+userCond+`
 		GROUP BY c."genre"
 		ORDER BY totalTime DESC
 		LIMIT 10
@@ -164,7 +164,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	streakRows, err := db.Query(`
 		SELECT DISTINCT DATE(rs."startedAt") as d
 		FROM "ReadingSession" rs
-		WHERE 1=1`+userCond+`
+		WHERE rs."duration" > 0`+userCond+`
 		ORDER BY d DESC
 	`, userArgs...)
 	if err == nil {
@@ -238,7 +238,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	todayArgs := append([]interface{}{todayStart}, userArgs...)
 	db.QueryRow(`
 		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ?`+userCondNoAlias, todayArgs...).Scan(&todayReadTime)
+		WHERE "startedAt" >= ? AND "duration" > 0`+userCondNoAlias, todayArgs...).Scan(&todayReadTime)
 	result["todayReadTime"] = todayReadTime
 
 	// 本周阅读时长
@@ -252,7 +252,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	weekArgs := append([]interface{}{weekStart}, userArgs...)
 	db.QueryRow(`
 		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ?`+userCondNoAlias, weekArgs...).Scan(&weekReadTime)
+		WHERE "startedAt" >= ? AND "duration" > 0`+userCondNoAlias, weekArgs...).Scan(&weekReadTime)
 	result["weekReadTime"] = weekReadTime
 
 	return result, nil

@@ -8,6 +8,7 @@ import 'package:photo_view/photo_view.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/services/reading_activity_tracker.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/reader_settings_panel.dart';
 import 'novel_reader_screen.dart';
@@ -35,12 +36,9 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   int _totalPages = 0;
   bool _showOverlay = false;
   bool _loading = true;
-  int? _sessionId;
-  DateTime? _sessionStart;
-  bool _sessionEnded = false;
 
-  // 提前缓存 API 引用，避免 dispose 后 ref 不可用
   late final ComicApi _api;
+  late final ReadingActivityTracker _activity;
 
   // 设置
   ReaderSettings _settings = const ReaderSettings();
@@ -56,6 +54,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     _pageController = PageController(initialPage: _currentPage);
     // 提前缓存 API 引用
     _api = ref.read(comicApiProvider);
+    _activity = ReadingActivityTracker(api: _api, comicId: widget.comicId);
     // 全屏沉浸模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _loadSettings();
@@ -67,18 +66,15 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     _autoPageTimer?.cancel();
     // 恢复系统UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    // 使用缓存的 _api 引用保存进度和结束会话（fire-and-forget）
-    _saveProgressDirect();
-    _endSessionDirect();
+    _activity.dispose();
     _pageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  /// 拦截返回操作，确保 session 正确结束后再退出
+  /// 拦截返回操作，尽量在退出前完成最后一次活动同步
   Future<void> _onWillPop() async {
-    await _saveProgress();
-    await _endSession();
+    await _activity.finish();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -114,51 +110,15 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
         _totalPages = data['totalPages'] ?? 0;
         _loading = false;
       });
-      _startSession();
+      _activity.start(_currentPage, _totalPages);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _startSession() async {
-    try {
-      _sessionId = await _api.startSession(widget.comicId, _currentPage);
-      _sessionStart = DateTime.now();
-    } catch (_) {}
-  }
-
-  Future<void> _endSession() async {
-    if (_sessionId == null || _sessionStart == null || _sessionEnded) return;
-    _sessionEnded = true;
-    final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    try {
-      await _api.endSession(_sessionId!, _currentPage, duration);
-    } catch (_) {}
-  }
-
-  /// dispose 中使用的 fire-and-forget 版本（防止 dispose 后 ref 不可用）
-  void _endSessionDirect() {
-    if (_sessionId == null || _sessionStart == null || _sessionEnded) return;
-    _sessionEnded = true;
-    final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    _api.endSession(_sessionId!, _currentPage, duration).catchError((_) {});
-  }
-
-  Future<void> _saveProgress() async {
-    try {
-      await _api.updateProgress(widget.comicId, _currentPage);
-    } catch (_) {}
-  }
-
-  /// dispose 中使用的 fire-and-forget 版本
-  void _saveProgressDirect() {
-    _api.updateProgress(widget.comicId, _currentPage).catchError((_) {});
-  }
-
   void _onPageChanged(int page) {
     setState(() => _currentPage = page);
-    // 每翻5页自动保存
-    if (page % 5 == 0) _saveProgress();
+    _activity.updatePage(page, _totalPages);
   }
 
   void _toggleOverlay() {
@@ -365,7 +325,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
       onPageChanged: (groupIndex) {
         final firstPage = pageGroups[groupIndex].first;
         setState(() => _currentPage = firstPage);
-        if (firstPage % 5 == 0) _saveProgress();
+        _activity.updatePage(firstPage, _totalPages);
       },
       itemBuilder: (context, groupIndex) {
         final pages = pageGroups[groupIndex];
@@ -449,7 +409,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
                 (notification.metrics.pixels / viewportHeight).floor();
             if (page != _currentPage && page >= 0 && page < _totalPages) {
               setState(() => _currentPage = page);
-              if (page % 5 == 0) _saveProgress();
+              _activity.updatePage(page, _totalPages);
             }
           }
         }

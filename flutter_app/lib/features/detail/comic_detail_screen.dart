@@ -308,8 +308,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              comic.lastReadPage > 0
-                                  ? '继续阅读 (${comic.lastReadPage + 1}/${comic.pageCount}${comic.isNovel ? "章" : "页"})'
+                              comic.hasReadingProgress
+                                  ? '继续阅读 (${comic.displayPage}/${comic.pageCount}${comic.isNovel ? "章" : "页"})'
                                   : '开始阅读',
                               style: const TextStyle(
                                 color: Colors.white,

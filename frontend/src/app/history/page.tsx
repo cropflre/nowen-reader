@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { calculateReadingProgress, getReadingPageNumber, isReadingFinished } from "@/lib/progress";
 
 interface ApiComic {
   id: string;
@@ -121,7 +121,7 @@ export default function HistoryPage() {
       if (!res.ok) return;
       const data = await res.json();
       const all: ApiComic[] = data.comics || [];
-      setComics(all.filter((c) => !!c.lastReadAt && c.lastReadPage > 0));
+      setComics(all.filter((c) => !!c.lastReadAt));
     } catch {
       // silent
     } finally {
@@ -370,7 +370,7 @@ function HistoryCard({ comic }: { comic: ApiComic }) {
                 />
               </div>
               <span className="text-[10px] text-muted shrink-0">
-                {comic.lastReadPage + 1}/{comic.pageCount} 页
+                {getReadingPageNumber(comic.lastReadPage, comic.pageCount)}/{comic.pageCount} 页
               </span>
             </div>
           )}

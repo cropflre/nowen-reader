@@ -131,7 +131,7 @@ func BatchRemoveTags(comicIDs []string, tagNames []string) error {
 }
 
 // BatchSetReadingStatus 批量设置用户级阅读状态（幂等）。
-// 仅写入 UserComicState.readingStatus，不修改 lastReadPage / totalReadTime。
+// 标记完成时同步将用户进度移到最后一页，不修改全局 Comic 阅读状态。
 func BatchSetReadingStatus(userID string, comicIDs []string, status string) error {
 	if len(comicIDs) == 0 {
 		return nil
@@ -158,15 +158,21 @@ func BatchSetReadingStatus(userID string, comicIDs []string, status string) erro
 	for _, comicID := range comicIDs {
 		if status == "finished" {
 			var pageCount int
-			err := tx.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&pageCount)
-			if err == nil && pageCount > 0 {
+			if err := tx.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&pageCount); err != nil {
+				return err
+			}
+			if pageCount > 0 {
 				now := time.Now().UTC()
-				_, _ = tx.Exec(`UPDATE "Comic" SET "lastReadPage" = ?, "lastReadAt" = ?, "updatedAt" = ? WHERE "id" = ?`, pageCount, now, now, comicID)
-				_, _ = tx.Exec(`
-					INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt")
-					VALUES (?, ?, ?, ?)
-					ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadPage" = ?, "lastReadAt" = ?
-				`, userID, comicID, pageCount, now, pageCount, now)
+				lastPage := pageCount - 1
+				if _, err := tx.Exec(`
+					INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "readingStatus")
+					VALUES (?, ?, ?, ?, ?)
+					ON CONFLICT("userId", "comicId") DO UPDATE SET
+						"lastReadPage" = ?, "lastReadAt" = ?, "readingStatus" = ?
+				`, userID, comicID, lastPage, now, status, lastPage, now, status); err != nil {
+					return err
+				}
+				continue
 			}
 		}
 

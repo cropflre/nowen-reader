@@ -130,6 +130,28 @@ class ComicApi {
     }
   }
 
+  /// 统一记录阅读进度与活跃时长
+  Future<void> recordReadingActivity({
+    required String comicId,
+    required String clientSessionId,
+    required int page,
+    required int totalPages,
+    required int activeSeconds,
+    required int sequence,
+    bool finalize = false,
+    bool trackProgress = true,
+  }) async {
+    await _dio.post('/reading/$comicId/activity', data: {
+      'clientSessionId': clientSessionId,
+      'page': page,
+      'totalPages': totalPages,
+      'activeSeconds': activeSeconds,
+      'sequence': sequence,
+      'finalize': finalize,
+      'trackProgress': trackProgress,
+    });
+  }
+
   /// 获取分组列表（支持按内容类型过滤）
   Future<List<dynamic>> getGroups({String? contentType}) async {
     final params = <String, dynamic>{};

@@ -172,7 +172,7 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 				SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
 				JOIN "Comic" c5 ON c5."id" = gi5."comicId"
 				LEFT JOIN "UserComicState" ucs5 ON ucs5."comicId" = c5."id" AND ucs5."userId" = ?
-				WHERE COALESCE(ucs5."isFavorite", c5."isFavorite") = 1
+				WHERE COALESCE(ucs5."isFavorite", 0) = 1
 			)`)
 			args = append(args, opts.UserID)
 		} else {

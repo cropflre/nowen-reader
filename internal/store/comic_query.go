@@ -141,9 +141,9 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	}
 
 	if opts.FavoritesOnly {
-		// 多用户：优先按 UserComicState.isFavorite 过滤
+		// 多用户收藏完全按 UserComicState 隔离。
 		if opts.UserID != "" {
-			conditions = append(conditions, `COALESCE(ucs."isFavorite", c."isFavorite") = 1`)
+			conditions = append(conditions, `COALESCE(ucs."isFavorite", 0) = 1`)
 		} else {
 			conditions = append(conditions, `c."isFavorite" = 1`)
 		}
@@ -259,13 +259,13 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		sortField = "c.\"updatedAt\""
 	case "lastReadAt":
 		if opts.UserID != "" {
-			sortField = `COALESCE(ucs."lastReadAt", c."lastReadAt")`
+			sortField = `ucs."lastReadAt"`
 		} else {
 			sortField = "c.\"lastReadAt\""
 		}
 	case "rating":
 		if opts.UserID != "" {
-			sortField = `COALESCE(ucs."rating", c."rating")`
+			sortField = `ucs."rating"`
 		} else {
 			sortField = "c.\"rating\""
 		}
@@ -317,18 +317,18 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		pageSize = total
 	}
 
-	// Main query — 带 UserID 时优先返回 UserComicState 的字段（COALESCE 回退到 Comic 全局值）
+	// Main query — 带 UserID 时个人状态完全来自 UserComicState。
 	var query string
 	if opts.UserID != "" {
 		query = fmt.Sprintf(`
 		SELECT c."id", c."filename", c."title", c."titleSortKey", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt",
-		       COALESCE(ucs."lastReadPage", c."lastReadPage") AS lrp,
-		       COALESCE(ucs."lastReadAt",   c."lastReadAt")   AS lra,
-		       COALESCE(ucs."isFavorite",   c."isFavorite")   AS isfav,
-		       COALESCE(ucs."rating",       c."rating")       AS rt,
+		       COALESCE(ucs."lastReadPage", 0) AS lrp,
+		       ucs."lastReadAt" AS lra,
+		       COALESCE(ucs."isFavorite", 0) AS isfav,
+		       ucs."rating" AS rt,
 		       c."sortOrder",
-		       COALESCE(NULLIF(ucs."totalReadTime", 0), c."totalReadTime") AS trt,
+		       COALESCE(ucs."totalReadTime", 0) AS trt,
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
 		       COALESCE(ucs."readingStatus", '') AS readingStatus, c."type", c."coverAspectRatio",
@@ -672,18 +672,17 @@ func GetComicByID(id string) (*ComicListItem, error) {
 	return &c, nil
 }
 
-// GetComicByIDForUser 根据ID获取单个漫画，合并当前用户的用户级状态。
-// 与 GetComicByID 不同：不 fallback 到 Comic 表的 readingStatus，只用用户级状态。
+// GetComicByIDForUser 根据ID获取单个漫画及当前用户的独立状态。
 func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) {
 	query := `
 		SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt",
-		       COALESCE(ucs."lastReadPage", c."lastReadPage") AS lrp,
-		       COALESCE(ucs."lastReadAt",   c."lastReadAt")   AS lra,
-		       COALESCE(ucs."isFavorite",   c."isFavorite")   AS isfav,
-		       COALESCE(ucs."rating",       c."rating")       AS rt,
+		       COALESCE(ucs."lastReadPage", 0) AS lrp,
+		       ucs."lastReadAt" AS lra,
+		       COALESCE(ucs."isFavorite", 0) AS isfav,
+		       ucs."rating" AS rt,
 		       c."sortOrder",
-		       COALESCE(NULLIF(ucs."totalReadTime", 0), c."totalReadTime") AS trt,
+		       COALESCE(ucs."totalReadTime", 0) AS trt,
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
 		       COALESCE(ucs."readingStatus", '') AS readingStatus,

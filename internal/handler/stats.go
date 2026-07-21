@@ -12,9 +12,44 @@ import (
 // StatsHandler handles reading statistics API endpoints.
 type StatsHandler struct{}
 
+type readingActivityRequest struct {
+	ClientSessionID string `json:"clientSessionId"`
+	Page            int    `json:"page"`
+	TotalPages      int    `json:"totalPages"`
+	ActiveSeconds   int    `json:"activeSeconds"`
+	Sequence        int    `json:"sequence"`
+	Finalize        bool   `json:"finalize"`
+	TrackProgress   *bool  `json:"trackProgress"`
+}
+
 // NewStatsHandler creates a new StatsHandler.
 func NewStatsHandler() *StatsHandler {
 	return &StatsHandler{}
+}
+
+// POST /api/reading/:id/activity — 幂等记录阅读进度与会话心跳。
+func (h *StatsHandler) RecordActivity(c *gin.Context) {
+	comicID := c.Param("id")
+	var body readingActivityRequest
+	if err := c.ShouldBindJSON(&body); err != nil || body.ClientSessionID == "" || len(body.ClientSessionID) > 128 || body.Sequence <= 0 || body.ActiveSeconds < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reading activity"})
+		return
+	}
+	if err := checkComicAccess(c, comicID); err != nil {
+		return
+	}
+	trackProgress := true
+	if body.TrackProgress != nil {
+		trackProgress = *body.TrackProgress
+	}
+	if err := store.RecordReadingActivity(
+		comicID, getUserID(c), body.ClientSessionID, body.Page, body.TotalPages,
+		body.ActiveSeconds, body.Sequence, body.Finalize, trackProgress,
+	); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record reading activity"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // GET /api/stats — Get reading statistics
@@ -37,7 +72,7 @@ func (h *StatsHandler) GetYearlyReport(c *gin.Context) {
 		return
 	}
 
-	report, err := store.GetYearlyReadingReport(year)
+	report, err := store.GetYearlyReadingReport(year, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get yearly report"})
 		return

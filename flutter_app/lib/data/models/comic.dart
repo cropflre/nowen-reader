@@ -26,8 +26,20 @@ class Comic {
   /// 阅读进度百分比 (0-100)
   int get progress {
     if (pageCount <= 0) return 0;
-    return ((lastReadPage / pageCount) * 100).round().clamp(0, 100);
+    return ((displayPage / pageCount) * 100).round();
   }
+
+  /// 用于显示的 1-based 页码，始终不超过总页数。
+  int get displayPage {
+    final current = lastReadPage + 1;
+    if (current < 0) return 0;
+    if (pageCount > 0 && current > pageCount) return pageCount;
+    return current;
+  }
+
+  bool get hasReadingProgress => lastReadAt != null && lastReadAt!.isNotEmpty;
+
+  bool get isFinished => pageCount > 0 && lastReadPage >= pageCount - 1;
 
   Comic({
     required this.id,

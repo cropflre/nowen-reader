@@ -32,6 +32,15 @@ export function calculateReadingProgress(
   return Math.min(100, Math.round((currentPage / pageCount) * 100));
 }
 
+/** Return the 1-based page number used in labels, clamped to pageCount. */
+export function getReadingPageNumber(
+  lastReadPage: number,
+  pageCount: number,
+): number {
+  const currentPage = Math.max(lastReadPage + 1, 0);
+  return pageCount > 0 ? Math.min(currentPage, pageCount) : currentPage;
+}
+
 /**
  * Whether the user has finished the book/comic.
  *

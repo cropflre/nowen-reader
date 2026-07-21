@@ -22,12 +22,145 @@ func placeholders(n int) string {
 // 阅读会话
 // ============================================================
 
+// RecordReadingActivity 幂等记录阅读活动，并可在同一事务内同步用户进度。
+// activeSeconds 是客户端本次会话累计的有效阅读秒数，只取最大值，不做重复累加。
+func RecordReadingActivity(comicID, userID, clientSessionID string, page, totalPages, activeSeconds, sequence int, finalize, trackProgress bool) error {
+	if comicID == "" || userID == "" || clientSessionID == "" {
+		return fmt.Errorf("comicId, userId and clientSessionId are required")
+	}
+	if activeSeconds < 0 {
+		activeSeconds = 0
+	}
+	if sequence < 0 {
+		sequence = 0
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var pageCount int
+	if err := tx.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&pageCount); err != nil {
+		return err
+	}
+	if pageCount > 0 {
+		totalPages = pageCount
+	}
+	page = normalizePageIndex(page, totalPages)
+	now := time.Now().UTC()
+
+	var sessionID int64
+	var storedComicID string
+	var storedDuration, storedSequence int
+	err = tx.QueryRow(`
+		SELECT "id", "comicId", "duration", "lastSequence" FROM "ReadingSession"
+		WHERE "userId" = ? AND "clientSessionId" = ?
+	`, userID, clientSessionID).Scan(&sessionID, &storedComicID, &storedDuration, &storedSequence)
+	if err == sql.ErrNoRows {
+		if trackProgress {
+			if err := updateReadingProgressTx(tx, comicID, userID, page, totalPages, now); err != nil {
+				return err
+			}
+		}
+		var endedAt interface{}
+		if finalize {
+			endedAt = now
+		}
+		_, err = tx.Exec(`
+			INSERT INTO "ReadingSession"
+				("comicId", "userId", "clientSessionId", "startedAt", "lastActiveAt", "endedAt", "startPage", "endPage", "duration", "lastSequence")
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, comicID, userID, clientSessionID, now, now, endedAt, page, page, activeSeconds, sequence)
+		if err != nil {
+			return err
+		}
+		if activeSeconds > 0 {
+			if err := incrementReadingTimeTx(tx, comicID, userID, activeSeconds); err != nil {
+				return err
+			}
+		}
+		return tx.Commit()
+	}
+	if err != nil {
+		return err
+	}
+	if storedComicID != comicID {
+		return fmt.Errorf("clientSessionId belongs to another comic")
+	}
+	isCurrent := sequence > storedSequence
+	if trackProgress && isCurrent {
+		if err := updateReadingProgressTx(tx, comicID, userID, page, totalPages, now); err != nil {
+			return err
+		}
+	}
+
+	newDuration := activeSeconds
+	if storedDuration > newDuration {
+		newDuration = storedDuration
+	}
+	if isCurrent {
+		if finalize {
+			_, err = tx.Exec(`
+				UPDATE "ReadingSession"
+				SET "endPage" = ?, "duration" = ?, "lastActiveAt" = ?, "lastSequence" = ?, "endedAt" = COALESCE("endedAt", ?)
+				WHERE "id" = ?
+			`, page, newDuration, now, sequence, now, sessionID)
+		} else {
+			_, err = tx.Exec(`
+				UPDATE "ReadingSession"
+				SET "endPage" = ?, "duration" = ?, "lastActiveAt" = ?, "lastSequence" = ?
+				WHERE "id" = ?
+			`, page, newDuration, now, sequence, sessionID)
+		}
+	} else if finalize {
+		_, err = tx.Exec(`
+			UPDATE "ReadingSession"
+			SET "duration" = ?, "lastActiveAt" = ?, "endedAt" = COALESCE("endedAt", ?)
+			WHERE "id" = ?
+		`, newDuration, now, now, sessionID)
+	} else if newDuration > storedDuration {
+		_, err = tx.Exec(`UPDATE "ReadingSession" SET "duration" = ?, "lastActiveAt" = ? WHERE "id" = ?`, newDuration, now, sessionID)
+	}
+	if err != nil {
+		return err
+	}
+	if delta := newDuration - storedDuration; delta > 0 {
+		if err := incrementReadingTimeTx(tx, comicID, userID, delta); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func incrementReadingTimeTx(tx *sql.Tx, comicID, userID string, seconds int) error {
+	if seconds <= 0 {
+		return nil
+	}
+	if _, err := tx.Exec(`UPDATE "Comic" SET "totalReadTime" = "totalReadTime" + ? WHERE "id" = ?`, seconds, comicID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`
+		INSERT INTO "UserComicState" ("userId", "comicId", "totalReadTime")
+		VALUES (?, ?, ?)
+		ON CONFLICT("userId", "comicId") DO UPDATE SET "totalReadTime" = "totalReadTime" + ?
+	`, userID, comicID, seconds, seconds)
+	return err
+}
+
 // StartReadingSession 创建一个新的阅读会话。
 func StartReadingSession(comicID string, startPage int, userID ...string) (int64, error) {
 	uid := ""
 	if len(userID) > 0 {
 		uid = userID[0]
 	}
+	var pageCount int
+	if err := db.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+	startPage = normalizePageIndex(startPage, pageCount)
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.Exec(`
 		INSERT INTO "ReadingSession" ("comicId", "userId", "startPage", "startedAt")
@@ -48,40 +181,71 @@ func GetReadingSessionComicID(sessionID int) (string, error) {
 
 // EndReadingSession 完成一个阅读会话并更新漫画的总阅读时间。
 func EndReadingSession(sessionID int, endPage int, duration int, userID ...string) error {
-	// Get the comicId from the session
-	var comicID string
-	err := db.QueryRow(`SELECT "comicId" FROM "ReadingSession" WHERE "id" = ?`, sessionID).Scan(&comicID)
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
-	// Update session
+	var comicID, sessionUserID string
+	var endedAt sql.NullTime
+	var pageCount int
+	err = tx.QueryRow(`
+		SELECT rs."comicId", rs."userId", rs."endedAt", c."pageCount"
+		FROM "ReadingSession" rs
+		JOIN "Comic" c ON c."id" = rs."comicId"
+		WHERE rs."id" = ?
+	`, sessionID).Scan(&comicID, &sessionUserID, &endedAt, &pageCount)
+	if err != nil {
+		return err
+	}
+	if endedAt.Valid {
+		return nil
+	}
+
+	endPage = normalizePageIndex(endPage, pageCount)
+	if duration < 0 {
+		duration = 0
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = db.Exec(`
+	result, err := tx.Exec(`
 		UPDATE "ReadingSession" SET "endedAt" = ?, "endPage" = ?, "duration" = ?
-		WHERE "id" = ?
+		WHERE "id" = ? AND "endedAt" IS NULL
 	`, now, endPage, duration, sessionID)
 	if err != nil {
 		return err
 	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return tx.Commit()
+	}
 
-	// Increment comic's total read time
-	_, err = db.Exec(`
+	_, err = tx.Exec(`
 		UPDATE "Comic" SET "totalReadTime" = "totalReadTime" + ? WHERE "id" = ?
 	`, duration, comicID)
 	if err != nil {
 		return err
 	}
 
-	// 更新 UserComicState 的总阅读时间
-	if len(userID) > 0 && userID[0] != "" {
-		_, err = db.Exec(`
+	uid := sessionUserID
+	if uid == "" && len(userID) > 0 {
+		uid = userID[0]
+	}
+	if uid != "" {
+		_, err = tx.Exec(`
 			INSERT INTO "UserComicState" ("userId", "comicId", "totalReadTime")
 			VALUES (?, ?, ?)
 			ON CONFLICT("userId", "comicId") DO UPDATE SET "totalReadTime" = "totalReadTime" + ?
-		`, userID[0], comicID, duration, duration)
+		`, uid, comicID, duration, duration)
+		if err != nil {
+			return err
+		}
 	}
-	return err
+	return tx.Commit()
 }
 
 // ============================================================
@@ -134,7 +298,7 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 		       rs."duration", rs."startPage", rs."endPage"
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
-		WHERE 1=1`+uidFilter+`
+		WHERE rs."duration" > 0`+uidFilter+`
 		ORDER BY rs."startedAt" DESC
 		LIMIT 50
 	`, args...)
@@ -160,9 +324,9 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 
 	// Aggregates
 	aggArgs := []interface{}{}
-	aggFilter := ""
+	aggFilter := ` WHERE "duration" > 0`
 	if len(userID) > 0 && userID[0] != "" {
-		aggFilter = ` WHERE "userId" = ?`
+		aggFilter += ` AND "userId" = ?`
 		aggArgs = append(aggArgs, userID[0])
 	}
 	db.QueryRow(`SELECT COALESCE(SUM("duration"), 0), COUNT(*) FROM "ReadingSession"`+aggFilter, aggArgs...).
@@ -182,7 +346,7 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 	dailyRows, err := db.Query(`
 		SELECT DATE(rs."startedAt") as d, SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ?`+dailyFilter+`
+		WHERE rs."startedAt" >= ? AND rs."duration" > 0`+dailyFilter+`
 		GROUP BY d
 		ORDER BY d ASC
 	`, dailyArgs...)
@@ -205,7 +369,7 @@ func GetComicReadingHistory(comicID string) ([]RecentSessionItem, error) {
 		SELECT rs."id", rs."comicId", '' as title, rs."startedAt", rs."endedAt",
 		       rs."duration", rs."startPage", rs."endPage"
 		FROM "ReadingSession" rs
-		WHERE rs."comicId" = ?
+		WHERE rs."comicId" = ? AND rs."duration" > 0
 		ORDER BY rs."startedAt" DESC
 		LIMIT 20
 	`, comicID)
@@ -648,10 +812,25 @@ type GenreDistributionItem struct {
 	ReadTime int    `json:"readTime"`
 }
 
-// GetYearlyReadingReport 查询指定年份的阅读统计。
-func GetYearlyReadingReport(year int) (*YearlyReadingReport, error) {
+// GetYearlyReadingReport 查询指定年份的阅读统计，可按用户过滤。
+func GetYearlyReadingReport(year int, userID ...string) (*YearlyReadingReport, error) {
 	startDate := fmt.Sprintf("%d-01-01", year)
 	endDate := fmt.Sprintf("%d-01-01", year+1)
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
+	userFilter := ""
+	if uid != "" {
+		userFilter = ` AND rs."userId" = ?`
+	}
+	queryArgs := func() []interface{} {
+		args := []interface{}{startDate, endDate}
+		if uid != "" {
+			args = append(args, uid)
+		}
+		return args
+	}
 
 	report := &YearlyReadingReport{Year: year}
 
@@ -661,9 +840,9 @@ func GetYearlyReadingReport(year int) (*YearlyReadingReport, error) {
 		       COUNT(*),
 		       COUNT(DISTINCT "comicId"),
 		       COALESCE(SUM("endPage" - "startPage"), 0)
-		FROM "ReadingSession"
-		WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
-	`, startDate, endDate).Scan(
+		FROM "ReadingSession" rs
+		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter,
+		queryArgs()...).Scan(
 		&report.TotalReadTime,
 		&report.TotalSessions,
 		&report.TotalComicsRead,
@@ -679,10 +858,10 @@ func GetYearlyReadingReport(year int) (*YearlyReadingReport, error) {
 		       COALESCE(SUM("duration"), 0),
 		       COUNT(*),
 		       COUNT(DISTINCT "comicId")
-		FROM "ReadingSession"
-		WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
+		FROM "ReadingSession" rs
+		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter+`
 		GROUP BY month ORDER BY month
-	`, startDate, endDate)
+	`, queryArgs()...)
 	if err != nil {
 		return nil, err
 	}
@@ -710,11 +889,11 @@ func GetYearlyReadingReport(year int) (*YearlyReadingReport, error) {
 		       SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
 		LEFT JOIN "Comic" c ON c."id" = rs."comicId"
-		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0
+		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter+`
 		GROUP BY rs."comicId"
 		ORDER BY SUM(rs."duration") DESC
 		LIMIT 10
-	`, startDate, endDate)
+	`, queryArgs()...)
 	if err != nil {
 		return nil, err
 	}
@@ -737,10 +916,10 @@ func GetYearlyReadingReport(year int) (*YearlyReadingReport, error) {
 		       COALESCE(SUM(rs."duration"), 0)
 		FROM "ReadingSession" rs
 		LEFT JOIN "Comic" c ON c."id" = rs."comicId"
-		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0
+		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter+`
 		GROUP BY c."genre"
 		ORDER BY SUM(rs."duration") DESC
-	`, startDate, endDate)
+	`, queryArgs()...)
 	if err != nil {
 		return nil, err
 	}

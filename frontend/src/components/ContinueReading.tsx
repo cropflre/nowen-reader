@@ -8,7 +8,7 @@ import NSFWCoverGuard from "@/components/NSFWCoverGuard";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import { isNSFW } from "@/lib/nsfw";
 import { useTranslation } from "@/lib/i18n";
-import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { calculateReadingProgress, getReadingPageNumber, isReadingFinished } from "@/lib/progress";
 import { LIBRARY_ACCESS_CHANGED_EVENT } from "@/hooks/useComics";
 import type { ApiComic } from "@/hooks/useComics";
 
@@ -119,7 +119,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
       const comics = all.filter(
         (c: ApiComic) =>
           !!c.lastReadAt &&
-          (c.pageCount === 0 || c.lastReadPage < c.pageCount)
+          !isReadingFinished(c.lastReadPage, c.pageCount)
       );
       setRecentComics(comics.slice(0, 8));
     } catch {
@@ -356,7 +356,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                             <Clock className="h-3 w-3" />
                             <span>{formatTime(comic.lastReadAt!)}</span>
                             {comic.pageCount > 0 && (
-                              <span className="ml-auto">{comic.lastReadPage + 1}/{comic.pageCount} {t.dashboard?.pages || "页"}</span>
+                              <span className="ml-auto">{getReadingPageNumber(comic.lastReadPage, comic.pageCount)}/{comic.pageCount} {t.dashboard?.pages || "页"}</span>
                             )}
                           </div>
                           <div className="mt-3 flex items-center gap-2 text-xs font-medium text-accent">

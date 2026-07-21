@@ -1,6 +1,8 @@
 package store
 
 import (
+	"database/sql"
+	"path/filepath"
 	"testing"
 )
 
@@ -25,6 +27,54 @@ func TestRunMigrations(t *testing.T) {
 	}
 	if count != len(Migrations) {
 		t.Errorf("Expected %d migrations recorded, got %d", len(Migrations), count)
+	}
+}
+
+func TestReadingActivityMigrationUpgradesLegacyDatabase(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	legacyDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`CREATE TABLE "ReadingSession" (
+		"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+		"comicId" TEXT NOT NULL,
+		"userId" TEXT NOT NULL DEFAULT '',
+		"startedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		"endedAt" DATETIME,
+		"duration" INTEGER NOT NULL DEFAULT 0,
+		"startPage" INTEGER NOT NULL DEFAULT 0,
+		"endPage" INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacyDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB legacy database failed: %v", err)
+	}
+	t.Cleanup(CloseDB)
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations legacy database failed: %v", err)
+	}
+
+	for _, column := range []string{"clientSessionId", "lastActiveAt", "lastSequence"} {
+		var count int
+		if err := DB().QueryRow(`SELECT COUNT(*) FROM pragma_table_info('ReadingSession') WHERE name = ?`, column).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("missing migrated ReadingSession column %s", column)
+		}
+	}
+	var indexCount int
+	if err := DB().QueryRow(`SELECT COUNT(*) FROM pragma_index_list('ReadingSession') WHERE name = 'ReadingSession_user_client_key'`).Scan(&indexCount); err != nil {
+		t.Fatal(err)
+	}
+	if indexCount != 1 {
+		t.Fatal("missing migrated reading activity unique index")
 	}
 }
 

@@ -340,6 +340,7 @@ GET /api/comics?readingStatus=finished
 |:---|:---|:---|
 | GET | `/api/stats` | 阅读统计 |
 | GET | `/api/stats/yearly` | 年度阅读报告 |
+| POST | `/api/reading/:id/activity` | 幂等记录阅读进度与活跃时长（推荐）🔒 |
 | POST | `/api/stats/session` | 开始阅读会话 |
 | PUT | `/api/stats/session` | 结束阅读会话 |
 | POST | `/api/stats/session/end` | 结束会话（sendBeacon 兜底） |
@@ -352,6 +353,32 @@ GET /api/comics?readingStatus=finished
 | GET | `/api/export/json` | JSON 全量导出 |
 | GET | `/api/export/csv/sessions` | CSV 会话导出 |
 | GET | `/api/export/csv/comics` | CSV 漫画列表导出 |
+
+### 记录阅读活动
+
+```http
+POST /api/reading/:id/activity
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "clientSessionId": "每次打开阅读器生成的唯一 ID",
+  "page": 19,
+  "totalPages": 190,
+  "activeSeconds": 30,
+  "sequence": 3,
+  "finalize": false,
+  "trackProgress": true
+}
+```
+
+- `page` 使用从 `0` 开始的索引，服务端会按作品实际页数或章节数限制范围。
+- `activeSeconds` 是本次客户端会话累计的有效阅读秒数，不是本次请求新增的秒数。页面不可见或应用进入后台时客户端应停止累计。
+- `sequence` 在同一 `clientSessionId` 内单调递增。重复或乱序请求不会重复累计时长，也不会让阅读进度倒退。
+- `finalize=true` 表示客户端主动结束本次会话；即使结束请求丢失，之前的心跳仍会保留已有时长和进度。
+- `trackProgress=false` 时只记录阅读时长，不修改当前用户的阅读进度。
+- 同一用户的 `clientSessionId` 必须只属于一个作品。接口需要当前用户拥有该作品所在书库的查看权限。
+- 成功返回 `{"success": true}`。旧的 `/api/stats/session` 开始/结束接口继续保留用于兼容旧客户端，新客户端应使用本接口。
 
 ## 📡 OPDS & 推荐 & 其他
 

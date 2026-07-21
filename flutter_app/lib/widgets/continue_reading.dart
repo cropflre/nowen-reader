@@ -41,11 +41,7 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
       );
       final comics = ((data['comics'] as List<dynamic>?) ?? [])
           .map((e) => Comic.fromJson(e))
-          .where((c) =>
-              c.lastReadAt != null &&
-              c.lastReadAt!.isNotEmpty &&
-              c.lastReadPage > 0 &&
-              (c.pageCount == 0 || c.lastReadPage < c.pageCount - 1))
+          .where((c) => c.hasReadingProgress && !c.isFinished)
           .take(8)
           .toList();
       if (mounted) {
@@ -215,9 +211,7 @@ class _ContinueReadingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final progress = comic.pageCount > 0
-        ? ((comic.lastReadPage + 1) / comic.pageCount * 100).round().clamp(0, 100)
-        : 0;
+    final progress = comic.pageCount > 0 ? comic.progress : 0;
     final thumbUrl = getImageUrl(serverUrl, comic.id, thumbnail: true);
 
     return PressableScale(
@@ -283,8 +277,8 @@ class _ContinueReadingCard extends StatelessWidget {
                                 children: [
                                   Text(
                                     comic.pageCount > 0
-                                        ? '${comic.lastReadPage + 1}/${comic.pageCount}'
-                                        : '${comic.lastReadPage + 1}',
+                                        ? '${comic.displayPage}/${comic.pageCount}'
+                                        : '${comic.displayPage}',
                                     style: const TextStyle(
                                       color: Colors.white60,
                                       fontSize: 9,

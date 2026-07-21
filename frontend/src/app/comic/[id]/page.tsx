@@ -23,7 +23,7 @@ import {
 } from "@/hooks/useComics";
 import type { ComicMetadataUpdate } from "@/hooks/useComics";
 import { useAuth } from "@/lib/auth-context";
-import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { calculateReadingProgress, getReadingPageNumber, isReadingFinished } from "@/lib/progress";
 import {
   ArrowLeft,
   Heart,
@@ -1030,7 +1030,7 @@ export default function ComicDetailPage() {
               className="motion-button flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-medium text-white transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/25 btn-press"
             >
               <Play className="h-4 w-4" />
-              {comic.lastReadPage > 0 ? t.comicDetail.continueReading.replace("{page}", String(comic.lastReadPage + 1)) : t.comicDetail.startReading}
+              {comic.lastReadAt ? t.comicDetail.continueReading.replace("{page}", String(getReadingPageNumber(comic.lastReadPage, comic.pageCount))) : t.comicDetail.startReading}
             </Link>
 
             {/* Delete */}

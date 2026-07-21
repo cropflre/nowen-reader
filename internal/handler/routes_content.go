@@ -56,7 +56,12 @@ func registerContentRoutes(api *gin.RouterGroup) {
 		statsRead.GET("/enhanced", stats.GetEnhancedStats)
 		statsRead.POST("/session", stats.StartSession)
 		statsRead.PUT("/session", stats.EndSession)
-		statsRead.POST("/session/end", stats.EndSession) // sendBeacon 兆底
+		statsRead.POST("/session/end", stats.EndSession) // sendBeacon 兜底
+	}
+	readingActivity := api.Group("/reading")
+	readingActivity.Use(middleware.AuthRequired())
+	{
+		readingActivity.POST("/:id/activity", stats.RecordActivity)
 	}
 
 	// 管理员专用统计（文件统计、文件夹树）

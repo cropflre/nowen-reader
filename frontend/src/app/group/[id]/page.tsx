@@ -710,7 +710,7 @@ export default function GroupDetailPage() {  const params = useParams();
 
   // 查找继续阅读的卷
   const continueVolume = group?.comics.find(
-    (c) => c.lastReadPage > 0 && c.lastReadPage < c.pageCount
+    (c) => !!c.lastReadAt && !isReadingFinished(c.lastReadPage, c.pageCount)
   );
 
   if (loading) {

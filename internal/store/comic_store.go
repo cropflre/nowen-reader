@@ -40,7 +40,7 @@ func PathToID(libraryID string, relativePath string) string {
 		newHash := md5.Sum([]byte(libraryID + ":" + relativePath))
 		return fmt.Sprintf("%x", newHash)[:12]
 	}
-	
+
 	// fallback
 	newHash := md5.Sum([]byte(relativePath))
 	return fmt.Sprintf("%x", newHash)[:12]
@@ -207,34 +207,55 @@ func UpdateReadingProgress(comicID string, page int, totalPages int, userID ...s
 	if actualTotalPages <= 0 {
 		_ = db.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&actualTotalPages)
 	}
+	page = normalizePageIndex(page, actualTotalPages)
 
-	status := ""
-	if page > 0 {
-		if actualTotalPages > 0 && page >= actualTotalPages {
-			status = "finished"
-		} else {
-			status = "reading"
-		}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := updateReadingProgressTx(tx, comicID, uid, page, actualTotalPages, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func updateReadingProgressTx(tx *sql.Tx, comicID, userID string, page, totalPages int, now time.Time) error {
+	status := "reading"
+	if totalPages > 0 && page >= totalPages-1 {
+		status = "finished"
 	}
 
 	// 始终更新 Comic 表（全局默认值 / 向后兼容）
-	_, err := db.Exec(`
+	if _, err := tx.Exec(`
 		UPDATE "Comic" SET "lastReadPage" = ?, "lastReadAt" = ?, "readingStatus" = ?, "updatedAt" = ?
 		WHERE "id" = ?
-	`, page, now, status, now, comicID)
-	if err != nil {
+	`, page, now, status, now, comicID); err != nil {
 		return err
 	}
 
 	// 更新 UserComicState
-	if uid != "" {
-		_, err = db.Exec(`
+	if userID != "" {
+		if _, err := tx.Exec(`
 			INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "readingStatus")
 			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadPage" = ?, "lastReadAt" = ?, "readingStatus" = ?
-		`, uid, comicID, page, now, status, page, now, status)
+		`, userID, comicID, page, now, status, page, now, status); err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
+}
+
+func normalizePageIndex(page, totalPages int) int {
+	if page < 0 {
+		return 0
+	}
+	if totalPages > 0 && page >= totalPages {
+		return totalPages - 1
+	}
+	return page
 }
 
 // ToggleFavorite 切换收藏状态，返回新状态。
@@ -244,17 +265,14 @@ func ToggleFavorite(comicID string, userID ...string) (bool, error) {
 		uid = userID[0]
 	}
 
-	// 如果有 userID，优先从 UserComicState 读取当前状态
-	// 如果 UserComicState 没有记录，则从 Comic 表读取
+	// 用户收藏是独立状态；没有用户记录时默认为未收藏。
 	var current int
 	if uid != "" {
 		err := db.QueryRow(`SELECT COALESCE("isFavorite", 0) FROM "UserComicState" WHERE "userId" = ? AND "comicId" = ?`, uid, comicID).Scan(&current)
-		if err != nil {
-			// UserComicState 没有记录，从 Comic 表读取
-			err = db.QueryRow(`SELECT "isFavorite" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&current)
-			if err != nil {
-				current = 0 // 都不存在则默认未收藏
-			}
+		if err == sql.ErrNoRows {
+			current = 0
+		} else if err != nil {
+			return false, err
 		}
 	} else {
 		err := db.QueryRow(`SELECT "isFavorite" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&current)
@@ -317,10 +335,19 @@ func UpdateRating(comicID string, rating *int, userID ...string) error {
 func SetUserReadingStatus(userID, comicID, status string) error {
 	if status == "finished" {
 		var pageCount int
-		err := db.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&pageCount)
-		if err == nil && pageCount > 0 {
-			// Update global and user progress for backward compatibility
-			_ = UpdateReadingProgress(comicID, pageCount, pageCount, userID)
+		if err := db.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&pageCount); err != nil {
+			return err
+		}
+		if pageCount > 0 {
+			now := time.Now().UTC()
+			lastPage := pageCount - 1
+			_, err := db.Exec(`
+				INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "readingStatus")
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT("userId", "comicId") DO UPDATE SET
+					"lastReadPage" = ?, "lastReadAt" = ?, "readingStatus" = ?
+			`, userID, comicID, lastPage, now, status, lastPage, now, status)
+			return err
 		}
 	}
 

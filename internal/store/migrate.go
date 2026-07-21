@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -430,6 +431,78 @@ var Migrations = []Migration{
 			`CREATE TRIGGER IF NOT EXISTS "Comic_titleSortKey_au" AFTER UPDATE OF "title" ON "Comic" BEGIN UPDATE "Comic" SET "titleSortKey" = title_sort_key(new."title") WHERE "id" = new."id"; END;`,
 		}, "\n"),
 	},
+	{
+		Version:     35,
+		Description: "Normalize zero-based reading progress indexes",
+		SQL: strings.Join([]string{
+			`UPDATE "Comic" SET "lastReadPage" = 0 WHERE "lastReadPage" < 0;`,
+			`UPDATE "Comic" SET "lastReadPage" = "pageCount" - 1 WHERE "pageCount" > 0 AND "lastReadPage" >= "pageCount";`,
+			`UPDATE "UserComicState" SET "lastReadPage" = 0 WHERE "lastReadPage" < 0;`,
+			`UPDATE "UserComicState"
+			 SET "lastReadPage" = (SELECT c."pageCount" - 1 FROM "Comic" c WHERE c."id" = "UserComicState"."comicId")
+			 WHERE EXISTS (
+				 SELECT 1 FROM "Comic" c
+				 WHERE c."id" = "UserComicState"."comicId" AND c."pageCount" > 0
+				   AND "UserComicState"."lastReadPage" >= c."pageCount"
+			 );`,
+			`UPDATE "ReadingSession" SET "startPage" = 0 WHERE "startPage" < 0;`,
+			`UPDATE "ReadingSession" SET "endPage" = 0 WHERE "endPage" < 0;`,
+			`UPDATE "ReadingSession" SET "duration" = 0 WHERE "duration" < 0;`,
+			`UPDATE "ReadingSession"
+			 SET "startPage" = (SELECT c."pageCount" - 1 FROM "Comic" c WHERE c."id" = "ReadingSession"."comicId")
+			 WHERE EXISTS (
+				 SELECT 1 FROM "Comic" c
+				 WHERE c."id" = "ReadingSession"."comicId" AND c."pageCount" > 0
+				   AND "ReadingSession"."startPage" >= c."pageCount"
+			 );`,
+			`UPDATE "ReadingSession"
+			 SET "endPage" = (SELECT c."pageCount" - 1 FROM "Comic" c WHERE c."id" = "ReadingSession"."comicId")
+			 WHERE EXISTS (
+				 SELECT 1 FROM "Comic" c
+				 WHERE c."id" = "ReadingSession"."comicId" AND c."pageCount" > 0
+				   AND "ReadingSession"."endPage" >= c."pageCount"
+			 );`,
+			`UPDATE "UserComicState"
+			 SET "totalReadTime" = (
+				 SELECT COALESCE(SUM(rs."duration"), 0) FROM "ReadingSession" rs
+				 WHERE rs."userId" = "UserComicState"."userId" AND rs."comicId" = "UserComicState"."comicId"
+			 )
+			 WHERE EXISTS (
+				 SELECT 1 FROM "ReadingSession" rs
+				 WHERE rs."userId" = "UserComicState"."userId" AND rs."comicId" = "UserComicState"."comicId"
+			 );`,
+			`UPDATE "Comic"
+			 SET "totalReadTime" = (
+				 SELECT COALESCE(SUM(rs."duration"), 0) FROM "ReadingSession" rs
+				 WHERE rs."comicId" = "Comic"."id"
+			 )
+			 WHERE EXISTS (SELECT 1 FROM "ReadingSession" rs WHERE rs."comicId" = "Comic"."id");`,
+			`UPDATE "Comic" SET "readingStatus" = 'finished'
+			 WHERE "readingStatus" IN ('', 'reading') AND "lastReadAt" IS NOT NULL AND "pageCount" > 0
+			   AND "lastReadPage" >= "pageCount" - 1;`,
+			`UPDATE "UserComicState" SET "readingStatus" = 'finished'
+			 WHERE "readingStatus" IN ('', 'reading') AND "lastReadAt" IS NOT NULL
+			   AND EXISTS (
+				 SELECT 1 FROM "Comic" c
+				 WHERE c."id" = "UserComicState"."comicId" AND c."pageCount" > 0
+				   AND "UserComicState"."lastReadPage" >= c."pageCount" - 1
+			 );`,
+		}, "\n"),
+	},
+	{
+		Version:     36,
+		Description: "Add idempotent reading activity heartbeat fields",
+		SQL: strings.Join([]string{
+			`ALTER TABLE "ReadingSession" ADD COLUMN "clientSessionId" TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE "ReadingSession" ADD COLUMN "lastActiveAt" DATETIME;`,
+			`ALTER TABLE "ReadingSession" ADD COLUMN "lastSequence" INTEGER NOT NULL DEFAULT 0;`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS "ReadingSession_user_client_key"
+			 ON "ReadingSession"("userId", "clientSessionId") WHERE "clientSessionId" != '';`,
+			`UPDATE "ReadingSession" SET "endPage" = "startPage"
+			 WHERE "endedAt" IS NOT NULL AND "duration" > 0 AND "startPage" > 0 AND "endPage" = 0;`,
+			`DELETE FROM "ReadingSession" WHERE "endedAt" IS NULL AND "duration" = 0;`,
+		}, "\n"),
+	},
 }
 
 // ensureMigrationsTable creates the migrations tracking table.
@@ -472,6 +545,10 @@ func RunMigrations() error {
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %w", err)
 	}
+
+	sort.SliceStable(Migrations, func(i, j int) bool {
+		return Migrations[i].Version < Migrations[j].Version
+	})
 
 	for _, m := range Migrations {
 		if applied[m.Version] {

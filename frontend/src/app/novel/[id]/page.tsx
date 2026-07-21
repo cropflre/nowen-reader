@@ -5,15 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useComicPages,
   useComicDetail,
-  saveReadingProgress,
   toggleComicFavorite,
   updateComicRating,
   addComicTags,
   removeComicTag,
   clearAllComicTags,
-  startSession,
-  endSession,
-  endSessionBeacon,
 } from "@/hooks/useComics";
 import TextReaderView from "@/components/reader/TextReaderView";
 import NovelToolbar from "@/components/reader/NovelToolbar";
@@ -25,6 +21,7 @@ import { useTheme } from "@/lib/theme-context";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import AIChatPanel from "@/components/reader/AIChatPanel";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { useReadingActivity } from "@/hooks/useReadingActivity";
 
 export default function NovelReaderPage() {
   const params = useParams();
@@ -106,12 +103,17 @@ export default function NovelReaderPage() {
     return () => window.removeEventListener('novel-theme-change', handleThemeChange);
   }, []);
 
-  // Debounced progress save ref
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Reading session tracking
-  const sessionIdRef = useRef<number | null>(null);
-  const sessionStartTimeRef = useRef<number>(Date.now());
+  const [activityReadyComicID, setActivityReadyComicID] = useState("");
+  const { finish: finishReadingActivity } = useReadingActivity({
+    comicId,
+    enabled: activityReadyComicID === comicId && totalChapters > 0,
+    page: currentPage,
+    totalPages: totalChapters,
+  });
+  const handleBack = useCallback(async () => {
+    await finishReadingActivity();
+    router.back();
+  }, [finishReadingActivity, router]);
 
   // Restore reading progress when comic detail loads
   useEffect(() => {
@@ -121,70 +123,9 @@ export default function NovelReaderPage() {
       }
       setIsFavorite(comicDetail.isFavorite);
       setRating(comicDetail.rating || 0);
+      setActivityReadyComicID(comicId);
     }
-  }, [comicDetail, totalChapters]);
-
-  // Start reading session
-  useEffect(() => {
-    if (totalChapters === 0) return;
-
-    sessionStartTimeRef.current = Date.now();
-    startSession(comicId, currentPage).then((id) => {
-      if (id) sessionIdRef.current = id;
-    });
-
-    return () => {
-      if (sessionIdRef.current) {
-        const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
-        if (duration > 2) {
-          endSession(sessionIdRef.current, currentPage, duration);
-        }
-        sessionIdRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comicId, totalChapters > 0]);
-
-  // beforeunload 兜底：浏览器崩溃/强制关闭时用 sendBeacon 保存会话
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (sessionIdRef.current) {
-        const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
-        if (duration > 2) {
-          endSessionBeacon(sessionIdRef.current, currentPage, duration);
-        }
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  });
-
-  // Save progress on chapter change (debounced)
-  useEffect(() => {
-    if (totalChapters === 0) return;
-
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-
-    saveTimerRef.current = setTimeout(() => {
-      saveReadingProgress(comicId, currentPage);
-    }, 1000);
-
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [currentPage, comicId, totalChapters]);
-
-  // Save progress on unmount
-  useEffect(() => {
-    return () => {
-      if (totalChapters > 0) {
-        saveReadingProgress(comicId, currentPage);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [comicDetail, comicId, totalChapters]);
 
   // 获取当前章节文本（用于 AI Chat 上下文）
   useEffect(() => {
@@ -240,7 +181,7 @@ export default function NovelReaderPage() {
         if (isFullscreen) {
           document.exitFullscreen?.();
         } else {
-          router.back();
+          void handleBack();
         }
       } else if (e.key === "f") {
         toggleFullscreen();
@@ -248,7 +189,7 @@ export default function NovelReaderPage() {
         setShowInfoPanel((v) => !v);
       }
     },
-    [isFullscreen, router, showInfoPanel]
+    [handleBack, isFullscreen, showInfoPanel]
   );
 
   useEffect(() => {
@@ -292,11 +233,11 @@ export default function NovelReaderPage() {
         return;
       }
       // 否则返回上一页
-      router.back();
+      void handleBack();
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [router, showTOC, showSettingsPanel, showInfoPanel]);
+  }, [handleBack, showTOC, showSettingsPanel, showInfoPanel]);
 
   const handleTapCenter = useCallback(() => {
     setToolbarVisible((v) => !v);
@@ -434,7 +375,7 @@ export default function NovelReaderPage() {
         totalChapters={totalChapters}
         isFullscreen={isFullscreen}
         readerTheme={readerTheme}
-        onBack={() => router.back()}
+        onBack={() => { void handleBack(); }}
         onChapterChange={handlePageChange}
         onToggleFullscreen={toggleFullscreen}
         onThemeChange={setReaderTheme}

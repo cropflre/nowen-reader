@@ -11,6 +11,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/services/reading_activity_tracker.dart';
 
 /// PDF 阅读器 — 基于 pdfrx（PDFium），支持全平台
 class PdfReaderScreen extends ConsumerStatefulWidget {
@@ -37,11 +38,8 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
 
   late final PdfViewerController _pdfController;
 
-  // 阅读会话
-  int? _sessionId;
-  DateTime? _sessionStart;
-  bool _sessionEnded = false;
   late final ComicApi _api;
+  late final ReadingActivityTracker _activity;
 
   @override
   void initState() {
@@ -49,6 +47,7 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     _currentPage = widget.initialPage;
     _pdfController = PdfViewerController();
     _api = ref.read(comicApiProvider);
+    _activity = ReadingActivityTracker(api: _api, comicId: widget.comicId);
     // 全屏沉浸模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _downloadAndOpen();
@@ -57,8 +56,7 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    _saveProgressDirect();
-    _endSessionDirect();
+    _activity.dispose();
     super.dispose();
   }
 
@@ -78,7 +76,6 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
             _localPath = localFile.path;
             _loading = false;
           });
-          _startSession();
         }
         return;
       }
@@ -101,7 +98,6 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
           _localPath = localFile.path;
           _loading = false;
         });
-        _startSession();
       }
     } catch (e) {
       if (mounted) {
@@ -113,42 +109,8 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     }
   }
 
-  Future<void> _startSession() async {
-    try {
-      _sessionId = await _api.startSession(widget.comicId, _currentPage);
-      _sessionStart = DateTime.now();
-    } catch (_) {}
-  }
-
-  Future<void> _endSession() async {
-    if (_sessionId == null || _sessionStart == null || _sessionEnded) return;
-    _sessionEnded = true;
-    final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    try {
-      await _api.endSession(_sessionId!, _currentPage, duration);
-    } catch (_) {}
-  }
-
-  void _endSessionDirect() {
-    if (_sessionId == null || _sessionStart == null || _sessionEnded) return;
-    _sessionEnded = true;
-    final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    _api.endSession(_sessionId!, _currentPage, duration);
-  }
-
-  Future<void> _saveProgress() async {
-    try {
-      await _api.updateProgress(widget.comicId, _currentPage);
-    } catch (_) {}
-  }
-
-  void _saveProgressDirect() {
-    _api.updateProgress(widget.comicId, _currentPage);
-  }
-
   Future<void> _onWillPop() async {
-    await _saveProgress();
-    await _endSession();
+    await _activity.finish();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -234,14 +196,14 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
                 onPageChanged: (pageNumber) {
                   if (pageNumber != null) {
                     setState(() => _currentPage = pageNumber - 1);
-                    // 每5页保存一次进度
-                    if (_currentPage % 5 == 0) _saveProgress();
+                    _activity.updatePage(_currentPage, _totalPages);
                   }
                 },
                 onViewerReady: (document, controller) {
                   setState(() {
                     _totalPages = document.pages.length;
                   });
+                  _activity.start(_currentPage, _totalPages);
                 },
                 onGeneralTap: (context, controller, details) {
                   _toggleOverlay();

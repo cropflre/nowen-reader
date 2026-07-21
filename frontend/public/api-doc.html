@@ -2165,7 +2165,7 @@
     </div>
 
     <div id="endpoints-stats" class="endpoint-group">
-    <h2 class="group-title"><span data-en="7. Stats" data-zh="7. 统计">7. Stats</span> <span class="group-badge"><span data-en="7 endpoints" data-zh="7 个接口">7 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="7. Stats" data-zh="7. 统计">7. Stats</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/stats Get overall reading stats" id="get-api-stats">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2288,6 +2288,46 @@
   </div>
 </div>
 
+<div class="endpoint auth-required" data-search="POST /api/reading/:id/activity Record reading activity heartbeat 记录阅读活动心跳" id="post-api-reading-id-activity">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/reading/:id/activity</span>
+    <span class="summary"><span data-en="Record reading activity" data-zh="记录阅读活动">Record reading activity</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Idempotently records the current user's progress and cumulative active reading time. This is the recommended endpoint for new readers." data-zh="幂等记录当前用户的阅读进度和累计有效阅读时长。新阅读器推荐使用此接口。">Idempotently records the current user's progress and cumulative active reading time. This is the recommended endpoint for new readers.</span></p>
+
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody>
+        <tr><td>id</td><td>string</td><td>Yes</td><td><span data-en="Comic or novel ID. The current user must have view access to its library." data-zh="漫画或小说 ID，当前用户必须拥有所在书库的查看权限。">Comic or novel ID. The current user must have view access to its library.</span></td></tr>
+      </tbody>
+    </table>
+
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{
+  "clientSessionId": "unique-per-reader-open (required)",
+  "page": 19,
+  "totalPages": 190,
+  "activeSeconds": 30,
+  "sequence": 3,
+  "finalize": false,
+  "trackProgress": true
+}</code></pre>
+    <p class="description"><span data-en="page is zero-based. activeSeconds is cumulative for this client session, and sequence must increase monotonically. Duplicate or out-of-order requests do not double-count time or move progress backwards. Set trackProgress to false to record time only." data-zh="page 从 0 开始。activeSeconds 是本次客户端会话的累计秒数，sequence 必须单调递增。重复或乱序请求不会重复累计，也不会让进度倒退。trackProgress=false 时只记录时长。">page is zero-based. activeSeconds is cumulative for this client session, and sequence must increase monotonically. Duplicate or out-of-order requests do not double-count time or move progress backwards. Set trackProgress to false to record time only.</span></p>
+
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "success": true
+}</code></pre>
+
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+    </div>
+  </div>
+</div>
+
 <div class="endpoint auth-required" data-search="POST /api/stats/session Start a reading session" id="post-api-stats-session">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
@@ -2295,7 +2335,7 @@
     <span class="summary"><span data-en="Start a reading session" data-zh="开始阅读会话">Start a reading session</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Creates and starts a new reading session for a comic." data-zh="为漫画创建并开始新的阅读会话。">Creates and starts a new reading session for a comic.</span></p>
+    <p class="description"><span data-en="Creates and starts a legacy reading session. Retained for compatibility; new clients should use POST /api/reading/:id/activity." data-zh="创建旧版阅读会话。该接口为兼容旧客户端保留；新客户端应使用 POST /api/reading/:id/activity。">Creates and starts a legacy reading session. Retained for compatibility; new clients should use POST /api/reading/:id/activity.</span></p>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
@@ -2321,7 +2361,7 @@
     <span class="summary"><span data-en="Update a reading session" data-zh="更新阅读会话">Update a reading session</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Updates an active reading session with end page and duration. Also available as POST /api/stats/session/sendBeacon fallback." data-zh="更新活动阅读会话的结束页和持续时间。也可通过POST /api/stats/session/sendBeacon备用接口调用。">Updates an active reading session with end page and duration. Also available as POST /api/stats/session/sendBeacon fallback.</span></p>
+    <p class="description"><span data-en="Ends a legacy reading session with its final page and duration. POST /api/stats/session/end is the sendBeacon fallback." data-zh="使用最终页码和持续时间结束旧版阅读会话。POST /api/stats/session/end 是 sendBeacon 兜底接口。">Ends a legacy reading session with its final page and duration. POST /api/stats/session/end is the sendBeacon fallback.</span></p>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{

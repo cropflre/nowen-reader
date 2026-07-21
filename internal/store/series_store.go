@@ -292,16 +292,16 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 	if userID != "" {
 		userJoin = `LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?`
 		userArgs = append(userArgs, userID)
-		stateLastRead = `COALESCE(ucs."lastReadAt", c."lastReadAt")`
-		stateFavorite = `COALESCE(ucs."isFavorite", c."isFavorite")`
-		statePage = `COALESCE(ucs."lastReadPage", c."lastReadPage")`
-		stateStatus = `COALESCE(NULLIF(ucs."readingStatus", ''), c."readingStatus")`
-		stateReadTime = `COALESCE(ucs."totalReadTime", c."totalReadTime")`
+		stateLastRead = `ucs."lastReadAt"`
+		stateFavorite = `COALESCE(ucs."isFavorite", 0)`
+		statePage = `COALESCE(ucs."lastReadPage", 0)`
+		stateStatus = `COALESCE(ucs."readingStatus", '')`
+		stateReadTime = `COALESCE(ucs."totalReadTime", 0)`
 	}
 	query := fmt.Sprintf(`
 		SELECT s."id", s."libraryId", s."rootRelativePath", s."title", s."sortTitle", s."coverComicId", s."manualLocked",
 		       COUNT(DISTINCT si."comicId"), COUNT(DISTINCT sec."id"),
-		       SUM(CASE WHEN %s = 'finished' OR (c."pageCount" > 0 AND %s >= c."pageCount") THEN 1 ELSE 0 END),
+		       SUM(CASE WHEN %s = 'finished' OR (c."pageCount" > 0 AND %s IS NOT NULL AND %s >= c."pageCount" - 1) THEN 1 ELSE 0 END),
 		       COALESCE(SUM(%s), 0), COALESCE(SUM(c."fileSize"), 0), MAX(%s), MAX(%s),
 		       s."createdAt", s."updatedAt"
 		FROM "ComicSeries" s
@@ -311,7 +311,7 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		%s
 		WHERE s."id" = ?
 		GROUP BY s."id"
-	`, stateStatus, statePage, stateReadTime, stateLastRead, stateFavorite, userJoin)
+	`, stateStatus, stateLastRead, statePage, stateReadTime, stateLastRead, stateFavorite, userJoin)
 	args := append(userArgs, id)
 	var summary SeriesSummary
 	var lastRead sql.NullString

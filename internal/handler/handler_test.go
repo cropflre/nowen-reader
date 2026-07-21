@@ -430,6 +430,28 @@ func TestStatsEndpoints(t *testing.T) {
 	}
 	store.BulkCreateComics(comics)
 
+	// Unified activity endpoint accepts cumulative heartbeats and rejects an invalid sequence.
+	w = performAuthedRequest(r, "POST", "/api/reading/stats-comic-1/activity", map[string]interface{}{
+		"clientSessionId": "handler-activity-session",
+		"page":            2,
+		"totalPages":      20,
+		"activeSeconds":   5,
+		"sequence":        1,
+	}, cookie)
+	if w.Code != http.StatusOK {
+		t.Errorf("Record activity failed with status %d: %s", w.Code, w.Body.String())
+	}
+	w = performAuthedRequest(r, "POST", "/api/reading/stats-comic-1/activity", map[string]interface{}{
+		"clientSessionId": "invalid-sequence",
+		"page":            2,
+		"totalPages":      20,
+		"activeSeconds":   5,
+		"sequence":        0,
+	}, cookie)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Invalid activity sequence returned status %d", w.Code)
+	}
+
 	// Start session
 	w = performAuthedRequest(r, "POST", "/api/stats/session", map[string]interface{}{
 		"comicId":   "stats-comic-1",

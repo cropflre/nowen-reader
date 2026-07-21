@@ -126,12 +126,12 @@ func GetReadingGoalProgress(goalType string, userID ...string) (*ReadingGoalProg
 	if uid != "" {
 		err = db.QueryRow(`
 			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ? AND "userId" = ?
+			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0 AND "userId" = ?
 		`, pStart, pEnd, uid).Scan(&totalDuration)
 	} else {
 		err = db.QueryRow(`
 			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ?
+			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
 		`, pStart, pEnd).Scan(&totalDuration)
 	}
 	if err != nil {
@@ -143,12 +143,12 @@ func GetReadingGoalProgress(goalType string, userID ...string) (*ReadingGoalProg
 	if uid != "" {
 		err = db.QueryRow(`
 			SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ? AND "userId" = ?
+			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0 AND "userId" = ?
 		`, pStart, pEnd, uid).Scan(&bookCount)
 	} else {
 		err = db.QueryRow(`
 			SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ?
+			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
 		`, pStart, pEnd).Scan(&bookCount)
 	}
 

@@ -5,15 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useComicPages,
   useComicDetail,
-  saveReadingProgress,
   toggleComicFavorite,
   updateComicRating,
   addComicTags,
   removeComicTag,
   clearAllComicTags,
-  startSession,
-  endSession,
-  endSessionBeacon,
 } from "@/hooks/useComics";
 import { ComicReadingMode, ReadingDirection } from "@/types/reader";
 import ReaderToolbar from "@/components/reader/ReaderToolbar";
@@ -37,6 +33,7 @@ import { useCoverAmbientColor } from "@/hooks/useCoverAmbientColor";
 import BookmarkPanel from "@/components/reader/BookmarkPanel";
 import RealisticBookView from "@/components/reader/RealisticBookView";
 import { fetchGroupedComicMap, fetchGroupDetail } from "@/api/groups";
+import { useReadingActivity } from "@/hooks/useReadingActivity";
 
 // 跨卷导航信息
 interface SeriesVolumeInfo {
@@ -177,14 +174,20 @@ export default function ReaderPage() {
     setReaderTheme(globalTheme === "light" ? "day" : "night");
   }, [globalTheme]);
 
-  // Debounced progress save ref
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Reading session tracking
-  const sessionIdRef = useRef<number | null>(null);
-  const sessionStartTimeRef = useRef<number>(Date.now());
-  const sessionStartPageRef = useRef<number>(0);
   const currentPageRef = useRef<number>(0);
+  const [activityReadyComicID, setActivityReadyComicID] = useState("");
+  const { finish: finishReadingActivity } = useReadingActivity({
+    comicId,
+    enabled: activityReadyComicID === comicId && useRealData && pages.length > 0,
+    page: currentPage,
+    totalPages: pages.length,
+    trackProgress: readerOpts.progressTracking,
+  });
+  const finishSessionRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => {
+    finishSessionRef.current = finishReadingActivity;
+    return () => { finishSessionRef.current = null; };
+  }, [finishReadingActivity]);
 
   // Restore reading progress when comic detail loads
   useEffect(() => {
@@ -193,7 +196,6 @@ export default function ReaderPage() {
       if (readerOpts.progressTracking && comicDetail.lastReadPage > 0 && comicDetail.lastReadPage < pages.length) {
         setCurrentPage(comicDetail.lastReadPage);
         currentPageRef.current = comicDetail.lastReadPage;
-        sessionStartPageRef.current = comicDetail.lastReadPage;
       }
       setIsFavorite(comicDetail.isFavorite);
       setRating(comicDetail.rating || 0);
@@ -219,137 +221,9 @@ export default function ReaderPage() {
           }).catch(() => {});
         }
       }).catch(() => {});
+      setActivityReadyComicID(comicId);
     }
-  }, [comicDetail, useRealData, pages.length, readerOpts.progressTracking]);
-
-  // Start reading session
-  useEffect(() => {
-    if (!useRealData || pages.length === 0) return;
-    if (sessionIdRef.current || sessionStartPendingRef.current) return;
-
-    let cancelled = false;
-    sessionStartPendingRef.current = true;
-    sessionStartTimeRef.current = Date.now();
-    const startPage = currentPageRef.current;
-
-    console.debug("[reader] starting session", {
-      comicId,
-      startPage,
-      pagesLength: pages.length,
-    });
-    startSession(comicId, startPage)
-      .then((id) => {
-        if (cancelled) return;
-        if (id) {
-          sessionIdRef.current = id;
-          console.debug("[reader] started session", { sessionId: id });
-        } else {
-          console.warn("[reader] startSession returned null", {
-            comicId,
-            startPage,
-            pagesLength: pages.length,
-          });
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.warn("[reader] startSession failed", {
-          comicId,
-          startPage,
-          pagesLength: pages.length,
-          error,
-        });
-      })
-      .finally(() => {
-        sessionStartPendingRef.current = false;
-      });
-
-    return () => {
-      cancelled = true;
-      // End session on unmount
-      if (sessionIdRef.current) {
-        const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
-        if (duration > 2) {
-          console.debug("[reader] cleanup ending session", {
-            sessionId: sessionIdRef.current,
-            currentPage: currentPageRef.current,
-            duration,
-          });
-          endSession(sessionIdRef.current, currentPageRef.current, duration);
-        }
-        sessionIdRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useRealData, comicId, pages.length]);
-
-  // Finish session helper — called on explicit exit and unmount
-  const sessionEndingRef = useRef(false);
-  const sessionStartPendingRef = useRef(false);
-  const finishSessionRef = useRef<(() => Promise<void>) | null>(null);
-  useEffect(() => {
-    finishSessionRef.current = async () => {
-      if (sessionEndingRef.current) return;
-      if (!sessionIdRef.current) return;
-      const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
-      if (duration > 2) {
-        try {
-          sessionEndingRef.current = true;
-          await endSession(sessionIdRef.current, currentPageRef.current, duration);
-        } catch (error) {
-          console.warn("[reader] finishSession failed", error);
-        } finally {
-          sessionIdRef.current = null;
-          sessionEndingRef.current = false;
-        }
-      } else {
-        sessionIdRef.current = null;
-      }
-    };
-    return () => { finishSessionRef.current = null; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useRealData, comicId]);
-
-  // beforeunload 兜底：浏览器崩溃/强制关闭时用 sendBeacon 保存会话
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (!sessionIdRef.current) return;
-      const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
-      if (duration > 2) {
-        endSessionBeacon(sessionIdRef.current, currentPageRef.current, duration);
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useRealData, comicId]);
-
-  // Save progress on page change (debounced) — 仅在进度跟踪启用时
-  useEffect(() => {
-    if (!useRealData || !readerOpts.progressTracking) return;
-
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-
-    saveTimerRef.current = setTimeout(() => {
-      saveReadingProgress(comicId, currentPage, pages.length);
-    }, 1000);
-
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [currentPage, comicId, useRealData, readerOpts.progressTracking]);
-
-  // Save progress on unmount
-  useEffect(() => {
-    return () => {
-      if (useRealData && readerOpts.progressTracking) {
-        saveReadingProgress(comicId, currentPage, pages.length);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [comicDetail, comicId, useRealData, pages.length, readerOpts.progressTracking]);
 
   // 首次使用手势引导
   useEffect(() => {
@@ -598,12 +472,9 @@ export default function ReaderPage() {
 
   // 跳转到漫画详情页（先保存进度）
   const handleOpenComicDetail = useCallback(async () => {
-    if (useRealData) {
-      saveReadingProgress(comicId, currentPageRef.current, pages.length);
-    }
     await finishSessionRef.current?.();
     router.push(`/comic/${comicId}`);
-  }, [comicId, pages.length, router, useRealData]);
+  }, [comicId, router]);
 
   // 图片 CSS 滤镜
   const imageFilter = useMemo(() => {
@@ -1444,4 +1315,3 @@ export default function ReaderPage() {
     </div>
   );
 }
-
