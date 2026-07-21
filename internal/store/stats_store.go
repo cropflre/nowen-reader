@@ -10,6 +10,7 @@ import (
 // 传入非空 userID 时仅返回该用户的会话统计；传入空串时返回全局统计（管理员/单用户场景向后兼容）。
 func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
+	startedAtExpr := normalizedSQLiteDateTimeExpr(`rs."startedAt"`)
 
 	// 拼接用户过滤条件
 	userCond := ""
@@ -44,7 +45,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
 		WHERE rs."duration" > 0`+userCond+`
-		ORDER BY rs."startedAt" DESC
+		ORDER BY `+startedAtExpr+` DESC
 		LIMIT 50
 	`, recentArgs...)
 	if err == nil {
@@ -77,13 +78,14 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	result["recentSessions"] = recentSessions
 
 	// 每日统计（最近 90 天）
-	ninetyDaysAgo := time.Now().AddDate(0, 0, -90).UTC().Format(time.RFC3339)
+	now := time.Now()
+	ninetyDaysAgo := sqliteUTCDateTime(localDayStart(now).AddDate(0, 0, -90))
 	dailyStats := []map[string]interface{}{}
 	dailyArgs := append([]interface{}{ninetyDaysAgo}, userArgs...)
 	dailyRows, err := db.Query(`
-		SELECT DATE(rs."startedAt") as d, SUM(rs."duration"), COUNT(*)
+		SELECT DATE(`+startedAtExpr+`, 'localtime') as d, SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ? AND rs."duration" > 0`+userCond+`
+		WHERE `+startedAtExpr+` >= ? AND rs."duration" > 0`+userCond+`
 		GROUP BY d
 		ORDER BY d ASC
 	`, dailyArgs...)
@@ -104,14 +106,14 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	result["dailyStats"] = dailyStats
 
 	// 每月统计（最近 12 个月）
-	twelveMonthsAgo := time.Now().AddDate(-1, 0, 0).UTC().Format(time.RFC3339)
+	twelveMonthsAgo := sqliteUTCDateTime(localDayStart(now).AddDate(-1, 0, 0))
 	monthlyStats := []map[string]interface{}{}
 	monthlyArgs := append([]interface{}{twelveMonthsAgo}, userArgs...)
 	monthlyRows, err := db.Query(`
-		SELECT strftime('%Y-%m', rs."startedAt") as m,
+		SELECT strftime('%Y-%m', `+startedAtExpr+`, 'localtime') as m,
 		       SUM(rs."duration"), COUNT(*), COUNT(DISTINCT rs."comicId")
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ? AND rs."duration" > 0`+userCond+`
+		WHERE `+startedAtExpr+` >= ? AND rs."duration" > 0`+userCond+`
 		GROUP BY m
 		ORDER BY m ASC
 	`, monthlyArgs...)
@@ -162,7 +164,7 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 	// 阅读连续天数（streak）
 	var currentStreak, longestStreak int
 	streakRows, err := db.Query(`
-		SELECT DISTINCT DATE(rs."startedAt") as d
+		SELECT DISTINCT DATE(`+startedAtExpr+`, 'localtime') as d
 		FROM "ReadingSession" rs
 		WHERE rs."duration" > 0`+userCond+`
 		ORDER BY d DESC
@@ -178,8 +180,8 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 		}
 
 		if len(dates) > 0 {
-			today := time.Now().UTC().Format("2006-01-02")
-			yesterday := time.Now().AddDate(0, 0, -1).UTC().Format("2006-01-02")
+			today := now.In(time.Local).Format("2006-01-02")
+			yesterday := now.In(time.Local).AddDate(0, 0, -1).Format("2006-01-02")
 
 			// 从最近日期开始算当前连续天数
 			if dates[0] == today || dates[0] == yesterday {
@@ -232,27 +234,26 @@ func GetEnhancedReadingStats(userID ...string) (map[string]interface{}, error) {
 		result["avgPagesPerHour"] = 0
 	}
 
-	// 今日阅读时长
-	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Format(time.RFC3339)
+	// 今日阅读时长（按服务配置的本地时区划分，数据库时间统一按 UTC 比较）
+	todayStartTime := localDayStart(now)
+	todayStart := sqliteUTCDateTime(todayStartTime)
+	tomorrowStart := sqliteUTCDateTime(todayStartTime.AddDate(0, 0, 1))
 	var todayReadTime int
-	todayArgs := append([]interface{}{todayStart}, userArgs...)
+	todayArgs := append([]interface{}{todayStart, tomorrowStart}, userArgs...)
 	db.QueryRow(`
-		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ? AND "duration" > 0`+userCondNoAlias, todayArgs...).Scan(&todayReadTime)
+		SELECT COALESCE(SUM(rs."duration"), 0) FROM "ReadingSession" rs
+		WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0`+userCond, todayArgs...).Scan(&todayReadTime)
 	result["todayReadTime"] = todayReadTime
 
 	// 本周阅读时长
-	now := time.Now().UTC()
-	weekday := int(now.Weekday())
-	if weekday == 0 {
-		weekday = 7
-	}
-	weekStart := now.AddDate(0, 0, -(weekday - 1)).Truncate(24 * time.Hour).Format(time.RFC3339)
+	weekStartTime := localWeekStart(now)
+	weekStart := sqliteUTCDateTime(weekStartTime)
+	nextWeekStart := sqliteUTCDateTime(weekStartTime.AddDate(0, 0, 7))
 	var weekReadTime int
-	weekArgs := append([]interface{}{weekStart}, userArgs...)
+	weekArgs := append([]interface{}{weekStart, nextWeekStart}, userArgs...)
 	db.QueryRow(`
-		SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-		WHERE "startedAt" >= ? AND "duration" > 0`+userCondNoAlias, weekArgs...).Scan(&weekReadTime)
+		SELECT COALESCE(SUM(rs."duration"), 0) FROM "ReadingSession" rs
+		WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0`+userCond, weekArgs...).Scan(&weekReadTime)
 	result["weekReadTime"] = weekReadTime
 
 	return result, nil

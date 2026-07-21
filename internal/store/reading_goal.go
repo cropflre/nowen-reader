@@ -99,39 +99,35 @@ func GetReadingGoalProgress(goalType string, userID ...string) (*ReadingGoalProg
 		return nil, nil
 	}
 
-	now := time.Now().UTC()
+	now := time.Now()
 	var periodStart, periodEnd time.Time
 
 	switch goalType {
 	case "daily":
-		periodStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		periodStart = localDayStart(now)
 		periodEnd = periodStart.AddDate(0, 0, 1)
 	case "weekly":
-		// 本周一开始
-		weekday := int(now.Weekday())
-		if weekday == 0 {
-			weekday = 7
-		}
-		periodStart = time.Date(now.Year(), now.Month(), now.Day()-(weekday-1), 0, 0, 0, 0, time.UTC)
+		periodStart = localWeekStart(now)
 		periodEnd = periodStart.AddDate(0, 0, 7)
 	default:
 		return nil, nil
 	}
 
-	pStart := periodStart.Format("2006-01-02 15:04:05")
-	pEnd := periodEnd.Format("2006-01-02 15:04:05")
+	pStart := sqliteUTCDateTime(periodStart)
+	pEnd := sqliteUTCDateTime(periodEnd)
+	startedAtExpr := normalizedSQLiteDateTimeExpr(`rs."startedAt"`)
 
 	// 查询当前周期内的阅读时长
 	var totalDuration int
 	if uid != "" {
 		err = db.QueryRow(`
-			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0 AND "userId" = ?
+			SELECT COALESCE(SUM(rs."duration"), 0) FROM "ReadingSession" rs
+			WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0 AND rs."userId" = ?
 		`, pStart, pEnd, uid).Scan(&totalDuration)
 	} else {
 		err = db.QueryRow(`
-			SELECT COALESCE(SUM("duration"), 0) FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
+			SELECT COALESCE(SUM(rs."duration"), 0) FROM "ReadingSession" rs
+			WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0
 		`, pStart, pEnd).Scan(&totalDuration)
 	}
 	if err != nil {
@@ -142,13 +138,13 @@ func GetReadingGoalProgress(goalType string, userID ...string) (*ReadingGoalProg
 	var bookCount int
 	if uid != "" {
 		err = db.QueryRow(`
-			SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0 AND "userId" = ?
+			SELECT COUNT(DISTINCT rs."comicId") FROM "ReadingSession" rs
+			WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0 AND rs."userId" = ?
 		`, pStart, pEnd, uid).Scan(&bookCount)
 	} else {
 		err = db.QueryRow(`
-			SELECT COUNT(DISTINCT "comicId") FROM "ReadingSession"
-			WHERE "startedAt" >= ? AND "startedAt" < ? AND "duration" > 0
+			SELECT COUNT(DISTINCT rs."comicId") FROM "ReadingSession" rs
+			WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0
 		`, pStart, pEnd).Scan(&bookCount)
 	}
 

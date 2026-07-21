@@ -284,6 +284,7 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 		RecentSessions: []RecentSessionItem{},
 		DailyStats:     []DailyStatItem{},
 	}
+	startedAtExpr := normalizedSQLiteDateTimeExpr(`rs."startedAt"`)
 
 	uidFilter := ""
 	var args []interface{}
@@ -299,7 +300,7 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 		FROM "ReadingSession" rs
 		JOIN "Comic" c ON rs."comicId" = c."id"
 		WHERE rs."duration" > 0`+uidFilter+`
-		ORDER BY rs."startedAt" DESC
+		ORDER BY `+startedAtExpr+` DESC
 		LIMIT 50
 	`, args...)
 	if err != nil {
@@ -336,7 +337,7 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 		Scan(&result.TotalComicsRead)
 
 	// Daily stats (last 30 days)
-	thirtyDaysAgo := time.Now().AddDate(0, 0, -30).UTC().Format(time.RFC3339)
+	thirtyDaysAgo := sqliteUTCDateTime(localDayStart(time.Now()).AddDate(0, 0, -30))
 	dailyArgs := []interface{}{thirtyDaysAgo}
 	dailyFilter := ""
 	if len(userID) > 0 && userID[0] != "" {
@@ -344,9 +345,9 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 		dailyArgs = append(dailyArgs, userID[0])
 	}
 	dailyRows, err := db.Query(`
-		SELECT DATE(rs."startedAt") as d, SUM(rs."duration"), COUNT(*)
+		SELECT DATE(`+startedAtExpr+`, 'localtime') as d, SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ? AND rs."duration" > 0`+dailyFilter+`
+		WHERE `+startedAtExpr+` >= ? AND rs."duration" > 0`+dailyFilter+`
 		GROUP BY d
 		ORDER BY d ASC
 	`, dailyArgs...)
@@ -365,12 +366,13 @@ func GetReadingStats(userID ...string) (*ReadingStatsResult, error) {
 
 // GetComicReadingHistory 返回单个漫画的最近 20 条阅读会话。
 func GetComicReadingHistory(comicID string) ([]RecentSessionItem, error) {
+	startedAtExpr := normalizedSQLiteDateTimeExpr(`rs."startedAt"`)
 	rows, err := db.Query(`
 		SELECT rs."id", rs."comicId", '' as title, rs."startedAt", rs."endedAt",
 		       rs."duration", rs."startPage", rs."endPage"
 		FROM "ReadingSession" rs
 		WHERE rs."comicId" = ? AND rs."duration" > 0
-		ORDER BY rs."startedAt" DESC
+		ORDER BY `+startedAtExpr+` DESC
 		LIMIT 20
 	`, comicID)
 	if err != nil {
@@ -814,8 +816,9 @@ type GenreDistributionItem struct {
 
 // GetYearlyReadingReport 查询指定年份的阅读统计，可按用户过滤。
 func GetYearlyReadingReport(year int, userID ...string) (*YearlyReadingReport, error) {
-	startDate := fmt.Sprintf("%d-01-01", year)
-	endDate := fmt.Sprintf("%d-01-01", year+1)
+	startDate := sqliteUTCDateTime(time.Date(year, time.January, 1, 0, 0, 0, 0, time.Local))
+	endDate := sqliteUTCDateTime(time.Date(year+1, time.January, 1, 0, 0, 0, 0, time.Local))
+	startedAtExpr := normalizedSQLiteDateTimeExpr(`rs."startedAt"`)
 	uid := ""
 	if len(userID) > 0 {
 		uid = userID[0]
@@ -841,7 +844,7 @@ func GetYearlyReadingReport(year int, userID ...string) (*YearlyReadingReport, e
 		       COUNT(DISTINCT "comicId"),
 		       COALESCE(SUM("endPage" - "startPage"), 0)
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter,
+		WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0`+userFilter,
 		queryArgs()...).Scan(
 		&report.TotalReadTime,
 		&report.TotalSessions,
@@ -854,12 +857,12 @@ func GetYearlyReadingReport(year int, userID ...string) (*YearlyReadingReport, e
 
 	// 2. 月度统计
 	rows, err := db.Query(`
-		SELECT CAST(strftime('%m', "startedAt") AS INTEGER) as month,
+		SELECT CAST(strftime('%m', `+startedAtExpr+`, 'localtime') AS INTEGER) as month,
 		       COALESCE(SUM("duration"), 0),
 		       COUNT(*),
 		       COUNT(DISTINCT "comicId")
 		FROM "ReadingSession" rs
-		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter+`
+		WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0`+userFilter+`
 		GROUP BY month ORDER BY month
 	`, queryArgs()...)
 	if err != nil {
@@ -889,7 +892,7 @@ func GetYearlyReadingReport(year int, userID ...string) (*YearlyReadingReport, e
 		       SUM(rs."duration"), COUNT(*)
 		FROM "ReadingSession" rs
 		LEFT JOIN "Comic" c ON c."id" = rs."comicId"
-		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter+`
+		WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0`+userFilter+`
 		GROUP BY rs."comicId"
 		ORDER BY SUM(rs."duration") DESC
 		LIMIT 10
@@ -916,7 +919,7 @@ func GetYearlyReadingReport(year int, userID ...string) (*YearlyReadingReport, e
 		       COALESCE(SUM(rs."duration"), 0)
 		FROM "ReadingSession" rs
 		LEFT JOIN "Comic" c ON c."id" = rs."comicId"
-		WHERE rs."startedAt" >= ? AND rs."startedAt" < ? AND rs."duration" > 0`+userFilter+`
+		WHERE `+startedAtExpr+` >= ? AND `+startedAtExpr+` < ? AND rs."duration" > 0`+userFilter+`
 		GROUP BY c."genre"
 		ORDER BY SUM(rs."duration") DESC
 	`, queryArgs()...)

@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -173,6 +174,75 @@ func TestRecordReadingActivityIsCumulativeAndSequenceSafe(t *testing.T) {
 	}
 	if userPage != 24 || userTime != 25 || globalTime != 25 {
 		t.Fatalf("activity totals = page:%d user:%d global:%d", userPage, userTime, globalTime)
+	}
+}
+
+func TestReadingStatsHandleMixedSQLiteTimestampFormats(t *testing.T) {
+	setupReadingProgressTest(t)
+	createTestUser(t, "mixed-time-user", "mixed-time-user", "user")
+	createTestComicWithLibrary(t, "mixed-time-comic", "mixed-time.cbz", "Mixed Time", "default")
+
+	dayStart := localDayStart(time.Now())
+	timestamps := []string{
+		dayStart.Add(time.Hour).UTC().String(),
+		dayStart.Add(2 * time.Hour).UTC().Format(time.RFC3339),
+		dayStart.Add(3 * time.Hour).UTC().Format(sqliteDateTimeLayout),
+	}
+	durations := []int{60, 120, 180}
+	for index := range timestamps {
+		if _, err := db.Exec(`
+			INSERT INTO "ReadingSession"
+				("comicId", "userId", "clientSessionId", "startedAt", "endedAt", "duration", "startPage", "endPage")
+			VALUES (?, ?, ?, ?, ?, ?, 0, 1)
+		`, "mixed-time-comic", "mixed-time-user", fmt.Sprintf("mixed-time-%d", index), timestamps[index], timestamps[index], durations[index]); err != nil {
+			t.Fatalf("insert mixed timestamp session failed: %v", err)
+		}
+	}
+	if err := RecordReadingActivity(
+		"mixed-time-comic", "mixed-time-user", "current-driver-time", 1, 10,
+		240, 1, true, true,
+	); err != nil {
+		t.Fatalf("RecordReadingActivity with current driver format failed: %v", err)
+	}
+
+	enhanced, err := GetEnhancedReadingStats("mixed-time-user")
+	if err != nil {
+		t.Fatalf("GetEnhancedReadingStats failed: %v", err)
+	}
+	if enhanced["todayReadTime"] != 600 || enhanced["weekReadTime"] != 600 {
+		t.Fatalf("enhanced period totals = today:%v week:%v, want 600/600", enhanced["todayReadTime"], enhanced["weekReadTime"])
+	}
+
+	daily, ok := enhanced["dailyStats"].([]map[string]interface{})
+	if !ok || len(daily) != 1 || daily[0]["date"] != dayStart.Format("2006-01-02") || daily[0]["duration"] != 600 {
+		t.Fatalf("enhanced daily stats = %#v", enhanced["dailyStats"])
+	}
+
+	basic, err := GetReadingStats("mixed-time-user")
+	if err != nil {
+		t.Fatalf("GetReadingStats failed: %v", err)
+	}
+	if len(basic.DailyStats) != 1 || basic.DailyStats[0].Date != dayStart.Format("2006-01-02") || basic.DailyStats[0].Duration != 600 {
+		t.Fatalf("basic daily stats = %#v", basic.DailyStats)
+	}
+
+	if _, err := SetReadingGoal("daily", 1, 0, "mixed-time-user"); err != nil {
+		t.Fatalf("SetReadingGoal failed: %v", err)
+	}
+	goal, err := GetReadingGoalProgress("daily", "mixed-time-user")
+	if err != nil {
+		t.Fatalf("GetReadingGoalProgress failed: %v", err)
+	}
+	if goal == nil || goal.CurrentMins != 10 {
+		t.Fatalf("daily goal = %#v, want 10 minutes", goal)
+	}
+
+	report, err := GetYearlyReadingReport(dayStart.Year(), "mixed-time-user")
+	if err != nil {
+		t.Fatalf("GetYearlyReadingReport failed: %v", err)
+	}
+	if report.TotalReadTime != 600 || report.TotalSessions != 4 {
+		t.Fatalf("yearly report = time:%d sessions:%d", report.TotalReadTime, report.TotalSessions)
 	}
 }
 

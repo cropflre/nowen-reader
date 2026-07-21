@@ -31,7 +31,7 @@ func InitDB(dbPath string) error {
 	var err error
 	// modernc.org/sqlite uses "sqlite" as driver name
 	// 在 DSN 中通过 _pragma 参数设置 foreign_keys=ON，确保连接池中的每个连接都启用外键约束
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath)
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_time_format=sqlite", dbPath)
 	db, err = sql.Open("sqlite", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
