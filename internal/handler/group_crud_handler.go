@@ -123,8 +123,9 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 
 func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	var body struct {
-		Name     string   `json:"name"`
-		ComicIDs []string `json:"comicIds"`
+		Name      string   `json:"name"`
+		ComicIDs  []string `json:"comicIds"`
+		SeriesIDs []string `json:"seriesIds"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || body.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "分组名称不能为空"})
@@ -141,6 +142,12 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	if len(body.ComicIDs) > 0 {
 		if err := store.AddComicsToGroup(int(id), body.ComicIDs); err != nil {
 			log.Printf("[API] CreateGroup: 添加漫画到分组失败: %v", err)
+		}
+	}
+	// 如果提供了系列ID，直接添加
+	if len(body.SeriesIDs) > 0 {
+		if err := store.AddSeriesToGroup(int(id), body.SeriesIDs); err != nil {
+			log.Printf("[API] CreateGroup: 添加系列到分组失败: %v", err)
 		}
 	}
 

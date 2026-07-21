@@ -122,7 +122,7 @@ export default function CollectionsPage() {
   const [createContentType, setCreateContentType] = useState<ContentFilter>("comic");
   const [createComicSearch, setCreateComicSearch] = useState("");
   const [createComicPage, setCreateComicPage] = useState(1);
-  const [createComics, setCreateComics] = useState<{ id: string; title: string; coverUrl: string }[]>([]);
+  const [allCreateComics, setAllCreateComics] = useState<{ id: string; title: string; coverUrl: string }[]>([]);
   const [createComicsTotalPages, setCreateComicsTotalPages] = useState(0);
   const [loadingCreateComics, setLoadingCreateComics] = useState(false);
   const [selectedComicIds, setSelectedComicIds] = useState<Set<string>>(new Set());
@@ -165,8 +165,8 @@ export default function CollectionsPage() {
     let cancelled = false;
     setLoadingCreateComics(true);
     const params = new URLSearchParams({
-      page: String(createComicPage),
-      pageSize: "12",
+      page: "1",
+      pageSize: "9999",
       contentType: createContentType,
       seriesView: "true",
     });
@@ -175,13 +175,19 @@ export default function CollectionsPage() {
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        setCreateComics((data.comics || []).map((c: { id: string; title: string; coverUrl: string }) => ({ id: c.id, title: c.title, coverUrl: c.coverUrl })));
-        setCreateComicsTotalPages(data.totalPages || 0);
+        const all = (data.comics || []).map((c: { id: string; title: string; coverUrl: string }) => ({ id: c.id, title: c.title, coverUrl: c.coverUrl }));
+        setAllCreateComics(all);
+        setCreateComicsTotalPages(Math.max(1, Math.ceil(all.length / 12)));
       })
-      .catch(() => { if (!cancelled) setCreateComics([]); })
+      .catch(() => { if (!cancelled) setAllCreateComics([]); })
       .finally(() => { if (!cancelled) setLoadingCreateComics(false); });
     return () => { cancelled = true; };
-  }, [showCreateDialog, createContentType, createComicPage, createComicDebouncedSearch]);
+  }, [showCreateDialog, createContentType, createComicDebouncedSearch]);
+
+  const createComics = useMemo(() => {
+    const start = (createComicPage - 1) * 12;
+    return allCreateComics.slice(start, start + 12);
+  }, [allCreateComics, createComicPage]);
 
   // 挂载保护期结束后解除保护
   useEffect(() => {
