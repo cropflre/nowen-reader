@@ -88,12 +88,12 @@ class _OfflineNovelReaderScreenState
     _totalChapters = total;
     _chapterTitles.addAll(manifest?.chapterTitles ?? const {});
 
-    var startChapter = widget.initialChapter;
-    startChapter ??= await offlineLibraryService.loadProgress(
-      widget.comicId,
-      manifest?.serverUrl ?? '',
-    );
-    startChapter = startChapter.clamp(0, total - 1).toInt();
+    final requestedChapter = widget.initialChapter ??
+        await offlineLibraryService.loadProgress(
+          widget.comicId,
+          manifest?.serverUrl ?? '',
+        );
+    final startChapter = requestedChapter.clamp(0, total - 1).toInt();
 
     final available = _findAvailableChapter(startChapter);
     if (available == null) {
