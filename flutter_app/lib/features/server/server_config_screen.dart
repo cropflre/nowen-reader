@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/api/api_client.dart';
 import '../../data/providers/auth_provider.dart';
 
-/// 服务器配置页面 —— 首次启动 / 退出登录后切换服务器时显示。
-///
-/// 触发条件参见 `lib/app/router.dart` 中的 redirect 逻辑：
-/// 当 `authState.serverUrl` 为空时会被强制路由到这里。
+/// 服务器配置页面 —— 首次启动或切换服务器时显示。
 class ServerConfigScreen extends ConsumerStatefulWidget {
   const ServerConfigScreen({super.key});
 
   @override
-  ConsumerState<ServerConfigScreen> createState() => _ServerConfigScreenState();
+  ConsumerState<ServerConfigScreen> createState() =>
+      _ServerConfigScreenState();
 }
 
 class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
@@ -26,7 +25,7 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _loadSavedServers();
   }
 
   @override
@@ -35,13 +34,20 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
     super.dispose();
   }
 
-  Future<void> _loadHistory() async {
-    final history = await loadServerHistory();
+  Future<void> _loadSavedServers() async {
+    final results = await Future.wait<dynamic>([
+      loadServerUrl(),
+      loadServerHistory(),
+    ]);
     if (!mounted) return;
+
+    final savedUrl = results[0] as String;
+    final history = results[1] as List<ServerRecord>;
     setState(() {
       _history = history;
-      // 若有历史记录，自动填入最近一次的地址，省得用户再输
-      if (history.isNotEmpty && _urlCtrl.text == 'http://') {
+      if (savedUrl.isNotEmpty) {
+        _urlCtrl.text = savedUrl;
+      } else if (history.isNotEmpty && _urlCtrl.text == 'http://') {
         _urlCtrl.text = history.first.url;
       }
     });
@@ -49,7 +55,6 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
 
   String _normalizeUrl(String raw) {
     var url = raw.trim();
-    // 去尾部斜杠
     while (url.endsWith('/')) {
       url = url.substring(0, url.length - 1);
     }
@@ -57,57 +62,77 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
   }
 
   String? _validateUrl(String? value) {
-    final v = (value ?? '').trim();
-    if (v.isEmpty) return '请输入服务器地址';
-    if (!v.startsWith('http://') && !v.startsWith('https://')) {
+    final input = (value ?? '').trim();
+    if (input.isEmpty) return '请输入服务器地址';
+    if (!input.startsWith('http://') && !input.startsWith('https://')) {
       return '地址必须以 http:// 或 https:// 开头';
     }
-    final uri = Uri.tryParse(v);
+    final uri = Uri.tryParse(input);
     if (uri == null || uri.host.isEmpty) return '地址格式不正确';
     return null;
   }
 
   Future<void> _connect() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
     HapticFeedback.lightImpact();
     final url = _normalizeUrl(_urlCtrl.text);
-
     setState(() {
       _busy = true;
       _errorMsg = null;
     });
+
     try {
-      final ok = await ref.read(authProvider.notifier).setServerUrl(url);
+      final connected =
+          await ref.read(authProvider.notifier).setServerUrl(url);
       if (!mounted) return;
-      if (!ok) {
-        final err = ref.read(authProvider).error;
-        setState(() => _errorMsg = err ?? '无法连接到服务器，请检查地址或网络');
-        return;
+
+      if (!connected) {
+        final error = ref.read(authProvider).error;
+        setState(() {
+          _errorMsg =
+              error ?? '服务器暂时不可达，地址已保存，可进入离线缓存';
+        });
       }
-      // 成功后 GoRouter 的 redirect 会根据登录状态自动跳到 /login 或 /
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMsg = '连接失败：$e');
+      setState(() {
+        _errorMsg = '连接失败：$error\n服务器地址已保留';
+      });
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _removeHistory(String url) async {
     await removeServerRecord(url);
-    await _loadHistory();
+    await _loadSavedServers();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final auth = ref.watch(authProvider);
+
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('服务器设置'),
+        actions: [
+          if (auth.isOffline)
+            TextButton.icon(
+              onPressed: () => context.go('/cache'),
+              icon: const Icon(Icons.cloud_off_rounded),
+              label: const Text('离线书架'),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 32,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
               child: Form(
@@ -115,8 +140,11 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.dns_rounded,
-                        size: 64, color: theme.colorScheme.primary),
+                    Icon(
+                      Icons.dns_rounded,
+                      size: 64,
+                      color: theme.colorScheme.primary,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       '连接到 Nowen Reader',
@@ -127,7 +155,8 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '请输入你的服务器地址，例如 http://192.168.1.100:3000',
+                      '输入你的服务器地址。地址会先保存在本机，'
+                      '即使当前断网也不会丢失。',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
@@ -144,8 +173,8 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                       onFieldSubmitted: (_) => _connect(),
                       decoration: const InputDecoration(
                         labelText: '服务器地址',
-                        hintText: 'http://host:port',
-                        prefixIcon: Icon(Icons.link),
+                        hintText: 'http://192.168.1.100:3000',
+                        prefixIcon: Icon(Icons.link_rounded),
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -155,19 +184,23 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.error_outline,
-                                color: theme.colorScheme.onErrorContainer,
-                                size: 20),
-                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.cloud_off_rounded,
+                              color:
+                                  theme.colorScheme.onErrorContainer,
+                            ),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _errorMsg!,
                                 style: TextStyle(
-                                  color: theme.colorScheme.onErrorContainer,
+                                  color:
+                                      theme.colorScheme.onErrorContainer,
                                 ),
                               ),
                             ),
@@ -182,56 +215,70 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
                             )
-                          : const Icon(Icons.login),
+                          : const Icon(Icons.login_rounded),
                       label: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text(_busy ? '正在连接…' : '连接服务器'),
                       ),
                     ),
+                    if (auth.isOffline) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => context.go('/cache'),
+                        icon: const Icon(Icons.menu_book_rounded),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text('服务器不可达，进入离线书架'),
+                        ),
+                      ),
+                    ],
                     if (_history.isNotEmpty) ...[
                       const SizedBox(height: 32),
-                      Row(
-                        children: [
-                          Text(
-                            '最近使用',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        '最近使用',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       const SizedBox(height: 8),
-                      ..._history.map((rec) => Card(
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            child: ListTile(
-                              leading: const Icon(Icons.history),
-                              title: Text(
-                                rec.url,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: rec.username != null
-                                  ? Text('用户：${rec.nickname ?? rec.username}')
-                                  : null,
-                              trailing: IconButton(
-                                icon: const Icon(Icons.close),
-                                tooltip: '从历史中移除',
-                                onPressed: _busy
-                                    ? null
-                                    : () => _removeHistory(rec.url),
-                              ),
-                              onTap: _busy
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _urlCtrl.text = rec.url;
-                                        _errorMsg = null;
-                                      });
-                                    },
+                      ..._history.map(
+                        (record) => Card(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          child: ListTile(
+                            leading: const Icon(Icons.history_rounded),
+                            title: Text(
+                              record.url,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          )),
+                            subtitle: record.username != null
+                                ? Text(
+                                    '用户：'
+                                    '${record.nickname ?? record.username}',
+                                  )
+                                : null,
+                            trailing: IconButton(
+                              icon: const Icon(Icons.close_rounded),
+                              tooltip: '从历史中移除',
+                              onPressed: _busy
+                                  ? null
+                                  : () => _removeHistory(record.url),
+                            ),
+                            onTap: _busy
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _urlCtrl.text = record.url;
+                                      _errorMsg = null;
+                                    });
+                                  },
+                          ),
+                        ),
+                      ),
                     ],
                   ],
                 ),
