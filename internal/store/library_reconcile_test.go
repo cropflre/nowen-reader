@@ -15,7 +15,7 @@ func TestReconcileComicOwnershipPreservesRelations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, lib := range []*model.Library{
-		{ID: "parent-lib", Name: "Parent", Type: "mixed", RootPath: "/books", Enabled: true},
+		{ID: "parent-lib", Name: "Parent", Type: "comic", RootPath: "/books", Enabled: true},
 		{ID: "novel-lib", Name: "Novels", Type: "novel", RootPath: "/books/novels", Enabled: true},
 	} {
 		if err := CreateLibrary(lib); err != nil {

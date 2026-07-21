@@ -248,3 +248,9 @@ type ComicGroupItem struct {
 	ComicID   string `json:"comicId"`
 	SortIndex int    `json:"sortIndex"`
 }
+
+type ComicGroupSeriesItem struct {
+	GroupID   int    `json:"groupId"`
+	SeriesID  string `json:"seriesId"`
+	SortIndex int    `json:"sortIndex"`
+}

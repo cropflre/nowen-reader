@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"github.com/gin-gonic/gin"
@@ -187,6 +187,8 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		groupWrite.DELETE("/:id", group.DeleteGroup)
 		groupWrite.POST("/:id/comics", group.AddComics)
 		groupWrite.DELETE("/:id/comics/:comicId", group.RemoveComic)
+		groupWrite.POST("/:id/series", group.AddSeries)
+		groupWrite.DELETE("/:id/series/:seriesId", group.RemoveSeries)
 		groupWrite.PUT("/:id/reorder", group.ReorderComics)
 		groupWrite.PUT("/:id/metadata", group.UpdateMetadata)
 		groupWrite.POST("/:id/inherit-metadata", group.InheritMetadata)

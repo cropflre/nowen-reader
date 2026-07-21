@@ -34,22 +34,34 @@ type ComicGroupWithCount struct {
 
 // ComicGroupDetail 包含系列详情和所属漫画列表。
 type ComicGroupDetail struct {
-	ID          int              `json:"id"`
-	Name        string           `json:"name"`
-	CoverURL    string           `json:"coverUrl"`
-	SortOrder   int              `json:"sortOrder"`
-	Author      string           `json:"author"`
-	Description string           `json:"description"`
-	Tags        string           `json:"tags"`
-	Year        *int             `json:"year"`
-	Publisher   string           `json:"publisher"`
-	Language    string           `json:"language"`
-	Genre       string           `json:"genre"`
-	Status      string           `json:"status"`
-	CreatedAt   string           `json:"createdAt"`
-	UpdatedAt   string           `json:"updatedAt"`
-	ComicCount  int              `json:"comicCount"`
-	Comics      []GroupComicItem `json:"comics"`
+	ID          int               `json:"id"`
+	Name        string            `json:"name"`
+	CoverURL    string            `json:"coverUrl"`
+	SortOrder   int               `json:"sortOrder"`
+	Author      string            `json:"author"`
+	Description string            `json:"description"`
+	Tags        string            `json:"tags"`
+	Year        *int              `json:"year"`
+	Publisher   string            `json:"publisher"`
+	Language    string            `json:"language"`
+	Genre       string            `json:"genre"`
+	Status      string            `json:"status"`
+	CreatedAt   string            `json:"createdAt"`
+	UpdatedAt   string            `json:"updatedAt"`
+	ComicCount  int               `json:"comicCount"`
+	SeriesList  []GroupSeriesItem `json:"seriesList"`
+	Comics      []GroupComicItem  `json:"comics"`
+}
+
+// GroupSeriesItem 分组内的目录作品条目。
+type GroupSeriesItem struct {
+	SeriesID         string           `json:"id"`
+	Title            string           `json:"title"`
+	RootRelativePath string           `json:"rootRelativePath"`
+	CoverComicID     string           `json:"coverComicId"`
+	CoverURL         string           `json:"coverUrl"`
+	SortIndex        int              `json:"sortIndex"`
+	Comics           []GroupComicItem `json:"comics"`
 }
 
 // GroupComicItem 分组内的漫画条目。
@@ -338,9 +350,65 @@ func GetGroupByID(groupID int, contentType ...string) (*ComicGroupDetail, error)
 		g.Comics = append(g.Comics, item)
 	}
 
-	// 封面 URL：有自定义封面时返回本地缓存路径，无封面时使用第一本漫画缩略图
+	// 获取分组内的目录作品 (ComicSeries)
+	g.SeriesList = []GroupSeriesItem{}
+	seriesRows, err := db.Query(`
+		SELECT cs."id", cs."title", cs."rootRelativePath", cs."coverComicId", cgs."sortIndex"
+		FROM "ComicGroupSeries" cgs
+		JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
+		WHERE cgs."groupId" = ?
+		ORDER BY cgs."sortIndex" ASC
+	`, groupID)
+	if err == nil {
+		defer seriesRows.Close()
+		for seriesRows.Next() {
+			var sItem GroupSeriesItem
+			if scanErr := seriesRows.Scan(&sItem.SeriesID, &sItem.Title, &sItem.RootRelativePath, &sItem.CoverComicID, &sItem.SortIndex); scanErr == nil {
+				if sItem.CoverComicID != "" {
+					sItem.CoverURL = BuildComicCoverURL(sItem.CoverComicID)
+				}
+				sItem.Comics = []GroupComicItem{}
+				cRows, cErr := db.Query(`
+					SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
+					       c."lastReadPage", c."totalReadTime", c."readingStatus", c."lastReadAt",
+					       csi."sortIndex", COALESCE(c."type", '') as "type"
+					FROM "ComicSeriesItem" csi
+					JOIN "Comic" c ON c."id" = csi."comicId"
+					WHERE csi."seriesId" = ?
+					ORDER BY csi."sortIndex" ASC
+				`, sItem.SeriesID)
+				if cErr == nil {
+					for cRows.Next() {
+						var item GroupComicItem
+						var lastReadAt sql.NullTime
+						if cRows.Scan(
+							&item.ComicID, &item.Filename, &item.Title, &item.PageCount, &item.FileSize,
+							&item.LastReadPage, &item.TotalReadTime, &item.ReadingStatus, &lastReadAt,
+							&item.SortIndex, &item.ComicType,
+						) == nil {
+							item.CoverURL = BuildComicCoverURL(item.ComicID)
+							if lastReadAt.Valid {
+								str := lastReadAt.Time.UTC().Format(time.RFC3339)
+								item.LastReadAt = &str
+							}
+							sItem.Comics = append(sItem.Comics, item)
+						}
+					}
+					cRows.Close()
+				}
+				if sItem.CoverURL == "" && len(sItem.Comics) > 0 {
+					sItem.CoverURL = sItem.Comics[0].CoverURL
+				}
+				g.SeriesList = append(g.SeriesList, sItem)
+			}
+		}
+	}
+
+	// 封面 URL：有自定义封面时返回本地缓存路径，无封面时按优先使用 Series 目录作品或第一本漫画缩略图
 	if g.CoverURL != "" {
 		g.CoverURL = BuildGroupCoverURL(g.ID)
+	} else if len(g.SeriesList) > 0 && g.SeriesList[0].CoverURL != "" {
+		g.CoverURL = g.SeriesList[0].CoverURL
 	} else if len(g.Comics) > 0 {
 		g.CoverURL = g.Comics[0].CoverURL
 	}
@@ -605,7 +673,7 @@ func AddComicsToGroup(groupID int, comicIDs []string) error {
 	return nil
 }
 
-// RemoveComicFromGroup 从分组移除漫画。如果移除后分组为空，自动删除分组。
+// RemoveComicFromGroup 从分组移除漫画。如果移除后分组无任何数据，自动删除分组。
 func RemoveComicFromGroup(groupID int, comicID string) error {
 	_, err := db.Exec(`DELETE FROM "ComicGroupItem" WHERE "groupId" = ? AND "comicId" = ?`, groupID, comicID)
 	if err != nil {
@@ -613,10 +681,52 @@ func RemoveComicFromGroup(groupID int, comicID string) error {
 	}
 	db.Exec(`UPDATE "ComicGroup" SET "updatedAt" = ? WHERE "id" = ?`, time.Now().UTC(), groupID)
 
-	// 检查分组是否为空，为空则自动删除
-	var count int
-	err = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupItem" WHERE "groupId" = ?`, groupID).Scan(&count)
-	if err == nil && count == 0 {
+	// 检查分组是否为空（无漫画且无目录作品），为空则自动删除
+	var countItems, countSeries int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupItem" WHERE "groupId" = ?`, groupID).Scan(&countItems)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID).Scan(&countSeries)
+	if countItems == 0 && countSeries == 0 {
+		db.Exec(`DELETE FROM "ComicGroup" WHERE "id" = ?`, groupID)
+	}
+
+	return nil
+}
+
+// AddSeriesToGroup 将一个或多个目录作品 (ComicSeries) 添加到分组。
+func AddSeriesToGroup(groupID int, seriesIDs []string) error {
+	if len(seriesIDs) == 0 {
+		return nil
+	}
+	var maxIdx int
+	db.QueryRow(`SELECT COALESCE(MAX("sortIndex"), -1) FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID).Scan(&maxIdx)
+
+	for i, seriesID := range seriesIDs {
+		_, err := db.Exec(`
+			INSERT INTO "ComicGroupSeries" ("groupId", "seriesId", "sortIndex")
+			VALUES (?, ?, ?)
+			ON CONFLICT("groupId", "seriesId") DO NOTHING
+		`, groupID, seriesID, maxIdx+1+i)
+		if err != nil {
+			return err
+		}
+	}
+
+	db.Exec(`UPDATE "ComicGroup" SET "updatedAt" = ? WHERE "id" = ?`, time.Now().UTC(), groupID)
+	return nil
+}
+
+// RemoveSeriesFromGroup 从分组移除目录作品 (ComicSeries)。如果移除后分组无任何数据，自动删除分组。
+func RemoveSeriesFromGroup(groupID int, seriesID string) error {
+	_, err := db.Exec(`DELETE FROM "ComicGroupSeries" WHERE "groupId" = ? AND "seriesId" = ?`, groupID, seriesID)
+	if err != nil {
+		return err
+	}
+	db.Exec(`UPDATE "ComicGroup" SET "updatedAt" = ? WHERE "id" = ?`, time.Now().UTC(), groupID)
+
+	var countItems, countSeries int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupItem" WHERE "groupId" = ?`, groupID).Scan(&countItems)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID).Scan(&countSeries)
+	if countItems == 0 && countSeries == 0 {
 		db.Exec(`DELETE FROM "ComicGroup" WHERE "id" = ?`, groupID)
 	}
 

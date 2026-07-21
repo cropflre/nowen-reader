@@ -277,6 +277,56 @@ func (h *GroupHandler) RemoveComic(c *gin.Context) {
 }
 
 // ============================================================
+// POST /api/groups/:id/series — 添加目录作品到分组
+// ============================================================
+
+func (h *GroupHandler) AddSeries(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的分组ID"})
+		return
+	}
+
+	var body struct {
+		SeriesIDs []string `json:"seriesIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.SeriesIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "目录作品ID列表不能为空"})
+		return
+	}
+
+	if err := store.AddSeriesToGroup(id, body.SeriesIDs); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "添加目录作品到分组失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ============================================================
+// DELETE /api/groups/:id/series/:seriesId — 从分组移除目录作品
+// ============================================================
+
+func (h *GroupHandler) RemoveSeries(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的分组ID"})
+		return
+	}
+
+	seriesID := c.Param("seriesId")
+	if seriesID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "目录作品ID不能为空"})
+		return
+	}
+
+	if err := store.RemoveSeriesFromGroup(id, seriesID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "从分组移除目录作品失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ============================================================
 // PUT /api/groups/:id/reorder — 重新排序分组内漫画
 // ============================================================
 

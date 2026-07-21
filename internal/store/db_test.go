@@ -22,6 +22,9 @@ func setupTestDB(t *testing.T) {
 	if err := InitDB(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
 	t.Cleanup(func() {
 		CloseDB()
 		os.Remove(dbPath)
@@ -654,5 +657,49 @@ func TestSortOrders(t *testing.T) {
 	}
 	if result.Comics[0].ID != "sort-2" {
 		t.Errorf("Expected sort-2 first (sortOrder=1), got %s", result.Comics[0].ID)
+	}
+}
+
+func TestComicGroupSeriesCRUD(t *testing.T) {
+	setupTestDB(t)
+
+	// Create dummy library and series
+	if _, err := db.Exec(`INSERT INTO "Library" ("id", "name", "rootPath") VALUES ('lib-1', 'Lib 1', '/tmp')`); err != nil {
+		t.Fatalf("Failed to insert library: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title") VALUES ('series-1', 'lib-1', 'dragonball_z', 'Dragon Ball Z')`); err != nil {
+		t.Fatalf("Failed to insert series: %v", err)
+	}
+
+	groupID, err := CreateGroup("Dragon Ball Universe")
+	if err != nil {
+		t.Fatalf("CreateGroup failed: %v", err)
+	}
+
+	if err := AddSeriesToGroup(int(groupID), []string{"series-1"}); err != nil {
+		t.Fatalf("AddSeriesToGroup failed: %v", err)
+	}
+
+	detail, err := GetGroupByID(int(groupID))
+	if err != nil {
+		t.Fatalf("GetGroupByID failed: %v", err)
+	}
+	if len(detail.SeriesList) != 1 {
+		t.Fatalf("Expected 1 series in group, got %d", len(detail.SeriesList))
+	}
+	if detail.SeriesList[0].SeriesID != "series-1" {
+		t.Errorf("Expected series-1, got %s", detail.SeriesList[0].SeriesID)
+	}
+
+	if err := RemoveSeriesFromGroup(int(groupID), "series-1"); err != nil {
+		t.Fatalf("RemoveSeriesFromGroup failed: %v", err)
+	}
+
+	detail2, err := GetGroupByID(int(groupID))
+	if err != nil {
+		t.Fatalf("GetGroupByID failed after remove: %v", err)
+	}
+	if detail2 != nil {
+		t.Errorf("Expected group to be auto-deleted when empty, but still exists")
 	}
 }
