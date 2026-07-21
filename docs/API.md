@@ -135,12 +135,15 @@ Authorization: Bearer <token>
 | `untagged` | string | 否 | `true` 时仅返回无标签作品 |
 | `page` | int | 否 | 页码，默认 `0` |
 | `pageSize` | int | 否 | 每页数量，默认 `0`（不分页） |
+| `seriesView` | string | 否 | `true` 时将目录作品成员折叠为书架兼容的虚拟目录作品条目；其他值或省略时仍返回普通作品记录 |
 
 - 需要登录。
 - 普通用户即使不传 `libraryIds`，也只返回自己可访问书库中的作品。
 - 普通用户传入无权限书库 ID 时会被过滤掉；交集为空时返回空列表。
 - 没有任何书库访问权限的普通用户返回空列表，不会退化成全库查询。
 - `sortBy=title` 时会按服务端维护的 `titleSortKey` 排序，效果上 `第2卷` 在 `第10卷` 前，常见中文标题按拼音顺序排列。
+- `seriesView=true` 专供统一书架展示：服务端先执行当前列表的权限和筛选条件，再把命中的目录作品成员折叠为一个虚拟条目。虚拟条目的 ID 为 `series-<seriesId>`，不是真实漫画 ID；客户端应从该条目进入 `/api/series/:id`，不要把虚拟 ID 传给漫画详情、阅读或下载接口。
+- 折叠后的响应会重新计算 `total`，并统一返回 `page=1`、`pageSize=折叠后条目数`、`totalPages=1`。需要稳定分页或逐本数据的 API 客户端不应启用该参数。
 
 ### 设置阅读状态
 
@@ -171,6 +174,124 @@ GET /api/comics?readingStatus=finished
 - 按当前用户的 UserComicState.readingStatus 过滤
 - 与 search、tags、category、contentType、favorites 等条件可自由组合
 - 不传该参数时不按阅读状态过滤
+
+## 📂 目录作品
+
+目录作品由漫画书库中的目录结构自动识别，用于把同一根目录下的多个阅读单元组织为一个作品。以下接口全部需要认证；读取接口按 `canView` 过滤，修改接口要求目标书库的 `canManage` 权限。
+
+| 方法 | 路径 | 说明 |
+|:---|:---|:---|
+| GET | `/api/series` | 获取目录作品列表，支持 `libraryIds` 和 `search` |
+| GET | `/api/series/preview?libraryId=:libraryId` | 预览书库的目录作品识别结果，需要目标书库 `canManage` |
+| POST | `/api/series/rebuild?libraryId=:libraryId` | 重建指定书库的目录作品，需要目标书库 `canManage` |
+| POST | `/api/series/rebuild` | 重建全部书库的目录作品，仅管理员 |
+| GET | `/api/series/:id` | 获取目录作品详情、篇章和未分篇阅读单元 |
+| PUT | `/api/series/:id` | 修改目录作品标题、封面或人工锁定状态，需要 `canManage` |
+| PUT | `/api/series/:id/structure` | 修改阅读单元所属篇章及顺序，需要 `canManage` |
+| POST | `/api/series/:id/re-detect` | 解除人工锁定并重新自动识别，需要 `canManage` |
+| DELETE | `/api/series/:id` | 删除目录作品关系，不删除作品记录或磁盘文件，需要 `canManage` |
+
+### 获取目录作品列表
+
+```http
+GET /api/series?libraryIds=lib-a,lib-b&search=日月
+Authorization: Bearer <token>
+```
+
+| 查询参数 | 类型 | 必填 | 说明 |
+|:---|:---|:---:|:---|
+| `libraryIds` | string | 否 | 逗号分隔的书库 ID；普通用户只会查询与自身 `canView` 书库的交集 |
+| `search` | string | 否 | 按目录作品标题搜索 |
+
+管理员不传 `libraryIds` 时返回全部可识别目录作品；普通用户不传时返回其可查看书库中的目录作品。普通用户没有可查看书库，或传入书库与授权范围交集为空时，返回 `{"series":[]}`。
+
+列表响应：
+
+```json
+{
+  "series": [
+    {
+      "id": "ser_xxx",
+      "libraryId": "lib_xxx",
+      "rootRelativePath": "作品目录",
+      "title": "作品标题",
+      "sortTitle": "作品排序标题",
+      "coverComicId": "comic_xxx",
+      "coverUrl": "/api/comics/comic_xxx/thumbnail",
+      "itemCount": 15,
+      "sectionCount": 2,
+      "completedItemCount": 3,
+      "totalReadTime": 3600,
+      "fileSize": 104857600,
+      "lastReadAt": "2026-07-21T12:00:00Z",
+      "isFavorite": false,
+      "manualLocked": false,
+      "canManage": true,
+      "createdAt": "2026-07-21T10:00:00Z",
+      "updatedAt": "2026-07-21T12:00:00Z"
+    }
+  ]
+}
+```
+
+### 获取目录作品详情
+
+```http
+GET /api/series/:id
+Authorization: Bearer <token>
+```
+
+返回 `{ "series": SeriesSummary, "sections": SeriesSection[], "unsectioned": SeriesItem[] }`。`sections[].items` 是已归入篇章的阅读单元，`unsectioned` 是未分篇单元；每个单元包含普通漫画对象 `comic`、`sectionId`、`sortIndex` 和 `displayLabel`。不存在返回 `404`，无目标书库查看权限返回 `403`。
+
+### 预览与重建
+
+```http
+GET /api/series/preview?libraryId=lib_xxx
+POST /api/series/rebuild?libraryId=lib_xxx
+```
+
+- `preview` 只运行识别并返回 `{ "libraryId": "...", "seriesCount": 3, "candidates": [...] }`，不会写入目录作品关系。
+- 指定 `libraryId` 重建时要求该书库的 `canManage` 权限；省略 `libraryId` 表示重建全部书库，仅管理员可用。
+- 重建成功返回 `{"success":true}`。
+
+### 修改目录作品
+
+```http
+PUT /api/series/:id
+Content-Type: application/json
+
+{
+  "title": "新标题",
+  "coverComicId": "comic_xxx",
+  "manualLocked": true
+}
+```
+
+三个字段均可省略。空标题或空 `coverComicId` 不会清除现有值；成功返回 `{"success":true}`。
+
+调整阅读单元结构：
+
+```http
+PUT /api/series/:id/structure
+Content-Type: application/json
+
+{
+  "items": [
+    {"comicId": "comic_a", "sectionId": "section_a", "sortIndex": 0},
+    {"comicId": "comic_b", "sectionId": "", "sortIndex": 1}
+  ]
+}
+```
+
+`sectionId` 为空表示不归入篇章。服务端会校验篇章和阅读单元是否属于当前目录作品，并在更新后自动设置 `manualLocked=true`，避免后续自动识别覆盖人工顺序。
+
+`POST /api/series/:id/re-detect` 会先解除人工锁定，再重建该目录作品所在书库。`DELETE /api/series/:id` 只删除目录作品、篇章和成员关系，返回：
+
+```json
+{"success":true,"filesDeleted":false,"comicsDeleted":false}
+```
+
+如果物理目录仍满足自动识别条件，后续扫描、重建或自动刷新可能再次创建该目录作品。
 
 ## 🏷️ 标签 & 分类
 

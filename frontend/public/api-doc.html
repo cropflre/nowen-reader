@@ -473,6 +473,7 @@
         <a href="#endpoints-health" class="nav-group" data-group="health" data-en="Health &amp; System" data-zh="健康与系统">Health & System</a>
         <a href="#endpoints-auth" class="nav-group" data-group="auth" data-en="Auth" data-zh="认证">Auth</a>
         <a href="#endpoints-comics-crud" class="nav-group" data-group="comics-crud" data-en="Comics CRUD" data-zh="漫画增删改查">Comics CRUD</a>
+        <a href="#endpoints-series" class="nav-group" data-group="series" data-en="Directory Series" data-zh="目录作品">Directory Series</a>
         <a href="#endpoints-comics-images" class="nav-group" data-group="comics-images" data-en="Comics Images" data-zh="漫画图片">Comics Images</a>
         <a href="#endpoints-tags" class="nav-group" data-group="tags" data-en="Tags" data-zh="标签">Tags</a>
         <a href="#endpoints-categories" class="nav-group" data-group="categories" data-en="Categories" data-zh="分类">Categories</a>
@@ -509,7 +510,7 @@
       </div>
       <div class="stat-item">
         <div class="label"><span data-en="Groups" data-zh="分组数">Groups</span></div>
-        <div class="value">24</div>
+        <div class="value">26</div>
       </div>
     </div>
 
@@ -953,6 +954,7 @@
         <tr><td>untagged</td><td>string</td><td>No</td><td>Only return comics without tags (&quot;true&quot;)</td></tr>
         <tr><td>page</td><td>int</td><td>No</td><td>Page number (default: 0)</td></tr>
         <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (default: 0)</td></tr>
+        <tr><td>seriesView</td><td>string</td><td>No</td><td><span data-en="Set to true to collapse matching directory-series members into synthetic shelf entries. Omit it for ordinary per-publication rows. The collapsed response is normalized to one page." data-zh="设为 true 时，将命中的目录作品成员折叠为书架虚拟条目；省略时仍逐本返回。折叠后的响应统一为一页。">Set to true to collapse matching directory-series members into synthetic shelf entries. Omit it for ordinary per-publication rows. The collapsed response is normalized to one page.</span></td></tr>
       </tbody>
     </table>
 
@@ -1517,8 +1519,168 @@
 </div>
     </div>
 
+    <div id="endpoints-series" class="endpoint-group">
+    <h2 class="group-title"><span data-en="4. Directory Series" data-zh="4. 目录作品">4. Directory Series</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
+    <p class="description"><span data-en="Directory series are automatically detected from directory structure in comic libraries. All endpoints require authentication. Read operations are limited by canView; management operations require canManage on the target library." data-zh="目录作品根据漫画书库的目录结构自动识别。全部接口需要认证；读取操作按 canView 过滤，管理操作要求目标书库的 canManage 权限。">Directory series are automatically detected from directory structure in comic libraries. All endpoints require authentication. Read operations are limited by canView; management operations require canManage on the target library.</span></p>
+
+<div class="endpoint auth-required" data-search="GET /api/series list directory series libraryIds search 目录作品列表" id="get-api-series">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/series</span>
+    <span class="summary"><span data-en="List directory series" data-zh="获取目录作品列表">List directory series</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns series summaries from libraries visible to the current user. Administrators may query all libraries; requested library IDs are intersected with a non-admin user's accessible libraries. An empty permission intersection returns an empty series array." data-zh="返回当前用户可查看书库中的目录作品摘要。管理员可以查询全部书库；普通用户传入的书库 ID 会与其可访问书库取交集，交集为空时返回空数组。">Returns series summaries from libraries visible to the current user. Administrators may query all libraries; requested library IDs are intersected with a non-admin user's accessible libraries. An empty permission intersection returns an empty series array.</span></p>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table"><tbody>
+      <tr><td>libraryIds</td><td>string</td><td>No</td><td><span data-en="Comma-separated library IDs" data-zh="逗号分隔的书库 ID">Comma-separated library IDs</span></td></tr>
+      <tr><td>search</td><td>string</td><td>No</td><td><span data-en="Search by series title" data-zh="按目录作品标题搜索">Search by series title</span></td></tr>
+    </tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  &quot;series&quot;: [{
+    &quot;id&quot;: &quot;ser_xxx&quot;,
+    &quot;libraryId&quot;: &quot;lib_xxx&quot;,
+    &quot;rootRelativePath&quot;: &quot;Series Folder&quot;,
+    &quot;title&quot;: &quot;Series Title&quot;,
+    &quot;coverComicId&quot;: &quot;comic_xxx&quot;,
+    &quot;coverUrl&quot;: &quot;/api/comics/comic_xxx/thumbnail&quot;,
+    &quot;itemCount&quot;: 15,
+    &quot;sectionCount&quot;: 2,
+    &quot;completedItemCount&quot;: 3,
+    &quot;totalReadTime&quot;: 3600,
+    &quot;manualLocked&quot;: false,
+    &quot;canManage&quot;: true
+  }]
+}</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/series/preview preview directory series detection libraryId 预览目录作品识别" id="get-api-series-preview">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/series/preview</span>
+    <span class="summary"><span data-en="Preview directory-series detection" data-zh="预览目录作品识别结果">Preview directory-series detection</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Runs detection for one library without persisting relationships. Requires canManage on that library." data-zh="对一个书库运行识别预览但不写入关系，要求该书库的 canManage 权限。">Runs detection for one library without persisting relationships. Requires canManage on that library.</span></p>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table"><tbody><tr><td>libraryId</td><td>string</td><td>Yes</td><td><span data-en="Target library ID" data-zh="目标书库 ID">Target library ID</span></td></tr></tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ &quot;libraryId&quot;: &quot;lib_xxx&quot;, &quot;seriesCount&quot;: 3, &quot;candidates&quot;: [] }</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="POST /api/series/rebuild rebuild directory series libraryId 重建目录作品" id="post-api-series-rebuild">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/series/rebuild</span>
+    <span class="summary"><span data-en="Rebuild directory series" data-zh="重建目录作品">Rebuild directory series</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="With libraryId, rebuilds one library and requires its canManage permission. Without libraryId, rebuilds all libraries and is restricted to administrators." data-zh="传 libraryId 时重建指定书库并要求其 canManage 权限；不传时重建全部书库，仅管理员可用。">With libraryId, rebuilds one library and requires its canManage permission. Without libraryId, rebuilds all libraries and is restricted to administrators.</span></p>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table"><tbody><tr><td>libraryId</td><td>string</td><td>No</td><td><span data-en="Target library ID; omit only for an administrator-wide rebuild" data-zh="目标书库 ID；仅管理员执行全库重建时省略">Target library ID; omit only for an administrator-wide rebuild</span></td></tr></tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ &quot;success&quot;: true }</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/series/:id directory series detail sections items 目录作品详情" id="get-api-series-id">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/series/:id</span>
+    <span class="summary"><span data-en="Get directory-series details" data-zh="获取目录作品详情">Get directory-series details</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns the series summary, ordered sections and their items, plus unsectioned items. Requires canView on the owning library; inaccessible series return 403 and missing series return 404." data-zh="返回目录作品摘要、排序后的篇章及阅读单元，以及未分篇单元。要求所属书库 canView；无权限返回 403，不存在返回 404。">Returns the series summary, ordered sections and their items, plus unsectioned items. Requires canView on the owning library; inaccessible series return 403 and missing series return 404.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><tbody><tr><td>id</td><td>string</td><td>Yes</td><td><span data-en="Series ID" data-zh="目录作品 ID">Series ID</span></td></tr></tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  &quot;series&quot;: { &quot;id&quot;: &quot;ser_xxx&quot;, &quot;title&quot;: &quot;Series Title&quot; },
+  &quot;sections&quot;: [{ &quot;id&quot;: &quot;section_xxx&quot;, &quot;title&quot;: &quot;Part 1&quot;, &quot;items&quot;: [] }],
+  &quot;unsectioned&quot;: []
+}</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="PUT /api/series/:id update directory series title cover manual lock 修改目录作品" id="put-api-series-id">
+  <div class="endpoint-header">
+    <span class="method method-PUT">PUT</span>
+    <span class="path">/api/series/:id</span>
+    <span class="summary"><span data-en="Update directory-series metadata" data-zh="修改目录作品信息">Update directory-series metadata</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Updates the title, cover member, or manual lock. Requires canManage. Empty title and coverComicId values leave their existing values unchanged." data-zh="修改标题、封面成员或人工锁定状态，要求 canManage。空标题和空 coverComicId 不会清除现有值。">Updates the title, cover member, or manual lock. Requires canManage. Empty title and coverComicId values leave their existing values unchanged.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{
+  &quot;title&quot;: &quot;New title&quot;,
+  &quot;coverComicId&quot;: &quot;comic_xxx&quot;,
+  &quot;manualLocked&quot;: true
+}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ &quot;success&quot;: true }</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="PUT /api/series/:id/structure reorder directory series sections items 调整目录作品结构" id="put-api-series-id-structure">
+  <div class="endpoint-header">
+    <span class="method method-PUT">PUT</span>
+    <span class="path">/api/series/:id/structure</span>
+    <span class="summary"><span data-en="Update series item structure" data-zh="调整阅读单元结构">Update series item structure</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Assigns existing series members to sections and changes their order. An empty sectionId makes an item unsectioned. Sections and items must belong to this series. A successful update automatically enables manualLocked." data-zh="调整已有阅读单元所属篇章和顺序。sectionId 为空表示未分篇；篇章和单元必须属于当前目录作品。成功更新后会自动启用 manualLocked。">Assigns existing series members to sections and changes their order. An empty sectionId makes an item unsectioned. Sections and items must belong to this series. A successful update automatically enables manualLocked.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{
+  &quot;items&quot;: [
+    { &quot;comicId&quot;: &quot;comic_a&quot;, &quot;sectionId&quot;: &quot;section_a&quot;, &quot;sortIndex&quot;: 0 },
+    { &quot;comicId&quot;: &quot;comic_b&quot;, &quot;sectionId&quot;: &quot;&quot;, &quot;sortIndex&quot;: 1 }
+  ]
+}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ &quot;success&quot;: true }</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="POST /api/series/:id/re-detect redetect directory series unlock 重新识别目录作品" id="post-api-series-id-redetect">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/series/:id/re-detect</span>
+    <span class="summary"><span data-en="Re-detect a directory series" data-zh="重新识别目录作品">Re-detect a directory series</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Clears manualLocked and rebuilds directory series for the owning library. Requires canManage." data-zh="解除 manualLocked，并重建该目录作品所属书库的目录作品关系，要求 canManage。">Clears manualLocked and rebuilds directory series for the owning library. Requires canManage.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ &quot;success&quot;: true }</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="DELETE /api/series/:id remove directory series relationship keep files 删除目录作品关系" id="delete-api-series-id">
+  <div class="endpoint-header">
+    <span class="method method-DELETE">DELETE</span>
+    <span class="path">/api/series/:id</span>
+    <span class="summary"><span data-en="Remove a directory-series relationship" data-zh="删除目录作品关系">Remove a directory-series relationship</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Deletes only the series, section, and membership relationships. Publication records and files remain untouched. If the physical directory still matches detection rules, a later scan or rebuild may create the series again. Requires canManage." data-zh="只删除目录作品、篇章和成员关系，不删除作品记录或磁盘文件。如果物理目录仍符合识别规则，后续扫描或重建可能再次创建该目录作品。要求 canManage。">Deletes only the series, section, and membership relationships. Publication records and files remain untouched. If the physical directory still matches detection rules, a later scan or rebuild may create the series again. Requires canManage.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ &quot;success&quot;: true, &quot;filesDeleted&quot;: false, &quot;comicsDeleted&quot;: false }</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+    </div>
+
     <div id="endpoints-comics-images" class="endpoint-group">
-    <h2 class="group-title"><span data-en="4. Comics Images" data-zh="4. 漫画图片">4. Comics Images</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="5. Comics Images" data-zh="5. 漫画图片">5. Comics Images</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
 <div class="endpoint public-endpoint" data-search="GET /api/comics/:id/pages Get comic pages list" id="get-api-comics-id-pages">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -1861,7 +2023,7 @@
     </div>
 
     <div id="endpoints-tags" class="endpoint-group">
-    <h2 class="group-title"><span data-en="5. Tags" data-zh="5. 标签">5. Tags</span> <span class="group-badge"><span data-en="5 endpoints" data-zh="5 个接口">5 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="6. Tags" data-zh="6. 标签">6. Tags</span> <span class="group-badge"><span data-en="5 endpoints" data-zh="5 个接口">5 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/tags Get all tags" id="get-api-tags">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -1991,7 +2153,7 @@
     </div>
 
     <div id="endpoints-categories" class="endpoint-group">
-    <h2 class="group-title"><span data-en="6. Categories" data-zh="6. 分类">6. Categories</span> <span class="group-badge"><span data-en="6 endpoints" data-zh="6 个接口">6 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="7. Categories" data-zh="7. 分类">7. Categories</span> <span class="group-badge"><span data-en="6 endpoints" data-zh="6 个接口">6 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/categories List all categories" id="get-api-categories">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2165,7 +2327,7 @@
     </div>
 
     <div id="endpoints-stats" class="endpoint-group">
-    <h2 class="group-title"><span data-en="7. Stats" data-zh="7. 统计">7. Stats</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="8. Stats" data-zh="8. 统计">8. Stats</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/stats Get overall reading stats" id="get-api-stats">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2383,7 +2545,7 @@
     </div>
 
     <div id="endpoints-settings" class="endpoint-group">
-    <h2 class="group-title"><span data-en="8. Settings" data-zh="8. 设置">8. Settings</span> <span class="group-badge"><span data-en="5 endpoints" data-zh="5 个接口">5 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="9. Settings" data-zh="9. 设置">9. Settings</span> <span class="group-badge"><span data-en="5 endpoints" data-zh="5 个接口">5 endpoints</span></span></h2>
 <div class="endpoint public-endpoint" data-search="GET /api/site-settings Get site settings" id="get-api-site-settings">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2526,7 +2688,7 @@
     </div>
 
     <div id="endpoints-upload" class="endpoint-group">
-    <h2 class="group-title"><span data-en="9. Upload" data-zh="9. 上传">9. Upload</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
+    <h2 class="group-title"><span data-en="10. Upload" data-zh="10. 上传">10. Upload</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
 <div class="endpoint auth-required" data-search="POST /api/upload Upload files to library" id="post-api-upload">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
@@ -2570,7 +2732,7 @@
     </div>
 
     <div id="endpoints-browse" class="endpoint-group">
-    <h2 class="group-title"><span data-en="10. Browse" data-zh="10. 浏览">10. Browse</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
+    <h2 class="group-title"><span data-en="11. Browse" data-zh="11. 浏览">11. Browse</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/browse-dirs Browse filesystem directories" id="get-api-browse-dirs">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2606,7 +2768,7 @@
     </div>
 
     <div id="endpoints-cache" class="endpoint-group">
-    <h2 class="group-title"><span data-en="11. Cache" data-zh="11. 缓存">11. Cache</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
+    <h2 class="group-title"><span data-en="12. Cache" data-zh="12. 缓存">12. Cache</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
 <div class="endpoint admin-only" data-search="POST /api/cache Clear cache thumbnails pages search or all" id="post-api-cache">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
@@ -2635,7 +2797,7 @@
     </div>
 
     <div id="endpoints-data-admin" class="endpoint-group">
-    <h2 class="group-title"><span data-en="12. Data Admin" data-zh="12. 数据管理">12. Data Admin</span> <span class="group-badge"><span data-en="9 endpoints" data-zh="9 个接口">9 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="13. Data Admin" data-zh="13. 数据管理">13. Data Admin</span> <span class="group-badge"><span data-en="9 endpoints" data-zh="9 个接口">9 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/admin/storage Get storage overview" id="get-api-admin-storage">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2913,7 +3075,7 @@
     </div>
 
     <div id="endpoints-library" class="endpoint-group">
-    <h2 class="group-title"><span data-en="13. Library Management" data-zh="13. 库管理">13. Library Management</span> <span class="group-badge"><span data-en="14 endpoints" data-zh="14 个接口">14 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="14. Library Management" data-zh="14. 库管理">14. Library Management</span> <span class="group-badge"><span data-en="14 endpoints" data-zh="14 个接口">14 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/admin/libraries List all libraries" id="get-api-admin-libraries">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -3332,7 +3494,7 @@
     </div>
 
     <div id="endpoints-goals" class="endpoint-group">
-    <h2 class="group-title"><span data-en="14. Goals" data-zh="14. 目标">14. Goals</span> <span class="group-badge"><span data-en="3 endpoints" data-zh="3 个接口">3 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="15. Goals" data-zh="15. 目标">15. Goals</span> <span class="group-badge"><span data-en="3 endpoints" data-zh="3 个接口">3 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/goals Get all goals" id="get-api-goals">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -3418,7 +3580,7 @@
     </div>
 
     <div id="endpoints-export" class="endpoint-group">
-    <h2 class="group-title"><span data-en="15. Export" data-zh="15. 导出">15. Export</span> <span class="group-badge"><span data-en="3 endpoints" data-zh="3 个接口">3 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="16. Export" data-zh="16. 导出">16. Export</span> <span class="group-badge"><span data-en="3 endpoints" data-zh="3 个接口">3 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/export/json Export all data as JSON" id="get-api-export-json">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -3492,7 +3654,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-logs" class="endpoint-group">
-    <h2 class="group-title"><span data-en="16. Logs" data-zh="16. 日志">16. Logs</span> <span class="group-badge"><span data-en="4 endpoints" data-zh="4 个接口">4 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="17. Logs" data-zh="17. 日志">17. Logs</span> <span class="group-badge"><span data-en="4 endpoints" data-zh="4 个接口">4 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/logs List error logs" id="get-api-logs">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -3613,7 +3775,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-sync" class="endpoint-group">
-    <h2 class="group-title"><span data-en="17. Sync" data-zh="17. 同步">17. Sync</span> <span class="group-badge"><span data-en="5 endpoints" data-zh="5 个接口">5 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="18. Sync" data-zh="18. 同步">18. Sync</span> <span class="group-badge"><span data-en="5 endpoints" data-zh="5 个接口">5 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/sync/status Get sync status" id="get-api-sync-status">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -3751,7 +3913,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-scan-rules" class="endpoint-group">
-    <h2 class="group-title"><span data-en="18. Scan Rules" data-zh="18. 扫描规则">18. Scan Rules</span> <span class="group-badge"><span data-en="7 endpoints" data-zh="7 个接口">7 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="19. Scan Rules" data-zh="19. 扫描规则">19. Scan Rules</span> <span class="group-badge"><span data-en="7 endpoints" data-zh="7 个接口">7 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/scan-rules List all scan rules configuration and running status" id="get-api-scan-rules">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -3934,7 +4096,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-thumbnails" class="endpoint-group">
-    <h2 class="group-title"><span data-en="19. Thumbnails" data-zh="19. 缩略图">19. Thumbnails</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
+    <h2 class="group-title"><span data-en="20. Thumbnails" data-zh="20. 缩略图">20. Thumbnails</span> <span class="group-badge"><span data-en="1 endpoint" data-zh="1 个接口">1 endpoint</span></span></h2>
 <div class="endpoint admin-only" data-search="POST /api/thumbnails/manage generate missing regenerate stats" id="post-api-thumbnails-manage">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
@@ -3973,7 +4135,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-groups" class="endpoint-group">
-    <h2 class="group-title"><span data-en="20. Groups" data-zh="20. 分组">20. Groups</span> <span class="group-badge"><span data-en="35 endpoints" data-zh="35 个接口">35 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="21. Groups" data-zh="21. 分组">21. Groups</span> <span class="group-badge"><span data-en="35 endpoints" data-zh="35 个接口">35 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/groups List groups" id="get-api-groups">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -4664,7 +4826,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-metadata" class="endpoint-group">
-    <h2 class="group-title"><span data-en="21. Metadata" data-zh="21. 元数据">21. Metadata</span> <span class="group-badge"><span data-en="17 endpoints" data-zh="17 个接口">17 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="22. Metadata" data-zh="22. 元数据">22. Metadata</span> <span class="group-badge"><span data-en="17 endpoints" data-zh="17 个接口">17 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/metadata/search Search metadata online" id="get-api-metadata-search">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -5139,7 +5301,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-ai" class="endpoint-group">
-    <h2 class="group-title"><span data-en="22. AI" data-zh="22. AI">22. AI</span> <span class="group-badge"><span data-en="30 endpoints" data-zh="30 个接口">30 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="23. AI" data-zh="23. AI">23. AI</span> <span class="group-badge"><span data-en="30 endpoints" data-zh="30 个接口">30 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/ai/status AI status" id="get-api-ai-status">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -5941,7 +6103,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-opds" class="endpoint-group">
-    <h2 class="group-title"><span data-en="23. OPDS" data-zh="23. OPDS">23. OPDS</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="24. OPDS" data-zh="24. OPDS">24. OPDS</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
     <p class="description"><span data-en="Comic-library OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole, while EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible. View-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded." data-zh="以漫画书库为边界的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开 Library.type 为 comic、已启用且当前用户拥有 canDownload 权限的书库中的受支持文件。Library.type 为 novel 的小说书库整体排除，但漫画书库中的 EPUB、MOBI、AZW3、TXT 和 HTML 文件仍可发布；仅可查看书库、已停用书库和 OPDS-PSE 逐页流式接口也不接入。">Comic-library OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole, while EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible. View-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded.</span></p>
 <div class="endpoint auth-required" data-search="GET /api/opds OPDS catalog root" id="get-api-opds">
   <div class="endpoint-header">
@@ -6238,7 +6400,7 @@ Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-
     </div>
 
     <div id="endpoints-recommendations" class="endpoint-group">
-    <h2 class="group-title"><span data-en="24. Recommendations" data-zh="24. 推荐">24. Recommendations</span> <span class="group-badge"><span data-en="2 endpoints" data-zh="2 个接口">2 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="25. Recommendations" data-zh="25. 推荐">25. Recommendations</span> <span class="group-badge"><span data-en="2 endpoints" data-zh="2 个接口">2 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/recommendations Get personalized recommendations" id="get-api-recommendations">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -6309,7 +6471,7 @@ Content-Type: application/vnd.comicbook+zip | application/x-cbr | application/x-
     </div>
 
     <div id="endpoints-translate" class="endpoint-group">
-    <h2 class="group-title"><span data-en="25. Tag Translate / Translate Engine" data-zh="25. 标签翻译 / 翻译引擎">25. Tag Translate / Translate Engine</span> <span class="group-badge"><span data-en="9 endpoints" data-zh="9 个接口">9 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="26. Tag Translate / Translate Engine" data-zh="26. 标签翻译 / 翻译引擎">26. Tag Translate / Translate Engine</span> <span class="group-badge"><span data-en="9 endpoints" data-zh="9 个接口">9 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="POST /api/tags/translate translate all tags" id="post-api-tags-translate">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
