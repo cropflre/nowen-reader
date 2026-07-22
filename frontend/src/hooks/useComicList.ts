@@ -76,7 +76,7 @@ export function useComics(options?: {
   uncategorized?: boolean;
   untagged?: boolean;
   libraryIds?: string[]; // 书库筛选：只返回这些书库的内容（空=不过滤）
-  fetchAll?: boolean; // 获取全部漫画（不分页，用于客户端合并分页）
+  seriesView?: boolean; // 将目录成员折叠为逻辑作品
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,13 +101,9 @@ export function useComics(options?: {
     if (options?.favoritesOnly) params.set("favorites", "true");
     if (options?.sortBy) params.set("sortBy", options.sortBy);
     if (options?.sortOrder) params.set("sortOrder", options.sortOrder);
-    // fetchAll 模式是 Web 书架的统一视图：请求后端将目录成员折叠为作品卡片。
-    if (options?.fetchAll) params.set("seriesView", "true");
-    // fetchAll 模式不传 page/pageSize，后端 pageSize<=0 时不应用 LIMIT
-    if (!options?.fetchAll) {
-      if (options?.page) params.set("page", String(options.page));
-      if (options?.pageSize) params.set("pageSize", String(options.pageSize));
-    }
+    if (options?.seriesView) params.set("seriesView", "true");
+    if (options?.page) params.set("page", String(options.page));
+    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
     if (options?.category) params.set("category", options.category);
     if (options?.contentType) params.set("contentType", options.contentType);
     if (options?.excludeGrouped) params.set("excludeGrouped", "true");
@@ -168,7 +164,7 @@ export function useComics(options?: {
         setFetching(false);
       }
     }
-  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped, options?.fetchAll, options?.readingStatus, JSON.stringify(options?.libraryIds ?? [])]);
+  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped, options?.seriesView, options?.readingStatus, options?.uncategorized, options?.untagged, JSON.stringify(options?.libraryIds ?? [])]);
 
   useEffect(() => {
     fetchComics();

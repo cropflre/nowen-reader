@@ -22,10 +22,10 @@ import { useCategories, ApiCategory } from "@/hooks/useComics";
 interface BatchToolbarProps {
   selectedCount: number;
   onCancel: () => void;
-  onDelete: (deleteFiles?: boolean) => void;
-  onFavorite: () => void;
-  onUnfavorite: () => void;
-  onAddTags: (tags: string[]) => void;
+  onDelete?: (deleteFiles?: boolean) => void;
+  onFavorite?: () => void;
+  onUnfavorite?: () => void;
+  onAddTags?: (tags: string[]) => void;
   onSetCategory?: (categorySlugs: string[]) => void;
   onMergeGroup?: () => void;
   onAddToGroup?: () => void;
@@ -80,7 +80,7 @@ export default function BatchToolbar({
 
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {/* Favorite — 仅管理员 */}
-            {isAdmin && (
+            {isAdmin && onFavorite && (
             <button
               onClick={onFavorite}
               className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-500/20 btn-press"
@@ -92,7 +92,7 @@ export default function BatchToolbar({
             )}
 
             {/* Unfavorite — 仅管理员 */}
-            {isAdmin && (
+            {isAdmin && onUnfavorite && (
             <button
               onClick={onUnfavorite}
               className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-muted transition-colors hover:bg-card-hover btn-press"
@@ -103,7 +103,7 @@ export default function BatchToolbar({
             )}
 
             {/* Add Tags — 仅管理员 */}
-            {isAdmin && (
+            {isAdmin && onAddTags && (
             <button
               onClick={() => setShowTagInput(!showTagInput)}
               className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
@@ -210,7 +210,7 @@ export default function BatchToolbar({
             )}
 
             {/* Delete */}
-            {isAdmin && (
+            {isAdmin && onDelete && (
             <button
               onClick={() => setShowDeleteConfirm(true)}
               className="flex h-8 items-center gap-1.5 rounded-lg bg-card px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 btn-press"
@@ -233,7 +233,7 @@ export default function BatchToolbar({
         </div>
 
         {/* Tag Input Inline */}
-        {showTagInput && (
+        {showTagInput && onAddTags && (
           <div className="mx-auto mt-3 flex max-w-[1800px] items-center gap-2">
             <input
               type="text"
@@ -352,7 +352,7 @@ export default function BatchToolbar({
         )}
 
       {/* Delete Confirm Modal */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm && onDelete && (
         <>
           <div className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in" onClick={() => setShowDeleteConfirm(false)} />
           <div className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-2rem)] max-w-96 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal-in">

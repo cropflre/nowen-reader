@@ -38,7 +38,7 @@ export default function MergeGroupDialog({
         </div>
 
         <p className="mb-4 text-sm text-muted">
-          将选中的 <span className="font-medium text-accent">{selectedCount}</span> 本漫画合并为一个合集
+          将选中的 <span className="font-medium text-accent">{selectedCount}</span> 项作品合并为一个合集
         </p>
 
         <input

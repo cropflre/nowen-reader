@@ -27,6 +27,8 @@ interface ComicContextMenuProps {
   comicTitle: string;
   isFavorite?: boolean;
   isAdmin?: boolean;
+  canFavorite?: boolean;
+  canDelete?: boolean;
   onClose: () => void;
   onRead: (id: string) => void;
   onDetail: (id: string) => void;
@@ -42,6 +44,8 @@ export default function ComicContextMenu({
   comicTitle,
   isFavorite,
   isAdmin = true,
+  canFavorite = true,
+  canDelete = true,
   onClose,
   onRead,
   onDetail,
@@ -112,7 +116,7 @@ export default function ComicContextMenu({
       icon: isFavorite
         ? <HeartOff className="h-3.5 w-3.5" />
         : <Heart className="h-3.5 w-3.5" />,
-      hidden: !isAdmin,
+      hidden: !isAdmin || !canFavorite,
     },
     {
       key: "addToGroup",
@@ -127,7 +131,7 @@ export default function ComicContextMenu({
         : (t.contextMenu?.delete || "删除"),
       icon: <Trash2 className="h-3.5 w-3.5" />,
       danger: true,
-      hidden: !isAdmin,
+      hidden: !isAdmin || !canDelete,
     },
   ];
 
