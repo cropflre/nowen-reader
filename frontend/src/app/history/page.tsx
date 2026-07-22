@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { calculateReadingProgress, getReadingPageNumber, isReadingFinished } from "@/lib/progress";
+import { calculateStoredReadingProgress, getReadingPageNumber, isStoredReadingFinished } from "@/lib/progress";
 
 interface ApiComic {
   id: string;
@@ -135,15 +135,15 @@ export default function HistoryPage() {
     let items = [...comics];
     if (activeFilter === "comic") items = items.filter((c) => c.type !== "novel");
     else if (activeFilter === "novel") items = items.filter((c) => c.type === "novel");
-    else if (activeFilter === "reading") items = items.filter((c) => !isReadingFinished(c.lastReadPage, c.pageCount));
-    else if (activeFilter === "finished") items = items.filter((c) => isReadingFinished(c.lastReadPage, c.pageCount));
+    else if (activeFilter === "reading") items = items.filter((c) => !isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus));
+    else if (activeFilter === "finished") items = items.filter((c) => isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus));
 
     if (activeSort === "recent") {
       items.sort((a, b) => new Date(b.lastReadAt!).getTime() - new Date(a.lastReadAt!).getTime());
     } else if (activeSort === "duration") {
       items.sort((a, b) => (b.totalReadTime || 0) - (a.totalReadTime || 0));
     } else if (activeSort === "progress") {
-      items.sort((a, b) => calculateReadingProgress(b.lastReadPage, b.pageCount) - calculateReadingProgress(a.lastReadPage, a.pageCount));
+      items.sort((a, b) => calculateStoredReadingProgress(b.lastReadPage, b.pageCount, b.lastReadAt, b.readingStatus) - calculateStoredReadingProgress(a.lastReadPage, a.pageCount, a.lastReadAt, a.readingStatus));
     }
     return items;
   }, [comics, activeFilter, activeSort]);
@@ -163,8 +163,8 @@ export default function HistoryPage() {
 
   const summary = useMemo(() => {
     const totalTime = comics.reduce((s, c) => s + (c.totalReadTime || 0), 0);
-    const readingCount = comics.filter((c) => !isReadingFinished(c.lastReadPage, c.pageCount)).length;
-    const finishedCount = comics.filter((c) => isReadingFinished(c.lastReadPage, c.pageCount)).length;
+    const readingCount = comics.filter((c) => !isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus)).length;
+    const finishedCount = comics.filter((c) => isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus)).length;
     return { total: comics.length, totalTime, readingCount, finishedCount };
   }, [comics]);
 
@@ -288,8 +288,8 @@ export default function HistoryPage() {
 }
 
 function HistoryCard({ comic }: { comic: ApiComic }) {
-  const progress = calculateReadingProgress(comic.lastReadPage, comic.pageCount);
-  const finished = isReadingFinished(comic.lastReadPage, comic.pageCount);
+  const progress = calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
+  const finished = isStoredReadingFinished(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
   // 判断是否已开始阅读（不依赖 progress > 0，避免小数进度被四舍五入为 0）
   const hasStarted = !!comic.lastReadAt || comic.lastReadPage > 0;
 

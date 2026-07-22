@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { Shuffle, Sparkles } from "lucide-react";
 import ContentShelf, { ShelfCard } from "./ContentShelf";
 import type { ApiComic } from "@/hooks/useComics";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateStoredReadingProgress } from "@/lib/progress";
 
 interface RandomDiscoveryProps {
   comics: ApiComic[];
@@ -16,6 +16,10 @@ function pickRandom<T>(arr: T[], count: number): T[] {
   return shuffled.slice(0, count);
 }
 
+function storedProgress(comic: ApiComic): number {
+  return calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
+}
+
 export default function RandomDiscovery({ comics, contentType }: RandomDiscoveryProps) {
   const [key, setKey] = useState(0);
 
@@ -23,7 +27,7 @@ export default function RandomDiscovery({ comics, contentType }: RandomDiscovery
     const readable = comics.filter((c) => c.type !== "dir");
     if (readable.length <= 8) return readable;
     // Prefer unread for discovery
-    const unread = readable.filter((c) => calculateReadingProgress(c.lastReadPage, c.pageCount) === 0);
+    const unread = readable.filter((c) => storedProgress(c) === 0);
     const pool = unread.length >= 6 ? unread : readable;
     return pickRandom(pool, 8);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,7 +51,7 @@ export default function RandomDiscovery({ comics, contentType }: RandomDiscovery
           coverUrl={comic.coverUrl}
           title={comic.title}
           subtitle={comic.author || undefined}
-          badge={calculateReadingProgress(comic.lastReadPage, comic.pageCount) === 0 ? "未读" : undefined}
+          badge={storedProgress(comic) === 0 ? "未读" : undefined}
           badgeColor="bg-amber-500/10 text-amber-500"
         />
       ))}

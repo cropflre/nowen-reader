@@ -32,6 +32,36 @@ export function calculateReadingProgress(
   return Math.min(100, Math.round((currentPage / pageCount) * 100));
 }
 
+/** Whether persisted state contains evidence that reading has started. */
+export function hasReadingStarted(
+  lastReadPage: number,
+  lastReadAt?: string | null,
+  readingStatus?: string | null,
+): boolean {
+  return Boolean(lastReadAt)
+    || lastReadPage > 0
+    || readingStatus === "reading"
+    || readingStatus === "finished";
+}
+
+/**
+ * Calculate progress for state loaded from the server.
+ *
+ * Persisted `lastReadPage = 0` is ambiguous: it is both the database default
+ * and the reader's zero-based first page. Reading timestamps/status disambiguate
+ * those cases, while `lastReadPage > 0` preserves legacy records.
+ */
+export function calculateStoredReadingProgress(
+  lastReadPage: number,
+  pageCount: number,
+  lastReadAt?: string | null,
+  readingStatus?: string | null,
+): number {
+  if (!hasReadingStarted(lastReadPage, lastReadAt, readingStatus)) return 0;
+  const progress = calculateReadingProgress(lastReadPage, pageCount);
+  return progress > 0 ? progress : (pageCount > 0 ? 1 : 0);
+}
+
 /** Return the 1-based page number used in labels, clamped to pageCount. */
 export function getReadingPageNumber(
   lastReadPage: number,
@@ -51,4 +81,16 @@ export function isReadingFinished(
   pageCount: number,
 ): boolean {
   return pageCount > 0 && lastReadPage >= pageCount - 1;
+}
+
+/** Finished-state check for persisted records, including the unread page-zero case. */
+export function isStoredReadingFinished(
+  lastReadPage: number,
+  pageCount: number,
+  lastReadAt?: string | null,
+  readingStatus?: string | null,
+): boolean {
+  if (readingStatus === "finished") return true;
+  return hasReadingStarted(lastReadPage, lastReadAt, readingStatus)
+    && isReadingFinished(lastReadPage, pageCount);
 }

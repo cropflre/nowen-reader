@@ -13,7 +13,7 @@ import {
 } from "@/hooks/useComics";
 import { ComicReadingMode, ReadingDirection } from "@/types/reader";
 import ReaderToolbar from "@/components/reader/ReaderToolbar";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateReadingProgress, calculateStoredReadingProgress } from "@/lib/progress";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import { useTheme } from "@/lib/theme-context";
 import SinglePageView from "@/components/reader/SinglePageView";
@@ -41,6 +41,8 @@ interface SeriesVolumeInfo {
   title: string;
   pageCount: number;
   lastReadPage: number;
+  lastReadAt: string | null;
+  readingStatus: string;
   seriesIndex?: number;
 }
 
@@ -215,6 +217,8 @@ export default function ReaderPage() {
                 title: c.title,
                 pageCount: c.pageCount,
                 lastReadPage: c.lastReadPage,
+                lastReadAt: c.lastReadAt,
+                readingStatus: c.readingStatus,
                 seriesIndex: idx + 1,
               })));
             }
@@ -947,7 +951,7 @@ export default function ReaderPage() {
             {/* 章节列表 */}
             <div className="p-2 space-y-1">
               {seriesVolumes.map((vol) => {
-                const progress = calculateReadingProgress(vol.lastReadPage, vol.pageCount);
+                const progress = calculateStoredReadingProgress(vol.lastReadPage, vol.pageCount, vol.lastReadAt, vol.readingStatus);
                 const isCurrent = vol.comicId === comicId;
                 return (
                   <button

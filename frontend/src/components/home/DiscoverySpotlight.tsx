@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { BookOpen, Play, Eye, Shuffle, ChevronRight, Library, Bookmark } from "lucide-react";
 import type { ApiComic } from "@/hooks/useComics";
-import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/progress";
 
 // ============================================================
 // Types
@@ -43,19 +43,23 @@ function pickRandom<T>(arr: T[], count: number): T[] {
   return shuffled.slice(0, count);
 }
 
+function storedProgress(comic: ApiComic): number {
+  return calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
+}
+
 function filterByMood(comics: ApiComic[], mood: MoodKey): ApiComic[] {
   const readable = comics.filter((c) => c.type !== "dir");
   if (readable.length === 0) return [];
   switch (mood) {
     case "picks": {
       const picks = readable.filter((c) => {
-        const pct = calculateReadingProgress(c.lastReadPage, c.pageCount);
+        const pct = storedProgress(c);
         return c.isFavorite || (pct > 0 && pct < 100);
       });
       return picks.length >= 4 ? pickRandom(picks, 5) : pickRandom(readable, 5);
     }
     case "unread": {
-      const unread = readable.filter((c) => calculateReadingProgress(c.lastReadPage, c.pageCount) === 0);
+      const unread = readable.filter((c) => storedProgress(c) === 0);
       return unread.length >= 4 ? pickRandom(unread, 5) : pickRandom(readable, 5);
     }
     case "latest": {
@@ -87,8 +91,8 @@ function getMoodHint(mood: MoodKey): string {
 }
 
 function getStatusLabel(comic: ApiComic): string {
-  const pct = calculateReadingProgress(comic.lastReadPage, comic.pageCount);
-  if (comic.readingStatus === "finished" || isReadingFinished(comic.lastReadPage, comic.pageCount)) return "已读完";
+  const pct = storedProgress(comic);
+  if (isStoredReadingFinished(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus)) return "已读完";
   if (pct > 0) return `读到 ${pct}%`;
   return "未读";
 }
@@ -129,7 +133,7 @@ export default function DiscoverySpotlight({ comics, contentType, totalItems, lo
   if (loading || comics.length === 0) return null;
 
   // Bento data
-  const unreadCount = comics.filter(c => c.type !== 'dir' && calculateReadingProgress(c.lastReadPage, c.pageCount) === 0).length;
+  const unreadCount = comics.filter(c => c.type !== 'dir' && storedProgress(c) === 0).length;
   const latestComics = [...comics.filter(c => c.type !== 'dir')].sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime()).slice(0, 4);
   const randomPool = comics.filter(c => c.type !== 'dir');
   const randomComics = randomPool.sort(() => Math.random() - 0.5).slice(0, 4);
@@ -209,7 +213,7 @@ export default function DiscoverySpotlight({ comics, contentType, totalItems, lo
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover">
                       <Play className="h-4 w-4" />
-                      {calculateReadingProgress(spotlight.lastReadPage, spotlight.pageCount) > 0 ? '继续阅读' : '开始阅读'}
+                      {storedProgress(spotlight) > 0 ? '继续阅读' : '开始阅读'}
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-xl border border-border/40 px-5 py-2.5 text-sm text-muted hover:text-foreground transition-colors">
                       <Eye className="h-4 w-4" /> 详情

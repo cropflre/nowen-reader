@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { fetchSeriesDetail, redetectSeries, updateSeries, updateSeriesStructure } from "@/api/series";
 import type { SeriesDetail, SeriesItem } from "@/types/series";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/progress";
 import { formatDuration, formatFileSize, isNovelFile } from "@/lib/comic-utils";
 
 function readerURL(item: SeriesItem): string {
@@ -32,12 +32,22 @@ function readerURL(item: SeriesItem): string {
 
 function itemProgress(item: SeriesItem): number {
   return item.comic.pageCount && item.comic.pageCount > 0
-    ? calculateReadingProgress(item.comic.lastReadPage || 0, item.comic.pageCount)
+    ? calculateStoredReadingProgress(
+        item.comic.lastReadPage || 0,
+        item.comic.pageCount,
+        item.comic.lastReadAt,
+        item.comic.readingStatus,
+      )
     : 0;
 }
 
 function isFinished(item: SeriesItem): boolean {
-  return item.comic.readingStatus === "finished" || itemProgress(item) >= 99.5;
+  return isStoredReadingFinished(
+    item.comic.lastReadPage || 0,
+    item.comic.pageCount || 0,
+    item.comic.lastReadAt,
+    item.comic.readingStatus,
+  );
 }
 
 export default function SeriesDetailPage() {

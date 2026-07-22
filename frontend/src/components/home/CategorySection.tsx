@@ -8,7 +8,7 @@ import type { ApiComic } from "@/hooks/useComics";
 import type { Comic } from "@/types/comic";
 import type { HomeSectionConfig, CardSize } from "@/hooks/useHomeLayout";
 import { getGridColsClasses } from "@/hooks/useHomeLayout";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateStoredReadingProgress } from "@/lib/progress";
 
 // ============================================================
 // Types
@@ -58,8 +58,9 @@ function apiToComic(api: ApiComic): Comic {
     pageCount: api.pageCount,
     fileSize: api.fileSize,
     addedAt: api.addedAt || undefined,
-    progress: api.pageCount > 0 ? calculateReadingProgress(api.lastReadPage, api.pageCount) : 0,
+    progress: api.pageCount > 0 ? calculateStoredReadingProgress(api.lastReadPage, api.pageCount, api.lastReadAt, api.readingStatus) : 0,
     lastRead: api.lastReadAt || undefined,
+    lastReadAt: api.lastReadAt,
     isFavorite: api.isFavorite,
     rating: api.rating ?? undefined,
     lastReadPage: api.lastReadPage,
@@ -69,6 +70,7 @@ function apiToComic(api: ApiComic): Comic {
     filename: api.filename,
     author: api.author || undefined,
     type: api.type,
+    readingStatus: api.readingStatus,
   };
 }
 

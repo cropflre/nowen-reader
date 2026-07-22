@@ -34,7 +34,7 @@ import { createGroup } from "@/api/groups";
 import { toggleComicFavorite, deleteComicById } from "@/api/comics";
 import { fetchLibraries, fetchAccessibleLibraries, type Library } from "@/api/libraries";
 import { useAuth } from "@/lib/auth-context";
-import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { calculateStoredReadingProgress } from "@/lib/progress";
 import { seriesIdFromShelfId } from "@/lib/series-id";
 
 const DEFAULT_PAGE_SIZE = 24;
@@ -64,14 +64,16 @@ function apiToComic(api: ApiComic): Comic {
     addedAt: api.addedAt || undefined,
     progress:
       api.pageCount > 0
-        ? calculateReadingProgress(api.lastReadPage, api.pageCount)
+        ? calculateStoredReadingProgress(api.lastReadPage, api.pageCount, api.lastReadAt, api.readingStatus)
         : 0,
     lastRead: api.lastReadAt || undefined,
+    lastReadAt: api.lastReadAt,
     isFavorite: api.isFavorite,
     rating: api.rating ?? undefined,
     lastReadPage: api.lastReadPage,
     sortOrder: api.sortOrder,
     totalReadTime: api.totalReadTime,
+    readingStatus: api.readingStatus,
     categories: api.categories || [],
     filename: api.filename,
     author: api.author || undefined,

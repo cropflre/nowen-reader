@@ -8,7 +8,7 @@ import NSFWCoverGuard from "@/components/NSFWCoverGuard";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import { isNSFW } from "@/lib/nsfw";
 import { useTranslation } from "@/lib/i18n";
-import { calculateReadingProgress, getReadingPageNumber, isReadingFinished } from "@/lib/progress";
+import { calculateStoredReadingProgress, getReadingPageNumber, isStoredReadingFinished } from "@/lib/progress";
 import { LIBRARY_ACCESS_CHANGED_EVENT } from "@/hooks/useComics";
 import type { ApiComic } from "@/hooks/useComics";
 
@@ -119,7 +119,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
       const comics = all.filter(
         (c: ApiComic) =>
           !!c.lastReadAt &&
-          !isReadingFinished(c.lastReadPage, c.pageCount)
+          !isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus)
       );
       setRecentComics(comics.slice(0, 8));
     } catch {
@@ -313,7 +313,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
                 if (n === 0) return null;
                 const comic = recentComics[activeIndex];
                 const progress = comic.pageCount > 0
-                  ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
+                  ? calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus)
                   : 0;
                 const href = isNovel(comic) ? `/novel/${comic.id}` : `/reader/${comic.id}`;
 
@@ -444,7 +444,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
               {recentComics.map((comic) => {
                 const progress =
                   comic.pageCount > 0
-                    ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
+                    ? calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus)
                     : 0;
                 const novel = isNovel(comic);
                 const href = novel ? `/novel/${comic.id}` : `/reader/${comic.id}`;

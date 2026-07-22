@@ -19,6 +19,7 @@ export interface Comic {
   fileSize?: number;
   addedAt?: string;
   lastRead?: string;
+  lastReadAt?: string | null;
   progress?: number; // 0-100
   isFavorite?: boolean;
   rating?: number; // 1-5

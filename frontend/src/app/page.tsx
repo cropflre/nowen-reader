@@ -22,7 +22,7 @@ import { isNSFW } from "@/lib/nsfw";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { useComics, ApiComic } from "@/hooks/useComics";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateStoredReadingProgress } from "@/lib/progress";
 
 /**
  * Dashboard 首页 — 私人漫画库 NAS 媒体库仪表盘
@@ -119,7 +119,7 @@ export default function Home() {
                   {recentComics.map((comic) => {
                     const href = comic.type === "novel" ? `/novel/${comic.id}` : `/reader/${comic.id}`;
                     const progress = comic.pageCount > 0
-                      ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
+                      ? calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus)
                       : 0;
 
                     return (

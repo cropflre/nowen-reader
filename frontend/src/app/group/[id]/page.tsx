@@ -32,7 +32,7 @@ import {
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/auth-context";
-import { calculateReadingProgress, isReadingFinished } from "@/lib/progress";
+import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/progress";
 import {
   fetchGroupDetail,
   updateGroup,
@@ -734,7 +734,7 @@ export default function GroupDetailPage() {
 
   // 查找继续阅读的卷
   const continueVolume = readingUnits.find(
-    (c) => !!c.lastReadAt && !isReadingFinished(c.lastReadPage, c.pageCount)
+    (c) => !!c.lastReadAt && !isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus)
   );
 
   if (loading) {
@@ -2059,7 +2059,7 @@ function HorizontalComicCard({
   onRemoveMouseLeave,
 }: HorizontalComicCardProps) {
   const progress = comic.pageCount > 0
-    ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
+    ? calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus)
     : 0;
 
   return (

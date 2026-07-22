@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { Clock, BookOpen, Sparkles, Zap, Shuffle } from "lucide-react";
 import ContentShelf, { ShelfCard } from "./ContentShelf";
 import type { ApiComic } from "@/hooks/useComics";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateStoredReadingProgress } from "@/lib/progress";
 
 // ============================================================
 // Types
@@ -40,6 +40,10 @@ function pickRandom<T>(arr: T[], count: number): T[] {
   return shuffled.slice(0, count);
 }
 
+function storedProgress(comic: ApiComic): number {
+  return calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
+}
+
 // ============================================================
 // Component
 // ============================================================
@@ -62,7 +66,7 @@ export default function ExploreChannel({ comics, contentType }: ExploreChannelPr
           .slice(0, 16);
       }
       case "unread": {
-        const unread = readable.filter((c) => calculateReadingProgress(c.lastReadPage, c.pageCount) === 0);
+        const unread = readable.filter((c) => storedProgress(c) === 0);
         return unread.length >= 6 ? pickRandom(unread, 16) : pickRandom(readable, 16);
       }
       case "random":
@@ -123,7 +127,7 @@ export default function ExploreChannel({ comics, contentType }: ExploreChannelPr
       {/* Horizontal shelf */}
       <ContentShelf title="" className="mb-0">
         {shelfComics.map((comic) => {
-          const pct = calculateReadingProgress(comic.lastReadPage, comic.pageCount);
+          const pct = storedProgress(comic);
           return (
             <ShelfCard
               key={comic.id}

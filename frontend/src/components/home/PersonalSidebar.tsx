@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Shuffle, ChevronRight, BookOpen, Clock, Library, Settings, Database, Play, BarChart3, TrendingUp } from "lucide-react";
 import type { ApiComic } from "@/hooks/useComics";
-import { calculateReadingProgress } from "@/lib/progress";
+import { calculateStoredReadingProgress } from "@/lib/progress";
 import ServerActivityPanel from "@/components/ServerActivityPanel";
 
 interface PersonalSidebarProps {
@@ -14,33 +14,37 @@ interface PersonalSidebarProps {
   totalItems?: number;
 }
 
+function storedProgress(comic: ApiComic): number {
+  return calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
+}
+
 export default function PersonalSidebar({ comics, contentType, totalItems }: PersonalSidebarProps) {
   const [randomKey, setRandomKey] = useState(0);
 
   const readable = useMemo(() => comics.filter(c => c.type !== "dir"), [comics]);
 
   const unreadCount = useMemo(
-    () => readable.filter(c => calculateReadingProgress(c.lastReadPage, c.pageCount) === 0).length,
+    () => readable.filter(c => storedProgress(c) === 0).length,
     [readable]
   );
 
   const readingCount = useMemo(
     () => readable.filter(c => {
-      const pct = calculateReadingProgress(c.lastReadPage, c.pageCount);
+      const pct = storedProgress(c);
       return pct > 0 && pct < 100;
     }).length,
     [readable]
   );
 
   const finishedCount = useMemo(
-    () => readable.filter(c => calculateReadingProgress(c.lastReadPage, c.pageCount) === 100).length,
+    () => readable.filter(c => storedProgress(c) === 100).length,
     [readable]
   );
 
   const continueReading = useMemo(() => {
     return readable
       .filter(c => {
-        const pct = calculateReadingProgress(c.lastReadPage, c.pageCount);
+        const pct = storedProgress(c);
         return pct > 0 && pct < 100;
       })
       .slice(0, 3);
@@ -148,7 +152,7 @@ export default function PersonalSidebar({ comics, contentType, totalItems }: Per
             </div>
             <div className="space-y-2">
               {continueReading.map((comic) => {
-                const pct = calculateReadingProgress(comic.lastReadPage, comic.pageCount);
+                const pct = storedProgress(comic);
                 return (
                   <Link key={comic.id} href={`/comic/${comic.id}`} className="group flex items-center gap-2.5 rounded-lg bg-background/30 p-1.5 transition-all hover:bg-background/50 border border-white/[0.04]">
                     <div className="relative w-9 h-[50px] rounded-md overflow-hidden flex-shrink-0 bg-gradient-to-br from-muted/20 to-card shadow-sm">

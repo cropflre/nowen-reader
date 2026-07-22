@@ -23,7 +23,7 @@ import {
 } from "@/hooks/useComics";
 import type { ComicMetadataUpdate } from "@/hooks/useComics";
 import { useAuth } from "@/lib/auth-context";
-import { calculateReadingProgress, getReadingPageNumber, isReadingFinished } from "@/lib/progress";
+import { calculateStoredReadingProgress, getReadingPageNumber, isStoredReadingFinished } from "@/lib/progress";
 import {
   ArrowLeft,
   Heart,
@@ -862,7 +862,7 @@ export default function ComicDetailPage() {
     );
   }
 
-  const progress = calculateReadingProgress(comic.lastReadPage, comic.pageCount);
+  const progress = calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -1276,13 +1276,13 @@ export default function ComicDetailPage() {
               // 当前漫画在合集中的位置
               const currentIdx = group.comics.findIndex(c => c.id === comicId);
               const totalComics = group.comics.length;
-              const completedCount = group.comics.filter(c => isReadingFinished(c.lastReadPage, c.pageCount)).length;
+              const completedCount = group.comics.filter(c => isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus)).length;
               const overallProgress = totalComics > 0 ? Math.round((completedCount / totalComics) * 100) : 0;
               // 上一卷/下一卷
               const prevComic = currentIdx > 0 ? group.comics[currentIdx - 1] : null;
               const nextComic = currentIdx >= 0 && currentIdx < totalComics - 1 ? group.comics[currentIdx + 1] : null;
               // 继续阅读的下一未读卷
-              const nextUnread = group.comics.find(c => c.id !== comicId && !isReadingFinished(c.lastReadPage, c.pageCount));
+              const nextUnread = group.comics.find(c => c.id !== comicId && !isStoredReadingFinished(c.lastReadPage, c.pageCount, c.lastReadAt, c.readingStatus));
 
               return (
                 <div key={group.id} className="surface-card rounded-xl overflow-hidden min-w-0">
