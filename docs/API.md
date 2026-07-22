@@ -98,6 +98,7 @@ Content-Type: application/json
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
 | GET | `/api/comics` | 列表（按用户可访问书库过滤，搜索/筛选/分页/排序/FTS5 全文搜索）🔒 |
+| GET | `/api/catalog/items` | 合集选择器使用的逻辑作品列表（目录作品与散本统一分页）🔒 |
 | GET | `/api/comics/:id` | 详情（无权限返回 403）🔒 |
 | PUT | `/api/comics/:id/favorite` | 切换收藏 🔒 |
 | PUT | `/api/comics/:id/rating` | 更新评分 🔒 |
@@ -142,8 +143,64 @@ Authorization: Bearer <token>
 - 普通用户传入无权限书库 ID 时会被过滤掉；交集为空时返回空列表。
 - 没有任何书库访问权限的普通用户返回空列表，不会退化成全库查询。
 - `sortBy=title` 时会按服务端维护的 `titleSortKey` 排序，效果上 `第2卷` 在 `第10卷` 前，常见中文标题按拼音顺序排列。
-- `seriesView=true` 专供统一书架展示：服务端先执行当前列表的权限和筛选条件，再把命中的目录作品成员折叠为一个虚拟条目。虚拟条目的 ID 为 `series-<seriesId>`，不是真实漫画 ID；客户端应从该条目进入 `/api/series/:id`，不要把虚拟 ID 传给漫画详情、阅读或下载接口。
-- 折叠后的响应会重新计算 `total`，并统一返回 `page=1`、`pageSize=折叠后条目数`、`totalPages=1`。需要稳定分页或逐本数据的 API 客户端不应启用该参数。
+- `seriesView=true` 专供统一书架展示：服务端先执行当前列表的权限和筛选条件，再把命中的目录作品成员折叠为一个虚拟条目。虚拟条目的 ID 为 `series-<seriesId>`，不是真实漫画 ID；`comicCount` 表示目录作品包含的阅读单元数。客户端应从该条目进入 `/api/series/:id`，不要把虚拟 ID 传给漫画详情、阅读或下载接口。
+- 折叠在分页之前完成，响应中的 `total`、`pageSize` 和 `totalPages` 均按折叠后的逻辑作品计算。需要明确区分散本和目录作品的选择器应优先使用 `/api/catalog/items`，避免解析虚拟 ID。
+
+### 合集可选作品列表
+
+```http
+GET /api/catalog/items?contentType=comic&search=作品名&page=1&pageSize=12&sortBy=title&sortOrder=asc
+Authorization: Bearer <token>
+```
+
+该接口用于合集创建等“选择作品”场景，在数据库中先生成逻辑作品，再执行计数、排序和分页：
+
+- 至少包含两个有效漫画阅读单元的目录作品返回一条 `kind=series` 记录，成员不会重复作为散本返回。
+- 单成员目录关系退回普通 `kind=comic` 记录，不会导致作品消失。
+- 小说始终逐本返回 `kind=comic`，不接入目录作品。
+- 搜索目录作品标题或任一成员标题/文件名时，返回对应目录作品。
+- 普通用户始终按当前 `canView` 权限过滤；传入的 `libraryIds` 会与可访问书库取交集，交集为空时返回空列表。
+
+| 查询参数 | 类型 | 必填 | 说明 |
+|:---|:---|:---:|:---|
+| `contentType` | string | 否 | `comic` / `novel`，默认 `comic` |
+| `search` | string | 否 | 按逻辑作品标题、成员标题或文件名搜索 |
+| `libraryIds` | string | 否 | 逗号分隔的书库 ID，普通用户不能借此扩大权限范围 |
+| `page` | int | 否 | 页码，从 `1` 开始，默认 `1` |
+| `pageSize` | int | 否 | 每页数量，默认 `24`，最大 `100` |
+| `sortBy` | string | 否 | 当前仅支持 `title`，默认 `title` |
+| `sortOrder` | string | 否 | `asc` / `desc`，默认 `asc` |
+
+响应示例：
+
+```json
+{
+  "items": [
+    {
+      "id": "ser_xxx",
+      "kind": "series",
+      "title": "目录作品",
+      "coverUrl": "/api/comics/comic_xxx/thumbnail",
+      "itemCount": 15,
+      "libraryId": "lib_xxx"
+    },
+    {
+      "id": "comic_xxx",
+      "kind": "comic",
+      "title": "散本漫画",
+      "coverUrl": "/api/comics/comic_xxx/thumbnail",
+      "itemCount": 1,
+      "libraryId": "lib_xxx"
+    }
+  ],
+  "page": 1,
+  "pageSize": 12,
+  "total": 2,
+  "totalPages": 1
+}
+```
+
+`id` 是对应实体的真实 ID。创建合集时，应根据 `kind` 分别提交到 `comicIds` 或 `seriesIds`，不要添加或解析虚拟前缀。
 
 ### 设置阅读状态
 
@@ -321,15 +378,72 @@ Content-Type: application/json
 
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
-| GET | `/api/groups` | 分组列表（支持 contentType/category/tags/favoritesOnly/libraryIds 过滤）🔒 |
+| GET | `/api/groups` | 分组列表（目录作品成员参与 contentType/category/tags/favoritesOnly/libraryIds 过滤与计数）🔒 |
 | GET | `/api/groups/comic-map` | 漫画-分组映射关系 |
-| GET | `/api/groups/:id` | 分组详情 |
-| POST | `/api/groups` | 创建分组 🔒管理员 |
+| GET | `/api/groups/:id` | 分组详情（分别返回 `seriesList` 与 `comics`）🔒 |
+| POST | `/api/groups` | 创建分组，可提交 `comicIds` 与 `seriesIds` 🔒管理员 |
 | PUT | `/api/groups/:id` | 更新分组 🔒管理员 |
 | DELETE | `/api/groups/:id` | 删除分组 🔒管理员 |
 | POST | `/api/groups/:id/comics` | 添加漫画到分组 🔒管理员 |
 | DELETE | `/api/groups/:id/comics/:comicId` | 从分组移除漫画 🔒管理员 |
+| POST | `/api/groups/:id/series` | 添加目录作品到分组 🔒管理员 |
+| DELETE | `/api/groups/:id/series/:seriesId` | 从分组移除目录作品 🔒管理员 |
 | PUT | `/api/groups/:id/reorder` | 分组内漫画排序 🔒管理员 |
+
+### 合集与目录作品
+
+创建合集时可同时提交散本和目录作品，整个创建过程在同一个数据库事务中完成：
+
+```http
+POST /api/groups
+Content-Type: application/json
+
+{
+  "name": "合集名称",
+  "comicIds": ["comic_xxx"],
+  "seriesIds": ["ser_xxx"]
+}
+```
+
+`comicIds` 和 `seriesIds` 均可省略或传空数组。目录作品也可以在合集创建后单独添加或移除：
+
+```http
+POST /api/groups/:id/series
+Content-Type: application/json
+
+{"seriesIds": ["ser_xxx"]}
+```
+
+```http
+DELETE /api/groups/:id/series/:seriesId
+```
+
+`GET /api/groups/:id` 将散本和目录作品分开返回：
+
+```json
+{
+  "id": 1,
+  "name": "合集名称",
+  "comicCount": 3,
+  "seriesList": [
+    {
+      "id": "ser_xxx",
+      "title": "目录作品",
+      "rootRelativePath": "目录作品",
+      "coverComicId": "comic_001",
+      "coverUrl": "/api/comics/comic_001/thumbnail",
+      "sortIndex": 0,
+      "comics": []
+    }
+  ],
+  "comics": []
+}
+```
+
+- `comicCount` 是当前用户可见的散本与目录作品成员去重后的阅读单元总数。
+- 普通用户的 `seriesList`、`seriesList[].comics` 和 `comics` 均按可查看书库过滤。
+- 普通用户无法访问合集内任何阅读单元时返回 `403`；管理员请求不存在的合集时返回 `404`。
+- `contentType=comic|novel` 可继续筛选详情；目录作品只参与漫画结果，小说仍以散本返回。
 
 ### 分组元数据管理 🔒管理员
 
@@ -439,6 +553,38 @@ Content-Type: application/json
 | POST | `/api/ai/enhance-group-detect` | AI 增强分组检测 |
 | POST | `/api/ai/verify-duplicates` | AI 重复验证 |
 | POST | `/api/ai/recommend-goal` | AI 推荐阅读目标 |
+
+### AI 批量标签与分类候选选择
+
+`/api/ai/batch-suggest-tags` 与 `/api/ai/batch-suggest-category` 均返回 SSE 流，每次最多处理 30 本作品。请求体支持以下两种互斥模式：
+
+```json
+{
+  "comicIds": ["comic_xxx"],
+  "targetLang": "zh",
+  "apply": false
+}
+```
+
+```json
+{
+  "selector": {
+    "scope": "missing",
+    "contentType": "comic",
+    "libraryIds": ["lib_xxx"],
+    "limit": 30
+  },
+  "targetLang": "zh",
+  "apply": false
+}
+```
+
+- `comicIds` 保留用于显式选择具体作品，超过 30 个时只处理前 30 个。
+- `selector.scope`：标签接口支持 `missing` / `all`；分类接口支持 `uncategorized` / `missing` / `all`。默认分别为 `missing` 和 `uncategorized`。
+- `selector.contentType`：可选值为 `comic` / `novel`；省略时处理两种内容。
+- `selector.libraryIds`：可选书库范围，始终与当前用户可查看书库取交集，不能扩大权限。
+- `selector.limit`：默认和最大值均为 `30`。
+- `selector` 模式先发送 `selection` SSE 数据，其中包含 `eligible` 候选总数和 `selected` 本次处理数；随后发送逐本结果及最终 `done` 数据。
 
 ### AI 漫画级功能
 

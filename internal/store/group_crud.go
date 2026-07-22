@@ -92,6 +92,13 @@ type GroupListOptions struct {
 	IncludeEmpty     bool     // 是否包含空合集（默认 false）
 }
 
+type GroupDetailOptions struct {
+	UserID           string
+	ContentType      string
+	FilterLibraryIDs bool
+	LibraryIDs       []string
+}
+
 // GetAllGroups 获取所有分组（带漫画数量）。
 // 如果提供了 userID，只返回该用户的分组。
 // 如果提供了 contentType，只返回包含该类型漫画的分组。
@@ -105,131 +112,120 @@ func GetAllGroups(userID ...string) ([]ComicGroupWithCount, error) {
 // 当指定 ContentType 时，只返回包含该类型漫画的分组，且 comicCount 只统计该类型的数量。
 // 当指定 LibraryIDs 时，只返回包含这些书库中漫画的分组（用于非管理员用户的书库权限过滤）。
 func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, error) {
-	var conditions []string
-	var args []interface{}
-	// contentType 过滤：返回包含指定类型漫画的分组，以及尚未添加任何漫画的空分组
-	if opts.ContentType == "comic" || opts.ContentType == "novel" {
-		conditions = append(conditions, `(g."id" IN (
-			SELECT DISTINCT gi2."groupId" FROM "ComicGroupItem" gi2
-			JOIN "Comic" c2 ON c2."id" = gi2."comicId"
-			WHERE c2."type" = ?
-		) OR g."id" NOT IN (
-			SELECT DISTINCT gi3."groupId" FROM "ComicGroupItem" gi3
-		))`)
-		args = append(args, opts.ContentType)
+	if opts.FilterLibraryIDs && len(opts.LibraryIDs) == 0 {
+		return []ComicGroupWithCount{}, nil
 	}
 
-	// 书库权限过滤：只返回包含可访问书库中漫画的分组
-	if opts.FilterLibraryIDs {
+	const expandedMembersCTE = `WITH "GroupExpandedComic" AS (
+		SELECT gi."groupId", gi."comicId", 1 AS "sourceOrder", gi."sortIndex" AS "outerSort", 0 AS "innerSort"
+		FROM "ComicGroupItem" gi
+		UNION ALL
+		SELECT cgs."groupId", csi."comicId", 0 AS "sourceOrder", cgs."sortIndex" AS "outerSort",
+		       CASE WHEN csi."comicId" = cs."coverComicId" THEN -1 ELSE csi."sortIndex" END AS "innerSort"
+		FROM "ComicGroupSeries" cgs
+		JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
+		JOIN "ComicSeriesItem" csi ON csi."seriesId" = cgs."seriesId"
+		JOIN "Comic" c_series ON c_series."id" = csi."comicId" AND c_series."libraryId" = cs."libraryId"
+	)`
+
+	visibility := func(alias string) (string, []interface{}) {
+		var parts []string
+		var values []interface{}
+		if opts.ContentType == "comic" || opts.ContentType == "novel" {
+			parts = append(parts, alias+`."type" = ?`)
+			values = append(values, opts.ContentType)
+		}
 		if len(opts.LibraryIDs) > 0 {
-			placeholders := make([]string, len(opts.LibraryIDs))
-			for i, id := range opts.LibraryIDs {
-				placeholders[i] = "?"
-				args = append(args, id)
+			parts = append(parts, alias+`."libraryId" IN (`+placeholders(len(opts.LibraryIDs))+`)`)
+			for _, id := range opts.LibraryIDs {
+				values = append(values, id)
 			}
-			conditions = append(conditions, fmt.Sprintf(`(g."id" IN (
-				SELECT DISTINCT gi4."groupId" FROM "ComicGroupItem" gi4
-				JOIN "Comic" c4 ON c4."id" = gi4."comicId"
-				WHERE c4."libraryId" IN (%s)
-			) OR g."id" NOT IN (
-				SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
-			))`, strings.Join(placeholders, ",")))
-		} else {
-			// 如果没有任何书库权限，且有内容的分组就不该显示，但空分组可以显示
-			conditions = append(conditions, `g."id" NOT IN (SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5)`)
 		}
-	} else if len(opts.LibraryIDs) > 0 {
-		placeholders := make([]string, len(opts.LibraryIDs))
-		for i, id := range opts.LibraryIDs {
-			placeholders[i] = "?"
-			args = append(args, id)
+		if len(parts) == 0 {
+			return "1=1", values
 		}
-		conditions = append(conditions, fmt.Sprintf(`(g."id" IN (
-			SELECT DISTINCT gi4."groupId" FROM "ComicGroupItem" gi4
-			JOIN "Comic" c4 ON c4."id" = gi4."comicId"
-			WHERE c4."libraryId" IN (%s)
-		) OR g."id" NOT IN (
-			SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
-		))`, strings.Join(placeholders, ",")))
+		return strings.Join(parts, " AND "), values
 	}
 
-	// 分类过滤：只返回至少包含一本属于指定分类的漫画的分组
-	if opts.Category != "" {
-		conditions = append(conditions, `g."id" IN (
-			SELECT DISTINCT gi3."groupId" FROM "ComicGroupItem" gi3
-			JOIN "ComicCategory" cc ON cc."comicId" = gi3."comicId"
-			JOIN "Category" cat ON cat."id" = cc."categoryId"
-			WHERE cat."slug" = ?
+	var conditions []string
+	var whereArgs []interface{}
+	if opts.ContentType == "comic" || opts.ContentType == "novel" || len(opts.LibraryIDs) > 0 {
+		visible, values := visibility("c_visible")
+		conditions = append(conditions, `EXISTS (
+			SELECT 1 FROM "GroupExpandedComic" gm_visible
+			JOIN "Comic" c_visible ON c_visible."id" = gm_visible."comicId"
+			WHERE gm_visible."groupId" = g."id" AND `+visible+`
 		)`)
-		args = append(args, opts.Category)
+		whereArgs = append(whereArgs, values...)
 	}
 
-	// 标签过滤：只返回至少包含一本拥有所有指定标签的漫画的分组（AND 逻辑）
-	if len(opts.Tags) > 0 {
-		for _, tagName := range opts.Tags {
-			conditions = append(conditions, `g."id" IN (
-				SELECT DISTINCT gi4."groupId" FROM "ComicGroupItem" gi4
-				JOIN "ComicTag" ct2 ON ct2."comicId" = gi4."comicId"
-				JOIN "Tag" t ON t."id" = ct2."tagId"
-				WHERE t."name" = ?
-			)`)
-			args = append(args, tagName)
-		}
+	if opts.Category != "" {
+		visible, values := visibility("c_category")
+		conditions = append(conditions, `EXISTS (
+			SELECT 1 FROM "GroupExpandedComic" gm_category
+			JOIN "Comic" c_category ON c_category."id" = gm_category."comicId"
+			JOIN "ComicCategory" cc ON cc."comicId" = c_category."id"
+			JOIN "Category" cat ON cat."id" = cc."categoryId"
+			WHERE gm_category."groupId" = g."id" AND `+visible+` AND cat."slug" = ?
+		)`)
+		whereArgs = append(whereArgs, values...)
+		whereArgs = append(whereArgs, opts.Category)
 	}
-
-	// 收藏过滤：只返回至少包含一本收藏漫画的分组
+	for index, tagName := range opts.Tags {
+		comicAlias := fmt.Sprintf("c_tag_%d", index)
+		memberAlias := fmt.Sprintf("gm_tag_%d", index)
+		tagAlias := fmt.Sprintf("tag_%d", index)
+		comicTagAlias := fmt.Sprintf("ct_tag_%d", index)
+		visible, values := visibility(comicAlias)
+		conditions = append(conditions, fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM "GroupExpandedComic" %[1]s
+			JOIN "Comic" %[2]s ON %[2]s."id" = %[1]s."comicId"
+			JOIN "ComicTag" %[3]s ON %[3]s."comicId" = %[2]s."id"
+			JOIN "Tag" %[4]s ON %[4]s."id" = %[3]s."tagId"
+			WHERE %[1]s."groupId" = g."id" AND %[5]s AND %[4]s."name" = ?
+		)`, memberAlias, comicAlias, comicTagAlias, tagAlias, visible))
+		whereArgs = append(whereArgs, values...)
+		whereArgs = append(whereArgs, tagName)
+	}
 	if opts.FavoritesOnly {
+		visible, values := visibility("c_favorite")
+		favoriteCondition := `c_favorite."isFavorite" = 1`
+		favoriteJoin := ""
 		if opts.UserID != "" {
-			conditions = append(conditions, `g."id" IN (
-				SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
-				JOIN "Comic" c5 ON c5."id" = gi5."comicId"
-				LEFT JOIN "UserComicState" ucs5 ON ucs5."comicId" = c5."id" AND ucs5."userId" = ?
-				WHERE COALESCE(ucs5."isFavorite", 0) = 1
-			)`)
-			args = append(args, opts.UserID)
-		} else {
-			conditions = append(conditions, `g."id" IN (
-				SELECT DISTINCT gi5."groupId" FROM "ComicGroupItem" gi5
-				JOIN "Comic" c5 ON c5."id" = gi5."comicId"
-				WHERE c5."isFavorite" = 1
-			)`)
+			favoriteJoin = `LEFT JOIN "UserComicState" ucs_favorite ON ucs_favorite."comicId" = c_favorite."id" AND ucs_favorite."userId" = ?`
+			favoriteCondition = `COALESCE(ucs_favorite."isFavorite", 0) = 1`
+			values = append([]interface{}{opts.UserID}, values...)
 		}
+		conditions = append(conditions, `EXISTS (
+			SELECT 1 FROM "GroupExpandedComic" gm_favorite
+			JOIN "Comic" c_favorite ON c_favorite."id" = gm_favorite."comicId"
+			`+favoriteJoin+`
+			WHERE gm_favorite."groupId" = g."id" AND `+visible+` AND `+favoriteCondition+`
+		)`)
+		whereArgs = append(whereArgs, values...)
 	}
 
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = " WHERE " + strings.Join(conditions, " AND ")
 	}
-
-	// 当指定 contentType 时，JOIN 中也要按类型过滤，确保 comicCount 只统计该类型的漫画
-	joinClause := `LEFT JOIN "ComicGroupItem" gi ON gi."groupId" = g."id"`
-	if opts.ContentType == "comic" || opts.ContentType == "novel" {
-		joinClause = `LEFT JOIN ("ComicGroupItem" gi INNER JOIN "Comic" ct ON ct."id" = gi."comicId" AND ct."type" = ?) ON gi."groupId" = g."id"`
-		// 将 contentType 参数插入到 args 的最前面（因为 JOIN 子句在 WHERE 之前解析）
-		args = append([]interface{}{opts.ContentType}, args...)
-	}
-
-	// 默认过滤空合集
+	joinVisibility, joinArgs := visibility("c_member")
 	havingClause := ""
 	if !opts.IncludeEmpty {
-		havingClause = ` HAVING COUNT(gi."comicId") > 0`
+		havingClause = ` HAVING COUNT(DISTINCT c_member."id") > 0`
 	}
-
-	rows, err := db.Query(`
+	args := append(joinArgs, whereArgs...)
+	rows, err := db.Query(expandedMembersCTE+`
 		SELECT g."id", g."name", g."coverUrl", g."sortOrder",
 		       g."author", g."description", g."tags", g."year",
 		       g."publisher", g."language", g."genre", g."status",
 		       g."createdAt", g."updatedAt",
-		       COUNT(gi."comicId") as comicCount,
-		       COALESCE((
-		         SELECT CASE WHEN SUM(CASE WHEN c_ct."type" = 'novel' THEN 1 ELSE 0 END) > COUNT(*) / 2
-		                     THEN 'novel' ELSE 'comic' END
-		         FROM "ComicGroupItem" gi_ct
-		         JOIN "Comic" c_ct ON c_ct."id" = gi_ct."comicId"
-		         WHERE gi_ct."groupId" = g."id"
-		       ), 'comic') as contentType
+		       COUNT(DISTINCT c_member."id") as comicCount,
+		       CASE WHEN COUNT(DISTINCT CASE WHEN c_member."type" = 'novel' THEN c_member."id" END) > COUNT(DISTINCT c_member."id") / 2
+		            THEN 'novel' ELSE 'comic' END as contentType
 		FROM "ComicGroup" g
-		`+joinClause+`
+		LEFT JOIN "GroupExpandedComic" gm ON gm."groupId" = g."id"
+		LEFT JOIN "Comic" c_member ON c_member."id" = gm."comicId" AND `+joinVisibility+`
 	`+whereClause+`
 		GROUP BY g."id"
 		`+havingClause+`
@@ -252,15 +248,21 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 		}
 		g.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		g.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
-		// 封面 URL：有自定义封面时返回本地缓存路径，无封面时使用第一本漫画缩略图
+		// 封面 URL：优先自定义封面，否则使用第一个可见目录作品或散本的封面。
 		if g.CoverURL != "" {
 			g.CoverURL = BuildGroupCoverURL(g.ID)
 		} else if g.ComicCount > 0 {
 			var firstComicID string
-			err := db.QueryRow(`
-				SELECT gi."comicId" FROM "ComicGroupItem" gi
-				WHERE gi."groupId" = ? ORDER BY gi."sortIndex" ASC LIMIT 1
-			`, g.ID).Scan(&firstComicID)
+			coverVisibility, coverArgs := visibility("c_cover")
+			coverArgs = append([]interface{}{g.ID}, coverArgs...)
+			err := db.QueryRow(expandedMembersCTE+`
+				SELECT c_cover."id"
+				FROM "GroupExpandedComic" gm_cover
+				JOIN "Comic" c_cover ON c_cover."id" = gm_cover."comicId"
+				WHERE gm_cover."groupId" = ? AND `+coverVisibility+`
+				ORDER BY gm_cover."sourceOrder", gm_cover."outerSort", gm_cover."innerSort", c_cover."id"
+				LIMIT 1
+			`, coverArgs...).Scan(&firstComicID)
 			if err == nil {
 				g.CoverURL = BuildComicCoverURL(firstComicID)
 			}
@@ -276,13 +278,22 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 // GetGroupByID 获取单个分组详情（含漫画列表）。
 // 可选 contentType 参数：传入 "comic" 或 "novel" 时只返回对应类型的漫画，comicCount 也只统计该类型。
 func GetGroupByID(groupID int, contentType ...string) (*ComicGroupDetail, error) {
+	return GetGroupByIDWithOptions(groupID, GroupDetailOptions{ContentType: firstString(contentType)})
+}
+
+// GetGroupByIDWithOptions returns only members visible through the requested
+// library scope. Directory series and direct comics share the same boundary.
+func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupDetail, error) {
+	if opts.FilterLibraryIDs && len(opts.LibraryIDs) == 0 {
+		return nil, nil
+	}
 	var g ComicGroupDetail
 	var createdAt, updatedAt time.Time
 
 	// 根据 contentType 决定 comicCount 子查询是否带类型过滤
 	countSubQuery := `(SELECT COUNT(*) FROM "ComicGroupItem" WHERE "groupId" = g."id")`
 	var countArgs []interface{}
-	cType := firstString(contentType)
+	cType := opts.ContentType
 	if cType == "comic" || cType == "novel" {
 		countSubQuery = `(SELECT COUNT(*) FROM "ComicGroupItem" gi2 JOIN "Comic" c2 ON c2."id" = gi2."comicId" WHERE gi2."groupId" = g."id" AND c2."type" = ?)`
 		countArgs = append(countArgs, cType)
@@ -323,6 +334,12 @@ func GetGroupByID(groupID int, contentType ...string) (*ComicGroupDetail, error)
 		comicSQL += ` AND c."type" = ?`
 		comicArgs = append(comicArgs, cType)
 	}
+	if len(opts.LibraryIDs) > 0 {
+		comicSQL += ` AND c."libraryId" IN (` + placeholders(len(opts.LibraryIDs)) + `)`
+		for _, libraryID := range opts.LibraryIDs {
+			comicArgs = append(comicArgs, libraryID)
+		}
+	}
 	comicSQL += ` ORDER BY gi."sortIndex" ASC`
 
 	rows, err := db.Query(comicSQL, comicArgs...)
@@ -349,60 +366,104 @@ func GetGroupByID(groupID int, contentType ...string) (*ComicGroupDetail, error)
 		}
 		g.Comics = append(g.Comics, item)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
 
 	// 获取分组内的目录作品 (ComicSeries)
 	g.SeriesList = []GroupSeriesItem{}
-	seriesRows, err := db.Query(`
+	seriesSQL := `
 		SELECT cs."id", cs."title", cs."rootRelativePath", cs."coverComicId", cgs."sortIndex"
 		FROM "ComicGroupSeries" cgs
 		JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
-		WHERE cgs."groupId" = ?
-		ORDER BY cgs."sortIndex" ASC
-	`, groupID)
-	if err == nil {
-		defer seriesRows.Close()
-		for seriesRows.Next() {
-			var sItem GroupSeriesItem
-			if scanErr := seriesRows.Scan(&sItem.SeriesID, &sItem.Title, &sItem.RootRelativePath, &sItem.CoverComicID, &sItem.SortIndex); scanErr == nil {
-				if sItem.CoverComicID != "" {
-					sItem.CoverURL = BuildComicCoverURL(sItem.CoverComicID)
-				}
-				sItem.Comics = []GroupComicItem{}
-				cRows, cErr := db.Query(`
+		WHERE cgs."groupId" = ?`
+	seriesArgs := []interface{}{groupID}
+	if cType == "novel" {
+		seriesSQL += ` AND 1 = 0`
+	}
+	if len(opts.LibraryIDs) > 0 {
+		seriesSQL += ` AND cs."libraryId" IN (` + placeholders(len(opts.LibraryIDs)) + `)`
+		for _, libraryID := range opts.LibraryIDs {
+			seriesArgs = append(seriesArgs, libraryID)
+		}
+	}
+	seriesSQL += ` ORDER BY cgs."sortIndex" ASC`
+	seriesRows, err := db.Query(seriesSQL, seriesArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer seriesRows.Close()
+	for seriesRows.Next() {
+		var sItem GroupSeriesItem
+		if scanErr := seriesRows.Scan(&sItem.SeriesID, &sItem.Title, &sItem.RootRelativePath, &sItem.CoverComicID, &sItem.SortIndex); scanErr == nil {
+			sItem.Comics = []GroupComicItem{}
+			seriesComicSQL := `
 					SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
 					       c."lastReadPage", c."totalReadTime", c."readingStatus", c."lastReadAt",
 					       csi."sortIndex", COALESCE(c."type", '') as "type"
 					FROM "ComicSeriesItem" csi
-					JOIN "Comic" c ON c."id" = csi."comicId"
-					WHERE csi."seriesId" = ?
-					ORDER BY csi."sortIndex" ASC
-				`, sItem.SeriesID)
-				if cErr == nil {
-					for cRows.Next() {
-						var item GroupComicItem
-						var lastReadAt sql.NullTime
-						if cRows.Scan(
-							&item.ComicID, &item.Filename, &item.Title, &item.PageCount, &item.FileSize,
-							&item.LastReadPage, &item.TotalReadTime, &item.ReadingStatus, &lastReadAt,
-							&item.SortIndex, &item.ComicType,
-						) == nil {
-							item.CoverURL = BuildComicCoverURL(item.ComicID)
-							if lastReadAt.Valid {
-								str := lastReadAt.Time.UTC().Format(time.RFC3339)
-								item.LastReadAt = &str
-							}
-							sItem.Comics = append(sItem.Comics, item)
-						}
+					JOIN "ComicSeries" cs_member ON cs_member."id" = csi."seriesId"
+					JOIN "Comic" c ON c."id" = csi."comicId" AND c."libraryId" = cs_member."libraryId"
+					WHERE csi."seriesId" = ?`
+			seriesComicArgs := []interface{}{sItem.SeriesID}
+			if cType == "comic" {
+				seriesComicSQL += ` AND c."type" = ?`
+				seriesComicArgs = append(seriesComicArgs, cType)
+			}
+			seriesComicSQL += ` ORDER BY csi."sortIndex" ASC`
+			cRows, cErr := db.Query(seriesComicSQL, seriesComicArgs...)
+			if cErr != nil {
+				return nil, cErr
+			}
+			coverVisible := false
+			for cRows.Next() {
+				var item GroupComicItem
+				var lastReadAt sql.NullTime
+				if cRows.Scan(
+					&item.ComicID, &item.Filename, &item.Title, &item.PageCount, &item.FileSize,
+					&item.LastReadPage, &item.TotalReadTime, &item.ReadingStatus, &lastReadAt,
+					&item.SortIndex, &item.ComicType,
+				) == nil {
+					item.CoverURL = BuildComicCoverURL(item.ComicID)
+					if lastReadAt.Valid {
+						str := lastReadAt.Time.UTC().Format(time.RFC3339)
+						item.LastReadAt = &str
 					}
-					cRows.Close()
+					if item.ComicID == sItem.CoverComicID {
+						coverVisible = true
+					}
+					sItem.Comics = append(sItem.Comics, item)
 				}
-				if sItem.CoverURL == "" && len(sItem.Comics) > 0 {
+			}
+			cRows.Close()
+			if len(sItem.Comics) > 0 {
+				if coverVisible {
+					sItem.CoverURL = BuildComicCoverURL(sItem.CoverComicID)
+				} else {
 					sItem.CoverURL = sItem.Comics[0].CoverURL
 				}
+			}
+			if len(sItem.Comics) > 0 || cType == "" {
 				g.SeriesList = append(g.SeriesList, sItem)
 			}
 		}
 	}
+	if err := seriesRows.Err(); err != nil {
+		return nil, err
+	}
+
+	memberIDs := make(map[string]struct{}, len(g.Comics))
+	for _, comic := range g.Comics {
+		memberIDs[comic.ComicID] = struct{}{}
+	}
+	for _, series := range g.SeriesList {
+		for _, comic := range series.Comics {
+			memberIDs[comic.ComicID] = struct{}{}
+		}
+	}
+	g.ComicCount = len(memberIDs)
 
 	// 封面 URL：有自定义封面时返回本地缓存路径，无封面时按优先使用 Series 目录作品或第一本漫画缩略图
 	if g.CoverURL != "" {
@@ -431,6 +492,71 @@ func CreateGroup(name string, userID ...string) (int64, error) {
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+// CreateGroupWithItems atomically creates a group and all requested direct and
+// directory-series memberships. Any invalid membership rolls back the group.
+func CreateGroupWithItems(name, userID string, comicIDs, seriesIDs []string) (int64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return 0, fmt.Errorf("group name is required")
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	result, err := tx.Exec(`
+		INSERT INTO "ComicGroup" ("name", "userId", "createdAt", "updatedAt")
+		VALUES (?, ?, ?, ?)
+	`, name, userID, now, now)
+	if err != nil {
+		return 0, err
+	}
+	groupID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	sortedComicIDs := append([]string(nil), comicIDs...)
+	if len(sortedComicIDs) > 1 {
+		titles := make(map[string]string, len(sortedComicIDs))
+		for _, comicID := range sortedComicIDs {
+			var title string
+			if err := tx.QueryRow(`SELECT "title" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&title); err != nil {
+				return 0, fmt.Errorf("resolve comic %s: %w", comicID, err)
+			}
+			titles[comicID] = title
+		}
+		sort.SliceStable(sortedComicIDs, func(i, j int) bool {
+			return naturalSortKey(titles[sortedComicIDs[i]]) < naturalSortKey(titles[sortedComicIDs[j]])
+		})
+	}
+	for index, comicID := range sortedComicIDs {
+		if _, err := tx.Exec(`
+			INSERT INTO "ComicGroupItem" ("groupId", "comicId", "sortIndex")
+			VALUES (?, ?, ?)
+			ON CONFLICT("groupId", "comicId") DO NOTHING
+		`, groupID, comicID, index); err != nil {
+			return 0, fmt.Errorf("add comic %s: %w", comicID, err)
+		}
+	}
+	for index, seriesID := range seriesIDs {
+		if _, err := tx.Exec(`
+			INSERT INTO "ComicGroupSeries" ("groupId", "seriesId", "sortIndex")
+			VALUES (?, ?, ?)
+			ON CONFLICT("groupId", "seriesId") DO NOTHING
+		`, groupID, seriesID, index); err != nil {
+			return 0, fmt.Errorf("add series %s: %w", seriesID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return groupID, nil
 }
 
 // UpdateGroup 更新分组名称和封面。

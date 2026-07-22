@@ -50,6 +50,12 @@ func (h *ComicHandler) ListComics(c *gin.Context) {
 	sortOrder := c.DefaultQuery("sortOrder", "asc")
 	category := c.Query("category")
 	contentType := c.Query("contentType") // "comic" | "novel" | ""
+	seriesView := c.Query("seriesView") == "true"
+	if seriesView {
+		if err := service.EnsureComicSeriesFresh(); err != nil {
+			log.Printf("[series] refresh before shelf failed: %v", err)
+		}
+	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "0"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "0"))
@@ -112,6 +118,7 @@ func (h *ComicHandler) ListComics(c *gin.Context) {
 		FilterLibraryIDs: filterLibraryIDs, LibraryIDs: libraryIDs,
 		Uncategorized: c.Query("uncategorized") == "true",
 		Untagged:      c.Query("untagged") == "true",
+		SeriesView:    seriesView,
 	})
 	if err != nil {
 		log.Printf("[API] ListComics error: %v (sortBy=%s, contentType=%s, readingStatus=%s)",

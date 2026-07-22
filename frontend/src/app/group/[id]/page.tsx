@@ -38,6 +38,7 @@ import {
   updateGroup,
   deleteGroup,
   removeComicFromGroup,
+  removeSeriesFromGroup,
   reorderGroupComics,
   addComicsToGroup,
   updateGroupMetadata,
@@ -62,7 +63,8 @@ import { useAIStatus } from "@/hooks/useAIStatus";
 import { useGlobalSyncEvent } from "@/hooks/useSyncEvent";
 import { formatFileSize, formatDuration, isNovelFile, getReaderUrl, naturalSortKey } from "@/lib/comic-utils";
 
-export default function GroupDetailPage() {  const params = useParams();
+export default function GroupDetailPage() {
+  const params = useParams();
   const router = useRouter();
   const t = useTranslation();
   const toast = useToast();
@@ -513,20 +515,39 @@ export default function GroupDetailPage() {  const params = useParams();
         return;
       }
       setRemoveConfirmId(null);
+      const removingLastLogicalEntry =
+        group.comics.length === 1 && (group.seriesList?.length || 0) === 0;
       const ok = await removeComicFromGroup(group.id, comicId);
-      if (ok) {
-        setGroup((prev) =>
-          prev
-            ? {
-                ...prev,
-                comics: prev.comics.filter((c) => c.id !== comicId),
-                comicCount: prev.comicCount - 1,
-              }
-            : prev
-        );
+      if (!ok) return;
+      if (removingLastLogicalEntry) {
+        router.push("/collections");
+        return;
       }
+      await loadGroup();
     },
-    [group, removeConfirmId]
+    [group, removeConfirmId, router, loadGroup]
+  );
+
+  const handleRemoveSeries = useCallback(
+    async (seriesId: string) => {
+      if (!group) return;
+      const confirmKey = `series:${seriesId}`;
+      if (removeConfirmId !== confirmKey) {
+        setRemoveConfirmId(confirmKey);
+        return;
+      }
+      setRemoveConfirmId(null);
+      const removingLastLogicalEntry =
+        group.comics.length === 0 && (group.seriesList?.length || 0) === 1;
+      const ok = await removeSeriesFromGroup(group.id, seriesId);
+      if (!ok) return;
+      if (removingLastLogicalEntry) {
+        router.push("/collections");
+        return;
+      }
+      await loadGroup();
+    },
+    [group, removeConfirmId, router, loadGroup]
   );
 
   // 触摸拖拽排序
@@ -1468,7 +1489,45 @@ export default function GroupDetailPage() {  const params = useParams();
           </div>
         </div>
 
-        {group.comics.length === 0 ? (
+        {(group.seriesList?.length || 0) > 0 && (
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {group.seriesList!.map((series) => {
+              const confirmKey = `series:${series.id}`;
+              return (
+                <div key={series.id} className="group relative">
+                  <Link href={`/series/${series.id}`} className="block">
+                    <div className="overflow-hidden rounded-lg border border-border/60 bg-card transition-colors hover:border-accent/40">
+                      <div className="relative aspect-[5/7] w-full overflow-hidden bg-background">
+                        {series.coverUrl ? (
+                          <Image src={series.coverUrl} alt={series.title} fill unoptimized className="object-cover" sizes="(max-width: 640px) 50vw, 16vw" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center"><FolderOpen className="h-10 w-10 text-muted/40" /></div>
+                        )}
+                        <div className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">目录作品</div>
+                      </div>
+                      <div className="p-2.5">
+                        <h4 className="truncate text-xs font-medium text-foreground" title={series.title}>{series.title}</h4>
+                        <p className="mt-0.5 text-[10px] text-muted">{series.comics.length} 个阅读单元</p>
+                      </div>
+                    </div>
+                  </Link>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSeries(series.id)}
+                      onMouseLeave={() => { if (removeConfirmId === confirmKey) setRemoveConfirmId(null); }}
+                      className={`absolute left-1.5 top-1.5 z-10 flex h-6 items-center justify-center rounded-md bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 ${removeConfirmId === confirmKey ? "w-auto px-1.5" : "w-6"}`}
+                    >
+                      {removeConfirmId === confirmKey ? <span className="text-[9px]">{t.common?.confirm || "确认"}</span> : <X className="h-3 w-3" />}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {group.comics.length === 0 && (group.seriesList?.length || 0) === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-card">
               <span className="text-4xl">📚</span>
@@ -1477,7 +1536,7 @@ export default function GroupDetailPage() {  const params = useParams();
               {t.comicGroup?.emptyGroup || "此系列还没有漫画"}
             </p>
           </div>
-        ) : viewMode === "grid" ? (
+        ) : group.comics.length === 0 ? null : viewMode === "grid" ? (
           /* ── 网格视图（类似 Komga/Kavita 的卷封面网格）── */
           <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" ref={comicListRef}>
             {group.comics.map((comic, index) => {

@@ -14,22 +14,20 @@ import (
 // ============================================================
 
 func (h *AIHandler) BatchSuggestTags(c *gin.Context) {
-	var body struct {
-		ComicIDs   []string `json:"comicIds"`
-		TargetLang string   `json:"targetLang"`
-		Apply      bool     `json:"apply"` // 是否自动应用标签
-	}
-	if err := c.ShouldBindJSON(&body); err != nil || len(body.ComicIDs) == 0 {
-		c.JSON(400, gin.H{"error": "comicIds array is required"})
+	var body aiBatchRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "Invalid request body"})
 		return
 	}
 	if body.TargetLang == "" {
 		body.TargetLang = "zh"
 	}
-	// 限制单次最多处理 30 本
-	if len(body.ComicIDs) > 30 {
-		body.ComicIDs = body.ComicIDs[:30]
+	selection, err := resolveAIBatchSelection(c, &body, "tags")
+	if err != nil {
+		writeAIBatchSelectionError(c, err)
+		return
 	}
+	body.ComicIDs = selection.ComicIDs
 
 	cfg := service.LoadAIConfig()
 	if !cfg.EnableCloudAI || cfg.CloudAPIKey == "" {
@@ -43,6 +41,16 @@ func (h *AIHandler) BatchSuggestTags(c *gin.Context) {
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
+	if body.Selector != nil {
+		selectionData, _ := json.Marshal(gin.H{
+			"selection": gin.H{
+				"eligible": selection.Eligible,
+				"selected": len(body.ComicIDs),
+			},
+		})
+		fmt.Fprintf(c.Writer, "data: %s\n\n", selectionData)
+		c.Writer.Flush()
+	}
 
 	successCount := 0
 	failCount := 0

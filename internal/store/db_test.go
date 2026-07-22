@@ -462,7 +462,6 @@ func TestReadingSessionOperations(t *testing.T) {
 	}
 }
 
-
 func TestUpdateComicPageCount(t *testing.T) {
 	setupTestDB(t)
 
@@ -701,5 +700,88 @@ func TestComicGroupSeriesCRUD(t *testing.T) {
 	}
 	if detail2 != nil {
 		t.Errorf("Expected group to be auto-deleted when empty, but still exists")
+	}
+}
+
+func TestCreateGroupWithItemsRollsBackInvalidMembership(t *testing.T) {
+	setupTestDB(t)
+
+	if _, err := CreateGroupWithItems("Broken Group", "", nil, []string{"missing-series"}); err == nil {
+		t.Fatal("expected invalid series membership to fail")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "ComicGroup" WHERE "name" = 'Broken Group'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("group count = %d, want rollback", count)
+	}
+}
+
+func TestGroupSeriesMembersParticipateInListAndPermissionFilters(t *testing.T) {
+	setupTestDB(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO "Library" ("id", "name", "rootPath", "type") VALUES
+			('visible-library', 'Visible', '/visible', 'comic'),
+			('hidden-library', 'Hidden', '/hidden', 'comic')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO "Comic" ("id", "filename", "title", "type", "libraryId", "relativePath") VALUES
+			('visible-1', 'work/01.cbz', 'Work 01', 'comic', 'visible-library', 'work/01.cbz'),
+			('visible-2', 'work/02.cbz', 'Work 02', 'comic', 'visible-library', 'work/02.cbz'),
+			('hidden-1', 'private/01.cbz', 'Private 01', 'comic', 'hidden-library', 'private/01.cbz')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId") VALUES
+			('visible-series', 'visible-library', 'work', 'Work', 'work', 'visible-2'),
+			('hidden-series', 'hidden-library', 'private', 'Private', 'private', 'hidden-1')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO "ComicSeriesItem" ("seriesId", "comicId", "sortIndex") VALUES
+			('visible-series', 'visible-1', 0),
+			('visible-series', 'visible-2', 1),
+			('hidden-series', 'hidden-1', 0)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	groupID, err := CreateGroupWithItems("Series Group", "", nil, []string{"visible-series", "hidden-series"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	groups, err := GetAllGroupsWithOptions(GroupListOptions{
+		ContentType:      "comic",
+		FilterLibraryIDs: true,
+		LibraryIDs:       []string{"visible-library"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0].ComicCount != 2 || groups[0].CoverURL != BuildComicCoverURL("visible-2") {
+		t.Fatalf("visible series-only group = %#v", groups)
+	}
+
+	detail, err := GetGroupByIDWithOptions(int(groupID), GroupDetailOptions{
+		FilterLibraryIDs: true,
+		LibraryIDs:       []string{"visible-library"},
+		ContentType:      "comic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail == nil || detail.ComicCount != 2 || len(detail.SeriesList) != 1 || detail.SeriesList[0].SeriesID != "visible-series" {
+		t.Fatalf("filtered group detail = %#v", detail)
+	}
+	for _, series := range detail.SeriesList {
+		if series.SeriesID == "hidden-series" {
+			t.Fatal("hidden series leaked through group detail")
+		}
 	}
 }

@@ -78,6 +78,28 @@ func TestReplaceDetectedSeriesAndCollapseShelf(t *testing.T) {
 		t.Fatalf("unexpected collapsed shelf: %#v", collapsed)
 	}
 
+	seen := make(map[string]bool)
+	for page := 1; page <= 2; page++ {
+		mixed, err := GetAllComics(ComicListOptions{
+			LibraryIDs: []string{library.ID},
+			SeriesView: true,
+			SortBy:     "title",
+			SortOrder:  "asc",
+			Page:       page,
+			PageSize:   1,
+		})
+		if err != nil {
+			t.Fatalf("GetAllComics series view page %d failed: %v", page, err)
+		}
+		if mixed.Total != 2 || mixed.TotalPages != 2 || len(mixed.Comics) != 1 {
+			t.Fatalf("series view page %d = %#v", page, mixed)
+		}
+		seen[mixed.Comics[0].ID] = true
+	}
+	if !seen[SeriesShelfIDPrefix+"ser-test"] || !seen["standalone"] || seen["volume-1"] || seen["volume-2"] {
+		t.Fatalf("series view ids = %#v", seen)
+	}
+
 	detail, err := GetSeriesDetail("ser-test", "")
 	if err != nil {
 		t.Fatalf("GetSeriesDetail failed: %v", err)

@@ -6,6 +6,7 @@ import { X, FolderPlus, Layers, Plus, Search } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { fetchGroups, addComicsToGroup, addSeriesToGroup, createGroup } from "@/api/groups";
 import type { ComicGroup } from "@/hooks/useComicTypes";
+import { seriesIdFromShelfId } from "@/lib/series-id";
 
 interface AddToGroupDialogProps {
   comicIds: string[];
@@ -48,8 +49,9 @@ export default function AddToGroupDialog({
       const realComicIds: string[] = [];
       const realSeriesIds: string[] = [];
       for (const id of comicIds) {
-        if (id.startsWith("series__")) {
-          realSeriesIds.push(id.replace("series__", ""));
+        const seriesId = seriesIdFromShelfId(id);
+        if (seriesId) {
+          realSeriesIds.push(seriesId);
         } else {
           realComicIds.push(id);
         }
@@ -75,8 +77,9 @@ export default function AddToGroupDialog({
       const realComicIds: string[] = [];
       const realSeriesIds: string[] = [];
       for (const id of comicIds) {
-        if (id.startsWith("series__")) {
-          realSeriesIds.push(id.replace("series__", ""));
+        const seriesId = seriesIdFromShelfId(id);
+        if (seriesId) {
+          realSeriesIds.push(seriesId);
         } else {
           realComicIds.push(id);
         }

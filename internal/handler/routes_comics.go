@@ -9,12 +9,19 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	// Comics CRUD (Phase 2)
 	// ============================================================
 	comic := NewComicHandler()
+	catalog := NewCatalogHandler()
+
+	catalogRead := api.Group("/catalog")
+	catalogRead.Use(middleware.AuthRequired())
+	{
+		catalogRead.GET("/items", reconcileOwnershipBeforeList(), catalog.ListItems)
+	}
 
 	// Comics read operations — require auth
 	comicsRead := api.Group("/comics")
 	comicsRead.Use(middleware.AuthRequired())
 	{
-		comicsRead.GET("", reconcileOwnershipBeforeList(), collapseSeriesShelf(), comic.ListComics)
+		comicsRead.GET("", reconcileOwnershipBeforeList(), comic.ListComics)
 		comicsRead.GET("/duplicates", comic.DetectDuplicates)
 		comicsRead.POST("/batch", recordOnlyBatchDeleteGuard(), comic.BatchOperation)
 	}

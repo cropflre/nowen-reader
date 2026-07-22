@@ -103,15 +103,41 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 		return
 	}
 
-	// 支持按内容类型过滤分组内的漫画
-	contentType := c.Query("contentType")
-	group, err := store.GetGroupByID(id, contentType)
+	uid := getUserID(c)
+	options := store.GroupDetailOptions{UserID: uid, ContentType: c.Query("contentType")}
+	user, userErr := store.GetUserByID(uid)
+	if userErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户权限失败"})
+		return
+	}
+	if user == nil || user.Role != "admin" {
+		options.FilterLibraryIDs = true
+		options.LibraryIDs, err = store.GetUserAccessibleLibraryIDs(uid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取书库权限失败"})
+			return
+		}
+		if len(options.LibraryIDs) == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权访问该合集"})
+			return
+		}
+	}
+
+	group, err := store.GetGroupByIDWithOptions(id, options)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取分组详情失败"})
 		return
 	}
 	if group == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "分组不存在"})
+		if options.FilterLibraryIDs {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权访问该合集"})
+		} else {
+			c.JSON(http.StatusNotFound, gin.H{"error": "分组不存在"})
+		}
+		return
+	}
+	if options.FilterLibraryIDs && group.ComicCount == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权访问该合集"})
 		return
 	}
 	c.JSON(http.StatusOK, group)
@@ -127,28 +153,16 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		ComicIDs  []string `json:"comicIds"`
 		SeriesIDs []string `json:"seriesIds"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.Name == "" {
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "分组名称不能为空"})
 		return
 	}
 
-	id, err := store.CreateGroup(body.Name, getUserID(c))
+	id, err := store.CreateGroupWithItems(body.Name, getUserID(c), body.ComicIDs, body.SeriesIDs)
 	if err != nil {
+		log.Printf("[API] CreateGroup failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建分组失败"})
 		return
-	}
-
-	// 如果提供了漫画ID，直接添加
-	if len(body.ComicIDs) > 0 {
-		if err := store.AddComicsToGroup(int(id), body.ComicIDs); err != nil {
-			log.Printf("[API] CreateGroup: 添加漫画到分组失败: %v", err)
-		}
-	}
-	// 如果提供了系列ID，直接添加
-	if len(body.SeriesIDs) > 0 {
-		if err := store.AddSeriesToGroup(int(id), body.SeriesIDs); err != nil {
-			log.Printf("[API] CreateGroup: 添加系列到分组失败: %v", err)
-		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "id": id})

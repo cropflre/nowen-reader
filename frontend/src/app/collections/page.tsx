@@ -26,6 +26,8 @@ import {
   Merge,
   Download,
   CheckCheck,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useToast } from "@/components/Toast";
@@ -39,6 +41,8 @@ import {
 } from "@/api/groups";
 import type { ComicGroup } from "@/hooks/useComicTypes";
 import AutoDetectPanel from "@/components/AutoDetectPanel";
+import { fetchCatalogItems } from "@/api/catalog";
+import type { CatalogItem } from "@/api/catalog";
 
 // ============================================================
 // 类型与工具函数
@@ -122,10 +126,11 @@ export default function CollectionsPage() {
   const [createContentType, setCreateContentType] = useState<ContentFilter>("comic");
   const [createComicSearch, setCreateComicSearch] = useState("");
   const [createComicPage, setCreateComicPage] = useState(1);
-  const [allCreateComics, setAllCreateComics] = useState<{ id: string; title: string; coverUrl: string }[]>([]);
+  const [createCatalogItems, setCreateCatalogItems] = useState<CatalogItem[]>([]);
   const [createComicsTotalPages, setCreateComicsTotalPages] = useState(0);
   const [loadingCreateComics, setLoadingCreateComics] = useState(false);
-  const [selectedComicIds, setSelectedComicIds] = useState<Set<string>>(new Set());
+  const [selectedCreateComicIds, setSelectedCreateComicIds] = useState<Set<string>>(new Set());
+  const [selectedCreateSeriesIds, setSelectedCreateSeriesIds] = useState<Set<string>>(new Set());
   const createComicSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [createComicDebouncedSearch, setCreateComicDebouncedSearch] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -145,7 +150,8 @@ export default function CollectionsPage() {
       setCreateComicSearch("");
       setCreateComicDebouncedSearch("");
       setCreateComicPage(1);
-      setSelectedComicIds(new Set());
+      setSelectedCreateComicIds(new Set());
+      setSelectedCreateSeriesIds(new Set());
     }
   }, [showCreateDialog, contentFilter]);
 
@@ -162,32 +168,31 @@ export default function CollectionsPage() {
   // 加载漫画/小说列表（创建弹窗内）
   useEffect(() => {
     if (!showCreateDialog) return;
-    let cancelled = false;
+    const controller = new AbortController();
     setLoadingCreateComics(true);
-    const params = new URLSearchParams({
-      page: "1",
-      pageSize: "9999",
+    fetchCatalogItems({
       contentType: createContentType,
-      seriesView: "true",
-    });
-    if (createComicDebouncedSearch) params.set("search", createComicDebouncedSearch);
-    fetch(`/api/comics?${params}`)
-      .then((r) => r.json())
+      search: createComicDebouncedSearch,
+      page: createComicPage,
+      pageSize: 12,
+      signal: controller.signal,
+    })
       .then((data) => {
-        if (cancelled) return;
-        const all = (data.comics || []).map((c: { id: string; title: string; coverUrl: string }) => ({ id: c.id, title: c.title, coverUrl: c.coverUrl }));
-        setAllCreateComics(all);
-        setCreateComicsTotalPages(Math.max(1, Math.ceil(all.length / 12)));
+        if (controller.signal.aborted) return;
+        setCreateCatalogItems(data.items || []);
+        setCreateComicsTotalPages(Math.max(1, data.totalPages || 1));
       })
-      .catch(() => { if (!cancelled) setAllCreateComics([]); })
-      .finally(() => { if (!cancelled) setLoadingCreateComics(false); });
-    return () => { cancelled = true; };
-  }, [showCreateDialog, createContentType, createComicDebouncedSearch]);
-
-  const createComics = useMemo(() => {
-    const start = (createComicPage - 1) * 12;
-    return allCreateComics.slice(start, start + 12);
-  }, [allCreateComics, createComicPage]);
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setCreateCatalogItems([]);
+          setCreateComicsTotalPages(1);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingCreateComics(false);
+      });
+    return () => controller.abort();
+  }, [showCreateDialog, createContentType, createComicDebouncedSearch, createComicPage]);
 
   // 挂载保护期结束后解除保护
   useEffect(() => {
@@ -312,27 +317,21 @@ export default function CollectionsPage() {
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      const comicIds: string[] = [];
-      const seriesIds: string[] = [];
-      for (const id of Array.from(selectedComicIds)) {
-        if (id.startsWith("series__")) {
-          seriesIds.push(id.replace("series__", ""));
-        } else {
-          comicIds.push(id);
-        }
-      }
+      const comicIds = Array.from(selectedCreateComicIds);
+      const seriesIds = Array.from(selectedCreateSeriesIds);
       const result = await createGroup(createName.trim(), comicIds.length > 0 ? comicIds : undefined, seriesIds.length > 0 ? seriesIds : undefined);
       if (result.success) {
         toast.success(tGroup.createGroup || "合集已创建");
         setShowCreateDialog(false);
         setCreateName("");
-        setSelectedComicIds(new Set());
+        setSelectedCreateComicIds(new Set());
+        setSelectedCreateSeriesIds(new Set());
         loadGroups();
       }
     } finally {
       setCreating(false);
     }
-  }, [createName, selectedComicIds, loadGroups, toast, tGroup]);
+  }, [createName, selectedCreateComicIds, selectedCreateSeriesIds, loadGroups, toast, tGroup]);
 
   // ── 删除合集 ──
   const handleDelete = useCallback(async () => {
@@ -1014,7 +1013,7 @@ export default function CollectionsPage() {
                 type="text"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && selectedComicIds.size > 0 && handleCreate()}
+                onKeyDown={(e) => e.key === "Enter" && (selectedCreateComicIds.size + selectedCreateSeriesIds.size) > 0 && handleCreate()}
                 placeholder={tGroup.groupNamePlaceholder || "输入合集名称..."}
                 className="w-full rounded-xl bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
                 autoFocus
@@ -1025,7 +1024,14 @@ export default function CollectionsPage() {
                 {(["comic", "novel"] as ContentFilter[]).map((type) => (
                   <button
                     key={type}
-                    onClick={() => { setCreateContentType(type); setCreateComicPage(1); setCreateComicSearch(""); setCreateComicDebouncedSearch(""); setSelectedComicIds(new Set()); }}
+                    onClick={() => {
+                      setCreateContentType(type);
+                      setCreateComicPage(1);
+                      setCreateComicSearch("");
+                      setCreateComicDebouncedSearch("");
+                      setSelectedCreateComicIds(new Set());
+                      setSelectedCreateSeriesIds(new Set());
+                    }}
                     className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                       createContentType === type
                         ? "bg-accent text-white"
@@ -1054,24 +1060,29 @@ export default function CollectionsPage() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin text-accent" />
                 </div>
-              ) : createComics.length === 0 ? (
+              ) : createCatalogItems.length === 0 ? (
                 <div className="py-8 text-center text-xs text-muted">
                   {createComicDebouncedSearch ? "未找到匹配结果" : "暂无内容"}
                 </div>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {createComics.map((comic) => {
-                    const isSelected = selectedComicIds.has(comic.id);
-                    const isSeries = comic.id.startsWith("series__");
+                  {createCatalogItems.map((item) => {
+                    const isSeries = item.kind === "series";
+                    const isSelected = isSeries
+                      ? selectedCreateSeriesIds.has(item.id)
+                      : selectedCreateComicIds.has(item.id);
                     return (
                       <button
-                        key={comic.id}
+                        key={`${item.kind}:${item.id}`}
                         type="button"
                         onClick={() => {
-                          setSelectedComicIds((prev) => {
+                          const updateSelection = isSeries
+                            ? setSelectedCreateSeriesIds
+                            : setSelectedCreateComicIds;
+                          updateSelection((prev) => {
                             const next = new Set(prev);
-                            if (next.has(comic.id)) next.delete(comic.id);
-                            else next.add(comic.id);
+                            if (next.has(item.id)) next.delete(item.id);
+                            else next.add(item.id);
                             return next;
                           });
                         }}
@@ -1089,15 +1100,15 @@ export default function CollectionsPage() {
                         </div>
                         {isSeries && (
                           <div className="absolute top-1 right-1 z-10 rounded bg-accent/90 px-1 py-0.5 text-[9px] font-medium text-white shadow-sm">
-                            作品
+                            {item.itemCount} 项
                           </div>
                         )}
                         {/* 封面 */}
                         <div className="relative w-full aspect-[3/4] overflow-hidden rounded-md bg-background mb-1">
-                          {comic.coverUrl ? (
+                          {item.coverUrl ? (
                             <Image
-                              src={comic.coverUrl}
-                              alt={comic.title}
+                              src={item.coverUrl}
+                              alt={item.title}
                               fill
                               sizes="80px"
                               className="object-cover"
@@ -1108,8 +1119,8 @@ export default function CollectionsPage() {
                           )}
                         </div>
                         {/* 标题 */}
-                        <p className="w-full text-[10px] text-foreground truncate text-center" title={comic.title}>
-                          {comic.title}
+                        <p className="w-full text-[10px] text-foreground truncate text-center" title={item.title}>
+                          {item.title}
                         </p>
                       </button>
                     );
@@ -1123,17 +1134,19 @@ export default function CollectionsPage() {
                   <button
                     onClick={() => setCreateComicPage((p) => Math.max(1, p - 1))}
                     disabled={createComicPage <= 1}
-                    className="px-2 py-1 rounded hover:bg-background disabled:opacity-30"
+                    className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-background disabled:opacity-30"
+                    title={t.home.prevPage || "上一页"}
                   >
-                    ◀
+                    <ChevronLeft className="h-4 w-4" />
                   </button>
                   <span>{createComicPage} / {createComicsTotalPages}</span>
                   <button
                     onClick={() => setCreateComicPage((p) => Math.min(createComicsTotalPages, p + 1))}
                     disabled={createComicPage >= createComicsTotalPages}
-                    className="px-2 py-1 rounded hover:bg-background disabled:opacity-30"
+                    className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-background disabled:opacity-30"
+                    title={t.home.nextPage || "下一页"}
                   >
-                    ▶
+                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
               )}
@@ -1142,14 +1155,17 @@ export default function CollectionsPage() {
             {/* 底部按钮 */}
             <div className="flex items-center justify-between border-t border-border px-6 py-4">
               <span className="text-xs text-muted">
-                {selectedComicIds.size > 0 ? `已选 ${selectedComicIds.size} 本` : ""}
+                {(selectedCreateComicIds.size + selectedCreateSeriesIds.size) > 0
+                  ? `已选 ${selectedCreateComicIds.size + selectedCreateSeriesIds.size} 项`
+                  : ""}
               </span>
               <div className="flex gap-3">
                 <button
                   onClick={() => {
                     setShowCreateDialog(false);
                     setCreateName("");
-                    setSelectedComicIds(new Set());
+                    setSelectedCreateComicIds(new Set());
+                    setSelectedCreateSeriesIds(new Set());
                   }}
                   className="rounded-lg bg-card px-4 py-2 text-sm text-foreground hover:bg-card-hover"
                 >

@@ -241,6 +241,13 @@ interface AICategorySuggestion {
   error?: string;
 }
 
+interface AISelectionEvent {
+  selection: {
+    eligible: number;
+    selected: number;
+  };
+}
+
 /** Resolve a tag color: DB default is "default", treat it as null */
 function resolveTagColor(color: string | undefined): string {
   if (!color || color === "default") return "#6b7280";
@@ -640,40 +647,6 @@ export default function TagManagerPage() {
     setAiProgress(null);
 
     try {
-      // 获取所有漫画 ID（通过 library API）
-      const libRes = await fetch("/api/library?page=1&pageSize=9999");
-      if (!libRes.ok) {
-        showToast("获取书库列表失败", "error");
-        setAiRunning(false);
-        return;
-      }
-      const libData = await libRes.json();
-      const items = libData.items || [];
-
-      // 过滤出缺少标签/分类的漫画
-      let comicIds: string[];
-      if (aiMode === "tags") {
-        comicIds = items
-          .filter((item: { id: string; tags?: { name: string }[] }) => !item.tags || item.tags.length === 0)
-          .map((item: { id: string }) => item.id);
-      } else {
-        // 对于分类，获取所有漫画（AI 可以重新分类）
-        comicIds = items.map((item: { id: string }) => item.id);
-      }
-
-      if (comicIds.length === 0) {
-        showToast(aiMode === "tags" ? "所有漫画都已有标签" : "没有可处理的漫画", "success");
-        setAiRunning(false);
-        return;
-      }
-
-      // 限制最多 30 个
-      if (comicIds.length > 30) {
-        comicIds = comicIds.slice(0, 30);
-      }
-
-      setAiProgress({ current: 0, total: comicIds.length });
-
       const endpoint = aiMode === "tags"
         ? "/api/ai/batch-suggest-tags"
         : "/api/ai/batch-suggest-category";
@@ -682,7 +655,10 @@ export default function TagManagerPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          comicIds,
+          selector: {
+            scope: aiMode === "tags" ? "missing" : "uncategorized",
+            limit: 30,
+          },
           targetLang: locale || "zh",
           apply: aiAutoApply,
         }),
@@ -700,6 +676,8 @@ export default function TagManagerPage() {
       const decoder = new TextDecoder();
       let buffer = "";
       const results: (AITagSuggestion | AICategorySuggestion)[] = [];
+      let eligibleCount = 0;
+      let selectedCount = 0;
 
       if (reader) {
         while (true) {
@@ -714,9 +692,19 @@ export default function TagManagerPage() {
             if (line.startsWith("data: ")) {
               try {
                 const data = JSON.parse(line.slice(6));
-                results.push(data);
+                if (data.selection) {
+                  const selection = (data as AISelectionEvent).selection;
+                  eligibleCount = selection.eligible;
+                  selectedCount = selection.selected;
+                  setAiProgress(selection.selected > 0 ? { current: 0, total: selection.selected } : null);
+                  continue;
+                }
+                if (data.done) {
+                  continue;
+                }
+                results.push(data as AITagSuggestion | AICategorySuggestion);
                 setAiResults([...results]);
-                setAiProgress({ current: (data.index || 0) + 1, total: data.total || comicIds.length });
+                setAiProgress({ current: (data.index || 0) + 1, total: data.total || selectedCount });
               } catch {
                 // ignore parse errors
               }
@@ -725,10 +713,15 @@ export default function TagManagerPage() {
         }
       }
 
-      showToast(
-        `AI ${aiMode === "tags" ? "标签" : "分类"}建议完成：${results.filter((r) => !r.error).length} 成功`,
-        "success"
-      );
+      if (selectedCount === 0) {
+        showToast(aiMode === "tags" ? "所有作品都已有标签" : "所有作品都已分类", "success");
+      } else {
+        const remaining = Math.max(0, eligibleCount - selectedCount);
+        showToast(
+          `AI ${aiMode === "tags" ? "标签" : "分类"}建议完成：${results.filter((r) => !r.error).length} 成功${remaining > 0 ? `，另有 ${remaining} 本待处理` : ""}`,
+          "success"
+        );
+      }
       await loadData();
     } catch (e) {
       showToast(`AI 生成失败: ${String(e)}`, "error");
@@ -1025,7 +1018,7 @@ export default function TagManagerPage() {
                 </button>
               )}
               <span className="text-[10px] text-muted ml-auto">
-                {aiMode === "tags" ? "将为缺少标签的漫画生成建议（最多30本）" : "将为所有漫画生成分类建议（最多30本）"}
+                {aiMode === "tags" ? "将为缺少标签的作品生成建议（最多30本）" : "将为未分类作品生成建议（最多30本）"}
               </span>
             </div>
           </div>

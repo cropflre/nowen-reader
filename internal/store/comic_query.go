@@ -61,6 +61,7 @@ type ComicListOptions struct {
 	FilterLibraryIDs bool     // 如果启用，即使 LibraryIDs 为空也强制过滤（此时返回空）
 	Uncategorized    bool     // 筛选没有分类关联的作品
 	Untagged         bool     // 筛选没有标签关联的作品
+	SeriesView       bool     // 是否开启目录折叠混合视图
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -99,6 +100,7 @@ type ComicListItem struct {
 	Tags                    []ComicTagInfo      `json:"tags"`
 	Categories              []ComicCategoryInfo `json:"categories"`
 	CanManage               bool                `json:"canManage,omitempty"`
+	ComicCount              int                 `json:"comicCount,omitempty"`
 }
 
 type ComicTagInfo struct {
@@ -128,6 +130,9 @@ type ComicListResult struct {
 
 // GetAllComics 根据筛选条件、排序和分页获取漫画列表。
 func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
+	if opts.SeriesView {
+		return getAllComicsSeriesView(opts)
+	}
 	// Build WHERE clause
 	var conditions []string
 	var args []interface{}

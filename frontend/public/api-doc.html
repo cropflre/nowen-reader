@@ -926,7 +926,7 @@
     </div>
 
     <div id="endpoints-comics-crud" class="endpoint-group">
-    <h2 class="group-title"><span data-en="3. Comics CRUD" data-zh="3. 漫画增删改查">3. Comics CRUD</span> <span class="group-badge"><span data-en="20 endpoints" data-zh="20 个接口">20 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="3. Comics CRUD" data-zh="3. 漫画增删改查">3. Comics CRUD</span> <span class="group-badge"><span data-en="21 endpoints" data-zh="21 个接口">21 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/comics List comics with filtering pagination libraryIds" id="get-api-comics">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -954,7 +954,7 @@
         <tr><td>untagged</td><td>string</td><td>No</td><td>Only return comics without tags (&quot;true&quot;)</td></tr>
         <tr><td>page</td><td>int</td><td>No</td><td>Page number (default: 0)</td></tr>
         <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (default: 0)</td></tr>
-        <tr><td>seriesView</td><td>string</td><td>No</td><td><span data-en="Set to true to collapse matching directory-series members into synthetic shelf entries. Omit it for ordinary per-publication rows. The collapsed response is normalized to one page." data-zh="设为 true 时，将命中的目录作品成员折叠为书架虚拟条目；省略时仍逐本返回。折叠后的响应统一为一页。">Set to true to collapse matching directory-series members into synthetic shelf entries. Omit it for ordinary per-publication rows. The collapsed response is normalized to one page.</span></td></tr>
+        <tr><td>seriesView</td><td>string</td><td>No</td><td><span data-en="Set to true to collapse matching directory-series members before pagination. total and totalPages describe the resulting logical shelf, and comicCount is the number of reading units in a directory work. Omit it for ordinary per-publication rows." data-zh="设为 true 时，在分页前将命中的目录作品成员折叠为书架虚拟条目，total 与 totalPages 按折叠后的逻辑作品计算，comicCount 表示目录作品的阅读单元数；省略时仍逐本返回。">Set to true to collapse matching directory-series members before pagination. total and totalPages describe the resulting logical shelf, and comicCount is the number of reading units in a directory work. Omit it for ordinary per-publication rows.</span></td></tr>
       </tbody>
     </table>
 
@@ -963,6 +963,47 @@
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
     </div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/catalog/items collection picker logical catalog series comics pagination 合集选择 逻辑作品 分页" id="get-api-catalog-items">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/catalog/items</span>
+    <span class="summary"><span data-en="List logical items for collection pickers" data-zh="获取合集选择器的逻辑作品列表">List logical items for collection pickers</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Builds a logical catalog in the database and paginates it before returning data. A directory series with at least two valid comic members is one kind=series item; its members are not repeated as standalone comics. Novels and comics outside a valid series use kind=comic. Results are restricted to libraries visible to the current user." data-zh="在数据库中生成逻辑作品后再分页。至少有两个有效漫画成员的目录作品返回一条 kind=series 记录，其成员不再重复作为散本返回；小说及未进入有效目录作品的漫画返回 kind=comic。结果始终限制在当前用户可查看的书库内。">Builds a logical catalog in the database and paginates it before returning data. A directory series with at least two valid comic members is one kind=series item; its members are not repeated as standalone comics. Novels and comics outside a valid series use kind=comic. Results are restricted to libraries visible to the current user.</span></p>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody>
+        <tr><td>contentType</td><td>string</td><td>No</td><td><span data-en="comic or novel; default comic" data-zh="comic 或 novel，默认 comic">comic or novel; default comic</span></td></tr>
+        <tr><td>search</td><td>string</td><td>No</td><td><span data-en="Search logical titles, member titles, or filenames" data-zh="搜索逻辑作品标题、成员标题或文件名">Search logical titles, member titles, or filenames</span></td></tr>
+        <tr><td>libraryIds</td><td>string</td><td>No</td><td><span data-en="Comma-separated library IDs; intersected with non-admin access" data-zh="逗号分隔的书库 ID；普通用户会与自身权限取交集">Comma-separated library IDs; intersected with non-admin access</span></td></tr>
+        <tr><td>page</td><td>int</td><td>No</td><td><span data-en="Page number starting at 1; default 1" data-zh="从 1 开始的页码，默认 1">Page number starting at 1; default 1</span></td></tr>
+        <tr><td>pageSize</td><td>int</td><td>No</td><td><span data-en="Items per page; default 24, maximum 100" data-zh="每页数量，默认 24，最大 100">Items per page; default 24, maximum 100</span></td></tr>
+        <tr><td>sortBy</td><td>string</td><td>No</td><td><span data-en="Currently title only" data-zh="当前仅支持 title">Currently title only</span></td></tr>
+        <tr><td>sortOrder</td><td>string</td><td>No</td><td><span data-en="asc or desc; default asc" data-zh="asc 或 desc，默认 asc">asc or desc; default asc</span></td></tr>
+      </tbody>
+    </table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  &quot;items&quot;: [{
+    &quot;id&quot;: &quot;ser_xxx&quot;,
+    &quot;kind&quot;: &quot;series&quot;,
+    &quot;title&quot;: &quot;Directory Work&quot;,
+    &quot;coverUrl&quot;: &quot;/api/comics/comic_xxx/thumbnail&quot;,
+    &quot;itemCount&quot;: 15,
+    &quot;libraryId&quot;: &quot;lib_xxx&quot;
+  }],
+  &quot;page&quot;: 1,
+  &quot;pageSize&quot;: 12,
+  &quot;total&quot;: 1,
+  &quot;totalPages&quot;: 1
+}</code></pre>
+    <p class="description"><span data-en="IDs are real entity IDs. Submit kind=comic IDs as comicIds and kind=series IDs as seriesIds; do not add or parse a synthetic prefix." data-zh="id 是对应实体的真实 ID。创建合集时，将 kind=comic 的 ID 放入 comicIds，将 kind=series 的 ID 放入 seriesIds；不要添加或解析虚拟前缀。">IDs are real entity IDs. Submit kind=comic IDs as comicIds and kind=series IDs as seriesIds; do not add or parse a synthetic prefix.</span></p>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
   </div>
 </div>
 
@@ -4135,7 +4176,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-groups" class="endpoint-group">
-    <h2 class="group-title"><span data-en="21. Groups" data-zh="21. 分组">21. Groups</span> <span class="group-badge"><span data-en="35 endpoints" data-zh="35 个接口">35 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="21. Groups" data-zh="21. 分组">21. Groups</span> <span class="group-badge"><span data-en="37 endpoints" data-zh="37 个接口">37 endpoints</span></span></h2>
 <div class="endpoint auth-required" data-search="GET /api/groups List groups" id="get-api-groups">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -4143,7 +4184,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="List groups" data-zh="列出分组">List groups</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a list of groups, optionally filtered by content type, category, tags, favorites, or library. Non-admin users are automatically filtered to their accessible libraries." data-zh="返回分组列表，可选按内容类型、分类、标签、收藏或库筛选。非管理员用户自动筛选到其可访问的库。">Returns a list of groups, optionally filtered by content type, category, tags, favorites, or library. Non-admin users are automatically filtered to their accessible libraries.</span></p>
+    <p class="description"><span data-en="Returns groups filtered by content type, category, tags, favorites, or library. Directory-series members participate in filters and comicCount. Non-admin users are limited to accessible libraries." data-zh="返回可按内容类型、分类、标签、收藏或书库筛选的合集。目录作品成员参与筛选与 comicCount 统计；普通用户仅能看到可访问书库中的内容。">Returns groups filtered by content type, category, tags, favorites, or library. Directory-series members participate in filters and comicCount. Non-admin users are limited to accessible libraries.</span></p>
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>contentType</td><td>string</td><td>No</td><td>"comic" or "novel"</td></tr>
@@ -4179,7 +4220,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Get group detail" data-zh="获取分组详情">Get group detail</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns detailed information about a specific group." data-zh="返回特定分组的详细信息。">Returns detailed information about a specific group.</span></p>
+    <p class="description"><span data-en="Returns direct comics in comics and directory works in seriesList. Each seriesList item includes its visible member comics. Non-admin responses are restricted to accessible libraries; requests with no visible members return 403." data-zh="返回合集详情：散本位于 comics，目录作品位于 seriesList，每个目录作品包含当前用户可见的成员作品。普通用户按可访问书库过滤；没有任何可见阅读单元时返回 403。">Returns direct comics in comics and directory works in seriesList. Each seriesList item includes its visible member comics. Non-admin responses are restricted to accessible libraries; requests with no visible members return 403.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
@@ -4189,7 +4230,22 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
       <tr><td>contentType</td><td>string</td><td>No</td><td>"comic" or "novel"</td></tr>
     </tbody></table>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>Group detail object</code></pre>
+    <pre class="code-block"><code>{
+  "id": 1,
+  "name": "Group name",
+  "comicCount": 3,
+  "seriesList": [{
+    "id": "ser_xxx",
+    "title": "Directory work",
+    "rootRelativePath": "Directory work",
+    "coverComicId": "comic_001",
+    "coverUrl": "/api/comics/comic_001/thumbnail",
+    "sortIndex": 0,
+    "comics": [GroupComicItem]
+  }],
+  "comics": [GroupComicItem]
+}</code></pre>
+    <p class="description"><span data-en="comicCount is the number of distinct visible reading units across direct comics and directory works. An inaccessible group returns 403; a missing group returns 404 to administrators." data-zh="comicCount 是散本与目录作品中当前用户可见阅读单元去重后的总数。无权访问合集时返回 403；管理员请求不存在的合集时返回 404。">comicCount is the number of distinct visible reading units across direct comics and directory works. An inaccessible group returns 403; a missing group returns 404 to administrators.</span></p>
     <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
   </div>
 </div>
@@ -4201,11 +4257,12 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Create group" data-zh="创建分组">Create group</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Creates a new group with the given name and optional initial comic IDs." data-zh="使用给定名称和可选的初始漫画ID创建新分组。">Creates a new group with the given name and optional initial comic IDs.</span></p>
+    <p class="description"><span data-en="Atomically creates a group with optional direct comic IDs and directory-series IDs. Invalid memberships roll back the entire creation." data-zh="以事务方式创建合集，可同时传入散本 ID 和目录作品 ID；任何无效关联都会回滚整个创建过程。">Atomically creates a group with optional direct comic IDs and directory-series IDs. Invalid memberships roll back the entire creation.</span></p>
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
   "name": "string (required)",
-  "comicIds": ["string"]
+  "comicIds": ["string"],
+  "seriesIds": ["string"]
 }</code></pre>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{"success": true, "id": 0}</code></pre>
@@ -4294,6 +4351,45 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
       <tr><td>comicId</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+    </tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{"success": true}</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/groups/:id/series Add directory series to group" id="post-api-groups-id-series">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/groups/:id/series</span>
+    <span class="summary"><span data-en="Add directory works to group" data-zh="添加目录作品到合集">Add directory works to group</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Adds one or more directory-series relationships to a group." data-zh="将一个或多个目录作品关联到合集。">Adds one or more directory-series relationships to a group.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
+      <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
+    </tbody></table>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{"seriesIds": ["ser_xxx"]}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{"success": true}</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="DELETE /api/groups/:id/series/:seriesId Remove directory series from group" id="delete-api-groups-id-series-seriesid">
+  <div class="endpoint-header">
+    <span class="method method-DELETE">DELETE</span>
+    <span class="path">/api/groups/:id/series/:seriesId</span>
+    <span class="summary"><span data-en="Remove directory work from group" data-zh="从合集移除目录作品">Remove directory work from group</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Removes a directory-series relationship. If the group has no direct comics or directory works afterward, the empty group is deleted." data-zh="移除指定目录作品关联；如果移除后合集既无散本也无目录作品，空合集将被删除。">Removes a directory-series relationship. If the group has no direct comics or directory works afterward, the empty group is deleted.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
+      <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
+      <tr><td>seriesId</td><td>string</td><td>Yes</td><td>Directory series ID</td></tr>
     </tbody></table>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{"success": true}</code></pre>
@@ -5607,17 +5703,29 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Batch AI tag suggestions (SSE stream)" data-zh="批量AI标签推荐（SSE流）">Batch AI tag suggestions (SSE stream)</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Batch suggest tags for multiple comics using AI. Max 30 comics per request." data-zh="使用AI批量为多个漫画推荐标签。每次请求最多30个漫画。">Batch suggest tags for multiple comics using AI. Max 30 comics per request.</span></p>
+    <p class="description"><span data-en="Batch suggest tags using explicit comic IDs or a permission-filtered server-side selector. Max 30 works per request." data-zh="使用明确的作品 ID，或由服务端按权限筛选候选作品后批量推荐标签。每次请求最多处理30本作品。">Batch suggest tags using explicit comic IDs or a permission-filtered server-side selector. Max 30 works per request.</span></p>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
-  "comicIds": ["string (required)"],
+  "comicIds": ["string"],
   "targetLang": "string (default: zh)",
+  "apply": false
+}
+
+// Or use server-side selection; comicIds and selector are mutually exclusive.
+{
+  "selector": {
+    "scope": "missing | all (default: missing)",
+    "contentType": "comic | novel (optional)",
+    "libraryIds": ["string (optional, permission-filtered)"],
+    "limit": 30
+  },
+  "targetLang": "zh",
   "apply": false
 }</code></pre>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <p class="description">SSE events: per-comic results, final <code>done</code> event.</p>
+    <p class="description"><span data-en="Selector mode first emits a selection event with eligible and selected counts, followed by per-work results and the final done event." data-zh="selector 模式首先发送包含 eligible 与 selected 数量的 selection 数据，随后发送逐本结果和最终 done 数据。">Selector mode first emits a selection event with eligible and selected counts, followed by per-work results and the final done event.</span></p>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
@@ -5681,17 +5789,29 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Batch AI category suggestions (SSE stream)" data-zh="批量AI分类推荐（SSE流）">Batch AI category suggestions (SSE stream)</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Batch suggest categories for multiple comics using AI. Max 30 comics." data-zh="使用AI批量为多个漫画推荐分类。最多30个漫画。">Batch suggest categories for multiple comics using AI. Max 30 comics.</span></p>
+    <p class="description"><span data-en="Batch suggest categories using explicit comic IDs or a permission-filtered server-side selector. Max 30 works." data-zh="使用明确的作品 ID，或由服务端按权限筛选候选作品后批量推荐分类。最多处理30本作品。">Batch suggest categories using explicit comic IDs or a permission-filtered server-side selector. Max 30 works.</span></p>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
-  "comicIds": ["string (required)"],
+  "comicIds": ["string"],
   "targetLang": "string (default: zh)",
+  "apply": false
+}
+
+// Or use server-side selection; comicIds and selector are mutually exclusive.
+{
+  "selector": {
+    "scope": "uncategorized | missing | all (default: uncategorized)",
+    "contentType": "comic | novel (optional)",
+    "libraryIds": ["string (optional, permission-filtered)"],
+    "limit": 30
+  },
+  "targetLang": "zh",
   "apply": false
 }</code></pre>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <p class="description"><span data-en="SSE stream." data-zh="SSE流。">SSE stream.</span></p>
+    <p class="description"><span data-en="Selector mode first emits a selection event with eligible and selected counts, followed by per-work results and the final done event." data-zh="selector 模式首先发送包含 eligible 与 selected 数量的 selection 数据，随后发送逐本结果和最终 done 数据。">Selector mode first emits a selection event with eligible and selected counts, followed by per-work results and the final done event.</span></p>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>

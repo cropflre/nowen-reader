@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -254,6 +255,124 @@ func TestManagedLibraryScanAllowsCanManageUser(t *testing.T) {
 	w = performAuthedRequest(r, "POST", "/api/libraries/"+created.Library.ID+"/scan", nil, token)
 	if w.Code != http.StatusOK {
 		t.Fatalf("managed scan: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGroupDetailRejectsUserWithoutSeriesLibraryAccess(t *testing.T) {
+	r := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	_ = registerAndLogin(t, r)
+
+	library := &model.Library{
+		ID:            "private-series-library",
+		Name:          "Private Series",
+		Type:          "comic",
+		RootPath:      t.TempDir(),
+		Enabled:       true,
+		DefaultAccess: "private",
+		ScanEnabled:   true,
+	}
+	if err := store.CreateLibrary(library); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().Exec(`
+		INSERT INTO "Comic" ("id", "filename", "title", "type", "libraryId", "relativePath") VALUES
+			('private-series-1', 'private/01.cbz', 'Private 01', 'comic', ?, 'private/01.cbz'),
+			('private-series-2', 'private/02.cbz', 'Private 02', 'comic', ?, 'private/02.cbz')
+	`, library.ID, library.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().Exec(`
+		INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle")
+		VALUES ('private-series', ?, 'private', 'Private', 'private')
+	`, library.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().Exec(`
+		INSERT INTO "ComicSeriesItem" ("seriesId", "comicId", "sortIndex") VALUES
+			('private-series', 'private-series-1', 0),
+			('private-series', 'private-series-2', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	groupID, err := store.CreateGroupWithItems("Private Group", "", nil, []string{"private-series"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user := &model.User{ID: "group-no-access", Username: "group-no-access", Password: "hash", Role: "user"}
+	if err := store.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	token := "group-no-access-session"
+	if err := store.CreateSession(&model.UserSession{ID: token, UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+
+	w := performAuthedRequest(r, "GET", fmt.Sprintf("/api/groups/%d", groupID), nil, token)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("group detail without library access = %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCatalogItemsRespectLibraryAccess(t *testing.T) {
+	r := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	_ = registerAndLogin(t, r)
+
+	for _, library := range []*model.Library{
+		{ID: "catalog-visible-library", Name: "Visible", Type: "novel", RootPath: t.TempDir(), Enabled: true, DefaultAccess: "private"},
+		{ID: "catalog-hidden-library", Name: "Hidden", Type: "novel", RootPath: t.TempDir(), Enabled: true, DefaultAccess: "private"},
+	} {
+		if err := store.CreateLibrary(library); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.DB().Exec(`
+		INSERT INTO "Comic" ("id", "filename", "title", "type", "libraryId", "relativePath") VALUES
+			('catalog-visible-book', 'visible.epub', 'Visible Book', 'novel', 'catalog-visible-library', 'visible.epub'),
+			('catalog-hidden-book', 'hidden.epub', 'Hidden Book', 'novel', 'catalog-hidden-library', 'hidden.epub')
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	user := &model.User{ID: "catalog-user", Username: "catalog-user", Password: "hash", Role: "user"}
+	if err := store.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{{LibraryID: "catalog-visible-library", CanView: true}}); err != nil {
+		t.Fatal(err)
+	}
+	token := "catalog-user-session"
+	if err := store.CreateSession(&model.UserSession{ID: token, UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+
+	w := performAuthedRequest(r, "GET", "/api/catalog/items?contentType=novel&page=1&pageSize=12", nil, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("catalog items = %d %s", w.Code, w.Body.String())
+	}
+	var result store.CatalogItemResult
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 1 || len(result.Items) != 1 || result.Items[0].ID != "catalog-visible-book" || result.Items[0].Kind != store.CatalogItemComic {
+		t.Fatalf("filtered catalog = %#v", result)
+	}
+
+	w = performAuthedRequest(r, "GET", "/api/catalog/items?contentType=novel&libraryIds=catalog-hidden-library", nil, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("empty catalog intersection = %d %s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 0 || len(result.Items) != 0 {
+		t.Fatalf("inaccessible requested library leaked: %#v", result)
 	}
 }
 
@@ -555,6 +674,7 @@ func TestAuthRequired(t *testing.T) {
 		path   string
 	}{
 		{"GET", "/api/comics"},
+		{"GET", "/api/catalog/items"},
 		{"GET", "/api/comics/test-id"},
 		{"GET", "/api/tags"},
 		{"GET", "/api/categories"},
@@ -656,6 +776,7 @@ func TestNoUnprotectedEndpoints(t *testing.T) {
 	// These endpoints should all return 401 without auth
 	protectedPaths := []string{
 		"/api/comics",
+		"/api/catalog/items",
 		"/api/tags",
 		"/api/categories",
 		"/api/stats",

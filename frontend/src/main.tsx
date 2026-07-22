@@ -17,6 +17,7 @@ import { ToastProvider } from "@/components/Toast";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import PageProgressBar from "@/components/PageProgressBar";
 import { LibraryTypeCompatibilityGuard } from "@/components/LibraryTypeCompatibilityGuard";
+import { seriesIdFromShelfId } from "@/lib/series-id";
 
 // Pages — imported directly from original Next.js pages
 // The "use client" directive is harmless in Vite
@@ -57,13 +58,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function seriesIDFromRoute(id: string): string | null {
-  return id.startsWith("series-") ? id.slice("series-".length) : null;
-}
-
 function ComicDetailRoute() {
   const { id = "" } = useParams();
-  const seriesId = seriesIDFromRoute(id);
+  const seriesId = seriesIdFromShelfId(id);
   if (seriesId) {
     return <Navigate to={`/series/${seriesId}`} replace />;
   }
@@ -76,7 +73,7 @@ function ComicDetailRoute() {
  */
 function ReaderRoute() {
   const { id = "" } = useParams();
-  const seriesId = seriesIDFromRoute(id);
+  const seriesId = seriesIdFromShelfId(id);
   if (seriesId) {
     return <Navigate to={`/series/${seriesId}`} replace />;
   }

@@ -393,7 +393,7 @@ func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicL
 			ID:            SeriesShelfIDPrefix + summary.ID,
 			Filename:      "__series__.cbz",
 			Title:         summary.Title,
-			TitleSortKey:  summary.SortTitle,
+			TitleSortKey:  BuildTitleSortKey(summary.Title),
 			PageCount:     summary.ItemCount,
 			FileSize:      summary.FileSize,
 			AddedAt:       summary.CreatedAt,
@@ -405,11 +405,134 @@ func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicL
 			CoverURL:      summary.CoverURL,
 			ComicType:     "comic",
 			LibraryID:     summary.LibraryID,
+			ComicCount:    summary.ItemCount,
 			Tags:          tags,
 			Categories:    []ComicCategoryInfo{},
 		})
 	}
 	return collapsed, nil
+}
+
+// getAllComicsSeriesView applies filters to readable items, collapses directory
+// series, then paginates the logical shelf. This keeps a series from being split
+// across SQL pages and gives callers stable totals for the mixed shelf.
+func getAllComicsSeriesView(opts ComicListOptions) (*ComicListResult, error) {
+	page, pageSize := opts.Page, opts.PageSize
+	if page < 1 {
+		page = 1
+	}
+
+	flatOpts := opts
+	flatOpts.SeriesView = false
+	flatOpts.Page = 0
+	flatOpts.PageSize = 0
+	flat, err := GetAllComics(flatOpts)
+	if err != nil {
+		return nil, err
+	}
+	items, err := CollapseComicListIntoSeries(flat.Comics, opts.UserID)
+	if err != nil {
+		return nil, err
+	}
+	sortSeriesShelfItems(items, opts.SortBy, opts.SortOrder)
+
+	total := len(items)
+	totalPages := 1
+	if pageSize > 0 {
+		if total > 0 {
+			totalPages = (total + pageSize - 1) / pageSize
+		}
+		start := (page - 1) * pageSize
+		if start >= total {
+			items = []ComicListItem{}
+		} else {
+			end := start + pageSize
+			if end > total {
+				end = total
+			}
+			items = items[start:end]
+		}
+	} else {
+		pageSize = total
+	}
+
+	return &ComicListResult{
+		Comics:     items,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: totalPages,
+	}, nil
+}
+
+func sortSeriesShelfItems(items []ComicListItem, sortBy, sortOrder string) {
+	desc := strings.EqualFold(sortOrder, "desc")
+	compareString := func(a, b string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	}
+	compareInt64 := func(a, b int64) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	}
+	valueString := func(value *string) string {
+		if value == nil {
+			return ""
+		}
+		return *value
+	}
+	valueInt := func(value *int) int64 {
+		if value == nil {
+			return -1
+		}
+		return int64(*value)
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := items[i], items[j]
+		cmp := 0
+		switch sortBy {
+		case "addedAt":
+			cmp = compareString(a.AddedAt, b.AddedAt)
+		case "updatedAt":
+			cmp = compareString(a.UpdatedAt, b.UpdatedAt)
+		case "lastReadAt":
+			cmp = compareString(valueString(a.LastReadAt), valueString(b.LastReadAt))
+		case "rating":
+			cmp = compareInt64(valueInt(a.Rating), valueInt(b.Rating))
+		case "custom":
+			cmp = compareInt64(int64(a.SortOrder), int64(b.SortOrder))
+		case "fileSize":
+			cmp = compareInt64(a.FileSize, b.FileSize)
+		case "metadataSource":
+			cmp = compareString(a.MetadataSource, b.MetadataSource)
+		default:
+			cmp = compareString(a.TitleSortKey, b.TitleSortKey)
+		}
+		if cmp == 0 {
+			cmp = compareString(a.TitleSortKey, b.TitleSortKey)
+		}
+		if cmp == 0 {
+			cmp = compareString(a.Title, b.Title)
+		}
+		if cmp == 0 {
+			cmp = compareString(a.ID, b.ID)
+		}
+		if desc {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
 }
 
 func GetSeriesDetail(id, userID string) (*SeriesDetail, error) {
