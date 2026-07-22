@@ -175,14 +175,33 @@ func BatchSetReadingStatus(userID string, comicIDs []string, status string) erro
 				continue
 			}
 		}
+		if status == "" {
+			if userID != "" {
+				if _, err := tx.Exec(`
+					INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "readingStatus")
+					VALUES (?, ?, 0, NULL, '')
+					ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadPage" = 0, "lastReadAt" = NULL, "readingStatus" = ''
+				`, userID, comicID); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.Exec(`
+				UPDATE "Comic" SET "lastReadPage" = 0, "lastReadAt" = NULL, "readingStatus" = '' WHERE "id" = ?
+			`, comicID); err != nil {
+				return err
+			}
+			continue
+		}
 
-		_, err := tx.Exec(`
-			INSERT INTO "UserComicState" ("userId", "comicId", "readingStatus")
-			VALUES (?, ?, ?)
-			ON CONFLICT("userId", "comicId") DO UPDATE SET "readingStatus" = ?
-		`, userID, comicID, status, status)
-		if err != nil {
-			return err
+		if userID != "" {
+			_, err := tx.Exec(`
+				INSERT INTO "UserComicState" ("userId", "comicId", "readingStatus")
+				VALUES (?, ?, ?)
+				ON CONFLICT("userId", "comicId") DO UPDATE SET "readingStatus" = ?
+			`, userID, comicID, status, status)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

@@ -330,8 +330,7 @@ func UpdateRating(comicID string, rating *int, userID ...string) error {
 }
 
 // SetUserReadingStatus 设置用户级阅读状态（UserComicState 表）。
-// 不更新 Comic 表的全局 readingStatus 字段。
-// 当 status 为空字符串时，只清空 UserComicState.readingStatus，不删除整条记录（可能含其他字段）。
+// 当 status 为空字符串 ("") 时，清空阅读状态并重置阅读进度 (lastReadPage = 0, lastReadAt = NULL)。
 func SetUserReadingStatus(userID, comicID, status string) error {
 	if status == "finished" {
 		var pageCount int
@@ -351,12 +350,42 @@ func SetUserReadingStatus(userID, comicID, status string) error {
 		}
 	}
 
-	_, err := db.Exec(`
-		INSERT INTO "UserComicState" ("userId", "comicId", "readingStatus")
-		VALUES (?, ?, ?)
-		ON CONFLICT("userId", "comicId") DO UPDATE SET "readingStatus" = ?
-	`, userID, comicID, status, status)
+	if status == "" {
+		if userID != "" {
+			if _, err := db.Exec(`
+				INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "readingStatus")
+				VALUES (?, ?, 0, NULL, '')
+				ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadPage" = 0, "lastReadAt" = NULL, "readingStatus" = ''
+			`, userID, comicID); err != nil {
+				return err
+			}
+		}
+		_, err := db.Exec(`
+			UPDATE "Comic" SET "lastReadPage" = 0, "lastReadAt" = NULL, "readingStatus" = '' WHERE "id" = ?
+		`, comicID)
+		return err
+	}
+
+	if userID != "" {
+		_, err := db.Exec(`
+			INSERT INTO "UserComicState" ("userId", "comicId", "readingStatus")
+			VALUES (?, ?, ?)
+			ON CONFLICT("userId", "comicId") DO UPDATE SET "readingStatus" = ?
+		`, userID, comicID, status, status)
+		return err
+	}
+
+	_, err := db.Exec(`UPDATE "Comic" SET "readingStatus" = ? WHERE "id" = ?`, status, comicID)
 	return err
+}
+
+// ClearReadingProgress 重置漫画的阅读进度与状态 (页码归零，清除时间戳和状态)
+func ClearReadingProgress(comicID string, userID ...string) error {
+	uid := ""
+	if len(userID) > 0 {
+		uid = userID[0]
+	}
+	return SetUserReadingStatus(uid, comicID, "")
 }
 
 // DeleteComic 从数据库删除漫画（不涉及磁盘文件删除）。
