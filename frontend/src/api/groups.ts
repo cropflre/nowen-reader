@@ -146,6 +146,16 @@ export async function removeSeriesFromGroup(groupId: number, seriesId: string): 
   }
 }
 
+/** 重新排序合集中的目录作品 */
+export async function reorderGroupSeries(groupId: number, seriesIds: string[]): Promise<boolean> {
+  try {
+    await apiClient.put(`/api/groups/${groupId}/series/reorder`, { seriesIds });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 重新排序分组内漫?*/
 export async function reorderGroupComics(groupId: number, comicIds: string[]): Promise<boolean> {
   try {

@@ -4397,6 +4397,27 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
+<div class="endpoint admin-only" data-search="PUT /api/groups/:id/series/reorder Reorder directory works in group" id="put-api-groups-id-series-reorder">
+  <div class="endpoint-header">
+    <span class="method method-PUT">PUT</span>
+    <span class="path">/api/groups/:id/series/reorder</span>
+    <span class="summary"><span data-en="Reorder directory works in group" data-zh="重新排序合集中的目录作品">Reorder directory works in group</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Sets the display order of directory works. The request must contain every directory work currently in the group, without duplicates or foreign IDs." data-zh="设置合集内目录作品的显示顺序。请求必须完整包含合集当前的全部目录作品，不能重复或包含其他合集的 ID。">Sets the display order of directory works. The request must contain every directory work currently in the group, without duplicates or foreign IDs.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
+      <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
+    </tbody></table>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{"seriesIds": ["ser_first", "ser_second"]}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{"success": true}</code></pre>
+    <p class="description"><span data-en="Returns 400 when the list is incomplete, duplicated, or contains an ID outside the group. The stored order remains unchanged." data-zh="列表缺失、重复或包含非本合集 ID 时返回 400，数据库中的原顺序保持不变。">Returns 400 when the list is incomplete, duplicated, or contains an ID outside the group. The stored order remains unchanged.</span></p>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
+  </div>
+</div>
+
 <div class="endpoint admin-only" data-search="PUT /api/groups/:id/reorder Reorder comics in group" id="put-api-groups-id-reorder">
   <div class="endpoint-header">
     <span class="method method-PUT">PUT</span>

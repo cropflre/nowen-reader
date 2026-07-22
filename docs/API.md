@@ -388,6 +388,7 @@ Content-Type: application/json
 | DELETE | `/api/groups/:id/comics/:comicId` | 从分组移除漫画 🔒管理员 |
 | POST | `/api/groups/:id/series` | 添加目录作品到分组 🔒管理员 |
 | DELETE | `/api/groups/:id/series/:seriesId` | 从分组移除目录作品 🔒管理员 |
+| PUT | `/api/groups/:id/series/reorder` | 合集内目录作品排序 🔒管理员 |
 | PUT | `/api/groups/:id/reorder` | 分组内漫画排序 🔒管理员 |
 
 ### 合集与目录作品
@@ -417,6 +418,17 @@ Content-Type: application/json
 ```http
 DELETE /api/groups/:id/series/:seriesId
 ```
+
+目录作品的展示顺序可通过完整 ID 列表更新：
+
+```http
+PUT /api/groups/:id/series/reorder
+Content-Type: application/json
+
+{"seriesIds": ["ser_first", "ser_second"]}
+```
+
+`seriesIds` 必须完整包含当前合集的全部目录作品，且不能重复或包含其他合集的目录作品；校验失败返回 `400`，原顺序保持不变。
 
 `GET /api/groups/:id` 将散本和目录作品分开返回：
 

@@ -703,6 +703,65 @@ func TestComicGroupSeriesCRUD(t *testing.T) {
 	}
 }
 
+func TestReorderGroupSeries(t *testing.T) {
+	setupTestDB(t)
+
+	if _, err := db.Exec(`INSERT INTO "Library" ("id", "name", "rootPath") VALUES ('series-order-lib', 'Series Order', '/tmp')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title") VALUES
+			('series-order-1', 'series-order-lib', 'one', 'One'),
+			('series-order-2', 'series-order-lib', 'two', 'Two'),
+			('series-order-3', 'series-order-lib', 'three', 'Three')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	groupID, err := CreateGroup("Ordered Series")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AddSeriesToGroup(int(groupID), []string{"series-order-1", "series-order-2", "series-order-3"}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"series-order-3", "series-order-1", "series-order-2"}
+	if err := ReorderGroupSeries(int(groupID), want); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := GetGroupByID(int(groupID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.SeriesList) != len(want) {
+		t.Fatalf("series count = %d, want %d", len(detail.SeriesList), len(want))
+	}
+	for index, series := range detail.SeriesList {
+		if series.SeriesID != want[index] || series.SortIndex != index {
+			t.Fatalf("series[%d] = %#v, want id=%q sortIndex=%d", index, series, want[index], index)
+		}
+	}
+
+	if err := ReorderGroupSeries(int(groupID), want[:2]); err == nil {
+		t.Fatal("expected incomplete series list to fail")
+	}
+	if err := ReorderGroupSeries(int(groupID), []string{want[0], want[0], want[2]}); err == nil {
+		t.Fatal("expected duplicate series ID to fail")
+	}
+	if err := ReorderGroupSeries(int(groupID), []string{want[0], want[1], "series-outside-group"}); err == nil {
+		t.Fatal("expected series outside group to fail")
+	}
+	detail, err = GetGroupByID(int(groupID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, series := range detail.SeriesList {
+		if series.SeriesID != want[index] {
+			t.Fatalf("failed reorder changed series[%d] to %q", index, series.SeriesID)
+		}
+	}
+}
+
 func TestCreateGroupWithItemsRollsBackInvalidMembership(t *testing.T) {
 	setupTestDB(t)
 

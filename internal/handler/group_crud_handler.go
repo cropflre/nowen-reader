@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -368,6 +369,32 @@ func (h *GroupHandler) ReorderComics(c *gin.Context) {
 
 	if err := store.ReorderGroupComics(id, body.ComicIDs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "重新排序失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ReorderSeries handles PUT /api/groups/:id/series/reorder.
+func (h *GroupHandler) ReorderSeries(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的分组ID"})
+		return
+	}
+
+	var body struct {
+		SeriesIDs []string `json:"seriesIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.SeriesIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "目录作品ID列表不能为空"})
+		return
+	}
+	if err := store.ReorderGroupSeries(id, body.SeriesIDs); err != nil {
+		if errors.Is(err, store.ErrGroupSeriesOrderMismatch) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "目录作品列表与合集内容不匹配"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "目录作品排序失败"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})

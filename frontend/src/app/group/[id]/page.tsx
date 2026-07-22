@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -39,6 +39,7 @@ import {
   deleteGroup,
   removeComicFromGroup,
   removeSeriesFromGroup,
+  reorderGroupSeries,
   reorderGroupComics,
   addComicsToGroup,
   updateGroupMetadata,
@@ -61,7 +62,7 @@ import { GroupMetadataSearch } from "@/components/GroupMetadataSearch";
 import { Sparkles, Brain, FolderOpen } from "lucide-react";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { useGlobalSyncEvent } from "@/hooks/useSyncEvent";
-import { formatFileSize, formatDuration, isNovelFile, getReaderUrl, naturalSortKey } from "@/lib/comic-utils";
+import { formatFileSize, formatDuration, isNovelFile, getReaderUrl } from "@/lib/comic-utils";
 
 export default function GroupDetailPage() {
   const params = useParams();
@@ -140,33 +141,18 @@ export default function GroupDetailPage() {
     status: "",
   });
 
-  // 触摸拖拽状态
-  const [touchDragId, setTouchDragId] = useState<string | null>(null);
-  const touchStartY = useRef<number>(0);
-  const comicListRef = useRef<HTMLDivElement>(null);
-
-  // 视图模式：grid（网格）或 list（列表）
-  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("seriesViewMode") as "grid" | "list") || "grid";
-    }
-    return "grid";
-  });
-
-  useEffect(() => {
-    localStorage.setItem("seriesViewMode", viewMode);
-  }, [viewMode]);
+  // 目录作品分区拖拽状态。独立于散本拖拽，避免横向滚动轨道互相干扰。
+  const [seriesDragId, setSeriesDragId] = useState<string | null>(null);
+  const [seriesDragOverId, setSeriesDragOverId] = useState<string | null>(null);
+  const [seriesTouchDragId, setSeriesTouchDragId] = useState<string | null>(null);
+  const [seriesReordering, setSeriesReordering] = useState(false);
+  const [seriesSavingId, setSeriesSavingId] = useState<string | null>(null);
+  const seriesListRef = useRef<HTMLDivElement>(null);
 
   const loadGroup = useCallback(async () => {
     if (!groupId) return;
     setLoading(true);
     const data = await fetchGroupDetail(groupId, contentType);
-    if (data && data.comics.length > 1) {
-      // 按标题自然排序（数字感知），修复字符串排序导致 "3" 排在 "29" 后面的问题
-      data.comics.sort((a: GroupComicItem, b: GroupComicItem) =>
-        naturalSortKey(a.title).localeCompare(naturalSortKey(b.title))
-      );
-    }
     setGroup(data);
     if (data) {
       setEditName(data.name);
@@ -550,50 +536,6 @@ export default function GroupDetailPage() {
     [group, removeConfirmId, router, loadGroup]
   );
 
-  // 触摸拖拽排序
-  const handleTouchStart = useCallback((comicId: string, e: React.TouchEvent) => {
-    setTouchDragId(comicId);
-    touchStartY.current = e.touches[0].clientY;
-  }, []);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!touchDragId || !group || !comicListRef.current) return;
-    const touchY = e.touches[0].clientY;
-    const elements = comicListRef.current.querySelectorAll('[data-comic-id]');
-    for (const el of elements) {
-      const rect = el.getBoundingClientRect();
-      if (touchY >= rect.top && touchY <= rect.bottom) {
-        const overId = el.getAttribute('data-comic-id');
-        if (overId && overId !== touchDragId) {
-          setDragOverId(overId);
-        }
-        break;
-      }
-    }
-  }, [touchDragId, group]);
-
-  const handleTouchEnd = useCallback(async () => {
-    if (!touchDragId || !dragOverId || touchDragId === dragOverId || !group) {
-      setTouchDragId(null);
-      setDragOverId(null);
-      return;
-    }
-    const items = [...group.comics];
-    const fromIdx = items.findIndex((c) => c.id === touchDragId);
-    const toIdx = items.findIndex((c) => c.id === dragOverId);
-    if (fromIdx === -1 || toIdx === -1) {
-      setTouchDragId(null);
-      setDragOverId(null);
-      return;
-    }
-    const [moved] = items.splice(fromIdx, 1);
-    items.splice(toIdx, 0, moved);
-    setGroup((prev) => (prev ? { ...prev, comics: items } : prev));
-    setTouchDragId(null);
-    setDragOverId(null);
-    await reorderGroupComics(group.id, items.map((c) => c.id));
-  }, [touchDragId, dragOverId, group]);
-
   // 拖拽排序
   const handleDragEnd = useCallback(async () => {
     if (!group || !dragId || !dragOverId || dragId === dragOverId) {
@@ -601,7 +543,8 @@ export default function GroupDetailPage() {
       setDragOverId(null);
       return;
     }
-    const items = [...group.comics];
+    const previous = group.comics;
+    const items = [...previous];
     const fromIdx = items.findIndex((c) => c.id === dragId);
     const toIdx = items.findIndex((c) => c.id === dragOverId);
     if (fromIdx === -1 || toIdx === -1) {
@@ -615,11 +558,60 @@ export default function GroupDetailPage() {
     setDragId(null);
     setDragOverId(null);
 
-    await reorderGroupComics(
+    const ok = await reorderGroupComics(
       group.id,
       items.map((c) => c.id)
     );
-  }, [group, dragId, dragOverId]);
+    if (!ok) {
+      setGroup((current) => (current ? { ...current, comics: previous } : current));
+      toast.error("其他作品排序保存失败");
+    }
+  }, [group, dragId, dragOverId, toast]);
+
+  const persistSeriesOrder = useCallback(async (sourceID: string, targetID: string) => {
+    if (!group?.seriesList || sourceID === targetID || seriesReordering) return;
+    const previous = group.seriesList;
+    const next = [...previous];
+    const fromIndex = next.findIndex((series) => series.id === sourceID);
+    const toIndex = next.findIndex((series) => series.id === targetID);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setGroup((current) => current ? { ...current, seriesList: next } : current);
+    setSeriesReordering(true);
+    setSeriesSavingId(sourceID);
+    const ok = await reorderGroupSeries(group.id, next.map((series) => series.id));
+    if (!ok) {
+      setGroup((current) => current ? { ...current, seriesList: previous } : current);
+      toast.error("目录作品排序保存失败");
+    }
+    setSeriesReordering(false);
+    setSeriesSavingId(null);
+  }, [group, seriesReordering, toast]);
+
+  const handleSeriesTouchMove = useCallback((event: React.TouchEvent) => {
+    if (!seriesTouchDragId || !seriesListRef.current) return;
+    event.preventDefault();
+    const touchY = event.touches[0].clientY;
+    const sections = seriesListRef.current.querySelectorAll<HTMLElement>("[data-series-id]");
+    for (const section of sections) {
+      const rect = section.getBoundingClientRect();
+      if (touchY >= rect.top && touchY <= rect.bottom) {
+        const targetID = section.dataset.seriesId;
+        if (targetID) setSeriesDragOverId(targetID);
+        break;
+      }
+    }
+  }, [seriesTouchDragId]);
+
+  const handleSeriesTouchEnd = useCallback(() => {
+    const sourceID = seriesTouchDragId;
+    const targetID = seriesDragOverId;
+    setSeriesTouchDragId(null);
+    setSeriesDragOverId(null);
+    if (sourceID && targetID) void persistSeriesOrder(sourceID, targetID);
+  }, [seriesTouchDragId, seriesDragOverId, persistSeriesOrder]);
 
   // 搜索漫画用于添加到系列（带防抖）
   const handleAddSearchImmediate = useCallback(async (query: string) => {
@@ -722,15 +714,26 @@ export default function GroupDetailPage() {
     setInheritLoading(false);
   }, [group, toast, t, loadGroup]);
 
-  // 计算统计
-  const totalPages = group?.comics.reduce((s, c) => s + c.pageCount, 0) || 0;
-  const totalReadTime =
-    group?.comics.reduce((s, c) => s + c.totalReadTime, 0) || 0;
-  const totalSize =
-    group?.comics.reduce((s, c) => s + c.fileSize, 0) || 0;
+  // 合集既可以包含散本，也可以包含目录作品；统计时汇总全部阅读单元并按 ID 去重。
+  const readingUnits = useMemo(() => {
+    const units = new Map<string, GroupComicItem>();
+    for (const comic of group?.comics || []) {
+      units.set(comic.id, comic);
+    }
+    for (const series of group?.seriesList || []) {
+      for (const comic of series.comics || []) {
+        units.set(comic.id, comic);
+      }
+    }
+    return Array.from(units.values());
+  }, [group]);
+
+  const totalPages = readingUnits.reduce((sum, comic) => sum + comic.pageCount, 0);
+  const totalReadTime = readingUnits.reduce((sum, comic) => sum + comic.totalReadTime, 0);
+  const totalSize = readingUnits.reduce((sum, comic) => sum + comic.fileSize, 0);
 
   // 查找继续阅读的卷
-  const continueVolume = group?.comics.find(
+  const continueVolume = readingUnits.find(
     (c) => !!c.lastReadAt && !isReadingFinished(c.lastReadPage, c.pageCount)
   );
 
@@ -1458,318 +1461,156 @@ export default function GroupDetailPage() {
           </div>
         </div>
 
-        {/* ═══════════════════════════════════════════════════════
-            卷列表区域
-            ═══════════════════════════════════════════════════════ */}
+        {/* 合集内容 */}
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-foreground">
-            {t.comicGroup?.volumes || "卷"} ({group.comicCount})
+            作品 ({readingUnits.length})
           </h3>
-          <div className="flex items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
-            <button
-              onClick={() => setViewMode("grid")}
-              className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
-                viewMode === "grid"
-                  ? "bg-accent text-white shadow-sm"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
-                viewMode === "list"
-                  ? "bg-accent text-white shadow-sm"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              <GripVertical className="h-3.5 w-3.5" />
-            </button>
-          </div>
         </div>
 
         {(group.seriesList?.length || 0) > 0 && (
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          <div ref={seriesListRef} className="space-y-7">
             {group.seriesList!.map((series) => {
               const confirmKey = `series:${series.id}`;
               return (
-                <div key={series.id} className="group relative">
-                  <Link href={`/series/${series.id}`} className="block">
-                    <div className="overflow-hidden rounded-lg border border-border/60 bg-card transition-colors hover:border-accent/40">
-                      <div className="relative aspect-[5/7] w-full overflow-hidden bg-background">
-                        {series.coverUrl ? (
-                          <Image src={series.coverUrl} alt={series.title} fill unoptimized className="object-cover" sizes="(max-width: 640px) 50vw, 16vw" />
+                <section
+                  key={series.id}
+                  data-series-id={series.id}
+                  className={`border-b border-border/50 pb-6 transition-colors ${
+                    seriesDragOverId === series.id && seriesDragId !== series.id
+                      ? "border-l-2 border-l-accent bg-accent/[0.03] pl-3"
+                      : ""
+                  }`}
+                  onDragOver={isAdmin ? (event) => {
+                    event.preventDefault();
+                    setSeriesDragOverId(series.id);
+                  } : undefined}
+                  onDrop={isAdmin ? (event) => {
+                    event.preventDefault();
+                    const sourceID = seriesDragId;
+                    setSeriesDragId(null);
+                    setSeriesDragOverId(null);
+                    if (sourceID) void persistSeriesOrder(sourceID, series.id);
+                  } : undefined}
+                >
+                  <div className="mb-3 flex min-w-0 items-center gap-2">
+                    {isAdmin && group.seriesList!.length > 1 && (
+                      <button
+                        type="button"
+                        draggable={!seriesReordering}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          setSeriesDragId(series.id);
+                          setSeriesDragOverId(series.id);
+                        }}
+                        onDragEnd={() => {
+                          setSeriesDragId(null);
+                          setSeriesDragOverId(null);
+                        }}
+                        onTouchStart={(event) => {
+                          event.stopPropagation();
+                          setSeriesTouchDragId(series.id);
+                          setSeriesDragOverId(series.id);
+                        }}
+                        onTouchMove={handleSeriesTouchMove}
+                        onTouchEnd={handleSeriesTouchEnd}
+                        onTouchCancel={() => {
+                          setSeriesTouchDragId(null);
+                          setSeriesDragOverId(null);
+                        }}
+                        className="flex h-8 w-8 flex-none cursor-grab items-center justify-center rounded-md text-muted transition-colors hover:bg-card hover:text-foreground active:cursor-grabbing disabled:cursor-wait"
+                        style={{ touchAction: "none" }}
+                        title="拖动调整目录作品顺序"
+                        aria-label="拖动调整目录作品顺序"
+                        disabled={seriesReordering}
+                      >
+                        {seriesSavingId === series.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <div className="flex h-full items-center justify-center"><FolderOpen className="h-10 w-10 text-muted/40" /></div>
+                          <GripVertical className="h-4 w-4" />
                         )}
-                        <div className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">目录作品</div>
-                      </div>
-                      <div className="p-2.5">
-                        <h4 className="truncate text-xs font-medium text-foreground" title={series.title}>{series.title}</h4>
-                        <p className="mt-0.5 text-[10px] text-muted">{series.comics.length} 个阅读单元</p>
-                      </div>
-                    </div>
-                  </Link>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSeries(series.id)}
-                      onMouseLeave={() => { if (removeConfirmId === confirmKey) setRemoveConfirmId(null); }}
-                      className={`absolute left-1.5 top-1.5 z-10 flex h-6 items-center justify-center rounded-md bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 ${removeConfirmId === confirmKey ? "w-auto px-1.5" : "w-6"}`}
-                    >
-                      {removeConfirmId === confirmKey ? <span className="text-[9px]">{t.common?.confirm || "确认"}</span> : <X className="h-3 w-3" />}
-                    </button>
-                  )}
-                </div>
+                      </button>
+                    )}
+                    <Link href={`/series/${series.id}`} className="min-w-0 hover:text-accent">
+                      <h4 className="truncate text-sm font-semibold text-foreground sm:text-base" title={series.title}>
+                        {series.title}
+                      </h4>
+                    </Link>
+                    <span className="flex-none text-xs text-muted">{series.comics.length} 个阅读单元</span>
+                    <div className="flex-1" />
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSeries(series.id)}
+                        onMouseLeave={() => { if (removeConfirmId === confirmKey) setRemoveConfirmId(null); }}
+                        className={`flex h-8 flex-none items-center justify-center rounded-md transition-colors ${removeConfirmId === confirmKey ? "w-auto bg-red-500/15 px-2 text-red-400" : "w-8 text-muted hover:bg-red-500/10 hover:text-red-400"}`}
+                        title={removeConfirmId === confirmKey ? (t.common?.confirm || "确认") : "从合集中移除目录作品"}
+                      >
+                        {removeConfirmId === confirmKey ? <span className="text-[10px]">{t.common?.confirm || "确认"}?</span> : <X className="h-4 w-4" />}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {series.comics.map((comic) => (
+                      <HorizontalComicCard key={comic.id} comic={comic} />
+                    ))}
+                  </div>
+                </section>
               );
             })}
           </div>
         )}
 
-        {group.comics.length === 0 && (group.seriesList?.length || 0) === 0 ? (
+        {group.comics.length > 0 && (
+          <section className={`${(group.seriesList?.length || 0) > 0 ? "mt-7" : ""} pb-4`}>
+            <div className="mb-3 flex items-center gap-2">
+              <h4 className="text-sm font-semibold text-foreground sm:text-base">其他作品</h4>
+              <span className="text-xs text-muted">{group.comics.length} 个阅读单元</span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {group.comics.map((comic) => (
+                <HorizontalComicCard
+                  key={comic.id}
+                  comic={comic}
+                  draggable={isAdmin && group.comics.length > 1}
+                  dragOver={dragOverId === comic.id && dragId !== comic.id}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    setDragId(comic.id);
+                    setDragOverId(comic.id);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOverId(comic.id);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    void handleDragEnd();
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDragOverId(null);
+                  }}
+                  removable={isAdmin}
+                  confirmingRemove={removeConfirmId === comic.id}
+                  onRemove={() => handleRemoveComic(comic.id)}
+                  onRemoveMouseLeave={() => {
+                    if (removeConfirmId === comic.id) setRemoveConfirmId(null);
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {group.comics.length === 0 && (group.seriesList?.length || 0) === 0 && (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-card">
-              <span className="text-4xl">📚</span>
+            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-lg bg-card">
+              <BookOpen className="h-9 w-9 text-muted/40" />
             </div>
             <p className="text-sm text-muted">
               {t.comicGroup?.emptyGroup || "此系列还没有漫画"}
             </p>
-          </div>
-        ) : group.comics.length === 0 ? null : viewMode === "grid" ? (
-          /* ── 网格视图（类似 Komga/Kavita 的卷封面网格）── */
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" ref={comicListRef}>
-            {group.comics.map((comic, index) => {
-              const progress =
-                comic.pageCount > 0
-                  ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
-                  : 0;
-              const readerUrl = getReaderUrl(comic);
-
-              return (
-                <div
-                  key={comic.id}
-                  data-comic-id={comic.id}
-                  className={`group relative ${
-                    dragOverId === comic.id ? "ring-2 ring-accent rounded-xl" : ""
-                  }`}
-                  draggable={isAdmin}
-                  onDragStart={isAdmin ? (e) => {
-                    e.dataTransfer.effectAllowed = "move";
-                    setDragId(comic.id);
-                  } : undefined}
-                  onDragOver={isAdmin ? (e) => {
-                    e.preventDefault();
-                    setDragOverId(comic.id);
-                  } : undefined}
-                  onDrop={isAdmin ? (e) => {
-                    e.preventDefault();
-                    handleDragEnd();
-                  } : undefined}
-                >
-                  <Link href={`/comic/${comic.id}`} className="block">
-                    <div className="relative overflow-hidden rounded-xl bg-card transition-all duration-300 ease-out group-hover:scale-[1.03] group-hover:shadow-2xl group-hover:shadow-accent/10">
-                      <div className="relative aspect-[5/7] w-full overflow-hidden">
-                        <Image
-                          src={comic.coverUrl}
-                          alt={comic.title}
-                          fill
-                          unoptimized
-                          className="object-cover transition-all duration-500 group-hover:scale-110"
-                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                        />
-                        {/* 渐变遮罩 */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
-                        {/* 进度条 */}
-                        {progress > 0 && (
-                          <div className="absolute bottom-0 left-0 right-0 h-1">
-                            <div
-                              className={`h-full ${progress >= 100 ? "bg-emerald-400" : "bg-accent"}`}
-                              style={{ width: `${Math.min(progress, 100)}%` }}
-                            />
-                          </div>
-                        )}
-                        {/* Hover 阅读按钮 */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-all duration-300 group-hover:opacity-100">
-                          <button
-                            type="button"
-                            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/90 shadow-lg shadow-accent/30 backdrop-blur-sm transition-transform duration-300 hover:scale-110"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              router.push(readerUrl);
-                            }}
-                          >
-                            <BookOpen className="h-5 w-5 text-white" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="p-2.5">
-                        <h4 className="truncate text-xs font-medium text-foreground/90 group-hover:text-foreground">
-                          {comic.title}
-                        </h4>
-                        <p className="mt-0.5 text-[10px] text-muted">
-                          {comic.pageCount} {t.comicGroup?.totalPages ? "页" : "p"}
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-                  {/* 管理员移除按钮 */}
-                  {isAdmin && (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleRemoveComic(comic.id);
-                      }}
-                      onMouseLeave={() => {
-                        if (removeConfirmId === comic.id) setRemoveConfirmId(null);
-                      }}
-                      className={`absolute top-1.5 left-1.5 z-10 flex items-center justify-center rounded-lg transition-all opacity-0 group-hover:opacity-100 ${
-                        removeConfirmId === comic.id
-                          ? "h-6 w-auto px-1.5 bg-red-500/90 text-white"
-                          : "h-6 w-6 bg-black/50 text-white/80 hover:bg-red-500/80"
-                      }`}
-                    >
-                      {removeConfirmId === comic.id ? (
-                        <span className="text-[9px] font-medium whitespace-nowrap">{t.common?.confirm || "确认"}</span>
-                      ) : (
-                        <X className="h-3 w-3" />
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          /* ── 列表视图（保留原有的列表模式）── */
-          <div className="space-y-2" ref={comicListRef}>
-            {group.comics.map((comic, index) => {
-              const progress =
-                comic.pageCount > 0
-                  ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
-                  : 0;
-              const readerUrl = getReaderUrl(comic);
-
-              return (
-                <div
-                  key={comic.id}
-                  data-comic-id={comic.id}
-                  className={`group flex items-center gap-3 rounded-xl bg-card p-3 transition-all ${
-                    dragOverId === comic.id
-                      ? "ring-2 ring-accent"
-                      : touchDragId === comic.id
-                      ? "opacity-60 scale-[0.98]"
-                      : "hover:bg-card-hover"
-                  }`}
-                  draggable={isAdmin}
-                  onDragStart={isAdmin ? (e) => {
-                    e.dataTransfer.effectAllowed = "move";
-                    setDragId(comic.id);
-                  } : undefined}
-                  onDragOver={isAdmin ? (e) => {
-                    e.preventDefault();
-                    setDragOverId(comic.id);
-                  } : undefined}
-                  onDrop={isAdmin ? (e) => {
-                    e.preventDefault();
-                    handleDragEnd();
-                  } : undefined}
-                  onTouchStart={isAdmin ? (e) => handleTouchStart(comic.id, e) : undefined}
-                  onTouchMove={isAdmin ? handleTouchMove : undefined}
-                  onTouchEnd={isAdmin ? handleTouchEnd : undefined}
-                >
-                  {/* 拖拽手柄 — 仅管理员可见 */}
-                  {isAdmin && (
-                  <div className="flex-shrink-0 cursor-grab text-muted/30 hover:text-muted active:cursor-grabbing">
-                    <GripVertical className="h-4 w-4" />
-                  </div>
-                  )}
-
-                  {/* 卷号 */}
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-xs font-bold text-accent">
-                    {index + 1}
-                  </div>
-
-                  {/* 封面缩略图 */}
-                  <div className="relative h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-                    <Image
-                      src={comic.coverUrl}
-                      alt={comic.title}
-                      fill
-                      unoptimized
-                      className="object-cover"
-                      sizes="48px"
-                    />
-                  </div>
-
-                  {/* 信息 */}
-                  <Link href={`/comic/${comic.id}`} className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-medium text-foreground/90 group-hover:text-foreground">
-                      {comic.title}
-                    </h3>
-                    <div className="mt-1 flex items-center gap-3 text-xs text-muted/70">
-                      <span>{comic.pageCount}p</span>
-                      <span>{formatFileSize(comic.fileSize)}</span>
-                      {comic.totalReadTime > 0 && (
-                        <span className="flex items-center gap-0.5">
-                          <Clock className="h-3 w-3" />
-                          {formatDuration(comic.totalReadTime)}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-
-                  {/* 进度 */}
-                  {progress > 0 && (
-                    <div className="flex flex-shrink-0 items-center gap-2">
-                      <div className="h-1.5 w-12 sm:w-16 overflow-hidden rounded-full bg-muted/20">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            progress >= 100 ? "bg-emerald-400" : "bg-accent"
-                          }`}
-                          style={{ width: `${Math.min(progress, 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted">
-                        {progress}%
-                      </span>
-                    </div>
-                  )}
-
-                  {/* 阅读按钮 */}
-                  <Link
-                    href={readerUrl}
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted opacity-100 sm:opacity-0 transition-all hover:bg-accent/10 hover:text-accent group-hover:opacity-100"
-                  >
-                    <BookOpen className="h-4 w-4" />
-                  </Link>
-
-                  {/* 移除按钮 — 仅管理员可见 */}
-                  {isAdmin && (
-                  <button
-                    onClick={() => handleRemoveComic(comic.id)}
-                    onMouseLeave={() => {
-                      if (removeConfirmId === comic.id) setRemoveConfirmId(null);
-                    }}
-                    className={`flex h-8 flex-shrink-0 items-center justify-center rounded-lg transition-all sm:group-hover:opacity-100 ${
-                      removeConfirmId === comic.id
-                        ? "w-auto px-2 bg-red-500/15 text-red-400 opacity-100"
-                        : "w-8 text-muted opacity-100 sm:opacity-0 hover:bg-red-500/10 hover:text-red-400"
-                    }`}
-                    title={removeConfirmId === comic.id ? (t.common?.confirm || "确认") : t.comicGroup?.removeFromGroup}
-                  >
-                    {removeConfirmId === comic.id ? (
-                      <span className="text-[10px] font-medium whitespace-nowrap">{t.common?.confirm || "确认"} ?</span>
-                    ) : (
-                      <X className="h-4 w-4" />
-                    )}
-                  </button>
-                  )}
-                </div>
-              );
-            })}
           </div>
         )}
       </main>
@@ -2185,6 +2026,104 @@ export default function GroupDetailPage() {
             </div>
           </div>
           </div>
+      )}
+    </div>
+  );
+}
+
+interface HorizontalComicCardProps {
+  comic: GroupComicItem;
+  draggable?: boolean;
+  dragOver?: boolean;
+  removable?: boolean;
+  confirmingRemove?: boolean;
+  onDragStart?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd?: () => void;
+  onRemove?: () => void;
+  onRemoveMouseLeave?: () => void;
+}
+
+function HorizontalComicCard({
+  comic,
+  draggable = false,
+  dragOver = false,
+  removable = false,
+  confirmingRemove = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  onRemove,
+  onRemoveMouseLeave,
+}: HorizontalComicCardProps) {
+  const progress = comic.pageCount > 0
+    ? calculateReadingProgress(comic.lastReadPage, comic.pageCount)
+    : 0;
+
+  return (
+    <div
+      className={`group relative w-28 flex-none sm:w-32 ${
+        draggable ? "cursor-grab active:cursor-grabbing" : ""
+      } ${dragOver ? "rounded-md ring-2 ring-accent" : ""}`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
+      <Link href={`/comic/${comic.id}`} className="block">
+        <div className="overflow-hidden rounded-md border border-border/60 bg-card transition-colors group-hover:border-accent/40">
+          <div className="relative aspect-[5/7] w-full overflow-hidden bg-background">
+            {comic.coverUrl ? (
+              <Image
+                src={comic.coverUrl}
+                alt={comic.title}
+                fill
+                unoptimized
+                draggable={false}
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                sizes="(max-width: 640px) 112px, 128px"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <BookOpen className="h-8 w-8 text-muted/30" />
+              </div>
+            )}
+            {progress > 0 && (
+              <div className="absolute inset-x-0 bottom-0 h-1 bg-black/30">
+                <div
+                  className={`h-full ${progress >= 100 ? "bg-emerald-400" : "bg-accent"}`}
+                  style={{ width: `${Math.min(progress, 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
+          <div className="min-h-14 p-2">
+            <h5 className="line-clamp-2 text-xs font-medium leading-4 text-foreground" title={comic.title}>
+              {comic.title}
+            </h5>
+            <p className="mt-1 text-[10px] text-muted">{comic.pageCount} 页</p>
+          </div>
+        </div>
+      </Link>
+      {removable && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRemove?.();
+          }}
+          onMouseLeave={onRemoveMouseLeave}
+          className={`absolute left-1.5 top-1.5 z-10 flex h-6 items-center justify-center rounded-md text-white transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ${
+            confirmingRemove ? "w-auto bg-red-500 px-1.5" : "w-6 bg-black/65 hover:bg-red-500"
+          }`}
+          title={confirmingRemove ? "确认移除" : "从合集中移除"}
+        >
+          {confirmingRemove ? <span className="text-[9px]">确认?</span> : <X className="h-3 w-3" />}
+        </button>
       )}
     </div>
   );

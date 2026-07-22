@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,8 @@ import (
 // ============================================================
 // ComicGroup CRUD
 // ============================================================
+
+var ErrGroupSeriesOrderMismatch = errors.New("series list does not match group membership")
 
 // ComicGroupWithCount 返回系列信息及其漫画数量。
 type ComicGroupWithCount struct {
@@ -880,6 +883,69 @@ func ReorderGroupComics(groupID int, comicIDs []string) error {
 	}
 
 	tx.Exec(`UPDATE "ComicGroup" SET "updatedAt" = ? WHERE "id" = ?`, time.Now().UTC(), groupID)
+	return tx.Commit()
+}
+
+// ReorderGroupSeries updates the display order of every directory work in a group.
+// The caller must provide the complete membership list exactly once so a stale UI
+// cannot accidentally leave duplicate or partially ordered entries behind.
+func ReorderGroupSeries(groupID int, seriesIDs []string) error {
+	if len(seriesIDs) == 0 {
+		return fmt.Errorf("%w: series ID list is required", ErrGroupSeriesOrderMismatch)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT "seriesId" FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID)
+	if err != nil {
+		return err
+	}
+	members := make(map[string]struct{}, len(seriesIDs))
+	for rows.Next() {
+		var seriesID string
+		if err := rows.Scan(&seriesID); err != nil {
+			rows.Close()
+			return err
+		}
+		members[seriesID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	if len(members) != len(seriesIDs) {
+		return ErrGroupSeriesOrderMismatch
+	}
+	seen := make(map[string]struct{}, len(seriesIDs))
+	for _, seriesID := range seriesIDs {
+		if _, ok := members[seriesID]; !ok {
+			return fmt.Errorf("%w: series %q is not in group", ErrGroupSeriesOrderMismatch, seriesID)
+		}
+		if _, duplicate := seen[seriesID]; duplicate {
+			return fmt.Errorf("%w: series %q appears more than once", ErrGroupSeriesOrderMismatch, seriesID)
+		}
+		seen[seriesID] = struct{}{}
+	}
+
+	stmt, err := tx.Prepare(`UPDATE "ComicGroupSeries" SET "sortIndex" = ? WHERE "groupId" = ? AND "seriesId" = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for index, seriesID := range seriesIDs {
+		if _, err := stmt.Exec(index, groupID, seriesID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE "ComicGroup" SET "updatedAt" = ? WHERE "id" = ?`, time.Now().UTC(), groupID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
