@@ -46,11 +46,11 @@ class Comic {
   final List<Tag> tags;
   final List<Category> categories;
 
-  /// 阅读进度百分比 (0-100)
+  /// 阅读进度百分比 (0-100)，与 Web 的持久化进度规则一致。
   int get progress {
     if (pageCount <= 0 || !hasReadingProgress) return 0;
     final percent = ((displayPage / pageCount) * 100).round();
-    if (percent < 0) return 0;
+    if (percent < 1) return 1;
     if (percent > 100) return 100;
     return percent;
   }
@@ -63,10 +63,19 @@ class Comic {
     return current;
   }
 
+  /// 数据库默认的 lastReadPage=0 与真正读到第一页存在歧义，因此结合
+  /// 时间戳、旧数据页码和阅读状态共同判断。
   bool get hasReadingProgress =>
-      lastReadAt != null && lastReadAt!.trim().isNotEmpty;
+      (lastReadAt != null && lastReadAt!.trim().isNotEmpty) ||
+      lastReadPage > 0 ||
+      readingStatus == 'reading' ||
+      readingStatus == 'finished';
 
-  bool get isFinished => pageCount > 0 && lastReadPage >= pageCount - 1;
+  bool get isFinished =>
+      readingStatus == 'finished' ||
+      (hasReadingProgress &&
+          pageCount > 0 &&
+          lastReadPage >= pageCount - 1);
 
   Comic({
     required this.id,
