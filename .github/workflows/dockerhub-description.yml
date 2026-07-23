@@ -1,0 +1,34 @@
+name: Sync Docker Hub README
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - DOCKERHUB.md
+      - .github/workflows/dockerhub-description.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-description
+  cancel-in-progress: true
+
+jobs:
+  update-description:
+    name: Update Docker Hub Overview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: cropflre/nowen-reader
+          short-description: 轻量自托管漫画与小说管理阅读平台，支持 Docker 和 NAS
+          readme-filepath: ./DOCKERHUB.md
