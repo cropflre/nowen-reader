@@ -1,8 +1,20 @@
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+double? _asDouble(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '');
+}
+
 /// 漫画/小说数据模型
 class Comic {
   final String id;
   final String filename;
   final String title;
+  final String titleSortKey;
   final String author;
   final String publisher;
   final String description;
@@ -11,22 +23,36 @@ class Comic {
   final int? year;
   final int pageCount;
   final int fileSize;
+  final String addedAt;
+  final String updatedAt;
+  final int sortOrder;
   final int lastReadPage;
   final int totalReadTime;
-  final String readingStatus; // "unread" | "reading" | "read" | "shelved" | "want_to_read"
+  final String readingStatus; // '' | want | reading | finished | shelved
   final String? lastReadAt;
   final String metadataSource;
   final String? coverImageUrl;
+  final double coverAspectRatio;
   final double? rating;
   final bool isFavorite;
-  final String comicType; // "comic" | "novel"
+  final String comicType; // comic | novel
+  final String libraryId;
+  final double? externalRating;
+  final double externalRatingMax;
+  final String externalRatingSource;
+  final String externalRatingUpdatedAt;
+  final bool canManage;
+  final int comicCount;
   final List<Tag> tags;
   final List<Category> categories;
 
-  /// 阅读进度百分比 (0-100)
+  /// 阅读进度百分比 (0-100)，与 Web 的持久化进度规则一致。
   int get progress {
-    if (pageCount <= 0) return 0;
-    return ((displayPage / pageCount) * 100).round();
+    if (pageCount <= 0 || !hasReadingProgress) return 0;
+    final percent = ((displayPage / pageCount) * 100).round();
+    if (percent < 1) return 1;
+    if (percent > 100) return 100;
+    return percent;
   }
 
   /// 用于显示的 1-based 页码，始终不超过总页数。
@@ -37,14 +63,25 @@ class Comic {
     return current;
   }
 
-  bool get hasReadingProgress => lastReadAt != null && lastReadAt!.isNotEmpty;
+  /// 数据库默认的 lastReadPage=0 与真正读到第一页存在歧义，因此结合
+  /// 时间戳、旧数据页码和阅读状态共同判断。
+  bool get hasReadingProgress =>
+      (lastReadAt != null && lastReadAt!.trim().isNotEmpty) ||
+      lastReadPage > 0 ||
+      readingStatus == 'reading' ||
+      readingStatus == 'finished';
 
-  bool get isFinished => pageCount > 0 && lastReadPage >= pageCount - 1;
+  bool get isFinished =>
+      readingStatus == 'finished' ||
+      (hasReadingProgress &&
+          pageCount > 0 &&
+          lastReadPage >= pageCount - 1);
 
   Comic({
     required this.id,
     required this.filename,
     required this.title,
+    this.titleSortKey = '',
     this.author = '',
     this.publisher = '',
     this.description = '',
@@ -53,48 +90,86 @@ class Comic {
     this.year,
     this.pageCount = 0,
     this.fileSize = 0,
+    this.addedAt = '',
+    this.updatedAt = '',
+    this.sortOrder = 0,
     this.lastReadPage = 0,
     this.totalReadTime = 0,
-    this.readingStatus = 'unread',
+    this.readingStatus = '',
     this.lastReadAt,
     this.metadataSource = '',
     this.coverImageUrl,
+    this.coverAspectRatio = 0,
     this.rating,
     this.isFavorite = false,
     this.comicType = 'comic',
+    this.libraryId = '',
+    this.externalRating,
+    this.externalRatingMax = 0,
+    this.externalRatingSource = '',
+    this.externalRatingUpdatedAt = '',
+    this.canManage = false,
+    this.comicCount = 0,
     this.tags = const [],
     this.categories = const [],
   });
 
   factory Comic.fromJson(Map<String, dynamic> json) {
+    final rawPageCount = _asInt(json['pageCount']);
     return Comic(
-      id: json['id'] ?? '',
-      filename: json['filename'] ?? '',
-      title: json['title'] ?? '',
-      author: json['author'] ?? '',
-      publisher: json['publisher'] ?? '',
-      description: json['description'] ?? '',
-      genre: json['genre'] ?? '',
-      language: json['language'] ?? '',
-      year: json['year'],
-      pageCount: (json['pageCount'] ?? 0) < 0 ? 0 : (json['pageCount'] ?? 0),
-      fileSize: json['fileSize'] ?? 0,
-      lastReadPage: json['lastReadPage'] ?? 0,
-      totalReadTime: json['totalReadTime'] ?? 0,
-      readingStatus: json['readingStatus'] ?? 'unread',
-      lastReadAt: json['lastReadAt'],
-      metadataSource: json['metadataSource'] ?? '',
-      coverImageUrl: json['coverUrl'] ?? json['coverImageUrl'],
-      rating: (json['rating'] as num?)?.toDouble(),
-      isFavorite: json['isFavorite'] ?? false,
-      comicType: json['type'] ?? json['comicType'] ?? 'comic',
-      tags: (json['tags'] as List?)?.map((t) => Tag.fromJson(t)).toList() ?? [],
-      categories: (json['categories'] as List?)?.map((c) => Category.fromJson(c)).toList() ?? [],
+      id: json['id']?.toString() ?? '',
+      filename: json['filename']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      titleSortKey: json['titleSortKey']?.toString() ?? '',
+      author: json['author']?.toString() ?? '',
+      publisher: json['publisher']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      genre: json['genre']?.toString() ?? '',
+      language: json['language']?.toString() ?? '',
+      year: json['year'] == null ? null : _asInt(json['year']),
+      pageCount: rawPageCount < 0 ? 0 : rawPageCount,
+      fileSize: _asInt(json['fileSize']),
+      addedAt: json['addedAt']?.toString() ?? '',
+      updatedAt: json['updatedAt']?.toString() ?? '',
+      sortOrder: _asInt(json['sortOrder']),
+      lastReadPage: _asInt(json['lastReadPage']),
+      totalReadTime: _asInt(json['totalReadTime']),
+      readingStatus: json['readingStatus']?.toString() ?? '',
+      lastReadAt: json['lastReadAt']?.toString(),
+      metadataSource: json['metadataSource']?.toString() ?? '',
+      coverImageUrl:
+          (json['coverUrl'] ?? json['coverImageUrl'])?.toString(),
+      coverAspectRatio: _asDouble(json['coverAspectRatio']) ?? 0,
+      rating: _asDouble(json['rating']),
+      isFavorite: json['isFavorite'] == true,
+      comicType:
+          (json['type'] ?? json['comicType'])?.toString() ?? 'comic',
+      libraryId: json['libraryId']?.toString() ?? '',
+      externalRating: _asDouble(json['externalRating']),
+      externalRatingMax: _asDouble(json['externalRatingMax']) ?? 0,
+      externalRatingSource:
+          json['externalRatingSource']?.toString() ?? '',
+      externalRatingUpdatedAt:
+          json['externalRatingUpdatedAt']?.toString() ?? '',
+      canManage: json['canManage'] == true,
+      comicCount: _asInt(json['comicCount']),
+      tags: (json['tags'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Tag.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
+      categories: (json['categories'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  Category.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
     );
   }
 
   /// 封面缩略图 URL（相对于服务器）
-  String thumbnailUrl(String serverUrl) => '$serverUrl/api/comics/$id/thumbnail';
+  String thumbnailUrl(String serverUrl) =>
+      '$serverUrl/api/comics/$id/thumbnail';
 
   /// 是否为小说（严格按后端 type 字段判断，不再依赖文件扩展名）
   bool get isNovel => comicType == 'novel';
@@ -110,6 +185,7 @@ class Comic {
     String? id,
     String? filename,
     String? title,
+    String? titleSortKey,
     String? author,
     String? publisher,
     String? description,
@@ -118,15 +194,26 @@ class Comic {
     int? year,
     int? pageCount,
     int? fileSize,
+    String? addedAt,
+    String? updatedAt,
+    int? sortOrder,
     int? lastReadPage,
     int? totalReadTime,
     String? readingStatus,
     String? lastReadAt,
     String? metadataSource,
     String? coverImageUrl,
+    double? coverAspectRatio,
     double? rating,
     bool? isFavorite,
     String? comicType,
+    String? libraryId,
+    double? externalRating,
+    double? externalRatingMax,
+    String? externalRatingSource,
+    String? externalRatingUpdatedAt,
+    bool? canManage,
+    int? comicCount,
     List<Tag>? tags,
     List<Category>? categories,
   }) {
@@ -134,6 +221,7 @@ class Comic {
       id: id ?? this.id,
       filename: filename ?? this.filename,
       title: title ?? this.title,
+      titleSortKey: titleSortKey ?? this.titleSortKey,
       author: author ?? this.author,
       publisher: publisher ?? this.publisher,
       description: description ?? this.description,
@@ -142,15 +230,28 @@ class Comic {
       year: year ?? this.year,
       pageCount: pageCount ?? this.pageCount,
       fileSize: fileSize ?? this.fileSize,
+      addedAt: addedAt ?? this.addedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      sortOrder: sortOrder ?? this.sortOrder,
       lastReadPage: lastReadPage ?? this.lastReadPage,
       totalReadTime: totalReadTime ?? this.totalReadTime,
       readingStatus: readingStatus ?? this.readingStatus,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       metadataSource: metadataSource ?? this.metadataSource,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
+      coverAspectRatio: coverAspectRatio ?? this.coverAspectRatio,
       rating: rating ?? this.rating,
       isFavorite: isFavorite ?? this.isFavorite,
       comicType: comicType ?? this.comicType,
+      libraryId: libraryId ?? this.libraryId,
+      externalRating: externalRating ?? this.externalRating,
+      externalRatingMax: externalRatingMax ?? this.externalRatingMax,
+      externalRatingSource:
+          externalRatingSource ?? this.externalRatingSource,
+      externalRatingUpdatedAt:
+          externalRatingUpdatedAt ?? this.externalRatingUpdatedAt,
+      canManage: canManage ?? this.canManage,
+      comicCount: comicCount ?? this.comicCount,
       tags: tags ?? this.tags,
       categories: categories ?? this.categories,
     );
@@ -163,13 +264,13 @@ class Tag {
   final String name;
   final String color;
 
-  Tag({required this.id, required this.name, this.color = ''});
+  const Tag({required this.id, required this.name, this.color = ''});
 
   factory Tag.fromJson(Map<String, dynamic> json) {
     return Tag(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      color: json['color'] ?? '',
+      id: _asInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      color: json['color']?.toString() ?? '',
     );
   }
 }
@@ -179,14 +280,27 @@ class Category {
   final int id;
   final String name;
   final String slug;
+  final String icon;
+  final int sortOrder;
+  final int comicCount;
 
-  Category({required this.id, required this.name, this.slug = ''});
+  const Category({
+    required this.id,
+    required this.name,
+    this.slug = '',
+    this.icon = '',
+    this.sortOrder = 0,
+    this.comicCount = 0,
+  });
 
   factory Category.fromJson(Map<String, dynamic> json) {
     return Category(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      slug: json['slug'] ?? json['name'] ?? '',
+      id: _asInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      slug: (json['slug'] ?? json['name'])?.toString() ?? '',
+      icon: json['icon']?.toString() ?? '',
+      sortOrder: _asInt(json['sortOrder']),
+      comicCount: _asInt(json['comicCount']),
     );
   }
 }
@@ -197,24 +311,28 @@ class AuthUser {
   final String username;
   final String nickname;
   final String role;
+  final bool aiEnabled;
 
-  AuthUser({
+  const AuthUser({
     required this.id,
     required this.username,
     this.nickname = '',
     required this.role,
+    this.aiEnabled = false,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
-      id: json['id'] ?? '',
-      username: json['username'] ?? '',
-      nickname: json['nickname'] ?? '',
-      role: json['role'] ?? 'user',
+      id: json['id']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      nickname: json['nickname']?.toString() ?? '',
+      role: json['role']?.toString() ?? 'user',
+      aiEnabled: json['aiEnabled'] == true,
     );
   }
 
   bool get isAdmin => role == 'admin';
+  bool get canUseAI => isAdmin || aiEnabled;
 }
 
 /// 系列（分组）
@@ -234,8 +352,9 @@ class ComicGroup {
   final String createdAt;
   final String updatedAt;
   final int comicCount;
+  final String contentType;
 
-  ComicGroup({
+  const ComicGroup({
     required this.id,
     required this.name,
     this.coverUrl = '',
@@ -251,25 +370,27 @@ class ComicGroup {
     this.createdAt = '',
     this.updatedAt = '',
     this.comicCount = 0,
+    this.contentType = '',
   });
 
   factory ComicGroup.fromJson(Map<String, dynamic> json) {
     return ComicGroup(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      coverUrl: json['coverUrl'] ?? '',
-      sortOrder: json['sortOrder'] ?? 0,
-      author: json['author'] ?? '',
-      description: json['description'] ?? '',
-      tags: json['tags'] ?? '',
-      year: json['year'],
-      publisher: json['publisher'] ?? '',
-      language: json['language'] ?? '',
-      genre: json['genre'] ?? '',
-      status: json['status'] ?? '',
-      createdAt: json['createdAt'] ?? '',
-      updatedAt: json['updatedAt'] ?? '',
-      comicCount: json['comicCount'] ?? 0,
+      id: _asInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString() ?? '',
+      sortOrder: _asInt(json['sortOrder']),
+      author: json['author']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      tags: json['tags']?.toString() ?? '',
+      year: json['year'] == null ? null : _asInt(json['year']),
+      publisher: json['publisher']?.toString() ?? '',
+      language: json['language']?.toString() ?? '',
+      genre: json['genre']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      createdAt: json['createdAt']?.toString() ?? '',
+      updatedAt: json['updatedAt']?.toString() ?? '',
+      comicCount: _asInt(json['comicCount']),
+      contentType: json['contentType']?.toString() ?? '',
     );
   }
 }
@@ -284,7 +405,7 @@ class ReadingStats {
   final List<DailyStats> dailyStats;
   final List<RecentSession> recentSessions;
 
-  ReadingStats({
+  const ReadingStats({
     this.totalReadTime = 0,
     this.totalSessions = 0,
     this.totalBooksRead = 0,
@@ -294,21 +415,29 @@ class ReadingStats {
     this.recentSessions = const [],
   });
 
-  /// 安全访问 dailyStats（避免空列表异常）
   List<DailyStats> get safeDailyStats => dailyStats;
-
-  /// 安全访问 recentSessions（避免空列表异常）
   List<RecentSession> get safeRecentSessions => recentSessions;
 
   factory ReadingStats.fromJson(Map<String, dynamic> json) {
     return ReadingStats(
-      totalReadTime: json['totalReadTime'] ?? 0,
-      totalSessions: json['totalSessions'] ?? 0,
-      totalBooksRead: json['totalBooksRead'] ?? 0,
-      totalPagesRead: json['totalPagesRead'] ?? 0,
-      totalComicsRead: json['totalComicsRead'] ?? json['totalBooksRead'] ?? 0,
-      dailyStats: (json['dailyStats'] as List?)?.map((d) => DailyStats.fromJson(d)).toList() ?? [],
-      recentSessions: (json['recentSessions'] as List?)?.map((s) => RecentSession.fromJson(s)).toList() ?? [],
+      totalReadTime: _asInt(json['totalReadTime']),
+      totalSessions: _asInt(json['totalSessions']),
+      totalBooksRead: _asInt(json['totalBooksRead']),
+      totalPagesRead: _asInt(json['totalPagesRead']),
+      totalComicsRead:
+          _asInt(json['totalComicsRead'], _asInt(json['totalBooksRead'])),
+      dailyStats: (json['dailyStats'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  DailyStats.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
+      recentSessions: (json['recentSessions'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  RecentSession.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
     );
   }
 }
@@ -321,7 +450,7 @@ class DailyStats {
   final int sessions;
   final int pagesRead;
 
-  DailyStats({
+  const DailyStats({
     required this.date,
     this.readTime = 0,
     this.duration = 0,
@@ -330,13 +459,13 @@ class DailyStats {
   });
 
   factory DailyStats.fromJson(Map<String, dynamic> json) {
-    final readTime = json['readTime'] ?? 0;
+    final readTime = _asInt(json['readTime']);
     return DailyStats(
-      date: json['date'] ?? '',
+      date: json['date']?.toString() ?? '',
       readTime: readTime,
-      duration: json['duration'] ?? readTime,
-      sessions: json['sessions'] ?? 0,
-      pagesRead: json['pagesRead'] ?? 0,
+      duration: _asInt(json['duration'], readTime),
+      sessions: _asInt(json['sessions']),
+      pagesRead: _asInt(json['pagesRead']),
     );
   }
 }
@@ -351,7 +480,7 @@ class RecentSession {
   final int duration;
   final String startedAt;
 
-  RecentSession({
+  const RecentSession({
     this.id = 0,
     required this.comicId,
     this.comicTitle = '',
@@ -363,13 +492,15 @@ class RecentSession {
 
   factory RecentSession.fromJson(Map<String, dynamic> json) {
     return RecentSession(
-      id: json['id'] ?? 0,
-      comicId: json['comicId'] ?? '',
-      comicTitle: json['comicTitle'] ?? json['title'] ?? '',
-      startPage: json['startPage'] ?? 0,
-      endPage: json['endPage'] ?? 0,
-      duration: json['duration'] ?? 0,
-      startedAt: json['startedAt'] ?? json['createdAt'] ?? '',
+      id: _asInt(json['id']),
+      comicId: json['comicId']?.toString() ?? '',
+      comicTitle:
+          (json['comicTitle'] ?? json['title'])?.toString() ?? '',
+      startPage: _asInt(json['startPage']),
+      endPage: _asInt(json['endPage']),
+      duration: _asInt(json['duration']),
+      startedAt:
+          (json['startedAt'] ?? json['createdAt'])?.toString() ?? '',
     );
   }
 }
@@ -382,7 +513,7 @@ class ComicListResponse {
   final int pageSize;
   final int totalPages;
 
-  ComicListResponse({
+  const ComicListResponse({
     required this.comics,
     required this.total,
     required this.page,
@@ -392,11 +523,15 @@ class ComicListResponse {
 
   factory ComicListResponse.fromJson(Map<String, dynamic> json) {
     return ComicListResponse(
-      comics: (json['comics'] as List?)?.map((c) => Comic.fromJson(c)).toList() ?? [],
-      total: json['total'] ?? 0,
-      page: json['page'] ?? 1,
-      pageSize: json['pageSize'] ?? 20,
-      totalPages: json['totalPages'] ?? 1,
+      comics: (json['comics'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Comic.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
+      total: _asInt(json['total']),
+      page: _asInt(json['page'], 1),
+      pageSize: _asInt(json['pageSize'], 20),
+      totalPages: _asInt(json['totalPages'], 1),
     );
   }
 }

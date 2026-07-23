@@ -7,7 +7,7 @@ import '../features/cache/cache_screen.dart';
 import '../features/collections/collections_screen.dart';
 import '../features/detail/comic_detail_screen.dart';
 import '../features/favorites/favorites_screen.dart';
-import '../features/groups/group_detail_screen.dart';
+import '../features/groups/group_detail_v2_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/metadata/metadata_screen.dart';
 import '../features/reader/comic_reader_screen.dart';
@@ -155,7 +155,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/group/:id',
-        builder: (_, state) => GroupDetailScreen(
+        builder: (_, state) => GroupDetailV2Screen(
           groupId: int.parse(state.pathParameters['id']!),
         ),
       ),
