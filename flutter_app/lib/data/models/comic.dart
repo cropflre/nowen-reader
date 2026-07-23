@@ -49,7 +49,10 @@ class Comic {
   /// 阅读进度百分比 (0-100)
   int get progress {
     if (pageCount <= 0 || !hasReadingProgress) return 0;
-    return ((displayPage / pageCount) * 100).round().clamp(0, 100);
+    final percent = ((displayPage / pageCount) * 100).round();
+    if (percent < 0) return 0;
+    if (percent > 100) return 100;
+    return percent;
   }
 
   /// 用于显示的 1-based 页码，始终不超过总页数。
