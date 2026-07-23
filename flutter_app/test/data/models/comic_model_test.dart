@@ -70,6 +70,37 @@ void main() {
       expect(comic.hasReadingProgress, isFalse);
       expect(comic.progress, 0);
     });
+
+    test('uses status and legacy page index as reading evidence', () {
+      final firstPage = Comic.fromJson({
+        'id': 'comic-3',
+        'filename': 'first.cbz',
+        'title': 'First page',
+        'pageCount': 1000,
+        'lastReadPage': 0,
+        'readingStatus': 'reading',
+      });
+      final legacy = Comic.fromJson({
+        'id': 'comic-4',
+        'filename': 'legacy.cbz',
+        'title': 'Legacy',
+        'pageCount': 100,
+        'lastReadPage': 9,
+        'readingStatus': '',
+      });
+      final finished = Comic.fromJson({
+        'id': 'comic-5',
+        'filename': 'finished.cbz',
+        'title': 'Finished',
+        'pageCount': 100,
+        'lastReadPage': 0,
+        'readingStatus': 'finished',
+      });
+
+      expect(firstPage.progress, 1);
+      expect(legacy.progress, 10);
+      expect(finished.isFinished, isTrue);
+    });
   });
 
   test('parses user AI permission and group content type', () {
