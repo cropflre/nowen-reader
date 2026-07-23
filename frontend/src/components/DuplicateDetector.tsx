@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from "react";
 import { X, Copy, Trash2, AlertTriangle, FileCheck, FileText, Brain, Loader2, Filter, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { apiPath } from "@/lib/base-path";
 
 interface DuplicateComic {
   id: string;
@@ -74,7 +75,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
     setExpandedGroups(new Set());
     try {
       // Fetch traditional duplicates
-      const res = await fetch("/api/comics/duplicates");
+      const res = await fetch(apiPath("/api/comics/duplicates"));
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
       let allGroups: DuplicateGroup[] = data.groups || [];
@@ -109,7 +110,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
           pageCount: c.pageCount,
         })),
       }));
-      const res = await fetch("/api/ai/verify-duplicates", {
+      const res = await fetch(apiPath("/api/ai/verify-duplicates"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ groups: payload, targetLang: locale === "en" ? "en" : "zh" }),
@@ -161,7 +162,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
   const handleDelete = useCallback(async (comic: DuplicateComic) => {
     setDeleting(true);
     try {
-      const res = await fetch(`/api/comics/${comic.id}`, { method: "DELETE" });
+      const res = await fetch(apiPath(`/api/comics/${comic.id}`), { method: "DELETE" });
       if (res.ok) {
         setGroups((prev) => {
           if (!prev) return prev;
@@ -189,7 +190,7 @@ export default function DuplicateDetector({ open, onClose, onDeleted }: Duplicat
     let deletedCount = 0;
     for (const id of toDeleteIds) {
       try {
-        const res = await fetch(`/api/comics/${id}`, { method: "DELETE" });
+        const res = await fetch(apiPath(`/api/comics/${id}`), { method: "DELETE" });
         if (res.ok) deletedCount++;
       } catch {
         // continue with next

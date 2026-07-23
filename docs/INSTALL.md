@@ -126,6 +126,31 @@ nowen-reader-windows-amd64.exe
 
 ---
 
+## 部署到子路径
+
+需要通过 `https://example.com/reader/` 访问服务时，在 Docker 或二进制运行环境中设置：
+
+```yaml
+environment:
+  - BASE_PATH=/reader
+  - TRUST_PROXY_HEADERS=true
+```
+
+`TRUST_PROXY_HEADERS=true` 仅用于可信反向代理。Nginx 应保留 `/reader` 前缀：
+
+```nginx
+location /reader/ {
+    proxy_pass http://127.0.0.1:6680;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+完成后访问 `https://example.com/reader/`，健康检查地址为 `/reader/api/health`。不要同时把根路径 `/api`、`/assets` 或 `/sw.js` 暴露给外部。更多说明见 [配置说明](./CONFIGURATION.md#子路径部署)。
+
+---
+
 ## 首次使用
 
 1. 浏览器访问 `http://localhost:6680`

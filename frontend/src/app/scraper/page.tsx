@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
+import { apiPath } from "@/lib/base-path";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { useScraperStore } from "@/hooks/useScraperStore";
 import { GroupMetadataSearch } from "@/components/GroupMetadataSearch";
@@ -159,7 +160,7 @@ export default function ScraperPage() {
   // 检查刮削功能是否启用
   const [scraperEnabled, setScraperEnabled] = useState<boolean | null>(null);
   useEffect(() => {
-    fetch("/api/site-settings")
+    fetch(apiPath("/api/site-settings"))
       .then(r => r.json())
       .then(data => setScraperEnabled(data.scraperEnabled ?? false))
       .catch(() => setScraperEnabled(false));
@@ -1251,7 +1252,7 @@ export default function ScraperPage() {
                       {/* 封面 */}
                       <div className="relative h-11 w-8 flex-shrink-0 overflow-hidden rounded-lg border border-border/30 bg-muted/10">
                         <Image
-                          src={`/api/comics/${item.id}/thumbnail`}
+                          src={apiPath(`/api/comics/${item.id}/thumbnail`)}
                           alt=""
                           fill
                           className="object-cover"
@@ -1688,7 +1689,7 @@ export default function ScraperPage() {
                     <div className="flex items-center gap-2.5 rounded-lg bg-card-hover/50 p-2.5">
                       <div className="relative h-10 w-7 flex-shrink-0 overflow-hidden rounded border border-border/30 bg-muted/10">
                         <Image
-                          src={`/api/comics/${currentProgress.comicId}/thumbnail`}
+                          src={apiPath(`/api/comics/${currentProgress.comicId}/thumbnail`)}
                           alt=""
                           fill
                           className="object-cover"
@@ -1770,7 +1771,7 @@ export default function ScraperPage() {
                           </div>
                           <div className="relative h-8 w-6 flex-shrink-0 overflow-hidden rounded border border-border/30 bg-muted/10">
                             <Image
-                              src={`/api/comics/${item.comicId}/thumbnail`}
+                              src={apiPath(`/api/comics/${item.comicId}/thumbnail`)}
                               alt=""
                               fill
                               className="object-cover"

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useCallback, useEffect } from "react";
 import Image from "next/image";
@@ -19,6 +19,7 @@ import {
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { autoDetectGroups, batchCreateGroups } from "@/api/groups";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { apiPath } from "@/lib/base-path";
 import type { AutoDetectGroup } from "@/hooks/useComicTypes";
 
 interface AutoDetectPanelProps {
@@ -92,7 +93,7 @@ export default function AutoDetectPanel({
     setExpandedIndices(new Set());
     setCreatedCount(0);
     try {
-      const res = await fetch("/api/ai/enhance-group-detect", {
+      const res = await fetch(apiPath("/api/ai/enhance-group-detect"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale === "en" ? "en" : "zh", contentType: contentType || "" }),
@@ -458,7 +459,7 @@ export default function AutoDetectPanel({
                               {/* 缩略图 */}
                               <div className="relative h-10 w-8 flex-shrink-0 overflow-hidden rounded-md bg-muted/10">
                                 <Image
-                                  src={`/api/comics/${suggestion.comicIds[ti]}/thumbnail`}
+                                  src={apiPath(`/api/comics/${suggestion.comicIds[ti]}/thumbnail`)}
                                   alt={title}
                                   fill
                                   unoptimized

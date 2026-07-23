@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback } from "react";
 import { Activity, Clock } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
@@ -93,7 +94,7 @@ export default function ServerActivityPanel() {
 
   const fetchHealth = useCallback(async () => {
     try {
-      const res = await fetch("/api/health", { credentials: "include" });
+      const res = await fetch(apiPath("/api/health"), { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setHealth(data);

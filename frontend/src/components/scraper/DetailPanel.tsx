@@ -31,6 +31,7 @@ import { invalidateSwCache } from "@/lib/pwa";
 import { invalidateComicsCache } from "@/hooks/useComicList";
 import PdfRendererBanner from "@/components/PdfRendererBanner";
 import { DetailInlineEditField } from "./DetailInlineEditField";
+import { apiPath } from "@/lib/base-path";
 
 export function DetailPanel({
   item,
@@ -114,7 +115,7 @@ export function DetailPanel({
 
   // 加载翻译引擎
   useEffect(() => {
-    fetch("/api/translate/engines").then(r => r.json()).then(data => {
+    fetch(apiPath("/api/translate/engines")).then(r => r.json()).then(data => {
       if (data.engines) setTranslateEngines(data.engines);
     }).catch(() => {});
   }, []);
@@ -249,7 +250,7 @@ export function DetailPanel({
     if (aiSummaryLoading) return;
     setAiSummaryLoading(true);
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-summary`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-summary`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale }),
@@ -263,7 +264,7 @@ export function DetailPanel({
     setAiParseLoading(true);
     setAiParsedResult(null);
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-parse-filename`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-parse-filename`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apply: false }),
@@ -274,7 +275,7 @@ export function DetailPanel({
 
   const handleAiParseApply = async () => {
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-parse-filename`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-parse-filename`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apply: true }),
@@ -290,7 +291,7 @@ export function DetailPanel({
     setAiInferLoading(true);
     setAiInferResult(null);
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-infer-title`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-infer-title`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apply: false, applyToGroup: false }),
@@ -301,7 +302,7 @@ export function DetailPanel({
 
   const handleAiInferApply = async (applyToGroup: boolean) => {
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-infer-title`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-infer-title`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apply: true, applyToGroup }),
@@ -314,7 +315,7 @@ export function DetailPanel({
     if (aiCompleteMetaLoading) return;
     setAiCompleteMetaLoading(true);
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-complete-metadata`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-complete-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: true }),
@@ -329,7 +330,7 @@ export function DetailPanel({
     setAiSuggestedTags([]);
     setAiSelectedTags(new Set());
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-suggest-tags`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-suggest-tags`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: false }),
@@ -358,7 +359,7 @@ export function DetailPanel({
     setAiCategoryLoading(true);
     setAiSuggestedCategories([]);
     try {
-      const res = await fetch("/api/ai/suggest-category", {
+      const res = await fetch(apiPath("/api/ai/suggest-category"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comicId: item.id, targetLang: locale, apply: true }),
@@ -378,7 +379,7 @@ export function DetailPanel({
     setAiCoverLoading(true);
     setAiCoverResult(null);
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-analyze-cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-analyze-cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: false }),
@@ -389,7 +390,7 @@ export function DetailPanel({
 
   const handleAiCoverApply = async () => {
     try {
-      const res = await fetch(`/api/comics/${item.id}/ai-analyze-cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/ai-analyze-cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: true }),
@@ -404,7 +405,7 @@ export function DetailPanel({
     setMetadataTranslating(true);
     setShowEngineMenu(false);
     try {
-      const res = await fetch(`/api/comics/${item.id}/translate-metadata`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/translate-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, engine: engine || translateEngine || "" }),
@@ -426,7 +427,7 @@ export function DetailPanel({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`/api/comics/${item.id}/cover`, { method: "POST", body: formData });
+      const res = await fetch(apiPath(`/api/comics/${item.id}/cover`), { method: "POST", body: formData });
       if (res.ok) {
         invalidateSwCache(`/api/comics/${item.id}/thumbnail`);
         invalidateComicsCache();
@@ -447,7 +448,7 @@ export function DetailPanel({
     if (!coverUrlInput.trim()) return;
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${item.id}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: coverUrlInput.trim() }),
@@ -472,7 +473,7 @@ export function DetailPanel({
   const handleCoverReset = async () => {
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${item.id}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reset: true }),
@@ -499,7 +500,7 @@ export function DetailPanel({
     const isNovel = item.contentType === "novel";
     try {
       if (isNovel) {
-        const res = await fetch(`/api/comics/${item.id}/embedded-images`);
+        const res = await fetch(apiPath(`/api/comics/${item.id}/embedded-images`));
         if (!res.ok) return;
         const data = await res.json();
         const imgs: { index: number; path: string }[] = data.images || [];
@@ -512,7 +513,7 @@ export function DetailPanel({
         setCoverPickerMode("embedded");
         setShowCoverPicker(true);
       } else {
-        const res = await fetch(`/api/comics/${item.id}/pages`);
+        const res = await fetch(apiPath(`/api/comics/${item.id}/pages`));
         if (!res.ok) return;
         const data = await res.json();
         setCoverPickerPages(data.totalPages || 0);
@@ -525,7 +526,7 @@ export function DetailPanel({
   const handleSelectCoverPage = async (pageIndex: number) => {
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${item.id}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageIndex }),
@@ -548,7 +549,7 @@ export function DetailPanel({
   const handleSelectEmbeddedImage = async (embeddedImageIndex: number) => {
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${item.id}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ embeddedImageIndex }),
@@ -572,7 +573,7 @@ export function DetailPanel({
     setCoverLoading(true);
     setShowCoverMenu(false);
     try {
-      const res = await fetch(`/api/comics/${item.id}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${item.id}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ useFirstPage: true }),
@@ -598,7 +599,7 @@ export function DetailPanel({
     setCoverLoading(true);
     setShowCoverMenu(false);
     try {
-      const res = await fetch("/api/metadata/search", {
+      const res = await fetch(apiPath("/api/metadata/search"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -611,7 +612,7 @@ export function DetailPanel({
         const results = data.results || [];
         for (const r of results) {
           if (r.coverUrl) {
-            const coverRes = await fetch(`/api/comics/${item.id}/cover`, {
+            const coverRes = await fetch(apiPath(`/api/comics/${item.id}/cover`), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url: r.coverUrl }),
@@ -670,7 +671,7 @@ export function DetailPanel({
         <div className="flex gap-4">
           <div className="group relative h-36 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-border/40 bg-muted/10 shadow-lg">
             <Image
-              src={`/api/comics/${item.id}/thumbnail?v=${coverKey}`}
+              src={apiPath(`/api/comics/${item.id}/thumbnail?v=${coverKey}`)}
               alt=""
               fill
               className="object-cover"
@@ -1450,7 +1451,7 @@ export function DetailPanel({
                         className="group/page relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
                       >
                         <img
-                          src={`/api/comics/${item.id}/embedded-image/${img.index}?v=${coverKey}`}
+                          src={apiPath(`/api/comics/${item.id}/embedded-image/${img.index}?v=${coverKey}`)}
                           alt={`Image ${img.index + 1}`}
                           className="h-full w-full object-cover"
                           loading="lazy"
@@ -1470,7 +1471,7 @@ export function DetailPanel({
                         className="group/page relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
                       >
                         <img
-                          src={`/api/comics/${item.id}/page/${i}?v=${coverKey}`}
+                          src={apiPath(`/api/comics/${item.id}/page/${i}?v=${coverKey}`)}
                           alt={`Page ${i + 1}`}
                           className="h-full w-full object-cover"
                           loading="lazy"

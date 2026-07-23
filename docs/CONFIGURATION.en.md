@@ -7,6 +7,8 @@ English · [简体中文](./CONFIGURATION.md)
 | Variable | Default | Description |
 |:---|:---|:---|
 | `PORT` | `3000` | HTTP listen port |
+| `BASE_PATH` | `/` | Subpath deployment prefix (e.g., `/reader` or `/reader/`, default empty/`/` for root) |
+| `TRUST_PROXY_HEADERS` | `false` | Trust `X-Forwarded-Proto`, `X-Forwarded-Host`, and `X-Forwarded-Prefix`; enable only behind a trusted reverse proxy |
 | `DATABASE_URL` | `./data/nowen-reader.db` | SQLite database file path |
 | `COMICS_DIR` | `./comics` | Manga main directory |
 | `NOVELS_DIR` | `./novels` | Novels main directory |
@@ -17,6 +19,29 @@ English · [简体中文](./CONFIGURATION.md)
 | `PUID` / `PGID` | `1001` / `1001` | UID / GID of the in-container process (for bind-mount permission) |
 | `UMASK` | `0002` | Permission mask for files/directories created in Docker; `0002` is suitable for group-writable NAS/shared folders |
 | `PERMISSION_FIX_MODE` | `auto` | Docker startup permission repair mode: `auto` repairs automatically, `relaxed` falls back to broader permissions when NAS/SMB/NFS cannot `chown`, `off` only checks writability |
+
+## Subpath Deployment
+
+Set `BASE_PATH=/reader` in Docker to mount the Web UI, API, PWA, and OPDS under `/reader`:
+
+```yaml
+environment:
+  - BASE_PATH=/reader
+  - TRUST_PROXY_HEADERS=true
+```
+
+Enable `TRUST_PROXY_HEADERS` only when the service is behind a trusted reverse proxy. Nginx example:
+
+```nginx
+location /reader/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+The proxy must preserve the `/reader` prefix instead of stripping it. After deployment, use `/reader/api/health` to verify the service.
 
 ## Site Settings
 

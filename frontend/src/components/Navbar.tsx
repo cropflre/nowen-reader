@@ -27,6 +27,7 @@ import { useAuth } from "@/lib/auth-context";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useScraperStore } from "@/hooks/useScraperStore";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
+import { apiPath } from "@/lib/base-path";
 
 interface NavbarProps {
   searchQuery: string;
@@ -69,7 +70,7 @@ export default function Navbar({
           title={t.navbar?.backToDashboard || "返回仪表盘"}
         >
           {siteIcon ? (
-            <img src={`/api/site-settings/icon?t=${Date.now()}`} alt="Site Icon" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg object-contain" />
+            <img src={apiPath(`/api/site-settings/icon?t=${Date.now()}`)} alt="Site Icon" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg object-contain" />
           ) : (
             <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-accent shadow-lg shadow-accent/20">
               <BookMarked className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" />

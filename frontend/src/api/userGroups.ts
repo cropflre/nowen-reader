@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 用户组管理 API
  * 对应后端 /api/admin/user-groups/*
@@ -51,7 +52,7 @@ async function safeJson<T>(res: Response): Promise<T> {
 
 // 获取所有用户组
 export async function fetchUserGroups(): Promise<UserGroup[]> {
-  const res = await fetch("/api/admin/user-groups");
+  const res = await fetch(apiPath("/api/admin/user-groups"));
   const data = await safeJson<{ groups: UserGroup[] }>(res);
   return data.groups || [];
 }
@@ -61,7 +62,7 @@ export async function createUserGroup(group: {
   name: string;
   description?: string;
 }): Promise<UserGroup> {
-  const res = await fetch("/api/admin/user-groups", {
+  const res = await fetch(apiPath("/api/admin/user-groups"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(group),
@@ -75,7 +76,7 @@ export async function updateUserGroup(
   id: string,
   updates: Partial<{ name: string; description: string }>
 ): Promise<UserGroup> {
-  const res = await fetch(`/api/admin/user-groups/${id}`, {
+  const res = await fetch(apiPath(`/api/admin/user-groups/${id}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
@@ -86,7 +87,7 @@ export async function updateUserGroup(
 
 // 删除用户组
 export async function deleteUserGroup(id: string): Promise<void> {
-  const res = await fetch(`/api/admin/user-groups/${id}`, {
+  const res = await fetch(apiPath(`/api/admin/user-groups/${id}`), {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -101,7 +102,7 @@ export async function fetchGroupMembers(groupId: string): Promise<{
   members: GroupMember[];
   users: Array<GroupMember & { isMember: boolean }>;
 }> {
-  const res = await fetch(`/api/admin/user-groups/${groupId}/members`);
+  const res = await fetch(apiPath(`/api/admin/user-groups/${groupId}/members`));
   return safeJson(res);
 }
 
@@ -110,7 +111,7 @@ export async function setGroupMembers(
   groupId: string,
   userIds: string[]
 ): Promise<void> {
-  const res = await fetch(`/api/admin/user-groups/${groupId}/members`, {
+  const res = await fetch(apiPath(`/api/admin/user-groups/${groupId}/members`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userIds }),
@@ -135,7 +136,7 @@ export async function fetchGroupLibraryAccess(groupId: string): Promise<{
     canManage: boolean;
   }>;
 }> {
-  const res = await fetch(`/api/admin/user-groups/${groupId}/library-access`);
+  const res = await fetch(apiPath(`/api/admin/user-groups/${groupId}/library-access`));
   return safeJson(res);
 }
 
@@ -144,7 +145,7 @@ export async function setGroupLibraryAccess(
   groupId: string,
   libraryAccess: GroupLibraryAccess[]
 ): Promise<void> {
-  const res = await fetch(`/api/admin/user-groups/${groupId}/library-access`, {
+  const res = await fetch(apiPath(`/api/admin/user-groups/${groupId}/library-access`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ libraryAccess }),

@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 import { useEffect, useState } from "react";
 
 // 与后端 internal/handler/system_pdf_renderer.go 保持字段一致
@@ -15,7 +16,7 @@ let inflight: Promise<PdfRendererStatus> | null = null;
 async function fetchStatus(force = false): Promise<PdfRendererStatus> {
   if (!force && cached) return cached;
   if (inflight) return inflight;
-  inflight = fetch("/api/system/pdf-renderer", { credentials: "include" })
+  inflight = fetch(apiPath("/api/system/pdf-renderer"), { credentials: "include" })
     .then(async (res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as PdfRendererStatus;

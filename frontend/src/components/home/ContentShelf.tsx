@@ -2,6 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { apiPath } from "@/lib/base-path";
 
 // ============================================================
 // Types
@@ -119,7 +120,7 @@ export function ShelfCard({
       <div className="relative overflow-hidden rounded-xl bg-muted">
         <div className="aspect-[5/7] relative bg-gradient-to-br from-muted/20 to-card dark:from-muted/10">
           <img
-            src={coverUrl || "/api/placeholder/160/224"}
+            src={coverUrl || apiPath("/api/placeholder/160/224")}
             alt={title}
             className="h-full w-full object-contain p-0.5 transition-transform duration-300 group-hover:scale-105"
             loading="lazy"

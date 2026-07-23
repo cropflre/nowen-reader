@@ -30,6 +30,7 @@ function verifyStablePdfWorker(): Plugin {
 }
 
 export default defineConfig({
+  base: "./",
   plugins: [react(), tailwindcss(), verifyStablePdfWorker()],
   resolve: {
     alias: [

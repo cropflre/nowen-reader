@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
@@ -78,7 +79,7 @@ export default function StatsPage() {
   const [trendRange, setTrendRange] = useState<"7" | "30">("7");
 
   const fetchGoals = () => {
-    fetch("/api/goals")
+    fetch(apiPath("/api/goals"))
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setGoals(data); })
       .catch(() => {});
@@ -87,7 +88,7 @@ export default function StatsPage() {
   useEffect(() => { fetchGoals(); }, []);
 
   useEffect(() => {
-    fetch("/api/stats/enhanced")
+    fetch(apiPath("/api/stats/enhanced"))
       .then((r) => r.json())
       .then((data) => setStats(data))
       .catch(() => {})
@@ -303,7 +304,7 @@ export default function StatsPage() {
                         <button onClick={() => { setEditingGoal(g.goal.goalType); setGoalMins(String(g.goal.targetMins)); setGoalBooks(String(g.goal.targetBooks)); }} className="text-[10px] text-muted hover:text-accent transition-colors">
                           <Edit3 className="h-3 w-3 inline" /> 编辑
                         </button>
-                        <button onClick={() => { fetch("/api/goals/" + g.goal.goalType, { method: "DELETE" }).then(fetchGoals); }} className="text-[10px] text-muted hover:text-rose-400 transition-colors">
+                        <button onClick={() => { fetch(apiPath("/api/goals/" + g.goal.goalType), { method: "DELETE" }).then(fetchGoals); }} className="text-[10px] text-muted hover:text-rose-400 transition-colors">
                           <Trash2 className="h-3 w-3 inline" /> 删除
                         </button>
                       </div>
@@ -334,7 +335,7 @@ export default function StatsPage() {
                     <span className="text-xs text-muted">本</span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => { fetch("/api/goals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goalType: editingGoal, targetMins: parseInt(goalMins) || 0, targetBooks: parseInt(goalBooks) || 0 }) }).then(() => { fetchGoals(); setEditingGoal(null); }); }} className="flex items-center gap-1 rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors">
+                    <button onClick={() => { fetch(apiPath("/api/goals"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goalType: editingGoal, targetMins: parseInt(goalMins) || 0, targetBooks: parseInt(goalBooks) || 0 }) }).then(() => { fetchGoals(); setEditingGoal(null); }); }} className="flex items-center gap-1 rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors">
                       <Check className="h-3 w-3" /> 保存
                     </button>
                     <button onClick={() => setEditingGoal(null)} className="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-foreground transition-colors">取消</button>

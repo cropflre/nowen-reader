@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { apiPath } from "@/lib/base-path";
 
 interface SiteSettings {
   siteName: string;
@@ -20,7 +21,7 @@ let fetchPromise: Promise<SiteSettings> | null = null;
 
 async function fetchSiteSettings(): Promise<SiteSettings> {
   try {
-    const res = await fetch("/api/site-settings");
+    const res = await fetch(apiPath("/api/site-settings"));
     if (!res.ok) return defaultSettings;
     const data = await res.json();
     return {
@@ -64,9 +65,9 @@ export function useSiteSettings(): SiteSettings {
     if (!link) return;
 
     if (settings.siteIcon) {
-      link.href = `/api/site-settings/icon?t=${Date.now()}`;
+      link.href = apiPath(`/api/site-settings/icon?t=${Date.now()}`);
     } else {
-      link.href = "/icons/icon-192.png";
+      link.href = "./icons/icon-192.png";
     }
   }, [settings.siteIcon]);
 

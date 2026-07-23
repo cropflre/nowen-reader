@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { apiPath } from "@/lib/base-path";
 
 interface EnhancedStats {
   totalReadTime: number;
@@ -143,7 +144,7 @@ export default function StatsPanel() {
     setAiInsight("");
     setAiInsightError("");
     try {
-      const res = await fetch("/api/ai/reading-insight", {
+      const res = await fetch(apiPath("/api/ai/reading-insight"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale === "en" ? "en" : "zh" }),
@@ -183,7 +184,7 @@ export default function StatsPanel() {
   };
 
   const fetchGoals = () => {
-    fetch("/api/goals")
+    fetch(apiPath("/api/goals"))
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setGoals(data);
@@ -196,7 +197,7 @@ export default function StatsPanel() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/stats/enhanced")
+    fetch(apiPath("/api/stats/enhanced"))
       .then((r) => r.json())
       .then((data) => setStats(data))
       .catch(() => {})
@@ -207,7 +208,7 @@ export default function StatsPanel() {
   useEffect(() => {
     if (activeTab !== "yearly") return;
     setYearlyLoading(true);
-    fetch(`/api/stats/yearly?year=${yearlyYear}`)
+    fetch(apiPath(`/api/stats/yearly?year=${yearlyYear}`))
       .then((r) => r.json())
       .then((data) => setYearlyReport(data))
       .catch(() => setYearlyReport(null))
@@ -276,7 +277,7 @@ export default function StatsPanel() {
                 setAiGoalLoading(true);
                 setAiGoalRec(null);
                 try {
-                  const res = await fetch("/api/ai/recommend-goal", {
+                  const res = await fetch(apiPath("/api/ai/recommend-goal"), {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ targetLang: locale === "en" ? "en" : "zh" }),
@@ -316,14 +317,14 @@ export default function StatsPanel() {
                     onClick={() => {
                       // 应用日常目标
                       if (aiGoalRec.dailyMins > 0) {
-                        fetch("/api/goals", {
+                        fetch(apiPath("/api/goals"), {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ goalType: "daily", targetMins: aiGoalRec.dailyMins, targetBooks: aiGoalRec.dailyBooks || 0 }),
                         }).then(() => {
                           // 应用周目标
                           if (aiGoalRec.weeklyMins > 0) {
-                            return fetch("/api/goals", {
+                            return fetch(apiPath("/api/goals"), {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ goalType: "weekly", targetMins: aiGoalRec.weeklyMins, targetBooks: aiGoalRec.weeklyBooks || 0 }),
@@ -384,7 +385,7 @@ export default function StatsPanel() {
                     {g && !isEditing && (
                       <button
                         onClick={() => {
-                          fetch(`/api/goals?goalType=${type}`, { method: "DELETE" }).then(() => fetchGoals());
+                          fetch(apiPath(`/api/goals?goalType=${type}`), { method: "DELETE" }).then(() => fetchGoals());
                         }}
                         className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:text-rose-400 transition-colors"
                       >
@@ -397,7 +398,7 @@ export default function StatsPanel() {
                           const mins = parseInt(goalMins) || 0;
                           const books = parseInt(goalBooks) || 0;
                           if (mins > 0 || books > 0) {
-                            fetch("/api/goals", {
+                            fetch(apiPath("/api/goals"), {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ goalType: type, targetMins: mins, targetBooks: books }),
@@ -680,7 +681,7 @@ export default function StatsPanel() {
           {showExportMenu && (
             <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-xl border border-border/60 bg-card shadow-xl overflow-hidden">
               <a
-                href="/api/export/json"
+                href={apiPath("/api/export/json")}
                 download
                 onClick={() => setShowExportMenu(false)}
                 className="flex items-center gap-2.5 px-4 py-2.5 text-xs text-foreground hover:bg-card-hover transition-colors"
@@ -689,7 +690,7 @@ export default function StatsPanel() {
                 JSON 完整备份
               </a>
               <a
-                href="/api/export/csv/sessions"
+                href={apiPath("/api/export/csv/sessions")}
                 download
                 onClick={() => setShowExportMenu(false)}
                 className="flex items-center gap-2.5 px-4 py-2.5 text-xs text-foreground hover:bg-card-hover transition-colors"
@@ -698,7 +699,7 @@ export default function StatsPanel() {
                 CSV 阅读记录
               </a>
               <a
-                href="/api/export/csv/comics"
+                href={apiPath("/api/export/csv/comics")}
                 download
                 onClick={() => setShowExportMenu(false)}
                 className="flex items-center gap-2.5 px-4 py-2.5 text-xs text-foreground hover:bg-card-hover transition-colors"

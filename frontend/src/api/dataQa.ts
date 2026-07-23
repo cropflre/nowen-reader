@@ -1,9 +1,11 @@
+import { apiPath } from "@/lib/base-path";
+
 /**
  * Data QA 模块 API
  * 对应后端 /api/admin/data-qa/*
  */
 
-const BASE = "/api/admin/data-qa";
+const getBase = () => apiPath("/api/admin/data-qa");
 
 // ============================================================
 // Types
@@ -85,13 +87,13 @@ export interface PageCountRescanResult {
 // ============================================================
 
 export async function fetchSummary(): Promise<DataQASummary> {
-  const res = await fetch(BASE + "/summary", { credentials: "include" });
+  const res = await fetch(apiPath(getBase() + "/summary"), { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch summary: " + res.status);
   return res.json();
 }
 
 export async function fetchIssues(): Promise<{ issues: DataQAIssue[] }> {
-  const res = await fetch(BASE + "/issues", { credentials: "include" });
+  const res = await fetch(apiPath(getBase() + "/issues"), { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch issues: " + res.status);
   return res.json();
 }
@@ -101,7 +103,7 @@ export async function fetchFixPreview(body: {
   issueIds?: string[];
   fixAll?: boolean;
 }): Promise<DataQAFixPreviewResult> {
-  const res = await fetch(BASE + "/fix-preview", {
+  const res = await fetch(apiPath(getBase() + "/fix-preview"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -117,7 +119,7 @@ export async function executeFix(body: {
   fixAll?: boolean;
   confirm: boolean;
 }): Promise<DataQAFixResult> {
-  const res = await fetch(BASE + "/fix", {
+  const res = await fetch(apiPath(getBase() + "/fix"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -132,7 +134,7 @@ export async function triggerPageCountRescan(body: {
   limit?: number;
   includeNegative?: boolean;
 }): Promise<PageCountRescanResult> {
-  const res = await fetch(BASE + "/pagecount-rescan", {
+  const res = await fetch(apiPath(getBase() + "/pagecount-rescan"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

@@ -1,12 +1,19 @@
 package store
 
 import (
+	"os"
 	"testing"
 
 	"github.com/nowen-reader/nowen-reader/internal/model"
 )
 
 func TestReplaceDetectedSeriesAndCollapseShelf(t *testing.T) {
+	originalBasePath := os.Getenv("BASE_PATH")
+	t.Cleanup(func() { _ = os.Setenv("BASE_PATH", originalBasePath) })
+	if err := os.Setenv("BASE_PATH", "/reader"); err != nil {
+		t.Fatal(err)
+	}
+
 	setupTestDB(t)
 	if err := RunMigrations(); err != nil {
 		t.Fatalf("RunMigrations failed: %v", err)
@@ -106,6 +113,9 @@ func TestReplaceDetectedSeriesAndCollapseShelf(t *testing.T) {
 	}
 	if detail == nil || len(detail.Unsectioned) != 2 || detail.Series.ItemCount != 2 {
 		t.Fatalf("unexpected series detail: %#v", detail)
+	}
+	if detail.Series.CoverURL != "/reader/api/comics/volume-1/thumbnail" {
+		t.Fatalf("series cover URL = %q, want Base Path prefixed URL", detail.Series.CoverURL)
 	}
 }
 

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="./icons/icon-192.png">
   <title>Nowen Reader API Documentation</title>
   <style>
     :root {
@@ -401,6 +402,23 @@
       font-style: italic;
     }
 
+    .deployment-note {
+      background: rgba(88, 166, 255, 0.08);
+      border: 1px solid rgba(88, 166, 255, 0.35);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .deployment-note strong {
+      color: var(--text);
+    }
+    .deployment-note code {
+      color: var(--accent);
+      overflow-wrap: anywhere;
+    }
+
     .content-type {
       font-size: 13px;
       color: var(--text-secondary);
@@ -512,6 +530,17 @@
         <div class="label"><span data-en="Groups" data-zh="分组数">Groups</span></div>
         <div class="value">26</div>
       </div>
+    </div>
+
+    <div class="deployment-note">
+      <strong data-en="Base Path aware:" data-zh="支持 Base Path：">Base Path aware:</strong>
+      <span data-en="Endpoints below are business paths. The actual request URL is the server origin plus the Base Path plus the API path." data-zh="下方接口均为业务路径。实际请求地址由服务地址、Base Path 和 API 路径拼接而成。">Endpoints below are business paths. The actual request URL is the server origin plus the Base Path plus the API path.</span>
+      <br>
+      <span data-en="Current Base Path:" data-zh="当前 Base Path：">Current Base Path:</span>
+      <code id="current-base-path">/</code>
+      <span aria-hidden="true"> · </span>
+      <span data-en="Health example:" data-zh="健康检查示例：">Health example:</span>
+      <code id="current-health-url">/api/health</code>
     </div>
 
     <div class="legend">

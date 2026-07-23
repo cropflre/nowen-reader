@@ -7,6 +7,7 @@ import { Shuffle, ChevronRight, BookOpen, Clock, Library, Settings, Database, Pl
 import type { ApiComic } from "@/hooks/useComics";
 import { calculateStoredReadingProgress } from "@/lib/progress";
 import ServerActivityPanel from "@/components/ServerActivityPanel";
+import { apiPath } from "@/lib/base-path";
 
 interface PersonalSidebarProps {
   comics: ApiComic[];
@@ -130,7 +131,7 @@ export default function PersonalSidebar({ comics, contentType, totalItems }: Per
           {randomComic && (
             <Link href={`/comic/${randomComic.id}`} className="group flex items-center gap-3 rounded-xl bg-background/30 p-2 transition-all hover:bg-background/50 border border-white/[0.04]">
               <div className="relative w-14 h-20 rounded-lg overflow-hidden shadow-md flex-shrink-0 bg-gradient-to-br from-muted/20 to-card">
-                <Image src={randomComic.coverUrl || "/api/placeholder/112/160"} alt="" fill className="object-contain" sizes="56px" />
+                <Image src={randomComic.coverUrl || apiPath("/api/placeholder/112/160")} alt="" fill className="object-contain" sizes="56px" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground line-clamp-2">{randomComic.title}</p>
@@ -156,7 +157,7 @@ export default function PersonalSidebar({ comics, contentType, totalItems }: Per
                 return (
                   <Link key={comic.id} href={`/comic/${comic.id}`} className="group flex items-center gap-2.5 rounded-lg bg-background/30 p-1.5 transition-all hover:bg-background/50 border border-white/[0.04]">
                     <div className="relative w-9 h-[50px] rounded-md overflow-hidden flex-shrink-0 bg-gradient-to-br from-muted/20 to-card shadow-sm">
-                      <Image src={comic.coverUrl || "/api/placeholder/72/100"} alt="" fill className="object-contain" sizes="36px" />
+                      <Image src={comic.coverUrl || apiPath("/api/placeholder/72/100")} alt="" fill className="object-contain" sizes="36px" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-foreground line-clamp-1">{comic.title}</p>
@@ -183,7 +184,7 @@ export default function PersonalSidebar({ comics, contentType, totalItems }: Per
               {latestComics.map((comic) => (
                 <Link key={comic.id} href={`/comic/${comic.id}`} className="group flex items-center gap-2.5 rounded-lg bg-background/30 p-1.5 transition-all hover:bg-background/50 border border-white/[0.04]">
                   <div className="relative w-9 h-[50px] rounded-md overflow-hidden flex-shrink-0 bg-gradient-to-br from-muted/20 to-card shadow-sm">
-                    <Image src={comic.coverUrl || "/api/placeholder/72/100"} alt="" fill className="object-contain" sizes="36px" />
+                    <Image src={comic.coverUrl || apiPath("/api/placeholder/72/100")} alt="" fill className="object-contain" sizes="36px" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-foreground line-clamp-1">{comic.title}</p>

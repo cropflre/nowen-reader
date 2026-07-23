@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -51,7 +52,7 @@ interface CategoryItem {
 
 async function fetchTags(): Promise<TagItem[]> {
   try {
-    const res = await fetch("/api/tags");
+    const res = await fetch(apiPath("/api/tags"));
     if (!res.ok) return [];
     const data = await res.json();
     return data.tags || [];
@@ -62,7 +63,7 @@ async function fetchTags(): Promise<TagItem[]> {
 
 async function fetchCategories(): Promise<CategoryItem[]> {
   try {
-    const res = await fetch("/api/categories");
+    const res = await fetch(apiPath("/api/categories"));
     if (!res.ok) return [];
     const data = await res.json();
     return data.categories || [];
@@ -73,7 +74,7 @@ async function fetchCategories(): Promise<CategoryItem[]> {
 
 async function apiRenameTag(oldName: string, newName: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/tags/rename", {
+    const res = await fetch(apiPath("/api/tags/rename"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ oldName, newName }),
@@ -90,7 +91,7 @@ async function apiRenameTag(oldName: string, newName: string): Promise<{ ok: boo
 
 async function apiDeleteTag(name: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/tags", {
+    const res = await fetch(apiPath("/api/tags"), {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
@@ -107,7 +108,7 @@ async function apiDeleteTag(name: string): Promise<{ ok: boolean; error?: string
 
 async function apiMergeTags(sourceNames: string[], targetName: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/tags/merge", {
+    const res = await fetch(apiPath("/api/tags/merge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceNames, targetName }),
@@ -124,7 +125,7 @@ async function apiMergeTags(sourceNames: string[], targetName: string): Promise<
 
 async function apiUpdateTagColor(name: string, color: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/tags/color", {
+    const res = await fetch(apiPath("/api/tags/color"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, color }),
@@ -141,7 +142,7 @@ async function apiUpdateTagColor(name: string, color: string): Promise<{ ok: boo
 
 async function apiUpdateCategory(slug: string, name: string, icon: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`/api/categories/${slug}`, {
+    const res = await fetch(apiPath(`/api/categories/${slug}`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, icon }),
@@ -158,7 +159,7 @@ async function apiUpdateCategory(slug: string, name: string, icon: string): Prom
 
 async function apiDeleteCategory(slug: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`/api/categories/${slug}`, { method: "DELETE" });
+    const res = await fetch(apiPath(`/api/categories/${slug}`), { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       return { ok: false, error: data.error || `HTTP ${res.status}` };
@@ -173,7 +174,7 @@ async function apiCreateTag(name: string): Promise<{ ok: boolean; error?: string
   try {
     // 利用 rename 接口创建标签（将一个新名字 rename 到自己不可行，用 add tags to a dummy？）
     // 实际上后端没有 createTag 单独接口，但可以利用 color 接口间接创建
-    const res = await fetch("/api/tags/color", {
+    const res = await fetch(apiPath("/api/tags/color"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, color: "default" }),
@@ -190,7 +191,7 @@ async function apiCreateTag(name: string): Promise<{ ok: boolean; error?: string
 
 async function apiCreateCategory(name: string, icon: string): Promise<{ ok: boolean; error?: string; category?: CategoryItem }> {
   try {
-    const res = await fetch("/api/categories/create", {
+    const res = await fetch(apiPath("/api/categories/create"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, icon }),
@@ -208,7 +209,7 @@ async function apiCreateCategory(name: string, icon: string): Promise<{ ok: bool
 
 async function apiReorderCategories(orders: { slug: string; sortOrder: number }[]): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/categories/reorder", {
+    const res = await fetch(apiPath("/api/categories/reorder"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orders }),
@@ -651,7 +652,7 @@ export default function TagManagerPage() {
         ? "/api/ai/batch-suggest-tags"
         : "/api/ai/batch-suggest-category";
 
-      const res = await fetch(endpoint, {
+      const res = await fetch(apiPath(endpoint), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

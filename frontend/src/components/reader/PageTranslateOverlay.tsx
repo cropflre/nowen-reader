@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { Languages, Loader2, X, ChevronDown, ChevronUp } from "lucide-react";
+import { apiPath } from "@/lib/base-path";
 
 interface TranslatedBubble {
   original: string;
@@ -55,7 +56,7 @@ export default function PageTranslateOverlay({
     setCollapsed(false);
 
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-translate-page`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-translate-page`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

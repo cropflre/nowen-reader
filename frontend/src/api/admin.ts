@@ -7,6 +7,8 @@
  *   2) adminAPI 适配层 + 扁平化数据结构（供 DataAdminPanel 等组件使用）
  */
 
+import { apiPath } from "@/lib/base-path";
+
 // ============================================================
 // 共享：HTTP 工具
 // ============================================================
@@ -174,7 +176,7 @@ interface RawStorageOverview {
 // ============================================================
 
 async function rawGetOverview(fresh = false): Promise<RawStorageOverview> {
-  const res = await fetch(`/api/admin/storage${fresh ? "?fresh=1" : ""}`, {
+  const res = await fetch(apiPath(`/api/admin/storage${fresh ? "?fresh=1" : ""}`), {
     credentials: "include",
   });
   return safeJson<RawStorageOverview>(res);
@@ -182,7 +184,7 @@ async function rawGetOverview(fresh = false): Promise<RawStorageOverview> {
 
 async function rawGetHistory(days = 30): Promise<StorageHistoryResponse> {
   const d = Math.max(1, Math.min(90, Math.floor(days)));
-  const res = await fetch(`/api/admin/storage/history?days=${d}`, {
+  const res = await fetch(apiPath(`/api/admin/storage/history?days=${d}`), {
     credentials: "include",
   });
   return safeJson<StorageHistoryResponse>(res);
@@ -202,7 +204,7 @@ export interface ClearCacheResult {
 }
 
 async function rawClearCache(req: RawClearCacheRequest): Promise<ClearCacheResult> {
-  const res = await fetch("/api/admin/storage/cache/clear", {
+  const res = await fetch(apiPath("/api/admin/storage/cache/clear"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -220,7 +222,7 @@ export interface DBOpResult {
 }
 
 async function rawCheckpoint(): Promise<DBOpResult> {
-  const res = await fetch("/api/admin/storage/db/checkpoint", {
+  const res = await fetch(apiPath("/api/admin/storage/db/checkpoint"), {
     method: "POST",
     credentials: "include",
   });
@@ -228,7 +230,7 @@ async function rawCheckpoint(): Promise<DBOpResult> {
 }
 
 async function rawAnalyze(): Promise<DBOpResult> {
-  const res = await fetch("/api/admin/storage/db/analyze", {
+  const res = await fetch(apiPath("/api/admin/storage/db/analyze"), {
     method: "POST",
     credentials: "include",
   });
@@ -236,7 +238,7 @@ async function rawAnalyze(): Promise<DBOpResult> {
 }
 
 async function rawVacuum(): Promise<DBOpResult> {
-  const res = await fetch("/api/admin/storage/db/vacuum", {
+  const res = await fetch(apiPath("/api/admin/storage/db/vacuum"), {
     method: "POST",
     credentials: "include",
   });
@@ -251,7 +253,7 @@ interface RawIntegrityResult {
 }
 
 async function rawIntegrity(): Promise<RawIntegrityResult> {
-  const res = await fetch("/api/admin/storage/db/integrity", {
+  const res = await fetch(apiPath("/api/admin/storage/db/integrity"), {
     method: "POST",
     credentials: "include",
   });
@@ -261,7 +263,7 @@ async function rawIntegrity(): Promise<RawIntegrityResult> {
 async function rawUpdateThreshold(
   t: StorageThreshold
 ): Promise<{ success: boolean; threshold: StorageThreshold }> {
-  const res = await fetch("/api/admin/storage/threshold", {
+  const res = await fetch(apiPath("/api/admin/storage/threshold"), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -450,7 +452,7 @@ export const dbIntegrityCheck = () => rawIntegrity();
 export const updateStorageThreshold = (t: StorageThreshold) =>
   adminAPI.updateThreshold(t);
 export async function fetchDBInfo(): Promise<DBStat> {
-  const res = await fetch("/api/admin/storage/database", { credentials: "include" });
+  const res = await fetch(apiPath("/api/admin/storage/database"), { credentials: "include" });
   const raw = await safeJson<RawDBInfo>(res);
   return adaptDBInfo(raw);
 }

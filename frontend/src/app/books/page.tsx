@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
@@ -328,7 +329,7 @@ export default function BooksPage() {
     setAiSearchLoading(true);
     setAiSearchResults([]);
     try {
-      const res = await fetch("/api/ai/semantic-search", {
+      const res = await fetch(apiPath("/api/ai/semantic-search"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, targetLang: locale }),
@@ -414,7 +415,7 @@ export default function BooksPage() {
 
   // Load pageSize from site settings
   useEffect(() => {
-    fetch("/api/site-settings")
+    fetch(apiPath("/api/site-settings"))
       .then((r) => r.json())
       .then((data) => {
         if (data.pageSize) setPageSize(data.pageSize);
@@ -468,7 +469,7 @@ export default function BooksPage() {
   // Extract all unique tags — fetch from API once on mount (not on every apiComics change)
   const [allTags, setAllTags] = useState<string[]>([]);
   const fetchTags = useCallback(() => {
-    fetch("/api/tags")
+    fetch(apiPath("/api/tags"))
       .then((r) => r.json())
       .then((data) => {
         const tags = Array.isArray(data) ? data : data.tags;
@@ -556,7 +557,7 @@ export default function BooksPage() {
   const handleScanLibrary = useCallback(async () => {
     setScanningLibrary(true);
     try {
-      await fetch("/api/sync", { method: "POST" });
+      await fetch(apiPath("/api/sync"), { method: "POST" });
       // 等待一小段时间让后端完成扫描
       await new Promise(resolve => setTimeout(resolve, 2000));
       await refetch();
@@ -579,7 +580,7 @@ export default function BooksPage() {
         if (result.success) {
           // 触发后端扫描，确保新文件入库
           try {
-            await fetch("/api/sync", { method: "POST" });
+            await fetch(apiPath("/api/sync"), { method: "POST" });
           } catch {
             // 扫描失败不影响提示
           }
@@ -665,7 +666,7 @@ export default function BooksPage() {
     if (ids.length === 0) return;
     setAiTagsLoading(true);
     try {
-      const res = await fetch("/api/ai/batch-suggest-tags", {
+      const res = await fetch(apiPath("/api/ai/batch-suggest-tags"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -723,7 +724,7 @@ export default function BooksPage() {
     if (ids.length === 0) return;
     setAiCategoryLoading(true);
     try {
-      const res = await fetch("/api/ai/batch-suggest-category", {
+      const res = await fetch(apiPath("/api/ai/batch-suggest-category"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1308,7 +1309,7 @@ export default function BooksPage() {
                       </button>
                       <button
                         onClick={() => {
-                          fetch("/api/sync", { method: "POST" }).then(() => refetch());
+                          fetch(apiPath("/api/sync"), { method: "POST" }).then(() => refetch());
                         }}
                         className="flex items-center gap-2 rounded-lg border border-border/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-card"
                       >
@@ -1462,10 +1463,10 @@ export default function BooksPage() {
                       const newSize = parseInt(e.target.value);
                       setPageSize(newSize);
                       setCurrentPage(1);
-                      fetch("/api/site-settings")
+                      fetch(apiPath("/api/site-settings"))
                         .then((r) => r.json())
                         .then((data) => {
-                          fetch("/api/site-settings", {
+                          fetch(apiPath("/api/site-settings"), {
                             method: "PUT",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ ...data, pageSize: newSize }),

@@ -139,7 +139,13 @@ VOLUME ["/data", "/app/comics", "/app/novels", "/app/.cache"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -q --spider http://localhost:${PORT:-3000}/api/health || exit 1
+    CMD base_path="${BASE_PATH:-/}"; \
+        case "$base_path" in \
+          /) base_path="" ;; \
+          /*) base_path="${base_path%/}" ;; \
+          *) base_path="/${base_path%/}" ;; \
+        esac; \
+        wget -q --spider "http://localhost:${PORT:-3000}${base_path}/api/health" || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/docker-entrypoint.sh"]

@@ -18,6 +18,7 @@ import MobileBottomNav from "@/components/MobileBottomNav";
 import PageProgressBar from "@/components/PageProgressBar";
 import { LibraryTypeCompatibilityGuard } from "@/components/LibraryTypeCompatibilityGuard";
 import { seriesIdFromShelfId } from "@/lib/series-id";
+import { getBasePath } from "@/lib/base-path";
 
 // Pages — imported directly from original Next.js pages
 // The "use client" directive is harmless in Vite
@@ -111,7 +112,7 @@ function AnimatedRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getBasePath()}>
       <ErrorBoundary>
         <ThemeProvider>
           <I18nProvider>

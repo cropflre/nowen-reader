@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback } from "react";
 import {
   Brain,
@@ -163,9 +164,9 @@ export function AISettingsPanel() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/ai/settings").then((r) => r.json()),
-      fetch("/api/ai/status").then((r) => r.json()),
-      fetch("/api/ai/local/status").then((r) => r.json()).catch(() => null),
+      fetch(apiPath("/api/ai/settings")).then((r) => r.json()),
+      fetch(apiPath("/api/ai/status")).then((r) => r.json()),
+      fetch(apiPath("/api/ai/local/status")).then((r) => r.json()).catch(() => null),
     ]).then(([cfg, st, localSt]) => {
       setConfig({
         ...cfg,
@@ -191,13 +192,13 @@ export function AISettingsPanel() {
     if (!config) return;
     setSaving(true);
     try {
-      await fetch("/api/ai/settings", {
+      await fetch(apiPath("/api/ai/settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
       // Refresh status
-      const st = await fetch("/api/ai/status").then((r) => r.json());
+      const st = await fetch(apiPath("/api/ai/status")).then((r) => r.json());
       setStatus(st);
       // 刷新全局AI状态缓存
       refreshAIStatus();
@@ -212,13 +213,13 @@ export function AISettingsPanel() {
     try {
       // 先保存配置
       if (config) {
-        await fetch("/api/ai/settings", {
+        await fetch(apiPath("/api/ai/settings"), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(config),
         });
       }
-      const res = await fetch("/api/ai/test", { method: "POST" });
+      const res = await fetch(apiPath("/api/ai/test"), { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         setTestResult({ success: true, message: aiT.connectionSuccess || "Connection OK" });
@@ -235,7 +236,7 @@ export function AISettingsPanel() {
   const handleLoadUsage = useCallback(async () => {
     setLoadingUsage(true);
     try {
-      const res = await fetch("/api/ai/usage");
+      const res = await fetch(apiPath("/api/ai/usage"));
       const data = await res.json();
       setUsageStats(data);
     } finally {
@@ -245,7 +246,7 @@ export function AISettingsPanel() {
 
   const handleResetUsage = useCallback(async () => {
     if (!confirm(aiT.resetUsageConfirm || "Are you sure you want to reset AI usage statistics?")) return;
-    await fetch("/api/ai/usage", { method: "DELETE" });
+    await fetch(apiPath("/api/ai/usage"), { method: "DELETE" });
     setUsageStats(null);
     handleLoadUsage();
   }, [aiT, handleLoadUsage]);
@@ -256,7 +257,7 @@ export function AISettingsPanel() {
     try {
       // 先保存配置
       if (config) {
-        await fetch("/api/ai/local/config", {
+        await fetch(apiPath("/api/ai/local/config"), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -272,12 +273,12 @@ export function AISettingsPanel() {
           }),
         });
       }
-      const res = await fetch("/api/ai/local/start", { method: "POST" });
+      const res = await fetch(apiPath("/api/ai/local/start"), { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         // 等待服务就绪后刷新状态
         setTimeout(async () => {
-          const st = await fetch("/api/ai/local/status").then((r) => r.json());
+          const st = await fetch(apiPath("/api/ai/local/status")).then((r) => r.json());
           setLocalStatus(st);
         }, 3000);
       } else {
@@ -291,8 +292,8 @@ export function AISettingsPanel() {
   const handleStopLocal = useCallback(async () => {
     setLocalStopping(true);
     try {
-      await fetch("/api/ai/local/stop", { method: "POST" });
-      const st = await fetch("/api/ai/local/status").then((r) => r.json());
+      await fetch(apiPath("/api/ai/local/stop"), { method: "POST" });
+      const st = await fetch(apiPath("/api/ai/local/status")).then((r) => r.json());
       setLocalStatus(st);
     } finally {
       setLocalStopping(false);
@@ -303,7 +304,7 @@ export function AISettingsPanel() {
     setLocalTesting(true);
     setLocalTestResult(null);
     try {
-      const res = await fetch("/api/ai/local/test", { method: "POST" });
+      const res = await fetch(apiPath("/api/ai/local/test"), { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         setLocalTestResult({ success: true, message: data.message || "连接成功" });
@@ -318,7 +319,7 @@ export function AISettingsPanel() {
   }, []);
 
   const handleRefreshLocalStatus = useCallback(async () => {
-    const st = await fetch("/api/ai/local/status").then((r) => r.json());
+    const st = await fetch(apiPath("/api/ai/local/status")).then((r) => r.json());
     setLocalStatus(st);
   }, []);
 
@@ -328,7 +329,7 @@ export function AISettingsPanel() {
     setFetchError(null);
     try {
       // Save config first to ensure server has the latest API key
-      await fetch("/api/ai/settings", {
+      await fetch(apiPath("/api/ai/settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
@@ -338,7 +339,7 @@ export function AISettingsPanel() {
         provider: config.cloudProvider,
         apiUrl: config.cloudApiUrl,
       });
-      const res = await fetch(`/api/ai/models?${params}`);
+      const res = await fetch(apiPath(`/api/ai/models?${params}`));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -1063,7 +1064,7 @@ function PromptTemplatesSection({ aiT }: { aiT: Record<string, string> }) {
   const loadTemplates = useCallback(async () => {
     setLoadingPrompts(true);
     try {
-      const res = await fetch("/api/ai/prompts");
+      const res = await fetch(apiPath("/api/ai/prompts"));
       if (res.ok) {
         const data = await res.json();
         setTemplates(data.templates);
@@ -1078,7 +1079,7 @@ function PromptTemplatesSection({ aiT }: { aiT: Record<string, string> }) {
     if (!templates) return;
     setSavingPrompts(true);
     try {
-      await fetch("/api/ai/prompts", {
+      await fetch(apiPath("/api/ai/prompts"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(templates),
@@ -1090,7 +1091,7 @@ function PromptTemplatesSection({ aiT }: { aiT: Record<string, string> }) {
 
   const resetTemplates = useCallback(async () => {
     if (!confirm("Reset all prompt templates to defaults?")) return;
-    const res = await fetch("/api/ai/prompts", { method: "DELETE" });
+    const res = await fetch(apiPath("/api/ai/prompts"), { method: "DELETE" });
     if (res.ok) {
       const data = await res.json();
       setDefaults(data.defaults);

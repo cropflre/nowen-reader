@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/middleware"
 )
 
@@ -16,7 +17,7 @@ var (
 
 // SetupRoutes registers all API routes on the given Gin engine.
 func SetupRoutes(r *gin.Engine) {
-	api := r.Group("/api")
+	api := r.Group(config.JoinBasePath("/api"))
 
 	api.GET("/health", func(c *gin.Context) {
 		var memStats runtime.MemStats

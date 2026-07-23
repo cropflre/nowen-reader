@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -91,7 +92,7 @@ export default function LogsPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (methodFilter) params.set("method", methodFilter);
 
-      const res = await fetch(`/api/logs?${params}`);
+      const res = await fetch(apiPath(`/api/logs?${params}`));
       if (!res.ok) throw new Error("Failed to fetch logs");
       const data: LogsResponse = await res.json();
       setLogs(data.logs || []);
@@ -105,7 +106,7 @@ export default function LogsPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/logs/stats");
+      const res = await fetch(apiPath("/api/logs/stats"));
       if (!res.ok) return;
       const data: LogStats = await res.json();
       setStats(data);
@@ -134,7 +135,7 @@ export default function LogsPage() {
     if (!confirm(logT.confirmClear || "确定要清空所有错误日志吗？")) return;
     setClearing(true);
     try {
-      await fetch("/api/logs", { method: "DELETE" });
+      await fetch(apiPath("/api/logs"), { method: "DELETE" });
       setLogs([]);
       setTotal(0);
       setStats(null);
@@ -156,7 +157,7 @@ export default function LogsPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (methodFilter) params.set("method", methodFilter);
 
-      const res = await fetch(`/api/logs/export?${params}`);
+      const res = await fetch(apiPath(`/api/logs/export?${params}`));
       if (!res.ok) throw new Error("Export failed");
 
       const blob = await res.blob();

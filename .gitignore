@@ -9,6 +9,10 @@ nowen-reader-linux-*
 /server.exe
 
 nowen-reader-api-doc.md
+
+# Local implementation plans
+/BASE_URL_IMPLEMENTATION_PLAN.md
+
 # Data
 *.db
 *.db-journal

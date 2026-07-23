@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 刮削状态管理 — 刮削批处理 Actions
  *
@@ -47,7 +48,7 @@ export async function loadStats() {
   state.statsLoading = true;
   notify();
   try {
-    const res = await fetch("/api/metadata/stats");
+    const res = await fetch(apiPath("/api/metadata/stats"));
     if (res.ok) {
       getState().stats = await res.json();
     }
@@ -78,7 +79,7 @@ export async function startBatch() {
   const lang = navigator.language.startsWith("zh") ? "zh" : "en";
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(apiPath(endpoint), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: state.scrapeScope, lang, updateTitle: state.updateTitle, skipCover: state.skipCover }),

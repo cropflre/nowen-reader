@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
+import { apiPath } from "@/lib/base-path";
 import { User, Lock, Eye, EyeOff, LogIn, UserPlus, BookMarked } from "lucide-react";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -57,7 +58,7 @@ function SetupPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           {siteIcon ? (
-            <img src="/api/site-settings/icon" alt="Site Icon" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
+            <img src={apiPath("/api/site-settings/icon")} alt="Site Icon" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
           ) : (
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent">
               <BookMarked className="h-8 w-8 text-white" />
@@ -171,7 +172,7 @@ function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           {siteIcon ? (
-            <img src="/api/site-settings/icon" alt="Site Icon" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
+            <img src={apiPath("/api/site-settings/icon")} alt="Site Icon" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
           ) : (
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent">
               <BookMarked className="h-8 w-8 text-white" />

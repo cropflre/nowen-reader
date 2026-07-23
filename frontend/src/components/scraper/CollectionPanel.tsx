@@ -26,6 +26,7 @@ import {
   startBatchSelected,
 } from "@/lib/scraper-store";
 import type { CollectionGroup, CollectionGroupDetail, CollectionGroupComic, AutoDetectSuggestion } from "@/lib/scraper-store";
+import { apiPath } from "@/lib/base-path";
 
 export function CollectionPanel({
   scraperT,
@@ -151,7 +152,7 @@ export function CollectionPanel({
                   <span className="text-[10px] text-muted w-5 text-right flex-shrink-0">{idx + 1}</span>
                   <div className="relative h-10 w-7 flex-shrink-0 overflow-hidden rounded border border-border/30 bg-muted/10">
                     <Image
-                      src={`/api/comics/${comic.id}/thumbnail`}
+                      src={apiPath(`/api/comics/${comic.id}/thumbnail`)}
                       alt=""
                       fill
                       className="object-cover"
@@ -484,4 +485,3 @@ export function CollectionPanel({
     </div>
   );
 }
-

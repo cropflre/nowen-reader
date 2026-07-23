@@ -63,6 +63,7 @@ import { Sparkles, Brain, FolderOpen } from "lucide-react";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { useGlobalSyncEvent } from "@/hooks/useSyncEvent";
 import { formatFileSize, formatDuration, isNovelFile, getReaderUrl } from "@/lib/comic-utils";
+import { apiPath } from "@/lib/base-path";
 
 export default function GroupDetailPage() {
   const params = useParams();
@@ -195,7 +196,7 @@ export default function GroupDetailPage() {
   // 加载所有可用分类
   const loadAllCategories = useCallback(async () => {
     try {
-      const res = await fetch("/api/categories");
+      const res = await fetch(apiPath("/api/categories"));
       if (res.ok) {
         const data = await res.json();
         setAllCategories((data.categories || []).map((c: Record<string, unknown>) => ({
@@ -460,7 +461,7 @@ export default function GroupDetailPage() {
       if (ok) {
         // 重置后使用首卷封面
         const firstComic = group.comics[0];
-        const fallbackCover = firstComic ? `/api/comics/${firstComic.id}/thumbnail` : "";
+        const fallbackCover = firstComic ? apiPath(`/api/comics/${firstComic.id}/thumbnail`) : "";
         setGroup((prev) => prev ? { ...prev, coverUrl: fallbackCover } : prev);
         setShowCoverMenu(false);
         toast.success("已恢复默认封面");
@@ -621,7 +622,7 @@ export default function GroupDetailPage() {
     }
     setAddSearchLoading(true);
     try {
-      const res = await fetch(`/api/comics?search=${encodeURIComponent(query)}&page=1&pageSize=20`);
+      const res = await fetch(apiPath(`/api/comics?search=${encodeURIComponent(query)}&page=1&pageSize=20`));
       if (res.ok) {
         const data = await res.json();
         const existingIds = new Set(group?.comics.map(c => c.id) || []);
@@ -629,7 +630,7 @@ export default function GroupDetailPage() {
           (data.comics || []).filter((c: any) => !existingIds.has(c.id)).map((c: any) => ({
             id: c.id,
             title: c.title,
-            coverUrl: `/api/comics/${c.id}/thumbnail`,
+            coverUrl: apiPath(`/api/comics/${c.id}/thumbnail`),
           }))
         );
       }

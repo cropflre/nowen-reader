@@ -11,6 +11,7 @@ import {
 import { FolderBrowser } from "@/components/FolderBrowser";
 import { useTranslation } from "@/lib/i18n";
 import { invalidateSiteSettings } from "@/hooks/useSiteSettings";
+import { apiPath } from "@/lib/base-path";
 
 interface SiteConfig {
   siteName: string;
@@ -166,7 +167,7 @@ export function SiteSettingsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/site-settings", {
+      const res = await fetch(apiPath("/api/site-settings"), {
         credentials: "include",
       });
       const contentType = res.headers.get("content-type") || "";
@@ -205,7 +206,7 @@ export function SiteSettingsPanel() {
   }, [loadConfig]);
 
   const loadThumbStats = () => {
-    fetch("/api/thumbnails/manage", {
+    fetch(apiPath("/api/thumbnails/manage"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "stats" }),
@@ -220,7 +221,7 @@ export function SiteSettingsPanel() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch("/api/site-settings", {
+      const res = await fetch(apiPath("/api/site-settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
@@ -272,7 +273,7 @@ export function SiteSettingsPanel() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/site-settings/icon", {
+      const res = await fetch(apiPath("/api/site-settings/icon"), {
         method: "POST",
         body: formData,
       });
@@ -303,7 +304,7 @@ export function SiteSettingsPanel() {
 
   const handleIconDelete = async () => {
     try {
-      const res = await fetch("/api/site-settings/icon", {
+      const res = await fetch(apiPath("/api/site-settings/icon"), {
         method: "DELETE",
       });
 
@@ -350,7 +351,7 @@ export function SiteSettingsPanel() {
   const handleClearCache = async (action: string, setLoading: (v: boolean) => void) => {
     setLoading(true);
     try {
-      await fetch("/api/cache", {
+      await fetch(apiPath("/api/cache"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
@@ -366,7 +367,7 @@ export function SiteSettingsPanel() {
     setter(true);
     setThumbResult(null);
     try {
-      const res = await fetch("/api/thumbnails/manage", {
+      const res = await fetch(apiPath("/api/thumbnails/manage"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
@@ -391,7 +392,7 @@ export function SiteSettingsPanel() {
     abortRef.current = abort;
 
     try {
-      const res = await fetch("/api/metadata/batch", {
+      const res = await fetch(apiPath("/api/metadata/batch"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lang: config?.language === "auto" ? undefined : config?.language, mode }),
@@ -446,7 +447,7 @@ export function SiteSettingsPanel() {
 
     try {
       const lang = config?.language === "auto" ? (navigator.language.startsWith("zh") ? "zh-CN" : "en") : config?.language;
-      const res = await fetch("/api/metadata/translate-batch", {
+      const res = await fetch(apiPath("/api/metadata/translate-batch"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: lang, engine: batchTranslateEngine || undefined }),
@@ -489,7 +490,7 @@ export function SiteSettingsPanel() {
 
   // 加载可用翻译引擎
   useEffect(() => {
-    fetch("/api/translate/engines")
+    fetch(apiPath("/api/translate/engines"))
       .then(r => r.json())
       .then(data => {
         if (data.engines) setAvailableEngines(data.engines);
@@ -583,7 +584,7 @@ export function SiteSettingsPanel() {
           {/* Icon Preview */}
           <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-card overflow-hidden">
             {config.siteIcon ? (
-              <img src="/api/site-settings/icon" alt="Site Icon" className="h-full w-full object-contain" />
+              <img src={apiPath("/api/site-settings/icon")} alt="Site Icon" className="h-full w-full object-contain" />
             ) : (
               <BookMarked className="h-8 w-8 text-muted" />
             )}
@@ -913,7 +914,7 @@ export function SiteSettingsPanel() {
               setCleaningUp(true);
               setCleanupResult(null);
               try {
-                const res = await fetch("/api/comics/cleanup", { method: "POST" });
+                const res = await fetch(apiPath("/api/comics/cleanup"), { method: "POST" });
                 const data = await res.json();
                 if (res.ok) {
                   setCleanupResult(data.removed ?? 0);

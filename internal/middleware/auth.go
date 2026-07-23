@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
@@ -286,11 +287,16 @@ func IsRequestSecure(c *gin.Context) bool {
 // 3. httpOnly=true 已经提供了足够的 XSS 防护
 func SetSessionCookie(c *gin.Context, token string) {
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(SessionCookie, token, SessionMaxAge, "/", "", false, true)
+	cookiePath := config.BasePath()
+	c.SetCookie(SessionCookie, token, SessionMaxAge, cookiePath, "", false, true)
 }
 
 // ClearSessionCookie removes the session cookie.
 func ClearSessionCookie(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(SessionCookie, "", -1, "/", "", false, true)
+	cookiePath := config.BasePath()
+	c.SetCookie(SessionCookie, "", -1, cookiePath, "", false, true)
+	if cookiePath != "/" {
+		c.SetCookie(SessionCookie, "", -1, "/", "", false, true)
+	}
 }

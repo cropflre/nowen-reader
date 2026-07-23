@@ -7,6 +7,8 @@
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `PORT` | `3000` | HTTP 服务监听端口 |
+| `BASE_PATH` | `/` | 子路径部署前缀（例如 `/reader` 或 `/reader/`，留空或 `/` 为根部署） |
+| `TRUST_PROXY_HEADERS` | `false` | 是否信任 `X-Forwarded-Proto`、`X-Forwarded-Host` 和 `X-Forwarded-Prefix`；仅在可信反向代理后启用 |
 | `DATABASE_URL` | `./data/nowen-reader.db` | SQLite 数据库文件路径 |
 | `COMICS_DIR` | `./comics` | 漫画主目录 |
 | `NOVELS_DIR` | `./novels` | 电子书主目录 |
@@ -17,6 +19,29 @@
 | `PUID` / `PGID` | `1001` / `1001` | Docker 内进程的 UID / GID（用于解决 bind-mount 权限问题） |
 | `UMASK` | `0002` | Docker 内新建文件/目录的权限掩码；`0002` 适合 NAS/共享目录的同组写入 |
 | `PERMISSION_FIX_MODE` | `auto` | Docker 启动时的权限修复模式：`auto` 自动修复，`relaxed` 在 NAS/SMB/NFS 无法 `chown` 时回退到更宽松权限，`off` 只检测不修复 |
+
+## 子路径部署
+
+Docker 中设置 `BASE_PATH=/reader` 后，Web、API、PWA 和 OPDS 都会挂载到 `/reader`：
+
+```yaml
+environment:
+  - BASE_PATH=/reader
+  - TRUST_PROXY_HEADERS=true
+```
+
+`TRUST_PROXY_HEADERS` 仅应在服务位于可信反向代理后时启用。Nginx 示例：
+
+```nginx
+location /reader/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+代理必须保留 `/reader` 前缀，不要在转发时将其剥离。配置完成后可通过 `/reader/api/health` 检查服务状态。
 
 ## 站点设置
 

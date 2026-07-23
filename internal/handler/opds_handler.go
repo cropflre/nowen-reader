@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -33,14 +34,30 @@ func getBaseURL(c *gin.Context) string {
 	if c.Request.TLS != nil {
 		scheme = "https"
 	}
-	if forwardedProto := strings.ToLower(firstForwardedValue(c.GetHeader("X-Forwarded-Proto"))); forwardedProto == "http" || forwardedProto == "https" {
-		scheme = forwardedProto
-	}
 	host := c.Request.Host
-	if forwardedHost := firstForwardedValue(c.GetHeader("X-Forwarded-Host")); forwardedHost != "" {
-		host = forwardedHost
+	prefix := config.BasePath()
+
+	if config.TrustProxyHeaders() {
+		if forwardedProto := strings.ToLower(firstForwardedValue(c.GetHeader("X-Forwarded-Proto"))); forwardedProto == "http" || forwardedProto == "https" {
+			scheme = forwardedProto
+		}
+		if forwardedHost := firstForwardedValue(c.GetHeader("X-Forwarded-Host")); forwardedHost != "" {
+			host = forwardedHost
+		}
+		if prefix == "" || prefix == "/" {
+			if fwdPrefix := c.GetHeader("X-Forwarded-Prefix"); fwdPrefix != "" {
+				if norm, err := config.NormalizeBasePath(fwdPrefix); err == nil {
+					prefix = norm
+				} else {
+					prefix = ""
+				}
+			} else {
+				prefix = ""
+			}
+		}
 	}
-	return fmt.Sprintf("%s://%s", scheme, host)
+
+	return fmt.Sprintf("%s://%s%s", scheme, host, prefix)
 }
 
 func firstForwardedValue(value string) string {

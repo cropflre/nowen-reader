@@ -4,6 +4,28 @@ NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 
 > 🔒 = 需要认证（登录用户） &emsp; 🔒管理员 = 需要管理员权限
 
+## Base Path 与请求地址
+
+本文档中的接口路径统一写为业务路径 `/api/...`。当服务配置了 `BASE_PATH` 时，实际请求地址为：
+
+```text
+服务地址 + BASE_PATH + API 路径
+```
+
+示例：
+
+```text
+根路径部署：
+http://localhost:6680/api/health
+http://localhost:6680/api/opds
+
+BASE_PATH=/reader：
+https://example.com/reader/api/health
+https://example.com/reader/api/opds
+```
+
+客户端的服务器地址应包含 Base Path，例如 `https://example.com/reader`，后续再拼接 `/api/...`。不要同时让反向代理剥离 `/reader`，也不需要额外暴露根路径 `/api`。
+
 ## 🔐 认证
 
 | 方法 | 路径 | 说明 |

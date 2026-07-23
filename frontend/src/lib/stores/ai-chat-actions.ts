@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 刮削状态管理 — AI 聊天 Actions
  *
@@ -132,7 +133,7 @@ export async function sendAIChatMessage(userInput?: string) {
   const lang = navigator.language.startsWith("zh") ? "zh" : "en";
 
   try {
-    const res = await fetch("/api/metadata/ai-chat", {
+    const res = await fetch(apiPath("/api/metadata/ai-chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

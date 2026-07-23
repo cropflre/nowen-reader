@@ -11,6 +11,7 @@ import { useTranslation } from "@/lib/i18n";
 import { calculateStoredReadingProgress, getReadingPageNumber, isStoredReadingFinished } from "@/lib/progress";
 import { LIBRARY_ACCESS_CHANGED_EVENT } from "@/hooks/useComics";
 import type { ApiComic } from "@/hooks/useComics";
+import { apiPath } from "@/lib/base-path";
 
 const STORAGE_KEY = "continue-reading-collapsed";
 
@@ -112,7 +113,7 @@ export function ContinueReading({ contentType, showTitle = true }: { contentType
         page: "1",
       });
       if (contentType) params.set("contentType", contentType);
-      const res = await fetch(`/api/comics?${params.toString()}`, { credentials: "include", cache: "no-store" });
+      const res = await fetch(apiPath(`/api/comics?${params.toString()}`), { credentials: "include", cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       const all: ApiComic[] = data.comics || [];

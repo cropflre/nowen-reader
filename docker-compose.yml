@@ -56,6 +56,10 @@ services:
       - DATA_DIR=/app/.cache
       - PORT=3000
       - TZ=Asia/Shanghai
+      # 子路径部署前缀（可选，例如：/reader 或 /reader/，默认为空即根目录挂载）
+      # - BASE_PATH=/reader
+      # 仅在可信反向代理后启用，用于 OPDS 生成正确的外部地址
+      # - TRUST_PROXY_HEADERS=true
       # 文件权限映射（设置为你 NAS/宿主机文件的 UID:GID，解决 permission denied 问题）
       # 可通过 ls -ln 查看文件的 UID/GID，然后填入下方
       # - PUID=1000

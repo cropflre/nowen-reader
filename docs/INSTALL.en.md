@@ -126,6 +126,31 @@ nowen-reader-windows-amd64.exe
 
 ---
 
+## Deploy Under a Subpath
+
+To publish the service at `https://example.com/reader/`, set the following environment variables for Docker or the binary:
+
+```yaml
+environment:
+  - BASE_PATH=/reader
+  - TRUST_PROXY_HEADERS=true
+```
+
+Enable `TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy. Nginx must preserve the `/reader` prefix:
+
+```nginx
+location /reader/ {
+    proxy_pass http://127.0.0.1:6680;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Open `https://example.com/reader/` after deployment. The health endpoint is `/reader/api/health`. Do not expose root `/api`, `/assets`, or `/sw.js` paths alongside the subpath deployment. See [Configuration](./CONFIGURATION.en.md#subpath-deployment) for details.
+
+---
+
 ## First Use
 
 1. Visit `http://localhost:6680` in your browser

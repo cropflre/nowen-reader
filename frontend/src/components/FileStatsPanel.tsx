@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { apiPath } from "@/lib/base-path";
 import {
   HardDrive,
   FileText,
@@ -143,7 +144,7 @@ export default function FileStatsPanel() {
   const [expandAll, setExpandAll] = useState(false);
 
   useEffect(() => {
-    fetch("/api/stats/files")
+    fetch(apiPath("/api/stats/files"))
       .then((r) => r.json())
       .then((data) => setStats(data))
       .catch(() => {})
@@ -154,7 +155,7 @@ export default function FileStatsPanel() {
   useEffect(() => {
     if (activeTab === "folder-tree" && !folderTree) {
       setFolderTreeLoading(true);
-      fetch("/api/stats/folder-tree")
+      fetch(apiPath("/api/stats/folder-tree"))
         .then((r) => r.json())
         .then((data) => setFolderTree(data))
         .catch(() => setFolderTree([]))

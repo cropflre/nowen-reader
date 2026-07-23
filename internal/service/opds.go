@@ -432,7 +432,32 @@ func absoluteOPDSURL(baseURL, href string) string {
 	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
 		return href
 	}
-	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(href, "/")
+
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Host == "" {
+		return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(href, "/")
+	}
+
+	basePath := strings.TrimRight(u.Path, "/")
+	hrefURL, err := url.Parse(href)
+	if err != nil {
+		hrefURL = &url.URL{Path: href}
+	}
+
+	cleanHref := hrefURL.Path
+	if !strings.HasPrefix(cleanHref, "/") {
+		cleanHref = "/" + cleanHref
+	}
+
+	if basePath != "" && (strings.HasPrefix(cleanHref, basePath+"/") || cleanHref == basePath) {
+		u.Path = cleanHref
+	} else {
+		u.Path = basePath + cleanHref
+	}
+
+	u.RawQuery = hrefURL.RawQuery
+	u.Fragment = hrefURL.Fragment
+	return u.String()
 }
 
 func marshalOPDSXML(value interface{}) string {

@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Tag, ChevronLeft, ChevronRight, Languages } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
@@ -92,7 +93,7 @@ export default function TagFilter({
     if (translating) return;
     setTranslating(true);
     try {
-      const res = await fetch("/api/tags/translate", {
+      const res = await fetch(apiPath("/api/tags/translate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale }),

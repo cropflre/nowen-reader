@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 import { useEffect, useCallback, useRef } from "react";
 import {
   syncBus,
@@ -86,7 +87,7 @@ export function useSyncHistory(comicId?: string) {
       const params = new URLSearchParams({ limit: String(limit) });
       if (comicId) params.set("comicId", comicId);
 
-      const res = await fetch(`/api/sync/history?${params}`);
+      const res = await fetch(apiPath(`/api/sync/history?${params}`));
       if (!res.ok) return [];
       const data = await res.json();
       return data.logs || [];
@@ -95,7 +96,7 @@ export function useSyncHistory(comicId?: string) {
   );
 
   const revertLog = useCallback(async (logId: number) => {
-    const res = await fetch("/api/sync/revert", {
+    const res = await fetch(apiPath("/api/sync/revert"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ logId }),

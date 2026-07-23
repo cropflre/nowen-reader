@@ -20,6 +20,8 @@ import { useSiteSettings } from "@/hooks/useSiteSettings";
 /**
  * 桌面端左侧固定导航栏 — 私人媒体库 App 风格
  */
+import { apiPath } from "@/lib/base-path";
+
 export default function DesktopSidebar() {
   const location = useLocation();
   const pathname = location.pathname;
@@ -50,7 +52,7 @@ export default function DesktopSidebar() {
       <div className="flex items-center gap-3 px-5 h-[72px] shrink-0">
         {siteIcon ? (
           <img
-            src={`/api/site-settings/icon?t=${Date.now()}`}
+            src={apiPath(`/api/site-settings/icon?t=${Date.now()}`)}
             alt="Site Icon"
             className="h-9 w-9 rounded-xl object-contain shadow-lg shadow-accent/20"
           />

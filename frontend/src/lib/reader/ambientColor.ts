@@ -3,6 +3,8 @@
  * 用于阅读器沉浸式背景
  */
 
+import { apiPath } from "@/lib/base-path";
+
 export interface AmbientColors {
   primary: string;   // "r, g, b" 格式，用于 rgba()
   secondary: string; // "r, g, b" 格式
@@ -132,5 +134,5 @@ export function extractAmbientColors(imageUrl: string): Promise<AmbientColors> {
  */
 export function getCoverImageUrl(comicId: string, coverUrl?: string): string | null {
   if (coverUrl) return coverUrl;
-  return `/api/comics/${comicId}/page/0`;
+  return apiPath(`/api/comics/${comicId}/page/0`);
 }

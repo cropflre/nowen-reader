@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
+import { apiPath } from "@/lib/base-path";
 
 /**
  * 获取有效的预加载范围（根据网络环境动态调整）
@@ -25,7 +26,7 @@ function getEffectiveRange(range: number): number {
  * 触发后端页面预热（适用于网盘等高延迟存储场景）
  */
 function triggerWarmup(comicId: string, startPage: number, count: number) {
-  fetch(`/api/comics/${comicId}/warmup`, {
+  fetch(apiPath(`/api/comics/${comicId}/warmup`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ startPage, count }),
@@ -40,9 +41,9 @@ function triggerWarmup(comicId: string, startPage: number, count: number) {
 function triggerWarmupDone(comicId: string) {
   // 使用 sendBeacon 确保页面关闭时也能发出请求
   if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-    navigator.sendBeacon(`/api/comics/${comicId}/warmup-done`, JSON.stringify({}));
+    navigator.sendBeacon(apiPath(`/api/comics/${comicId}/warmup-done`), JSON.stringify({}));
   } else {
-    fetch(`/api/comics/${comicId}/warmup-done`, {
+    fetch(apiPath(`/api/comics/${comicId}/warmup-done`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),

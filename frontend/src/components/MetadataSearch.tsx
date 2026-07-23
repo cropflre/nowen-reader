@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import React, { useState } from "react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { Search, Download, Check, Loader2, BookOpen, FileSearch, Filter } from "lucide-react";
@@ -107,7 +108,7 @@ export function MetadataSearch({ comicId, comicTitle, filename, comicType, onApp
         lang: locale,
         contentType: isNovel ? "novel" : "comic",
       });
-      const res = await fetch(`/api/metadata/search?${params}`);
+      const res = await fetch(apiPath(`/api/metadata/search?${params}`));
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setResults(data.results || []);
@@ -127,7 +128,7 @@ export function MetadataSearch({ comicId, comicTitle, filename, comicType, onApp
     try {
       // 小说使用专用刮削接口，漫画使用通用刮削接口
       const scanUrl = isNovel ? "/api/metadata/novel-scan" : "/api/metadata/scan";
-      const res = await fetch(scanUrl, {
+      const res = await fetch(apiPath(scanUrl), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comicId, lang: locale, skipCover }),
@@ -154,7 +155,7 @@ export function MetadataSearch({ comicId, comicTitle, filename, comicType, onApp
   const handleApply = async (index: number) => {
     setApplying(index);
     try {
-      const res = await fetch("/api/metadata/apply", {
+      const res = await fetch(apiPath("/api/metadata/apply"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comicId, metadata: results[index], lang: locale, overwrite: true, skipCover }),

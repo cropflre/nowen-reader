@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 刮削状态管理 — 书库管理 Actions
  *
@@ -113,7 +114,7 @@ export async function loadLibrary() {
     if (state.librarySortBy) params.set("sortBy", state.librarySortBy);
     if (state.librarySortOrder) params.set("sortOrder", state.librarySortOrder);
 
-    const res = await fetch(`/api/metadata/library?${params}`);
+    const res = await fetch(apiPath(`/api/metadata/library?${params}`));
     if (res.ok) {
       const data = await res.json();
       const s = getState();
@@ -150,7 +151,7 @@ export async function startBatchSelected() {
   const lang = navigator.language.startsWith("zh") ? "zh" : "en";
 
   try {
-    const res = await fetch("/api/metadata/batch-selected", {
+    const res = await fetch(apiPath("/api/metadata/batch-selected"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -216,7 +217,7 @@ export async function clearSelectedMetadata() {
   const state = getState();
   if (state.selectedIds.size === 0) return;
   try {
-    const res = await fetch("/api/metadata/clear", {
+    const res = await fetch(apiPath("/api/metadata/clear"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comicIds: Array.from(state.selectedIds) }),
@@ -313,7 +314,7 @@ export async function saveBatchRename() {
   notify();
 
   try {
-    const res = await fetch("/api/metadata/batch-rename", {
+    const res = await fetch(apiPath("/api/metadata/batch-rename"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
@@ -359,7 +360,7 @@ export async function aiRename(prompt: string): Promise<string | null> {
   const lang = navigator.language.startsWith("zh") ? "zh" : "en";
 
   try {
-    const res = await fetch("/api/metadata/ai-rename", {
+    const res = await fetch(apiPath("/api/metadata/ai-rename"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, prompt, lang }),

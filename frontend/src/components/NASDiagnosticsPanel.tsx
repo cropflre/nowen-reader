@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -173,7 +174,7 @@ export default function NASDiagnosticsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/system/diagnostics", { credentials: "include" });
+      const res = await fetch(apiPath("/api/system/diagnostics"), { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setReport(data);

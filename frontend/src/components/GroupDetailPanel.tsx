@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
+import { apiPath } from "@/lib/base-path";
 import {
   X,
   User,
@@ -359,7 +360,7 @@ export default function GroupDetailPanel({
 
   const loadAllCategories = useCallback(async () => {
     try {
-      const res = await fetch("/api/categories");
+      const res = await fetch(apiPath("/api/categories"));
       if (res.ok) {
         const data = await res.json();
         setAllCategories((data.categories || []).map((c: Record<string, unknown>) => ({

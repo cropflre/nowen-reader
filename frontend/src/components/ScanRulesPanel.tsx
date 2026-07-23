@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Sparkles,
@@ -185,7 +186,7 @@ export function ScanRulesPanel() {
 
   const fetchRules = useCallback(async () => {
     try {
-      const res = await fetch("/api/scan-rules", { credentials: "include" });
+      const res = await fetch(apiPath("/api/scan-rules"), { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data?.rules) setRules(normalizeRules(data.rules));
@@ -202,7 +203,7 @@ export function ScanRulesPanel() {
       const url = batchId
         ? `/api/scan-rules/logs?batchId=${encodeURIComponent(batchId)}&limit=200`
         : `/api/scan-rules/logs?limit=100`;
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(apiPath(url), { credentials: "include" });
       if (!res.ok) return;
       const data = await res.json();
       setLogs(data?.logs || []);
@@ -214,7 +215,7 @@ export function ScanRulesPanel() {
   // 轮询进度（1s/次），执行中或手动启动后才轮询。
   const fetchProgress = useCallback(async () => {
     try {
-      const res = await fetch("/api/scan-rules/progress", { credentials: "include" });
+      const res = await fetch(apiPath("/api/scan-rules/progress"), { credentials: "include" });
       if (!res.ok) return null;
       const p = (await res.json()) as Progress;
       setProgress(p);
@@ -293,7 +294,7 @@ export function ScanRulesPanel() {
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/scan-rules", {
+      const res = await fetch(apiPath("/api/scan-rules"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -321,7 +322,7 @@ export function ScanRulesPanel() {
       const url = dryRun ? "/api/scan-rules/preview" : "/api/scan-rules/apply";
       const body: Record<string, unknown> = {};
       if (scope) body.scope = scope;
-      const res = await fetch(url, {
+      const res = await fetch(apiPath(url), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -365,7 +366,7 @@ export function ScanRulesPanel() {
         mode === "duplicates"
           ? { dryRun: true, onlyDuplicates: true }
           : { dryRun: true, onlyDuplicates: false, metadataSources: ["ai_scan_rules"] };
-      const res = await fetch("/api/scan-rules/restore-titles", {
+      const res = await fetch(apiPath("/api/scan-rules/restore-titles"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -404,7 +405,7 @@ export function ScanRulesPanel() {
         mode === "duplicates"
           ? { dryRun: false, onlyDuplicates: true }
           : { dryRun: false, onlyDuplicates: false, metadataSources: ["ai_scan_rules"] };
-      const res = await fetch("/api/scan-rules/restore-titles", {
+      const res = await fetch(apiPath("/api/scan-rules/restore-titles"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

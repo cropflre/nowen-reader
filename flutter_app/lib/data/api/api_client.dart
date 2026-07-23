@@ -304,11 +304,12 @@ Future<void> saveServerUrl(String url) async {
 /// 测试服务器连接
 Future<bool> testServerConnection(String url) async {
   try {
+    final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 5),
     ));
-    final res = await dio.get('$url/api/health');
+    final res = await dio.get('$cleanUrl/api/health');
     return res.statusCode == 200;
   } catch (_) {
     return false;
@@ -318,10 +319,11 @@ Future<bool> testServerConnection(String url) async {
 /// 获取完整的图片 URL
 String getImageUrl(String serverUrl, String comicId,
     {int? page, bool thumbnail = false}) {
+  final cleanUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
   if (thumbnail) {
-    return '$serverUrl/api/comics/$comicId/thumbnail';
+    return '$cleanUrl/api/comics/$comicId/thumbnail';
   }
-  return '$serverUrl/api/comics/$comicId/page/$page';
+  return '$cleanUrl/api/comics/$comicId/page/$page';
 }
 
 // ============================================================

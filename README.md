@@ -77,6 +77,8 @@ docker compose -f docker-compose.prod.yml up -d
 
 > 🔧 需要其他部署方式？参见 [安装指南](./docs/INSTALL.md)（NAS / 源码构建 / 二进制 / Docker Hub）。
 
+需要部署到 `https://example.com/reader/` 时，设置 `BASE_PATH=/reader`，并让反向代理保留 `/reader` 前缀。完整 Docker 与 Nginx 示例见 [子路径部署说明](./docs/INSTALL.md#部署到子路径)。
+
 ## 📚 文档导航
 
 | 文档 | 内容 |

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/i18n";
@@ -513,7 +514,7 @@ function NicknameSection({ onSuccess }: { onSuccess: () => Promise<void> }) {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/auth/users", {
+      const res = await fetch(apiPath("/api/auth/users"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -628,7 +629,7 @@ function PasswordSection() {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/auth/users", {
+      const res = await fetch(apiPath("/api/auth/users"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

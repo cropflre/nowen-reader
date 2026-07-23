@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ApiComic, ComicsResponse } from "./useComicTypes";
 
@@ -136,7 +137,7 @@ export function useComics(options?: {
     setError(null);
 
     try {
-      const res = await fetch(url, { signal: abortController.signal, cache: "no-store" });
+      const res = await fetch(apiPath(url), { signal: abortController.signal, cache: "no-store" });
       if (!res.ok) throw new Error("Failed to fetch comics");
       const data: ComicsResponse = await res.json();
       // 检查请求是否被取消

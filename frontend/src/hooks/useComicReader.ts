@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback } from "react";
 import type { ApiComic } from "./useComicTypes";
 
@@ -39,7 +40,7 @@ export function useComicPages(comicId: string) {
       controller.abort();
     }, 120_000); // 120s timeout for large files
 
-    fetch(`/api/comics/${comicId}/pages`, { signal: controller.signal })
+    fetch(apiPath(`/api/comics/${comicId}/pages`), { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => null);
@@ -102,7 +103,7 @@ export function useComicDetail(comicId: string) {
     try {
       setError(null);
       setStatusCode(null);
-      const res = await fetch(`/api/comics/${comicId}`);
+      const res = await fetch(apiPath(`/api/comics/${comicId}`));
       if (res.ok) {
         const data = await res.json();
         setComic({

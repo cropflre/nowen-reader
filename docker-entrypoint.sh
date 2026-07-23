@@ -46,6 +46,7 @@ export COMICS_DIR="${COMICS_DIR:-/app/comics}"
 export NOVELS_DIR="${NOVELS_DIR:-/app/novels}"
 export DATA_DIR="${DATA_DIR:-/app/.cache}"
 export PORT="${PORT:-3000}"
+export BASE_PATH="${BASE_PATH:-/}"
 export GIN_MODE="${GIN_MODE:-release}"
 
 # Ensure directories exist (volumes may be empty on first run)

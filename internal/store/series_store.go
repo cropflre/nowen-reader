@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/nowen-reader/nowen-reader/internal/config"
 )
 
 const SeriesShelfIDPrefix = "series-"
@@ -338,7 +340,7 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		_ = db.QueryRow(`SELECT "comicId" FROM "ComicSeriesItem" WHERE "seriesId" = ? ORDER BY "sortIndex", "comicId" LIMIT 1`, id).Scan(&summary.CoverComicID)
 	}
 	if summary.CoverComicID != "" {
-		summary.CoverURL = "/api/comics/" + summary.CoverComicID + "/thumbnail"
+		summary.CoverURL = config.JoinBasePath("/api/comics/" + summary.CoverComicID + "/thumbnail")
 	}
 	return &summary, nil
 }

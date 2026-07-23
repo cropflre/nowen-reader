@@ -165,7 +165,9 @@ func main() {
 
 	go func() {
 		startupDuration := time.Since(startTime)
-		log.Printf("[Main] Server started on http://localhost%s (startup: %v)", addr, startupDuration)
+		basePath := config.BasePath()
+		entryURL := fmt.Sprintf("http://localhost%s%s", addr, config.JoinBasePath(""))
+		log.Printf("[Main] Server started on %s (Base Path: %s, startup: %v)", entryURL, basePath, startupDuration)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[Main] Server failed: %v", err)
 		}

@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 
@@ -12,7 +13,7 @@ function notifyListeners() {
 
 async function fetchAIStatus() {
   if (fetchPromise) return fetchPromise;
-  fetchPromise = fetch("/api/ai/status")
+  fetchPromise = fetch(apiPath("/api/ai/status"))
     .then((r) => r.json())
     .then((data) => {
       // 支持 Cloud AI 和 Local AI

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -48,7 +49,7 @@ export default function Home() {
   const handleScanLibrary = useCallback(async () => {
     setScanningLibrary(true);
     try {
-      await fetch("/api/sync", { method: "POST" });
+      await fetch(apiPath("/api/sync"), { method: "POST" });
       await new Promise((r) => setTimeout(r, 2000));
       await refetch();
     } catch { /* */ } finally {
@@ -203,7 +204,7 @@ export default function Home() {
 function LibraryOverviewCard({ t }: { t: any }) {
   const [total, setTotal] = useState(0);
   useEffect(() => {
-    fetch("/api/comics?pageSize=1&page=1", { credentials: "include" })
+    fetch(apiPath("/api/comics?pageSize=1&page=1"), { credentials: "include" })
       .then((r) => r.json())
       .then((d) => setTotal(d.total || 0))
       .catch(() => {});
@@ -242,7 +243,7 @@ function RandomPickCard({ privacyEnabled, blurNSFW, t }: { privacyEnabled: boole
   const [key, setKey] = useState(0);
 
   useEffect(() => {
-    fetch("/api/comics?pageSize=50&page=1&sortBy=random", { credentials: "include" })
+    fetch(apiPath("/api/comics?pageSize=50&page=1&sortBy=random"), { credentials: "include" })
       .then((r) => r.json())
       .then((d) => {
         const comics = d.comics || [];

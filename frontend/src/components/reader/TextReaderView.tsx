@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, Boo
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import { useLocale, useTranslation } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { apiPath } from "@/lib/base-path";
 import { idbSave, idbLoad } from "@/lib/idb-backup";
 import { calculateReadingProgress } from "@/lib/progress";
 import { themeColorMap, themePreviewColorKeys, paddingOptions, pageModeOptions } from "./text-reader-themes";
@@ -230,7 +231,7 @@ export default function TextReaderView({
     setLoading(true);
     chapterLoadedRef.current = false;
 
-    fetch(url)
+    fetch(apiPath(url))
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load chapter");
         return res.json();
@@ -424,7 +425,7 @@ export default function TextReaderView({
       setSearchProgress(Math.round(((i + 1) / chapters.length) * 100));
 
       try {
-        const res = await fetch(`/api/comics/${comicId}/chapter/${i}`, {
+        const res = await fetch(apiPath(`/api/comics/${comicId}/chapter/${i}`), {
           signal: abortController.signal,
         });
         if (!res.ok) continue;
@@ -584,7 +585,7 @@ export default function TextReaderView({
     setAiTtsError(null);
 
     try {
-      const res = await fetch(`/api/comics/${comicId}/chapter/${currentPage}/audiobook/prepare`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/chapter/${currentPage}/audiobook/prepare`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1424,7 +1425,7 @@ export default function TextReaderView({
                         setRecapLoading(true);
                         setShowRecap(true);
                         try {
-                          const res = await fetch(`/api/comics/${comicId}/ai-chapter-recap`, {
+                          const res = await fetch(apiPath(`/api/comics/${comicId}/ai-chapter-recap`), {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ chapterIndex: currentPage, targetLang: locale }),
@@ -1970,7 +1971,7 @@ export default function TextReaderView({
                         onClick={(e) => {
                           e.stopPropagation();
                           setSummaryLoadingIdx(i);
-                          fetch(`/api/comics/${comicId}/ai-chapter-summary`, {
+                          fetch(apiPath(`/api/comics/${comicId}/ai-chapter-summary`), {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ chapterIndex: i, targetLang: locale }),

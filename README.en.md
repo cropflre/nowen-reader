@@ -75,6 +75,8 @@ On first visit you'll be prompted to register an admin account. Place manga in `
 
 > 🔧 Need a different deployment method? See the [Installation Guide](./docs/INSTALL.en.md) (NAS / source build / binary / Docker Hub).
 
+To deploy at `https://example.com/reader/`, set `BASE_PATH=/reader` and configure the reverse proxy to preserve the `/reader` prefix. See the [subpath deployment guide](./docs/INSTALL.en.md#deploy-under-a-subpath) for complete Docker and Nginx examples.
+
 ## 📚 Documentation
 
 | Document | Content |

@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 书库管理 API
  * 对应后端 /api/admin/libraries/*
@@ -104,7 +105,7 @@ async function safeJson<T>(res: Response): Promise<T> {
 
 // 获取所有书库
 export async function fetchLibraries(): Promise<Library[]> {
-  const res = await fetch("/api/admin/libraries");
+  const res = await fetch(apiPath("/api/admin/libraries"));
   const data = await safeJson<{ libraries: Library[] }>(res);
   return data.libraries || [];
 }
@@ -120,7 +121,7 @@ export async function createLibrary(library: {
   defaultAccess?: "public" | "private";
   scanEnabled?: boolean;
 }): Promise<Library> {
-  const res = await fetch("/api/admin/libraries", {
+  const res = await fetch(apiPath("/api/admin/libraries"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(library),
@@ -143,7 +144,7 @@ export async function updateLibrary(
     scanEnabled: boolean;
   }>
 ): Promise<Library> {
-  const res = await fetch(`/api/admin/libraries/${id}`, {
+  const res = await fetch(apiPath(`/api/admin/libraries/${id}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
@@ -154,7 +155,7 @@ export async function updateLibrary(
 
 // 删除书库：删除书库记录、内容索引和派生缓存，不删除本地原始文件。
 export async function deleteLibrary(id: string): Promise<LibraryDeleteResult> {
-  const res = await fetch(`/api/admin/libraries/${id}`, {
+  const res = await fetch(apiPath(`/api/admin/libraries/${id}`), {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -176,7 +177,7 @@ export async function fetchUserLibraryAccess(userId: string): Promise<{
   userId: string;
   libraries: Array<Library & LibraryAccess>;
 }> {
-  const res = await fetch(`/api/admin/users/${userId}/library-access`);
+  const res = await fetch(apiPath(`/api/admin/users/${userId}/library-access`));
   return safeJson(res);
 }
 
@@ -184,7 +185,7 @@ export async function fetchUserLibraryAccess(userId: string): Promise<{
 export async function scanLibrary(
   id: string
 ): Promise<{ added: number; library: Library }> {
-  const res = await fetch(`/api/admin/libraries/${id}/scan`, {
+  const res = await fetch(apiPath(`/api/admin/libraries/${id}/scan`), {
     method: "POST",
   });
   return safeJson(res);
@@ -194,19 +195,19 @@ export async function scanLibrary(
 export async function scanManagedLibrary(
   id: string
 ): Promise<{ added: number; library: Library }> {
-  const res = await fetch(`/api/libraries/${id}/scan`, {
+  const res = await fetch(apiPath(`/api/libraries/${id}/scan`), {
     method: "POST",
   });
   return safeJson(res);
 }
 
 export async function previewLibraryOwnership(): Promise<LibraryOwnershipPreview> {
-  const res = await fetch("/api/admin/libraries/ownership-preview");
+  const res = await fetch(apiPath("/api/admin/libraries/ownership-preview"));
   return safeJson(res);
 }
 
 export async function reconcileLibraryOwnership(rootOwners: Record<string, string> = {}): Promise<LibraryOwnershipReconcileResult> {
-  const res = await fetch("/api/admin/libraries/ownership-reconcile", {
+  const res = await fetch(apiPath("/api/admin/libraries/ownership-reconcile"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ confirm: true, rootOwners }),
@@ -220,7 +221,7 @@ export async function setUserLibraryAccess(
   userId: string,
   libraryAccess: LibraryAccess[]
 ): Promise<void> {
-  const res = await fetch(`/api/admin/users/${userId}/library-access`, {
+  const res = await fetch(apiPath(`/api/admin/users/${userId}/library-access`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ libraryAccess }),
@@ -234,12 +235,12 @@ export async function setUserLibraryAccess(
 // 获取当前用户可访问的书库（非 admin 接口）。漫画书库的标签数量按“作品卡片
 // + 独立内容”计算，而不是把同一作品下的每个 PDF 都当成一本。
 export async function fetchAccessibleLibraries(): Promise<Library[]> {
-  const res = await fetch("/api/libraries/accessible");
+  const res = await fetch(apiPath("/api/libraries/accessible"));
   const data = await safeJson<{ libraries: Library[] }>(res);
   const libraries = data.libraries || [];
 
   try {
-    const seriesRes = await fetch("/api/series");
+    const seriesRes = await fetch(apiPath("/api/series"));
     if (!seriesRes.ok) return libraries;
     const seriesData = await seriesRes.json() as {
       series?: Array<{ libraryId: string; itemCount: number }>;

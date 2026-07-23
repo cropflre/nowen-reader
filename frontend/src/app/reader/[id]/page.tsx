@@ -34,6 +34,7 @@ import BookmarkPanel from "@/components/reader/BookmarkPanel";
 import RealisticBookView from "@/components/reader/RealisticBookView";
 import { fetchGroupedComicMap, fetchGroupDetail } from "@/api/groups";
 import { useReadingActivity } from "@/hooks/useReadingActivity";
+import { apiPath } from "@/lib/base-path";
 
 // 跨卷导航信息
 interface SeriesVolumeInfo {
@@ -79,7 +80,7 @@ export default function ReaderPage() {
   // Determine data source
   const [pdfTotalPages, setPdfTotalPages] = useState<number | null>(null);
   const pages = pdfTotalPages && usePdfView
-    ? Array.from({ length: pdfTotalPages }, (_, i) => `/api/comics/${comicId}/page/${i}`)
+    ? Array.from({ length: pdfTotalPages }, (_, i) => apiPath(`/api/comics/${comicId}/page/${i}`))
     : apiPages;
   const title = apiTitle || t.reader.unknownComic;
   const isLoading = apiLoading;
@@ -973,7 +974,7 @@ export default function ReaderPage() {
                     <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-lg bg-white/5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={`/api/comics/${vol.comicId}/thumbnail`}
+                        src={apiPath(`/api/comics/${vol.comicId}/thumbnail`)}
                         alt={vol.title}
                         className="h-full w-full object-cover"
                         loading="lazy"

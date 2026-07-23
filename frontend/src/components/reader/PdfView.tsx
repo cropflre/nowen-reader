@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { apiPath } from "@/lib/base-path";
 import type { ReaderTheme } from "./ReaderToolbar";
 
 // PDF.js 类型
@@ -164,7 +165,7 @@ export default function PdfView({
           try {
             const cdnUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
             // 先测试 CDN 是否可达（微信浏览器中可能被拦截）
-            const resp = await fetch(cdnUrl, { method: "HEAD", mode: "no-cors" }).catch(() => null);
+            const resp = await fetch(apiPath(cdnUrl), { method: "HEAD", mode: "no-cors" }).catch(() => null);
             if (resp) {
               pdfjsLib.GlobalWorkerOptions.workerSrc = cdnUrl;
               workerReady = true;
@@ -182,7 +183,7 @@ export default function PdfView({
 
         const restricted = isWeChatBrowser() || isRestrictedBrowser();
         const loadingTask = pdfjsLib.getDocument({
-          url: `/api/comics/${comicId}/pdf`,
+          url: apiPath(`/api/comics/${comicId}/pdf`),
           // 部分 WebView 不支持 Range 请求，允许禁用
           disableRange: restricted,
           disableStream: restricted,

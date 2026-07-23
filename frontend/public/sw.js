@@ -1,14 +1,24 @@
-// NowenReader Service Worker
-// 注意：升级缓存版本号会让旧版本的缓存（含可能损坏的页面响应）被自动清理。
-const CACHE_NAME = "nowen-reader-v4";
-const STATIC_CACHE = "nowen-static-v4";
-const IMAGE_CACHE = "nowen-images-v6";
-const API_CACHE = "nowen-api-v3";
+// Dynamically scope cache names to Service Worker registration path
+const SW_SCOPE_PATH = self.registration
+  ? new URL(self.registration.scope).pathname.replace(/\/$/, "")
+  : "";
+const SCOPE_KEY = SW_SCOPE_PATH ? SW_SCOPE_PATH.replace(/[^a-zA-Z0-9_-]/g, "_") : "root";
 
-// Static assets to pre-cache
+const CACHE_NAME = `nowen-reader-${SCOPE_KEY}-v4`;
+const STATIC_CACHE = `nowen-static-${SCOPE_KEY}-v4`;
+const IMAGE_CACHE = `nowen-images-${SCOPE_KEY}-v6`;
+const API_CACHE = `nowen-api-${SCOPE_KEY}-v3`;
+const CURRENT_CACHES = [CACHE_NAME, STATIC_CACHE, IMAGE_CACHE, API_CACHE];
+const CACHE_PREFIXES = ["nowen-reader", "nowen-static", "nowen-images", "nowen-api"];
+
+function isCurrentScopeCache(name) {
+  return CACHE_PREFIXES.some((prefix) => name.startsWith(`${prefix}-${SCOPE_KEY}-`));
+}
+
+// Static assets to pre-cache (scoped relative to SW registration)
 const PRECACHE_URLS = [
-  "/",
-  "/manifest.json",
+  "./",
+  "./manifest.json",
 ];
 
 // Install: pre-cache static assets
@@ -23,12 +33,11 @@ self.addEventListener("install", (event) => {
 
 // Activate: clean old caches
 self.addEventListener("activate", (event) => {
-  const currentCaches = [CACHE_NAME, STATIC_CACHE, IMAGE_CACHE, API_CACHE];
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => !currentCaches.includes(name))
+          .filter((name) => isCurrentScopeCache(name) && !CURRENT_CACHES.includes(name))
           .map((name) => caches.delete(name))
       );
     })
@@ -55,7 +64,8 @@ self.addEventListener("fetch", (event) => {
   }
 
   // API requests: Network first, fallback to cache
-  if (url.pathname.startsWith("/api/")) {
+  const isApiCall = url.pathname.endsWith("/api") || url.pathname.includes("/api/");
+  if (isApiCall) {
     // Cache comic thumbnails and pages aggressively
     if (url.pathname.includes("/thumbnail") || url.pathname.includes("/page/")) {
       event.respondWith(cacheFirstStrategy(request, IMAGE_CACHE, 30 * 24 * 60 * 60));
@@ -69,7 +79,7 @@ self.addEventListener("fetch", (event) => {
     }
 
     // Cache comic list API briefly
-    if (url.pathname === "/api/comics" && !url.search) {
+    if (url.pathname.endsWith("/api/comics") && !url.search) {
       event.respondWith(networkFirstStrategy(request, API_CACHE, 60));
       return;
     }
@@ -227,14 +237,13 @@ self.addEventListener("message", (event) => {
   }
   if (event.data?.type === "CLEAR_CACHE") {
     event.waitUntil(
-      caches.keys().then((names) => Promise.all(names.map((name) => caches.delete(name))))
+      Promise.all(CURRENT_CACHES.map((name) => caches.delete(name)))
     );
   }
   if (event.data?.type === "INVALIDATE_CACHE" && event.data.urlPattern) {
     const pattern = String(event.data.urlPattern);
     event.waitUntil(
-      caches.keys().then(async (names) => {
-        await Promise.all(names.map(async (name) => {
+      Promise.all(CURRENT_CACHES.map(async (name) => {
           const cache = await caches.open(name);
           const requests = await cache.keys();
           await Promise.all(
@@ -242,8 +251,7 @@ self.addEventListener("message", (event) => {
               .filter((request) => request.url.includes(pattern))
               .map((request) => cache.delete(request))
           );
-        }));
-      })
+        }))
     );
   }
 });

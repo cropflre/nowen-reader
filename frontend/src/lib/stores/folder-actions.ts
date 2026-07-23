@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 刮削状态管理 — 文件夹模式 Actions
  *
@@ -37,7 +38,7 @@ export async function loadFolderTree() {
   getState().folderTreeLoading = true;
   notify();
   try {
-    const res = await fetch("/api/metadata/folder-tree");
+    const res = await fetch(apiPath("/api/metadata/folder-tree"));
     if (res.ok) {
       getState().folderTree = await res.json();
     }
@@ -67,7 +68,7 @@ export async function startFolderScrape(folderPath: string, scope: "missing" | "
   const lang = navigator.language.startsWith("zh") ? "zh" : "en";
 
   try {
-    const res = await fetch("/api/metadata/batch-folder", {
+    const res = await fetch(apiPath("/api/metadata/batch-folder"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

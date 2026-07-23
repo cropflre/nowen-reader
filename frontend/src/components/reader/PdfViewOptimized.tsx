@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiPath } from "@/lib/base-path";
 import type { ReaderTheme } from "./ReaderToolbar";
 import { PDF_PAGE_PREVIEW_EVENT } from "./ReaderToolbarOptimized";
 
@@ -91,7 +92,7 @@ function ensureTypedArrayPolyfills() {
 
 async function detectPdfSize(url: string, signal: AbortSignal): Promise<number> {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(apiPath(url), {
       method: "HEAD",
       cache: "no-store",
       credentials: "same-origin",
@@ -149,7 +150,7 @@ export default function PdfViewOptimized({
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
-    const pdfUrl = `/api/comics/${comicId}/pdf-range`;
+    const pdfUrl = apiPath(`/api/comics/${comicId}/pdf-range`);
 
     async function loadPdf() {
       setLoading(true);

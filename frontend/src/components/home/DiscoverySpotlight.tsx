@@ -6,6 +6,7 @@ import Link from "next/link";
 import { BookOpen, Play, Eye, Shuffle, ChevronRight, Library, Bookmark } from "lucide-react";
 import type { ApiComic } from "@/hooks/useComics";
 import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/progress";
+import { apiPath } from "@/lib/base-path";
 
 // ============================================================
 // Types
@@ -167,7 +168,7 @@ export default function DiscoverySpotlight({ comics, contentType, totalItems, lo
                 <div className="relative mx-auto sm:mx-0 w-40 sm:w-52 lg:w-60 flex-shrink-0 overflow-hidden rounded-xl shadow-lg transition-transform duration-300 group-hover:scale-[1.03]">
                   <div className="aspect-[5/7] relative bg-gradient-to-br from-muted/30 to-card dark:from-muted/20">
                     <Image
-                      src={spotlight.coverUrl || '/api/placeholder/288/403'}
+                      src={spotlight.coverUrl || apiPath("/api/placeholder/288/403")}
                       alt={spotlight.title}
                       fill
                       className="object-contain p-0.5 drop-shadow-lg"

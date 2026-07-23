@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -36,6 +37,7 @@ import { formatAppVersion } from "@/lib/version";
 import { useReaderOptions } from "@/hooks/useReaderOptions";
 import { defaultReaderOptions } from "@/types/reader";
 import dynamic from "next/dynamic";
+import { appPath } from "@/lib/base-path";
 
 /* ── 懒加载面板 ── */
 const LoadingSkeleton = () => (
@@ -889,7 +891,7 @@ function AboutPanel() {
   const [versionInfo, setVersionInfo] = useState<{ version: string; uptime: string; runtime?: { go: string; os: string; arch: string; cpus: number; goroutines: number; memoryMB: number } } | null>(null);
 
   useEffect(() => {
-    fetch("/api/health")
+    fetch(apiPath("/api/health"))
       .then((res) => res.json())
       .then((data) => setVersionInfo(data))
       .catch(() => {});
@@ -979,7 +981,7 @@ function AboutPanel() {
           <ExternalLink className="h-3 w-3 opacity-50" />
         </a>
         <a
-          href="/api-doc.html"
+          href={appPath("/api-doc.html")}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
@@ -997,5 +999,4 @@ function AboutPanel() {
     </div>
   );
 }
-
 

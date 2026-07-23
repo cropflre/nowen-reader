@@ -1,7 +1,4 @@
-/**
- * 统一的 API 请求客户端
- * 封装 fetch，统一处理错误、token注入、请求拦截
- */
+import { apiPath } from "./base-path";
 
 type RequestMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
@@ -29,6 +26,7 @@ async function request<T = unknown>(
   url: string,
   options: ApiClientOptions = {}
 ): Promise<T> {
+  const targetUrl = apiPath(url);
   const { method = "GET", body, headers = {}, signal, timeout = 30000 } = options;
 
   // 构建请求头
@@ -51,7 +49,7 @@ async function request<T = unknown>(
     : controller.signal;
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(targetUrl, {
       method,
       credentials: "include",
       headers: reqHeaders,

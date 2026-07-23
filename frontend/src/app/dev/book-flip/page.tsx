@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import BookFlipPrototype from "@/components/reader/BookFlipPrototype";
+import { apiPath } from "@/lib/base-path";
 
 function createDemoPages(count: number) {
-  return Array.from({ length: count }, (_, i) => `/api/__dev/book-flip/page/${i + 1}`);
+  return Array.from({ length: count }, (_, i) => apiPath(`/api/__dev/book-flip/page/${i + 1}`));
 }
 
 export default function BookFlipDevPage() {
@@ -46,4 +47,3 @@ export default function BookFlipDevPage() {
     </div>
   );
 }
-

@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 刮削状态管理 — 合集管理 Actions
  *
@@ -70,7 +71,7 @@ export async function loadCollectionGroups() {
   try {
     const params = new URLSearchParams();
     if (state.libraryContentType) params.set("contentType", state.libraryContentType);
-    const res = await fetch(`/api/groups?${params}`);
+    const res = await fetch(apiPath(`/api/groups?${params}`));
     if (res.ok) {
       const data = await res.json();
       getState().collectionGroups = data.groups || [];
@@ -87,7 +88,7 @@ export async function loadCollectionDetail(groupId: number) {
   getState().collectionDetailLoading = true;
   notify();
   try {
-    const res = await fetch(`/api/groups/${groupId}`);
+    const res = await fetch(apiPath(`/api/groups/${groupId}`));
     if (res.ok) {
       const data = await res.json();
       getState().collectionDetail = data;
@@ -107,7 +108,7 @@ export function clearCollectionDetail() {
 
 export async function createCollection(name: string, comicIds?: string[]) {
   try {
-    const res = await fetch("/api/groups", {
+    const res = await fetch(apiPath("/api/groups"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, comicIds: comicIds || [] }),
@@ -126,7 +127,7 @@ export async function createCollection(name: string, comicIds?: string[]) {
 
 export async function updateCollection(groupId: number, name: string, coverUrl?: string) {
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiPath(`/api/groups/${groupId}`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, coverUrl: coverUrl || "" }),
@@ -150,7 +151,7 @@ export async function updateCollection(groupId: number, name: string, coverUrl?:
 
 export async function deleteCollection(groupId: number) {
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiPath(`/api/groups/${groupId}`), {
       method: "DELETE",
     });
     if (res.ok) {
@@ -170,7 +171,7 @@ export async function deleteCollection(groupId: number) {
 
 export async function addComicsToCollection(groupId: number, comicIds: string[]) {
   try {
-    const res = await fetch(`/api/groups/${groupId}/comics`, {
+    const res = await fetch(apiPath(`/api/groups/${groupId}/comics`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comicIds }),
@@ -193,7 +194,7 @@ export async function addComicsToCollection(groupId: number, comicIds: string[])
 
 export async function removeComicFromCollection(groupId: number, comicId: string) {
   try {
-    const res = await fetch(`/api/groups/${groupId}/comics/${comicId}`, {
+    const res = await fetch(apiPath(`/api/groups/${groupId}/comics/${comicId}`), {
       method: "DELETE",
     });
     if (res.ok) {
@@ -212,7 +213,7 @@ export async function removeComicFromCollection(groupId: number, comicId: string
 
 export async function reorderCollectionComics(groupId: number, comicIds: string[]) {
   try {
-    const res = await fetch(`/api/groups/${groupId}/reorder`, {
+    const res = await fetch(apiPath(`/api/groups/${groupId}/reorder`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comicIds }),
@@ -235,7 +236,7 @@ export async function autoDetectCollections() {
   state.collectionAutoLoading = true;
   notify();
   try {
-    const res = await fetch("/api/groups/auto-detect", {
+    const res = await fetch(apiPath("/api/groups/auto-detect"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contentType: state.libraryContentType }),
@@ -254,7 +255,7 @@ export async function autoDetectCollections() {
 
 export async function batchCreateCollections(groups: AutoDetectSuggestion[]) {
   try {
-    const res = await fetch("/api/groups/batch-create", {
+    const res = await fetch(apiPath("/api/groups/batch-create"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groups }),
@@ -273,7 +274,7 @@ export async function batchCreateCollections(groups: AutoDetectSuggestion[]) {
 
 export async function batchDeleteCollections(groupIds: number[]) {
   try {
-    const res = await fetch("/api/groups/batch-delete", {
+    const res = await fetch(apiPath("/api/groups/batch-delete"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupIds }),
@@ -295,7 +296,7 @@ export async function batchDeleteCollections(groupIds: number[]) {
 
 export async function mergeCollections(groupIds: number[], newName: string) {
   try {
-    const res = await fetch("/api/groups/merge", {
+    const res = await fetch(apiPath("/api/groups/merge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupIds, newName }),

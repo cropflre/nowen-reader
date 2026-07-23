@@ -766,7 +766,7 @@ func (r *epubReader) rewriteImageURLs(html string) string {
 			return match
 		}
 		// Convert to API URL: /api/comics/{comicID}/epub-resource/{resourcePath}
-		return parts[1] + "/api/comics/" + r.comicID + "/epub-resource/" + src + parts[3]
+		return parts[1] + config.JoinBasePath("/api/comics/"+r.comicID+"/epub-resource/"+src) + parts[3]
 	})
 }
 

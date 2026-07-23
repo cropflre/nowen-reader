@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from "@/lib/apiClient";
+import { apiPath } from "@/lib/base-path";
 import { useToast } from "@/components/Toast";
 
 /**
@@ -282,7 +283,7 @@ export function endSessionBeacon(sessionId: number, endPage: number, duration: n
     const data = JSON.stringify({ sessionId, endPage, duration });
     // sendBeacon 只支持 POST，后端需要兼容
     const blob = new Blob([data], { type: "application/json" });
-    navigator.sendBeacon("/api/stats/session/end", blob);
+    navigator.sendBeacon(apiPath("/api/stats/session/end"), blob);
   } catch {
     // 如果 sendBeacon 不可用，回退到普通请求
     endSession(sessionId, endPage, duration);

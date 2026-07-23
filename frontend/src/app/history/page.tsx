@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -115,7 +116,7 @@ export default function HistoryPage() {
   const fetchHistory = useCallback(async () => {
     try {
       const res = await fetch(
-        "/api/comics?sortBy=lastReadAt&sortOrder=desc&pageSize=200&page=1",
+        apiPath("/api/comics?sortBy=lastReadAt&sortOrder=desc&pageSize=200&page=1"),
         { credentials: "include" }
       );
       if (!res.ok) return;

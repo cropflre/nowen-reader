@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -619,4 +621,94 @@ func IsImageFile(filename string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizeBasePath normalizes a raw base path input.
+// Rules:
+// - Empty string or "/" returns "/"
+// - Non-root path MUST start with "/" and MUST NOT end with "/"
+// - Cleans redundant multiple slashes (e.g. "//reader//" -> "/reader")
+// - Rejects invalid inputs (http://, https://, ?, #, .., \, control characters)
+func NormalizeBasePath(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "/" {
+		return "/", nil
+	}
+
+	// Validation checks
+	if strings.Contains(raw, "http://") || strings.Contains(raw, "https://") {
+		return "", fmt.Errorf("BASE_PATH cannot contain protocol (http:// or https://): %q", raw)
+	}
+	if strings.ContainsAny(raw, "?#\\") {
+		return "", fmt.Errorf("BASE_PATH contains invalid characters (?, #, or \\): %q", raw)
+	}
+	if strings.Contains(raw, "..") {
+		return "", fmt.Errorf("BASE_PATH cannot contain path traversal '..': %q", raw)
+	}
+	for _, r := range raw {
+		if r < 32 || r == 127 {
+			return "", fmt.Errorf("BASE_PATH contains control characters: %q", raw)
+		}
+	}
+
+	// Split by slashes and filter empty parts
+	parts := strings.Split(raw, "/")
+	var cleanParts []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			cleanParts = append(cleanParts, p)
+		}
+	}
+
+	if len(cleanParts) == 0 {
+		return "/", nil
+	}
+
+	return "/" + strings.Join(cleanParts, "/"), nil
+}
+
+// BasePath returns the normalized base path from the BASE_PATH environment variable.
+// Returns "/" by default. If the environment variable contains an invalid path, it panics.
+func BasePath() string {
+	raw := os.Getenv("BASE_PATH")
+	bp, err := NormalizeBasePath(raw)
+	if err != nil {
+		panic(fmt.Sprintf("invalid BASE_PATH environment variable: %v", err))
+	}
+	return bp
+}
+
+// TrustProxyHeaders reports whether reverse-proxy forwarding headers should be
+// used to build externally visible absolute URLs. It is disabled by default so
+// direct clients cannot spoof OPDS links with X-Forwarded-* headers.
+func TrustProxyHeaders() bool {
+	value := strings.TrimSpace(os.Getenv("TRUST_PROXY_HEADERS"))
+	trusted, err := strconv.ParseBool(value)
+	return err == nil && trusted
+}
+
+// JoinBasePath joins the BasePath with a relative or absolute subpath.
+// If BasePath is "/", JoinBasePath("/api/health") -> "/api/health".
+// If BasePath is "/reader", JoinBasePath("/api/health") -> "/reader/api/health".
+func JoinBasePath(subPath string) string {
+	bp := BasePath()
+	if bp == "/" {
+		if subPath == "" {
+			return "/"
+		}
+		if !strings.HasPrefix(subPath, "/") {
+			return "/" + subPath
+		}
+		return subPath
+	}
+
+	if subPath == "" || subPath == "/" {
+		return bp
+	}
+
+	if !strings.HasPrefix(subPath, "/") {
+		subPath = "/" + subPath
+	}
+	return bp + subPath
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { apiPath } from "@/lib/base-path";
 import { MessageCircle, Send, X, Loader2, Trash2, Brain } from "lucide-react";
 
 interface ChatMessage {
@@ -169,7 +170,7 @@ export default function AIChatPanel({
       // 漫画图片上下文 — 将图片 URL 转为 base64
       if (contextImageUrl && !contextText) {
         try {
-          const imgRes = await fetch(contextImageUrl);
+          const imgRes = await fetch(apiPath(contextImageUrl));
           if (imgRes.ok) {
             const blob = await imgRes.blob();
             const base64 = await new Promise<string>((resolve) => {
@@ -193,7 +194,7 @@ export default function AIChatPanel({
       }
 
       // SSE 流式请求
-      const res = await fetch("/api/ai/chat", {
+      const res = await fetch(apiPath("/api/ai/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

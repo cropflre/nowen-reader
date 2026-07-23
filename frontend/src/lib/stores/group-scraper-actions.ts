@@ -1,3 +1,4 @@
+import { apiPath } from "@/lib/base-path";
 /**
  * 刮削状态管理 — 系列模式 Actions
  *
@@ -20,7 +21,7 @@ export async function loadScraperGroups() {
       params.set("contentType", state.scraperGroupContentType);
     }
     const url = params.toString() ? `/api/groups?${params}` : "/api/groups";
-    const res = await fetch(url);
+    const res = await fetch(apiPath(url));
     if (!res.ok) throw new Error("Failed to load groups");
     const data = await res.json();
     const groups = data.groups || data || [];
@@ -152,7 +153,7 @@ export async function startGroupBatchScrape(groupIds: number[]) {
     notify();
 
     try {
-      const res = await fetch(`/api/groups/${gid}/ai-recognize`, {
+      const res = await fetch(apiPath(`/api/groups/${gid}/ai-recognize`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: "zh", autoApply: true }),
@@ -280,7 +281,7 @@ export async function previewGroupBatchScrape(groupIds: number[]) {
   notify();
 
   try {
-    const res = await fetch("/api/groups/batch-scrape", {
+    const res = await fetch(apiPath("/api/groups/batch-scrape"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -317,7 +318,7 @@ export async function applyGroupBatchScrape(groupIds: number[]) {
   notify();
 
   try {
-    const res = await fetch("/api/groups/batch-scrape", {
+    const res = await fetch(apiPath("/api/groups/batch-scrape"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -370,7 +371,7 @@ export async function detectDirtyData() {
   state.cleanupResult = null;
   notify();
   try {
-    const res = await fetch("/api/groups/detect-dirty", { method: "POST" });
+    const res = await fetch(apiPath("/api/groups/detect-dirty"), { method: "POST" });
     if (!res.ok) throw new Error("检测失败");
     const data = await res.json();
     const s = getState();
@@ -391,7 +392,7 @@ export async function runCleanup(actions?: string[]) {
   getState().cleanupResult = null;
   notify();
   try {
-    const res = await fetch("/api/groups/cleanup", {
+    const res = await fetch(apiPath("/api/groups/cleanup"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actions: actions || ["full"] }),
@@ -411,7 +412,7 @@ export async function runCleanup(actions?: string[]) {
 
 export async function fixGroupName(groupId: number, newName: string) {
   try {
-    const res = await fetch("/api/groups/fix-name", {
+    const res = await fetch(apiPath("/api/groups/fix-name"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupId, newName }),

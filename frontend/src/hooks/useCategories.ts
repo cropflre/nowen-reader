@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback } from "react";
 import type { ApiCategory } from "./useComicTypes";
 
@@ -12,7 +13,7 @@ export function useCategories() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch("/api/categories");
+      const res = await fetch(apiPath("/api/categories"));
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories || []);
@@ -27,7 +28,7 @@ export function useCategories() {
     try {
       const params = new URLSearchParams({ scope: "groups" });
       if (contentType) params.set("contentType", contentType);
-      const res = await fetch(`/api/categories?${params}`);
+      const res = await fetch(apiPath(`/api/categories?${params}`));
       if (res.ok) {
         const data = await res.json();
         setGroupCategories(data.categories || []);
@@ -40,7 +41,7 @@ export function useCategories() {
   // 初始化分类
   const initCategories = useCallback(async (lang: string = "zh") => {
     try {
-      const res = await fetch("/api/categories", {
+      const res = await fetch(apiPath("/api/categories"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lang }),

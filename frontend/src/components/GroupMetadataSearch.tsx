@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import { useTranslation, useLocale } from "@/lib/i18n";
+import { apiPath } from "@/lib/base-path";
 import {
   Search,
   Download,
@@ -148,7 +149,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     setApplied(null);
     setAiResult(null);
     try {
-      const res = await fetch(`/api/groups/${groupId}/scrape-metadata`, {
+      const res = await fetch(apiPath(`/api/groups/${groupId}/scrape-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,7 +176,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
   const handleApply = useCallback(async (index: number) => {
     setApplying(index);
     try {
-      const res = await fetch(`/api/groups/${groupId}/apply-metadata`, {
+      const res = await fetch(apiPath(`/api/groups/${groupId}/apply-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -205,7 +206,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     setAiResult(null);
     setError("");
     try {
-      const res = await fetch(`/api/groups/${groupId}/ai-recognize`, {
+      const res = await fetch(apiPath(`/api/groups/${groupId}/ai-recognize`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lang: locale }),
@@ -241,7 +242,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
         source: "ai_recognize",
       };
 
-      const res = await fetch(`/api/groups/${groupId}/apply-metadata`, {
+      const res = await fetch(apiPath(`/api/groups/${groupId}/apply-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

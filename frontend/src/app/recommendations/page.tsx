@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -52,7 +53,7 @@ export default function RecommendationsPage() {
     try {
       const params = new URLSearchParams({ limit: "30", excludeRead: "false" });
       if (contentType) params.set("contentType", contentType);
-      const res = await fetch(`/api/recommendations?${params.toString()}`);
+      const res = await fetch(apiPath(`/api/recommendations?${params.toString()}`));
       if (res.ok) {
         const data = await res.json();
         setRecommendations((data.recommendations || []).map((c: RecommendedComic) => ({ ...c, aiReason: undefined })));
@@ -112,7 +113,7 @@ export default function RecommendationsPage() {
         genre: c.genre,
         author: c.author,
       }));
-      const res = await fetch("/api/recommendations/ai-reasons", {
+      const res = await fetch(apiPath("/api/recommendations/ai-reasons"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, items }),

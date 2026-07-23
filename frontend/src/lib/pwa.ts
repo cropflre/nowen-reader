@@ -4,6 +4,8 @@
  * PWA utilities: service worker registration, install prompt, update handling
  */
 
+import { getBasePath } from "./base-path";
+
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 
 interface BeforeInstallPromptEvent extends Event {
@@ -17,8 +19,12 @@ export function registerServiceWorker() {
 
   window.addEventListener("load", async () => {
     try {
-      const registration = await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
+      const base = getBasePath();
+      const swUrl = base ? `${base}/sw.js` : "/sw.js";
+      const scopeUrl = base ? `${base}/` : "/";
+
+      const registration = await navigator.serviceWorker.register(swUrl, {
+        scope: scopeUrl,
       });
 
       // Check for updates every 30 minutes

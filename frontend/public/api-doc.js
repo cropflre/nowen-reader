@@ -19,6 +19,28 @@ function storeLang(lang) {
 
 let currentLang = readStoredLang();
 
+function detectBasePath() {
+  const pathname = window.location.pathname;
+  const suffix = '/api-doc.html';
+  if (!pathname.endsWith(suffix)) {
+    return '';
+  }
+  const basePath = pathname.slice(0, -suffix.length).replace(/\/+$/, '');
+  return basePath === '/' ? '' : basePath;
+}
+
+function updateDeploymentExamples() {
+  const basePath = detectBasePath();
+  const basePathElement = document.getElementById('current-base-path');
+  const healthElement = document.getElementById('current-health-url');
+  if (basePathElement) {
+    basePathElement.textContent = basePath || '/';
+  }
+  if (healthElement) {
+    healthElement.textContent = window.location.origin + basePath + '/api/health';
+  }
+}
+
 function setLang(lang) {
   if (lang !== 'en' && lang !== 'zh') {
     return;
@@ -53,6 +75,7 @@ function initApiDoc() {
   });
 
   setLang(currentLang);
+  updateDeploymentExamples();
 }
 
 // Initialize language on load

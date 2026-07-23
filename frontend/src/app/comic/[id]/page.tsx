@@ -76,6 +76,7 @@ import {
   emitScrapeApplied,
 } from "@/lib/sync-event";
 import { formatFileSize, isNovelFile, getReaderUrl, getDetailUrl, isNovelComic } from "@/lib/comic-utils";
+import { apiPath } from "@/lib/base-path";
 
 export default function ComicDetailPage() {
   const params = useParams();
@@ -365,7 +366,7 @@ export default function ComicDetailPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`/api/comics/${comicId}/cover`, { method: "POST", body: formData });
+      const res = await fetch(apiPath(`/api/comics/${comicId}/cover`), { method: "POST", body: formData });
       if (res.ok) {
         invalidateSwCache(`/api/comics/${comicId}/thumbnail`);
         invalidateComicsCache();
@@ -384,7 +385,7 @@ export default function ComicDetailPage() {
     if (!coverUrlInput.trim()) return;
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${comicId}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: coverUrlInput.trim() }),
@@ -407,7 +408,7 @@ export default function ComicDetailPage() {
   const handleCoverReset = useCallback(async () => {
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${comicId}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reset: true }),
@@ -433,7 +434,7 @@ export default function ComicDetailPage() {
     try {
       if (novel) {
         // 小说类型：拉取内嵌图片列表
-        const res = await fetch(`/api/comics/${comicId}/embedded-images`);
+        const res = await fetch(apiPath(`/api/comics/${comicId}/embedded-images`));
         if (!res.ok) return;
         const data = await res.json();
         const imgs: { index: number; path: string }[] = data.images || [];
@@ -447,7 +448,7 @@ export default function ComicDetailPage() {
         setShowCoverPicker(true);
       } else {
         // 漫画/PDF：走页面列表
-        const res = await fetch(`/api/comics/${comicId}/pages`);
+        const res = await fetch(apiPath(`/api/comics/${comicId}/pages`));
         if (!res.ok) return;
         const data = await res.json();
         setCoverPickerPages(data.totalPages || 0);
@@ -462,7 +463,7 @@ export default function ComicDetailPage() {
   const handleSelectCoverPage = useCallback(async (pageIndex: number) => {
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${comicId}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageIndex }),
@@ -483,7 +484,7 @@ export default function ComicDetailPage() {
   const handleSelectEmbeddedImage = useCallback(async (embeddedImageIndex: number) => {
     setCoverLoading(true);
     try {
-      const res = await fetch(`/api/comics/${comicId}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ embeddedImageIndex }),
@@ -505,7 +506,7 @@ export default function ComicDetailPage() {
     setCoverLoading(true);
     setShowCoverMenu(false);
     try {
-      const res = await fetch(`/api/comics/${comicId}/cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ useFirstPage: true }),
@@ -531,7 +532,7 @@ export default function ComicDetailPage() {
     setShowCoverMenu(false);
     try {
       // Use metadata search to find cover from platforms
-      const res = await fetch("/api/metadata/search", {
+      const res = await fetch(apiPath("/api/metadata/search"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -545,7 +546,7 @@ export default function ComicDetailPage() {
         // Find the first result with a cover URL
         for (const r of results) {
           if (r.coverUrl) {
-            const coverRes = await fetch(`/api/comics/${comicId}/cover`, {
+            const coverRes = await fetch(apiPath(`/api/comics/${comicId}/cover`), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url: r.coverUrl }),
@@ -571,7 +572,7 @@ export default function ComicDetailPage() {
     if (aiSummaryLoading) return;
     setAiSummaryLoading(true);
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-summary`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-summary`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale }),
@@ -592,7 +593,7 @@ export default function ComicDetailPage() {
     setAiParseLoading(true);
     setAiParsedResult(null);
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-parse-filename`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-parse-filename`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apply: false }),
@@ -611,7 +612,7 @@ export default function ComicDetailPage() {
   // AI 解析文件名 - 应用结果
   const handleAiParseApply = useCallback(async () => {
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-parse-filename`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-parse-filename`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apply: true }),
@@ -630,7 +631,7 @@ export default function ComicDetailPage() {
     if (aiCompleteMetaLoading) return;
     setAiCompleteMetaLoading(true);
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-complete-metadata`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-complete-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: true }),
@@ -651,7 +652,7 @@ export default function ComicDetailPage() {
     setAiCategoryLoading(true);
     setAiSuggestedCategories([]);
     try {
-      const res = await fetch("/api/ai/suggest-category", {
+      const res = await fetch(apiPath("/api/ai/suggest-category"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comicId, targetLang: locale, apply: true }),
@@ -675,7 +676,7 @@ export default function ComicDetailPage() {
     setAiSuggestedTags([]);
     setAiSelectedTags(new Set());
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-suggest-tags`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-suggest-tags`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: false }),
@@ -708,7 +709,7 @@ export default function ComicDetailPage() {
     setAiCoverLoading(true);
     setAiCoverResult(null);
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-analyze-cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-analyze-cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: false }),
@@ -727,7 +728,7 @@ export default function ComicDetailPage() {
   // AI 封面分析 - 应用结果
   const handleAiCoverApply = useCallback(async () => {
     try {
-      const res = await fetch(`/api/comics/${comicId}/ai-analyze-cover`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/ai-analyze-cover`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, apply: true }),
@@ -746,7 +747,7 @@ export default function ComicDetailPage() {
     setMetadataTranslating(true);
     setShowEngineMenu(false);
     try {
-      const res = await fetch(`/api/comics/${comicId}/translate-metadata`, {
+      const res = await fetch(apiPath(`/api/comics/${comicId}/translate-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLang: locale, engine: engine || translateEngine || "" }),
@@ -765,7 +766,7 @@ export default function ComicDetailPage() {
 
   // 加载可用翻译引擎
   useEffect(() => {
-    fetch("/api/translate/engines")
+    fetch(apiPath("/api/translate/engines"))
       .then(r => r.json())
       .then(data => {
         if (data.engines) setTranslateEngines(data.engines);
@@ -872,7 +873,7 @@ export default function ComicDetailPage() {
         <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
           <div
             className="absolute inset-0 scale-110 bg-cover bg-center bg-no-repeat opacity-25 blur-2xl"
-            style={{ backgroundImage: `url(/api/comics/${comic.id}/thumbnail?v=${coverKey})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}
+            style={{ backgroundImage: `url(${apiPath(`/api/comics/${comic.id}/thumbnail?v=${coverKey}`)})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background" />
         </div>
@@ -897,7 +898,7 @@ export default function ComicDetailPage() {
           <div className="space-y-3 sm:space-y-4 mx-auto w-full max-w-[240px] md:max-w-none">
             <div className="motion-cover group relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card shadow-2xl shadow-black/20">
               <LazyImage
-                src={`/api/comics/${comic.id}/thumbnail?v=${coverKey}`}
+                src={apiPath(`/api/comics/${comic.id}/thumbnail?v=${coverKey}`)}
                 alt={comic.title}
                 wrapperClassName="absolute inset-0"
                 className="h-full w-full object-cover"
@@ -2040,7 +2041,7 @@ export default function ComicDetailPage() {
                         className="group relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
                       >
                         <img
-                          src={`/api/comics/${comicId}/embedded-image/${img.index}?v=${coverKey}`}
+                          src={apiPath(`/api/comics/${comicId}/embedded-image/${img.index}?v=${coverKey}`)}
                           alt={`Image ${img.index + 1}`}
                           className="h-full w-full object-cover"
                           loading="lazy"
@@ -2060,7 +2061,7 @@ export default function ComicDetailPage() {
                         className="group relative aspect-[5/7] overflow-hidden rounded-lg border-2 border-transparent bg-zinc-800 transition-all hover:border-accent hover:shadow-lg"
                       >
                         <img
-                          src={`/api/comics/${comicId}/page/${i}?v=${coverKey}`}
+                          src={apiPath(`/api/comics/${comicId}/page/${i}?v=${coverKey}`)}
                           alt={`Page ${i + 1}`}
                           className="h-full w-full object-cover"
                           loading="lazy"

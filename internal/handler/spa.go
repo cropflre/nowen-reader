@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
+	stdhtml "html"
 	"io"
 	"io/fs"
 	"net/http"
@@ -9,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/config"
 )
 
 // SPAHandler serves the embedded or on-disk SPA frontend.
@@ -72,8 +76,79 @@ func (h *SPAHandler) RegisterRoutes(r *gin.Engine) {
 		return
 	}
 
-	// Serve static files that exist on disk/embedded FS
+	// Serve static files that exist on disk/embedded FS & handle SPA fallback
 	r.NoRoute(h.serveFileOrFallback)
+}
+
+func injectRuntimeConfig(html []byte, basePath string) []byte {
+	normBase, _ := config.NormalizeBasePath(basePath)
+	if normBase == "/" {
+		normBase = ""
+	}
+	hrefBase := normBase + "/"
+	if normBase == "" {
+		hrefBase = "/"
+	}
+
+	tags := fmt.Sprintf(
+		`<base href="%s"><meta name="nowen-base-path" content="%s">`,
+		stdhtml.EscapeString(hrefBase),
+		stdhtml.EscapeString(normBase),
+	)
+
+	htmlStr := string(html)
+	if headStart := strings.Index(strings.ToLower(htmlStr), "<head"); headStart != -1 {
+		if headEnd := strings.Index(htmlStr[headStart:], ">"); headEnd != -1 {
+			insertAt := headStart + headEnd + 1
+			return []byte(htmlStr[:insertAt] + tags + htmlStr[insertAt:])
+		}
+	}
+	return append([]byte(tags), html...)
+}
+
+func serveDynamicManifest(h *SPAHandler, c *gin.Context, basePath string) bool {
+	f, err := h.fileSystem.Open("manifest.json")
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	data, readErr := io.ReadAll(f)
+	if readErr != nil {
+		return false
+	}
+
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return false
+	}
+
+	startURL := "/"
+	if basePath != "/" {
+		startURL = basePath + "/"
+	}
+	manifest["start_url"] = startURL
+	manifest["scope"] = startURL
+
+	if icons, ok := manifest["icons"].([]interface{}); ok {
+		for _, item := range icons {
+			if iconMap, ok := item.(map[string]interface{}); ok {
+				if src, ok := iconMap["src"].(string); ok {
+					iconMap["src"] = config.JoinBasePath(src)
+				}
+			}
+		}
+	}
+
+	out, err := json.Marshal(manifest)
+	if err != nil {
+		return false
+	}
+
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Data(http.StatusOK, "application/json; charset=utf-8", out)
+	return true
 }
 
 // serveFileOrFallback serves a static file if it exists, otherwise falls back to index.html.
@@ -81,15 +156,40 @@ func (h *SPAHandler) RegisterRoutes(r *gin.Engine) {
 // HTML returned for an ESM worker/chunk and surface an opaque dynamic-import error.
 func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 	requestPath := c.Request.URL.Path
+	basePath := config.BasePath()
 
-	// Don't serve SPA for API routes — return 404
-	if strings.HasPrefix(requestPath, "/api/") {
+	// If BASE_PATH is not "/", handle redirects and boundary checks
+	if basePath != "/" {
+		// Exact BasePath without trailing slash (e.g. /reader) -> 308 redirect to /reader/
+		if requestPath == basePath {
+			target := basePath + "/"
+			if q := c.Request.URL.RawQuery; q != "" {
+				target += "?" + q
+			}
+			c.Redirect(http.StatusPermanentRedirect, target)
+			return
+		}
+
+		// Reject requests outside BASE_PATH with 404
+		if !strings.HasPrefix(requestPath, basePath+"/") {
+			c.String(http.StatusNotFound, "404 page not found")
+			return
+		}
+	}
+
+	// Don't serve SPA for API routes — return JSON 404
+	apiPrefix := config.JoinBasePath("/api/")
+	if strings.HasPrefix(requestPath, apiPrefix) || strings.HasPrefix(requestPath, "/api/") {
 		c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
 		return
 	}
 
-	// Clean path
-	cleanPath := strings.TrimPrefix(requestPath, "/")
+	// Clean path relative to BasePath
+	relPath := requestPath
+	if basePath != "/" {
+		relPath = strings.TrimPrefix(requestPath, basePath)
+	}
+	cleanPath := strings.TrimPrefix(relPath, "/")
 	if cleanPath == "" {
 		cleanPath = "index.html"
 	}
@@ -101,6 +201,23 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 
 		stat, statErr := f.Stat()
 		if statErr == nil && !stat.IsDir() {
+			if cleanPath == "manifest.json" {
+				if serveDynamicManifest(h, c, basePath) {
+					return
+				}
+			}
+
+			if cleanPath == "index.html" || strings.HasSuffix(cleanPath, "/index.html") {
+				data, readErr := io.ReadAll(f)
+				if readErr == nil {
+					c.Header("Content-Type", "text/html; charset=utf-8")
+					c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+					injectedData := injectRuntimeConfig(data, basePath)
+					c.Data(http.StatusOK, "text/html; charset=utf-8", injectedData)
+					return
+				}
+			}
+
 			// File exists, serve it with appropriate headers
 			h.setStaticHeaders(c, cleanPath)
 			if rs, ok := f.(io.ReadSeeker); ok {
@@ -122,11 +239,12 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 				if indexStatErr == nil {
 					c.Header("Content-Type", "text/html; charset=utf-8")
 					c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-					if rs, ok := indexFile.(io.ReadSeeker); ok {
+					data, _ := io.ReadAll(indexFile)
+					injectedData := injectRuntimeConfig(data, basePath)
+					if rs, ok := indexFile.(io.ReadSeeker); ok && len(injectedData) == len(data) {
 						http.ServeContent(c.Writer, c.Request, indexStat.Name(), indexStat.ModTime(), rs)
 					} else {
-						data, _ := io.ReadAll(indexFile)
-						c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+						c.Data(http.StatusOK, "text/html; charset=utf-8", injectedData)
 					}
 					return
 				}
@@ -145,9 +263,10 @@ func (h *SPAHandler) serveFileOrFallback(c *gin.Context) {
 
 	// File doesn't exist — serve index.html for SPA client-side routing
 	if h.indexHTML != nil {
+		injectedHTML := injectRuntimeConfig(h.indexHTML, basePath)
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-		c.Data(http.StatusOK, "text/html; charset=utf-8", h.indexHTML)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", injectedHTML)
 		return
 	}
 

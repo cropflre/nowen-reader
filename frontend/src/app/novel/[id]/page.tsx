@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -133,7 +134,7 @@ export default function NovelReaderPage() {
     const chapter = apiChapters[currentPage];
     if (!chapter) return;
 
-    fetch(`/api/comics/${comicId}/chapter/${currentPage}`)
+    fetch(apiPath(`/api/comics/${comicId}/chapter/${currentPage}`))
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (data?.content) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, Info, Brain, Globe, Github, ExternalLink, HardDrive } from "lucide-react";
@@ -168,7 +169,7 @@ function AboutPanel() {
   const [versionInfo, setVersionInfo] = useState<{ version: string; uptime: string } | null>(null);
 
   useEffect(() => {
-    fetch("/api/health")
+    fetch(apiPath("/api/health"))
       .then((res) => res.json())
       .then((data) => setVersionInfo(data))
       .catch(() => {});

@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/apiClient";
+import { apiPath } from "@/lib/base-path";
 
 export interface ReadingActivityPayload {
   clientSessionId: string;
@@ -23,5 +24,5 @@ export function beaconReadingActivity(
 ): boolean {
   if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return false;
   const body = new Blob([JSON.stringify(payload)], { type: "application/json" });
-  return navigator.sendBeacon(`/api/reading/${encodeURIComponent(comicId)}/activity`, body);
+  return navigator.sendBeacon(apiPath(`/api/reading/${encodeURIComponent(comicId)}/activity`), body);
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback } from "react";
 import {
   Users,
@@ -146,7 +147,7 @@ export function UserManagementPanel() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/users");
+      const res = await fetch(apiPath("/api/auth/users"));
       if (!res.ok) throw new Error("Failed to fetch users");
       const data = await res.json();
       setUsers(data.users || []);
@@ -159,7 +160,7 @@ export function UserManagementPanel() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch("/api/site-settings");
+      const res = await fetch(apiPath("/api/site-settings"));
       if (!res.ok) return;
       const data = await res.json();
       if (data.registrationMode) {
@@ -189,7 +190,7 @@ export function UserManagementPanel() {
   const updateRegistrationMode = async (mode: RegistrationMode) => {
     setSavingMode(true);
     try {
-      const res = await fetch("/api/site-settings", {
+      const res = await fetch(apiPath("/api/site-settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ registrationMode: mode }),
@@ -210,7 +211,7 @@ export function UserManagementPanel() {
     setCreating(true);
     try {
       // 1. 创建用户
-      const res = await fetch("/api/auth/users", {
+      const res = await fetch(apiPath("/api/auth/users"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -353,7 +354,7 @@ export function UserManagementPanel() {
   // 更新角色
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
-      const res = await fetch("/api/auth/users", {
+      const res = await fetch(apiPath("/api/auth/users"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updateRole", userId, role: newRole }),
@@ -370,7 +371,7 @@ export function UserManagementPanel() {
   // 更新 AI 权限
   const handleUpdateAiEnabled = async (userId: string, aiEnabled: boolean) => {
     try {
-      const res = await fetch("/api/auth/users", {
+      const res = await fetch(apiPath("/api/auth/users"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updateAiEnabled", userId, aiEnabled }),
@@ -387,7 +388,7 @@ export function UserManagementPanel() {
   // 删除用户
   const handleDeleteUser = async (userId: string) => {
     try {
-      const res = await fetch("/api/auth/users", {
+      const res = await fetch(apiPath("/api/auth/users"), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),

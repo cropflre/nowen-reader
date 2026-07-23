@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { FolderOpen, ChevronRight, Home, X } from "lucide-react";
+import { Folder, ChevronRight, CornerLeftUp, Check, AlertCircle, Loader2, HardDrive, FolderOpen, Home, X } from "lucide-react";
+import { apiPath } from "@/lib/base-path";
 
 interface FolderEntry {
   name: string;
@@ -44,7 +45,7 @@ export function FolderBrowser({
     setError(null);
     setHint(null);
     try {
-      const res = await fetch(`/api/browse-dirs?path=${encodeURIComponent(path)}`);
+      const res = await fetch(apiPath(`/api/browse-dirs?path=${encodeURIComponent(path)}`));
       const data: BrowseResult = await res.json();
       if (!res.ok) {
         setError(data.error || `请求失败 (${res.status})`);
