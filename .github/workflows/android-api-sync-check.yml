@@ -1,6 +1,14 @@
 name: Android API Sync Check
 
 on:
+  push:
+    branches:
+      - fix/android-api-sync
+    paths:
+      - internal/handler/**
+      - internal/store/**
+      - flutter_app/**
+      - .github/workflows/android-api-sync-check.yml
   pull_request:
     branches:
       - main
