@@ -13,7 +13,7 @@ import (
 )
 
 func (h *GroupHandler) GetComicMap(c *gin.Context) {
-	groupedIDs, err := store.GetGroupedComicIDs()
+	groupedIDs, err := store.GetExpandedGroupedComicIDs()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取分组映射失败"})
 		return
