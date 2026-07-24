@@ -130,6 +130,22 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestHealthEndpointHead(t *testing.T) {
+	r := setupTestRouter(t)
+
+	w := performRequest(r, "HEAD", "/api/health", nil)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("Expected an empty response body, got %q", w.Body.String())
+	}
+	if contentType := w.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
+		t.Errorf("Expected JSON content type, got %q", contentType)
+	}
+}
+
 func TestAuthRegisterAndLogin(t *testing.T) {
 	r := setupTestRouter(t)
 

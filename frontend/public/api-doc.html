@@ -577,14 +577,14 @@
 
     <div id="endpoints-health" class="endpoint-group">
     <h2 class="group-title"><span data-en="1. Health &amp; System" data-zh="1. 健康与系统">1. Health & System</span> <span class="group-badge"><span data-en="2 endpoints" data-zh="2 个接口">2 endpoints</span></span></h2>
-<div class="endpoint public-endpoint" data-search="GET /api/health Health check and system runtime info" id="get-api-health">
+<div class="endpoint public-endpoint" data-search="GET HEAD /api/health Health check and system runtime info" id="get-api-health">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/health</span>
     <span class="summary"><span data-en="Health check and system runtime info" data-zh="健康检查与系统运行时信息">Health check and system runtime info</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns application health status, version, uptime, and Go runtime details including memory, goroutines, and OS info." data-zh="返回应用健康状态、版本、运行时间及Go运行时详情，包括内存、goroutine和操作系统信息。">Returns application health status, version, uptime, and Go runtime details including memory, goroutines, and OS info.</span></p>
+    <p class="description"><span data-en="GET returns application health status, version, uptime, and Go runtime details including memory, goroutines, and OS info. HEAD returns only the 200 status and response headers." data-zh="GET 返回应用健康状态、版本、运行时间及 Go 运行时详情，包括内存、goroutine 和操作系统信息；HEAD 仅返回 200 状态及响应头。">GET returns application health status, version, uptime, and Go runtime details including memory, goroutines, and OS info. HEAD returns only the 200 status and response headers.</span></p>
 
 	    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
 	    <pre class="code-block"><code>{

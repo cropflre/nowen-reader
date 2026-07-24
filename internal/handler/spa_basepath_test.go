@@ -117,6 +117,16 @@ func TestBasepathRoutingSubpath(t *testing.T) {
 		t.Errorf("GET /reader/api/health code = %d, want 200", w.Code)
 	}
 
+	req = httptest.NewRequest("HEAD", "/reader/api/health", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("HEAD /reader/api/health code = %d, want 200", w.Code)
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("HEAD /reader/api/health expected empty body, got %q", w.Body.String())
+	}
+
 	// 4. /reader/ -> 200 index.html with injected basePath
 	req = httptest.NewRequest("GET", "/reader/", nil)
 	w = httptest.NewRecorder()

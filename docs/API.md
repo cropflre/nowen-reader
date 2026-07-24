@@ -700,7 +700,7 @@ Content-Type: application/json
 | GET | `/api/recommendations` | 个性化推荐 |
 | GET | `/api/recommendations/similar/:id` | 相似推荐 |
 | POST | `/api/recommendations/ai-reasons` | AI 推荐理由 |
-| GET | `/api/health` | 健康检查 |
+| GET/HEAD | `/api/health` | 健康检查；HEAD 仅返回状态和响应头 |
 | GET/PUT | `/api/site-settings` | 站点设置 |
 | POST | `/api/upload` | 文件上传 🔒（管理员或目标书库 canManage） |
 

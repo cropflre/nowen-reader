@@ -36,6 +36,10 @@ func SetupRoutes(r *gin.Engine) {
 			},
 		})
 	})
+	api.HEAD("/health", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		c.Status(200)
+	})
 
 	// System diagnostic endpoints — require auth
 	sysGroup := api.Group("/system")
