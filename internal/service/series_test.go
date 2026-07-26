@@ -84,3 +84,50 @@ func TestDetectComicSeriesKeepsSingleItemStandalone(t *testing.T) {
 		t.Fatalf("single item should remain standalone, got %#v", series)
 	}
 }
+
+func TestDetectComicSeriesCleansDisplayLabels(t *testing.T) {
+	items := []store.SeriesSourceItem{
+		{ID: "cn-exclamation", Title: "灵魂印记！- 第1话", RelativePath: "灵魂印记/灵魂印记！- 第1话.zip"},
+		{ID: "colon", Title: "灵魂印记：第2话", RelativePath: "灵魂印记/灵魂印记：第2话.zip"},
+		{ID: "dash", Title: "灵魂印记 — 番外", RelativePath: "灵魂印记/灵魂印记 — 番外.zip"},
+		{ID: "wrapped", Title: "灵魂印记【第3话】", RelativePath: "灵魂印记/灵魂印记【第3话】.zip"},
+		{ID: "semantic-brackets", Title: "灵魂印记 [特典] 后记", RelativePath: "灵魂印记/灵魂印记 [特典] 后记.zip"},
+	}
+
+	series := DetectComicSeries("comic-library", items)
+	if len(series) != 1 {
+		t.Fatalf("series count = %d, want 1", len(series))
+	}
+
+	got := make(map[string]string, len(series[0].Items))
+	for _, item := range series[0].Items {
+		got[item.ComicID] = item.DisplayLabel
+	}
+	want := map[string]string{
+		"cn-exclamation":    "第1话",
+		"colon":             "第2话",
+		"dash":              "番外",
+		"wrapped":           "第3话",
+		"semantic-brackets": "[特典] 后记",
+	}
+	for id, label := range want {
+		if got[id] != label {
+			t.Errorf("display label for %s = %q, want %q", id, got[id], label)
+		}
+	}
+}
+
+func TestCleanSeriesItemSuffixOnlyUnwrapsBalancedOuterPair(t *testing.T) {
+	tests := map[string]string{
+		"！-【（第12话）】": "第12话",
+		"!- 第4话":     "第4话",
+		" [特典] 后记":   "[特典] 后记",
+		"【第1话】【特典】":  "【第1话】【特典】",
+		"（番外）":       "番外",
+	}
+	for input, want := range tests {
+		if got := cleanSeriesItemSuffix(input); got != want {
+			t.Errorf("cleanSeriesItemSuffix(%q) = %q, want %q", input, got, want)
+		}
+	}
+}

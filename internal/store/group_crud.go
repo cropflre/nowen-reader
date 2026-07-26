@@ -378,7 +378,7 @@ func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupD
 	// 获取分组内的目录作品 (ComicSeries)
 	g.SeriesList = []GroupSeriesItem{}
 	seriesSQL := `
-		SELECT cs."id", cs."title", cs."rootRelativePath", cs."coverComicId", cgs."sortIndex"
+		SELECT cs."id", cs."title", cs."rootRelativePath", cs."coverComicId", cs."coverUrl", cgs."sortIndex"
 		FROM "ComicGroupSeries" cgs
 		JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
 		WHERE cgs."groupId" = ?`
@@ -400,7 +400,8 @@ func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupD
 	defer seriesRows.Close()
 	for seriesRows.Next() {
 		var sItem GroupSeriesItem
-		if scanErr := seriesRows.Scan(&sItem.SeriesID, &sItem.Title, &sItem.RootRelativePath, &sItem.CoverComicID, &sItem.SortIndex); scanErr == nil {
+		var storedCoverURL string
+		if scanErr := seriesRows.Scan(&sItem.SeriesID, &sItem.Title, &sItem.RootRelativePath, &sItem.CoverComicID, &storedCoverURL, &sItem.SortIndex); scanErr == nil {
 			sItem.Comics = []GroupComicItem{}
 			seriesComicSQL := `
 					SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
@@ -442,7 +443,9 @@ func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupD
 			}
 			cRows.Close()
 			if len(sItem.Comics) > 0 {
-				if coverVisible {
+				if storedCoverURL != "" {
+					sItem.CoverURL = BuildSeriesCoverURL(sItem.SeriesID)
+				} else if coverVisible {
 					sItem.CoverURL = BuildComicCoverURL(sItem.CoverComicID)
 				} else {
 					sItem.CoverURL = sItem.Comics[0].CoverURL

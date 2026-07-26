@@ -96,6 +96,12 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
+	policy, err := store.GetGroupMetadataPolicy(id)
+	if err != nil || policy == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取合集结构失败"})
+		return
+	}
+	allowMemberSync := policy.AllowsMemberSync()
 
 	meta := body.Metadata
 	fieldsSet := make(map[string]bool)
@@ -183,7 +189,7 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 				}
 			}
 			_ = store.SetGroupTags(id, allNames)
-			if body.SyncTags {
+			if body.SyncTags && allowMemberSync {
 				_, _, _, _ = store.SyncGroupTagsToVolumes(id)
 			}
 		}
@@ -196,16 +202,18 @@ func (h *GroupHandler) ApplyScrapedMetadata(c *gin.Context) {
 
 	// 同步元数据到所有卷
 	var syncSuccess, syncErrors int
-	if body.SyncToVolumes {
+	if body.SyncToVolumes && allowMemberSync {
 		syncSuccess, syncErrors, _ = syncGroupMetadataToVolumes(id, meta, fieldsSet, body.Overwrite, body.SyncRating)
 	}
 
 	updated, _ := store.GetGroupByID(id)
 	resp := gin.H{"success": true, "group": updated}
-	if body.SyncToVolumes {
+	if body.SyncToVolumes && allowMemberSync {
 		resp["syncSuccess"] = syncSuccess
 		resp["syncErrors"] = syncErrors
 	}
+	resp["memberSyncAllowed"] = allowMemberSync
+	resp["memberSyncSkipped"] = !allowMemberSync && (body.SyncTags || body.SyncToVolumes)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -364,12 +372,12 @@ func (h *GroupHandler) AIRecognize(c *gin.Context) {
 		return
 	}
 
-	if len(group.Comics) == 0 {
+	firstComic, ok := firstGroupRecognitionComic(group)
+	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "系列内没有漫画，无法进行AI识别"})
 		return
 	}
 
-	firstComic := group.Comics[0]
 	log.Printf("[AI-Recognize] group=%d firstComic=%s filename=%s", id, firstComic.ComicID, firstComic.Filename)
 
 	var coverData []byte
@@ -411,6 +419,21 @@ func (h *GroupHandler) AIRecognize(c *gin.Context) {
 		"recognized": recognized,
 		"metadata":   meta,
 	})
+}
+
+func firstGroupRecognitionComic(group *store.ComicGroupDetail) (*store.GroupComicItem, bool) {
+	if group == nil {
+		return nil, false
+	}
+	if len(group.Comics) > 0 {
+		return &group.Comics[0], true
+	}
+	for i := range group.SeriesList {
+		if len(group.SeriesList[i].Comics) > 0 {
+			return &group.SeriesList[i].Comics[0], true
+		}
+	}
+	return nil, false
 }
 
 // detectGroupContentType 根据系列内漫画的文件类型自动检测内容类型。

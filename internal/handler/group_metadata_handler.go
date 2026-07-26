@@ -58,7 +58,7 @@ func (h *GroupHandler) UpdateMetadata(c *gin.Context) {
 }
 
 // ============================================================
-// POST /api/groups/:id/inherit-metadata — 从第一本漫画继承元数据
+// POST /api/groups/:id/inherit-metadata — 从单个目录作品或第一本直属漫画继承元数据
 // ============================================================
 
 func (h *GroupHandler) InheritMetadata(c *gin.Context) {
@@ -68,12 +68,13 @@ func (h *GroupHandler) InheritMetadata(c *gin.Context) {
 		return
 	}
 
-	if err := store.InheritGroupMetadataFromFirstComic(id); err != nil {
+	result, err := store.InheritGroupMetadata(id)
+	if err != nil {
 		log.Printf("[API] InheritMetadata error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "继承元数据失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "继承元数据失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.JSON(http.StatusOK, gin.H{"success": true, "inheritance": result})
 }
 
 // ============================================================

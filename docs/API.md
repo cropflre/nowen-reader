@@ -571,7 +571,7 @@ Content-Type: application/json
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
 | PUT | `/api/groups/:id/metadata` | 更新分组元数据 |
-| POST | `/api/groups/:id/inherit-metadata` | 继承元数据到子卷 |
+| POST | `/api/groups/:id/inherit-metadata` | 从目录作品或首个直属阅读单元继承合集元数据 |
 | POST | `/api/groups/:id/preview-inherit` | 预览继承结果 |
 | POST | `/api/groups/:id/inherit-to-volumes` | 应用继承到卷 |
 
@@ -601,6 +601,14 @@ Content-Type: application/json
 | POST | `/api/groups/:id/scrape-metadata` | 刮削元数据 |
 | POST | `/api/groups/:id/apply-metadata` | 应用刮削的元数据 |
 | POST | `/api/groups/:id/ai-recognize` | AI 识别系列 |
+
+合集与目录作品各自维护元数据，规则如下：
+
+- 合集仅包含一个目录作品且没有直属阅读单元时，`POST /api/groups/:id/inherit-metadata` 会用目录作品填充合集的空白作者、简介、年份、出版社、语言、题材、状态、评分和标签；合集名称及已有字段不会被覆盖，封面会动态回退到目录作品封面。
+- 其他包含直属阅读单元的合集仍从首个直属阅读单元继承；没有直属阅读单元且目录作品数量不为 1 时返回 `400`。
+- `POST /api/groups/:id/apply-metadata` 的响应包含 `memberSyncAllowed` 和 `memberSyncSkipped`。纯直属阅读单元合集可使用 `syncTags`、`syncToVolumes`；只要合集包含目录作品，这两个同步选项就会被忽略，刮削结果只更新合集自身，避免覆盖目录作品及其成员。
+- `POST /api/groups/batch-scrape` 遵循相同规则；被跳过成员同步的结果包含 `memberSyncSkipped: true`。
+- AI 识别优先使用直属阅读单元封面；没有直属阅读单元时会使用首个目录作品成员的封面，识别结果仍只属于合集。
 
 ### 批量操作 🔒管理员
 

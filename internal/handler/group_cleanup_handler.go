@@ -136,13 +136,14 @@ func contains(slice []string, item string) bool {
 
 // BatchScrapeResult 单个系列的批量刮削结果
 type BatchScrapeResult struct {
-	GroupID   int                    `json:"groupId"`
-	GroupName string                 `json:"groupName"`
-	Success   bool                   `json:"success"`
-	Error     string                 `json:"error,omitempty"`
-	Metadata  *service.ComicMetadata `json:"metadata,omitempty"`
-	Applied   bool                   `json:"applied"`
-	Volumes   int                    `json:"volumes"`
+	GroupID           int                    `json:"groupId"`
+	GroupName         string                 `json:"groupName"`
+	Success           bool                   `json:"success"`
+	Error             string                 `json:"error,omitempty"`
+	Metadata          *service.ComicMetadata `json:"metadata,omitempty"`
+	Applied           bool                   `json:"applied"`
+	Volumes           int                    `json:"volumes"`
+	MemberSyncSkipped bool                   `json:"memberSyncSkipped,omitempty"`
 }
 
 func (h *GroupHandler) BatchScrape(c *gin.Context) {
@@ -206,6 +207,14 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 		}
 		result.GroupName = group.Name
 		result.Volumes = len(group.Comics)
+		policy, policyErr := store.GetGroupMetadataPolicy(gid)
+		if policyErr != nil || policy == nil {
+			result.Error = "读取合集结构失败"
+			results = append(results, result)
+			continue
+		}
+		allowMemberSync := policy.AllowsMemberSync()
+		result.MemberSyncSkipped = !allowMemberSync && (body.SyncTags || body.SyncToVolumes)
 
 		// 自动检测系列内容类型，选择对应的数据源和搜索策略
 		groupCT := body.ContentType
@@ -313,7 +322,7 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 						}
 					}
 					_ = store.SetGroupTags(gid, allNames)
-					if body.SyncTags {
+					if body.SyncTags && allowMemberSync {
 						_, _, _, _ = store.SyncGroupTagsToVolumes(gid)
 					}
 				}
@@ -325,7 +334,7 @@ func (h *GroupHandler) BatchScrape(c *gin.Context) {
 			}
 
 			// 同步到所有卷
-			if body.SyncToVolumes {
+			if body.SyncToVolumes && allowMemberSync {
 				successCount, errorCount, err := syncGroupMetadataToVolumes(gid, bestMatch, fieldsSet, body.Overwrite, false)
 				if err != nil {
 					log.Printf("[API] BatchScrape: syncToVolumes error for group %d: %v", gid, err)

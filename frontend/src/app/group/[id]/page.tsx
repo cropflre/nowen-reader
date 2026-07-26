@@ -684,9 +684,10 @@ export default function GroupDetailPage() {
   // 从首卷继承元数据（仅继承到系列）
   const handleInheritMetadata = useCallback(async () => {
     if (!group) return;
+    const fromSeries = group.comics.length === 0 && (group.seriesList?.length || 0) === 1;
     const ok = await inheritGroupMetadata(group.id);
     if (ok) {
-      toast.success(t.comicGroup?.inheritSuccess || "元数据继承成功");
+      toast.success(fromSeries ? "已从目录作品继承元数据" : (t.comicGroup?.inheritSuccess || "元数据继承成功"));
       await loadGroup();
     }
   }, [group, toast, t, loadGroup]);
@@ -760,6 +761,10 @@ export default function GroupDetailPage() {
       </div>
     );
   }
+
+  const directorySeriesCount = group.seriesList?.length || 0;
+  const singleSeriesOnly = group.comics.length === 0 && directorySeriesCount === 1;
+  const allowGroupMemberSync = directorySeriesCount === 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -1426,17 +1431,21 @@ export default function GroupDetailPage() {
                       <Edit3 className="h-3.5 w-3.5" />
                       {t.comicGroup?.editMetadata || "编辑元数据"}
                     </button>
-                    {group.comics.length > 0 && (
+                    {(group.comics.length > 0 || singleSeriesOnly) && (
                       <button
                         onClick={handleInheritMetadata}
-                        className="flex items-center gap-1.5 rounded-xl bg-card px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:bg-card-hover"
-                        title={t.comicGroup?.inheritMetadataDesc || "从系列第一本漫画继承元数据"}
+                        className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm transition-colors ${
+                          singleSeriesOnly
+                            ? "bg-accent/10 text-accent hover:bg-accent/20"
+                            : "bg-card text-foreground/80 hover:bg-card-hover"
+                        }`}
+                        title={singleSeriesOnly ? "从唯一的目录作品继承合集展示元数据" : (t.comicGroup?.inheritMetadataDesc || "从系列第一本漫画继承元数据")}
                       >
                         <Download className="h-3.5 w-3.5" />
-                        {t.comicGroup?.inheritMetadata || "从首卷继承"}
+                        {singleSeriesOnly ? "从目录作品继承" : (t.comicGroup?.inheritMetadata || "从首卷继承")}
                       </button>
                     )}
-                    {group.comics.length > 1 && (
+                    {allowGroupMemberSync && group.comics.length > 1 && (
                       <button
                         onClick={handlePreviewInherit}
                         disabled={inheritLoading}
@@ -1449,11 +1458,15 @@ export default function GroupDetailPage() {
                     )}
                     <button
                       onClick={() => setShowScraper(true)}
-                      className="flex items-center gap-1.5 rounded-xl bg-purple-500/10 px-4 py-2.5 text-sm text-purple-400 transition-colors hover:bg-purple-500/20"
+                      className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm transition-colors ${
+                        singleSeriesOnly
+                          ? "bg-card text-muted hover:bg-card-hover hover:text-foreground"
+                          : "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
+                      }`}
                       title="从在线数据库搜索并获取系列信息，支持 AI 智能识别"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      {t.comicGroup?.scrapeMetadata || "刮削元数据"}
+                      {singleSeriesOnly ? "在线刮削（高级）" : (t.comicGroup?.scrapeMetadata || "刮削元数据")}
                     </button>
                   </>
                 )}
@@ -1667,11 +1680,14 @@ export default function GroupDetailPage() {
             </div>
             <div className="p-5">
               <p className="mb-4 text-xs text-muted">
-                从 AniList、Bangumi 等在线数据库搜索系列信息，或使用 AI 智能识别。支持选择性应用字段和标签同步。
+                {allowGroupMemberSync
+                  ? "从 AniList、Bangumi 等在线数据库搜索系列信息，或使用 AI 智能识别。"
+                  : "在线结果只用于合集自身的展示信息，不会覆盖目录作品及其阅读单元。"}
               </p>
               <GroupMetadataSearch
                 groupId={group.id}
                 groupName={group.name}
+                allowMemberSync={allowGroupMemberSync}
                 contentType={
                   // 根据系列内漫画的类型自动检测：超过一半是小说则为 novel
                   group.comics.length > 0 &&

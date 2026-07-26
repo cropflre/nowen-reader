@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import {
   updateGroupMetadata,
+  fetchGroupDetail,
   inheritGroupMetadata,
   previewInheritMetadata,
   inheritMetadataToVolumes,
@@ -44,6 +45,7 @@ import {
   aiSuggestGroupCategories,
 } from "@/api/groups";
 import type { InheritPreview, GroupTag, GroupCategory } from "@/api/groups";
+import type { ComicGroupDetail } from "@/hooks/useComicTypes";
 import { loadScraperGroups } from "@/lib/scraper-store";
 import type { ScraperGroup } from "@/lib/scraper-store";
 import { GroupMetadataSearch } from "./GroupMetadataSearch";
@@ -330,6 +332,11 @@ export default function GroupDetailPanel({
   const [inheritLoading, setInheritLoading] = useState(false);
   const [showInheritPreview, setShowInheritPreview] = useState(false);
   const [inheritPreview, setInheritPreview] = useState<InheritPreview | null>(null);
+  const [structureDetail, setStructureDetail] = useState<ComicGroupDetail | null>(null);
+  const directorySeriesCount = structureDetail?.seriesList?.length || 0;
+  const directComicCount = structureDetail?.comics.length || 0;
+  const singleSeriesOnly = directComicCount === 0 && directorySeriesCount === 1;
+  const allowGroupMemberSync = structureDetail !== null && directorySeriesCount === 0;
 
   // 清除保存成功提示
   useEffect(() => {
@@ -351,6 +358,14 @@ export default function GroupDetailPanel({
   }, [group.id]);
 
   useEffect(() => { loadTags(); }, [loadTags]);
+
+  const loadStructure = useCallback(async () => {
+    setStructureDetail(await fetchGroupDetail(group.id));
+  }, [group.id]);
+
+  useEffect(() => {
+    loadStructure();
+  }, [loadStructure]);
 
   // 加载分类
   const loadCategories = useCallback(async () => {
@@ -653,14 +668,15 @@ export default function GroupDetailPanel({
     setInheritLoading(true);
     const ok = await inheritGroupMetadata(group.id);
     if (ok) {
-      toast.success("元数据继承成功");
+      toast.success(singleSeriesOnly ? "已从目录作品继承元数据" : "元数据继承成功");
       loadScraperGroups();
       await loadTags();
+      await loadStructure();
     } else {
       toast.error("继承失败");
     }
     setInheritLoading(false);
-  }, [group.id, toast, loadTags]);
+  }, [group.id, singleSeriesOnly, toast, loadTags, loadStructure]);
 
   // ── 预览继承到所有卷 ──
   const handlePreviewInherit = useCallback(async () => {
@@ -1245,24 +1261,32 @@ export default function GroupDetailPanel({
 
         {/* ── 继承元数据操作 ── */}
         <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={handleInheritMetadata}
-            disabled={inheritLoading}
-            className="flex items-center gap-1 rounded-lg bg-card-hover/50 px-2.5 py-1.5 text-[11px] text-muted hover:text-foreground transition-colors disabled:opacity-50"
-            title="从系列第一本漫画继承元数据"
-          >
-            {inheritLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            从首卷继承
-          </button>
-          <button
-            onClick={handlePreviewInherit}
-            disabled={inheritLoading}
-            className="flex items-center gap-1 rounded-lg bg-accent/10 px-2.5 py-1.5 text-[11px] text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
-            title="将首卷的元数据继承到系列中所有卷"
-          >
-            <Layers className="h-3 w-3" />
-            继承到所有卷
-          </button>
+          {(directComicCount > 0 || singleSeriesOnly) && (
+            <button
+              onClick={handleInheritMetadata}
+              disabled={inheritLoading}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors disabled:opacity-50 ${
+                singleSeriesOnly
+                  ? "bg-accent/10 text-accent hover:bg-accent/20"
+                  : "bg-card-hover/50 text-muted hover:text-foreground"
+              }`}
+              title={singleSeriesOnly ? "从唯一的目录作品继承合集展示元数据" : "从系列第一本漫画继承元数据"}
+            >
+              {inheritLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+              {singleSeriesOnly ? "从目录作品继承" : "从首卷继承"}
+            </button>
+          )}
+          {allowGroupMemberSync && directComicCount > 1 && (
+            <button
+              onClick={handlePreviewInherit}
+              disabled={inheritLoading}
+              className="flex items-center gap-1 rounded-lg bg-accent/10 px-2.5 py-1.5 text-[11px] text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+              title="将首卷的元数据继承到系列中所有卷"
+            >
+              <Layers className="h-3 w-3" />
+              继承到所有卷
+            </button>
+          )}
           <a
             href={`/group/${group.id}`}
             target="_blank"
@@ -1275,19 +1299,24 @@ export default function GroupDetailPanel({
         </div>
 
         {/* 系列刮削入口 */}
-        <div className="rounded-xl border border-border/40 bg-card p-4 space-y-3">
+        <div className="rounded-lg border border-border/40 bg-card p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-purple-400" />
-            <h3 className="text-sm font-semibold text-foreground">系列元数据刮削</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              {singleSeriesOnly ? "在线刮削（高级）" : "合集元数据刮削"}
+            </h3>
           </div>
           <p className="text-xs text-muted">
-            从 AniList、Bangumi 等在线数据库搜索系列信息，或使用 AI 智能识别。支持选择性应用字段和标签同步。
+            {allowGroupMemberSync
+              ? "从在线数据库搜索合集信息，或使用 AI 智能识别。"
+              : "在线结果只用于合集自身的展示信息，不会覆盖目录作品及其阅读单元。"}
           </p>
           <GroupMetadataSearch
             key={group.id}
             groupId={group.id}
             groupName={group.name}
             contentType={group.contentType}
+            allowMemberSync={allowGroupMemberSync}
             onApplied={async (success) => {
               if (success) {
                 loadScraperGroups();

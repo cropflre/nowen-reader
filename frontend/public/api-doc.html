@@ -4569,20 +4569,28 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
-<div class="endpoint admin-only" data-search="POST /api/groups/:id/inherit-metadata Inherit metadata from first volume" id="post-api-groups-id-inherit-metadata">
+<div class="endpoint admin-only" data-search="POST /api/groups/:id/inherit-metadata Inherit group metadata from a directory series or direct item" id="post-api-groups-id-inherit-metadata">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
     <span class="path">/api/groups/:id/inherit-metadata</span>
-    <span class="summary"><span data-en="Inherit metadata from first volume" data-zh="从第一卷继承元数据">Inherit metadata from first volume</span></span>
+    <span class="summary"><span data-en="Inherit group metadata" data-zh="继承合集元数据">Inherit group metadata</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Inherits metadata from the first volume in the group to the group itself." data-zh="从分组中的第一卷继承元数据到分组本身。">Inherits metadata from the first volume in the group to the group itself.</span></p>
+    <p class="description"><span data-en="For a group containing only one directory series, fills empty group fields, rating, and tags from that series while preserving the group name and existing values. Otherwise inherits from the first direct item. Groups without a direct item and with a directory-series count other than one return 400." data-zh="合集仅包含一个目录作品且没有直属阅读单元时，用目录作品填充合集的空白字段、评分和标签，并保留合集名称及已有值；其他包含直属阅读单元的合集从首个直属阅读单元继承。没有直属阅读单元且目录作品数量不为 1 时返回 400。">For a group containing only one directory series, fills empty group fields, rating, and tags from that series while preserving the group name and existing values. Otherwise inherits from the first direct item. Groups without a direct item and with a directory-series count other than one return 400.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
     </tbody></table>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{"success": true}</code></pre>
+    <pre class="code-block"><code>{
+  "success": true,
+  "inheritance": {
+    "sourceType": "series",
+    "sourceId": "ser_xxx",
+    "updatedFields": ["author", "description"],
+    "tagsCopied": 2
+  }
+}</code></pre>
     <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
   </div>
 </div>
@@ -4825,7 +4833,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Apply scraped metadata to group" data-zh="将抓取的元数据应用到分组">Apply scraped metadata to group</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Applies scraped metadata to a group, optionally syncing tags and metadata to volumes." data-zh="将抓取的元数据应用到分组，可选同步标签和元数据到各卷。">Applies scraped metadata to a group, optionally syncing tags and metadata to volumes.</span></p>
+    <p class="description"><span data-en="Applies scraped metadata to the group. For groups made entirely of direct items, tags and metadata may also be synced to those items. If the group contains any directory series, syncTags and syncToVolumes are ignored so directory-series metadata and members are not overwritten." data-zh="将抓取的元数据应用到合集。纯直属阅读单元合集可同时向成员同步标签和元数据；只要合集包含目录作品，syncTags 和 syncToVolumes 就会被忽略，避免覆盖目录作品及其成员。">Applies scraped metadata to the group. For groups made entirely of direct items, tags and metadata may also be synced to those items. If the group contains any directory series, syncTags and syncToVolumes are ignored so directory-series metadata and members are not overwritten.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
@@ -4839,7 +4847,12 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   "syncToVolumes": false
 }</code></pre>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{"success": true, "group": GroupDetailObject}</code></pre>
+    <pre class="code-block"><code>{
+  "success": true,
+  "group": GroupDetailObject,
+  "memberSyncAllowed": false,
+  "memberSyncSkipped": true
+}</code></pre>
     <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span><span class="badge badge-scraper"><span data-en="Scraper Required" data-zh="需要爬虫">Scraper Required</span></span></div>
   </div>
 </div>
@@ -4851,7 +4864,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="AI recognize group metadata" data-zh="AI识别分组元数据">AI recognize group metadata</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Uses AI to recognize and extract metadata for a group." data-zh="使用AI识别和提取分组的元数据。">Uses AI to recognize and extract metadata for a group.</span></p>
+    <p class="description"><span data-en="Uses AI to recognize group metadata. It prefers the first direct-item cover, then falls back to the first member cover of a directory series. Applying the result still updates only the group when a directory series is present." data-zh="使用 AI 识别合集元数据。优先使用首个直属阅读单元封面，没有直属阅读单元时回退到目录作品的首个成员封面；合集包含目录作品时，应用结果仍只更新合集自身。">Uses AI to recognize group metadata. It prefers the first direct-item cover, then falls back to the first member cover of a directory series. Applying the result still updates only the group when a directory series is present.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
@@ -4936,7 +4949,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Batch scrape group metadata" data-zh="批量抓取分组元数据">Batch scrape group metadata</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Scrapes and optionally applies metadata to multiple groups. Max 100 groups per request." data-zh="抓取并可选将元数据应用到多个分组。每次请求最多100个分组。">Scrapes and optionally applies metadata to multiple groups. Max 100 groups per request.</span></p>
+    <p class="description"><span data-en="Scrapes and optionally applies metadata to multiple groups. Max 100 groups per request. Member sync is supported only for groups made entirely of direct items; results where sync was requested but skipped include memberSyncSkipped: true." data-zh="抓取并可选将元数据应用到多个合集。每次请求最多 100 个合集。成员同步仅适用于纯直属阅读单元合集；请求同步但因包含目录作品而跳过时，结果包含 memberSyncSkipped: true。">Scrapes and optionally applies metadata to multiple groups. Max 100 groups per request. Member sync is supported only for groups made entirely of direct items; results where sync was requested but skipped include memberSyncSkipped: true.</span></p>
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
   "groupIds": [0],
@@ -4952,7 +4965,12 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
 }</code></pre>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  "results": [BatchScrapeResult],
+  "results": [{
+    "groupId": 1,
+    "success": true,
+    "applied": true,
+    "memberSyncSkipped": true
+  }],
   "total": 0,
   "success": 0,
   "failed": 0,

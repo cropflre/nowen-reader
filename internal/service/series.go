@@ -318,12 +318,77 @@ func itemDisplayLabel(root string, parts []string, item store.SeriesSourceItem) 
 	name = strings.TrimSpace(name)
 	lowerRoot := strings.ToLower(root)
 	if strings.HasPrefix(strings.ToLower(name), lowerRoot) {
-		name = strings.TrimSpace(strings.TrimLeft(name[len(root):], "-_()[] "))
+		name = cleanSeriesItemSuffix(name[len(root):])
 	}
 	if name == "" {
 		name = item.Title
 	}
 	return name
+}
+
+const seriesItemLeadingSeparators = "-_‐‑‒–—―－!！:：·|｜/\\"
+
+func cleanSeriesItemSuffix(value string) string {
+	value = strings.TrimLeftFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune(seriesItemLeadingSeparators, r)
+	})
+	value = strings.TrimSpace(value)
+
+	for {
+		unwrapped, ok := unwrapSeriesItemLabel(value)
+		if !ok {
+			return value
+		}
+		value = strings.TrimSpace(unwrapped)
+	}
+}
+
+func unwrapSeriesItemLabel(value string) (string, bool) {
+	runes := []rune(value)
+	if len(runes) < 2 {
+		return value, false
+	}
+
+	open := runes[0]
+	close, ok := seriesItemClosingPair(open)
+	if !ok || runes[len(runes)-1] != close {
+		return value, false
+	}
+
+	depth := 0
+	for index, current := range runes {
+		switch current {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 && index != len(runes)-1 {
+				return value, false
+			}
+			if depth < 0 {
+				return value, false
+			}
+		}
+	}
+	if depth != 0 {
+		return value, false
+	}
+	return string(runes[1 : len(runes)-1]), true
+}
+
+func seriesItemClosingPair(open rune) (rune, bool) {
+	switch open {
+	case '(':
+		return ')', true
+	case '（':
+		return '）', true
+	case '[':
+		return ']', true
+	case '【':
+		return '】', true
+	default:
+		return 0, false
+	}
 }
 
 func naturalLess(a, b string) bool {

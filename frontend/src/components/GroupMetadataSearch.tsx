@@ -80,10 +80,18 @@ interface Props {
   seriesId?: string;
   groupName: string;
   contentType?: string; // "comic" | "novel" — 系列内容类型，影响数据源选择
+  allowMemberSync?: boolean;
   onApplied?: (success: boolean, message?: string) => void;
 }
 
-export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType, onApplied }: Props) {
+export function GroupMetadataSearch({
+  groupId,
+  seriesId,
+  groupName,
+  contentType,
+  allowMemberSync = true,
+  onApplied,
+}: Props) {
   const t = useTranslation();
   const { locale } = useLocale();
   const targetPath = seriesId
@@ -109,13 +117,18 @@ export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType,
   const [enabledSources, setEnabledSources] = useState<string[]>(defaultSources as unknown as string[]);
   const [showSourceFilter, setShowSourceFilter] = useState(false);
   const [overwrite, setOverwrite] = useState(true);
-  const [syncTags, setSyncTags] = useState(true);
-  const [syncToVolumes, setSyncToVolumes] = useState(true);
+  const [syncTags, setSyncTags] = useState(allowMemberSync);
+  const [syncToVolumes, setSyncToVolumes] = useState(allowMemberSync);
 
   // 当内容类型变化时重置数据源
   useEffect(() => {
     setEnabledSources(defaultSources as unknown as string[]);
   }, [contentType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setSyncTags(allowMemberSync);
+    setSyncToVolumes(allowMemberSync);
+  }, [allowMemberSync]);
 
   // 选择性字段应用（标题字段默认不选中，避免意外覆盖系列名称）
   const [selectedFields, setSelectedFields] = useState<Set<string>>(
@@ -191,8 +204,8 @@ export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType,
           metadata: results[index],
           fields: Array.from(selectedFields),
           overwrite,
-          syncTags,
-          syncToVolumes,
+          syncTags: allowMemberSync && syncTags,
+          syncToVolumes: allowMemberSync && syncToVolumes,
         }),
       });
       const data = await res.json();
@@ -205,7 +218,7 @@ export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType,
     } finally {
       setApplying(null);
     }
-  }, [targetPath, results, selectedFields, overwrite, syncTags, syncToVolumes, onApplied]);
+  }, [targetPath, results, selectedFields, overwrite, allowMemberSync, syncTags, syncToVolumes, onApplied]);
 
   // AI 智能识别
   const handleAiRecognize = useCallback(async () => {
@@ -352,24 +365,28 @@ export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType,
           />
           <span className="text-xs text-muted">覆盖现有数据</span>
         </label>
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={syncTags}
-            onChange={(e) => setSyncTags(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border accent-accent"
-          />
-          <span className="text-xs text-muted">同步标签到所有卷</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={syncToVolumes}
-            onChange={(e) => setSyncToVolumes(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border accent-accent"
-          />
-          <span className="text-xs text-muted">同步元数据到所有卷</span>
-        </label>
+        {allowMemberSync && (
+          <>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={syncTags}
+                onChange={(e) => setSyncTags(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-border accent-accent"
+              />
+              <span className="text-xs text-muted">同步标签到所有卷</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={syncToVolumes}
+                onChange={(e) => setSyncToVolumes(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-border accent-accent"
+              />
+              <span className="text-xs text-muted">同步元数据到所有卷</span>
+            </label>
+          </>
+        )}
         <button
           onClick={() => setShowFieldSelector(!showFieldSelector)}
           className="flex items-center gap-1 text-xs text-accent/80 hover:text-accent"
