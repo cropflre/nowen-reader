@@ -184,7 +184,7 @@ export async function fetchUserLibraryAccess(userId: string): Promise<{
 // 扫描单个书库
 export async function scanLibrary(
   id: string
-): Promise<{ added: number; library: Library }> {
+): Promise<{ added: number; removed: number; library: Library }> {
   const res = await fetch(apiPath(`/api/admin/libraries/${id}/scan`), {
     method: "POST",
   });
@@ -194,7 +194,7 @@ export async function scanLibrary(
 // 扫描当前用户拥有管理权限的书库（管理员与 canManage 用户均可调用）。
 export async function scanManagedLibrary(
   id: string
-): Promise<{ added: number; library: Library }> {
+): Promise<{ added: number; removed: number; library: Library }> {
   const res = await fetch(apiPath(`/api/libraries/${id}/scan`), {
     method: "POST",
   });

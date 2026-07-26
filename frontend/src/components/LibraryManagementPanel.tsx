@@ -293,7 +293,7 @@ export function LibraryManagementPanel() {
         setScanningId(lib.id);
         try {
           const result = await scanLibrary(lib.id);
-          showMessage(`扫描完成，新增 ${result.added} 个内容`);
+          showMessage(`扫描完成，新增 ${result.added} 个内容，清理 ${result.removed} 个旧记录`);
           fetchLibraryList();
           fetchOwnershipPreview();
         } catch (scanErr) {
@@ -367,7 +367,7 @@ export function LibraryManagementPanel() {
     try {
       setScanningId(id);
       const result = await scanLibrary(id);
-      showMessage(`扫描完成，新增 ${result.added} 个内容`);
+      showMessage(`扫描完成，新增 ${result.added} 个内容，清理 ${result.removed} 个旧记录`);
       fetchLibraryList();
       fetchOwnershipPreview();
     } catch (err) {

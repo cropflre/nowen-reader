@@ -988,6 +988,8 @@ Content-Type: application/json
 | PUT | `/api/admin/user-groups/:id/library-access` | 设置权限组书库访问权限 |
 
 > 普通用户只能访问被授权的书库。列表接口按用户可访问书库自动过滤，详情/图片/PDF/章节/OPDS 等资源接口无权限返回 403。
+>
+> `POST /api/admin/libraries/:id/scan` 与 `POST /api/libraries/:id/scan` 会以一次完整扫描得到的磁盘内容为准：新增文件会入库，已从该书库移除的文件记录会立即清理并刷新缓存；响应中的 `added`、`removed` 分别表示新增和清理数量。如果任一根目录缺失、不是目录或遍历时发生权限错误，本次扫描不会删除旧记录，避免 NAS、Docker 挂载或权限异常造成误删。
 
 ### 书库字段
 

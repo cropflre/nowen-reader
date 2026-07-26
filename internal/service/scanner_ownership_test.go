@@ -80,6 +80,148 @@ func TestQuickSyncSkipsExactRootConflict(t *testing.T) {
 	}
 }
 
+func TestSyncLibraryByIDRemovesStaleRecordsAfterCompleteScan(t *testing.T) {
+	setupScannerTestDB(t)
+	root := t.TempDir()
+	bookPath := filepath.Join(root, "book.cbz")
+	if err := os.WriteFile(bookPath, []byte("comic"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	lib := &model.Library{
+		ID:          "manual-cleanup",
+		Name:        "Manual Cleanup",
+		Type:        "comic",
+		RootPath:    root,
+		Enabled:     true,
+		ScanEnabled: true,
+	}
+	if err := store.CreateLibrary(lib); err != nil {
+		t.Fatal(err)
+	}
+	if added, removed, err := SyncLibraryByID(lib.ID); err != nil || added != 1 || removed != 0 {
+		t.Fatalf("initial scan added=%d removed=%d err=%v", added, removed, err)
+	}
+	if err := os.Remove(bookPath); err != nil {
+		t.Fatal(err)
+	}
+	if added, removed, err := SyncLibraryByID(lib.ID); err != nil || added != 0 || removed != 1 {
+		t.Fatalf("cleanup scan added=%d removed=%d err=%v", added, removed, err)
+	}
+
+	var count int
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "libraryId" = ?`, lib.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("stale records = %d, want 0", count)
+	}
+}
+
+func TestSyncLibraryByIDKeepsRecordsWhenRootIsUnavailable(t *testing.T) {
+	setupScannerTestDB(t)
+	parent := t.TempDir()
+	root := filepath.Join(parent, "library")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "book.cbz"), []byte("comic"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	lib := &model.Library{
+		ID:          "manual-offline",
+		Name:        "Manual Offline",
+		Type:        "comic",
+		RootPath:    root,
+		Enabled:     true,
+		ScanEnabled: true,
+	}
+	if err := store.CreateLibrary(lib); err != nil {
+		t.Fatal(err)
+	}
+	if added, removed, err := SyncLibraryByID(lib.ID); err != nil || added != 1 || removed != 0 {
+		t.Fatalf("initial scan added=%d removed=%d err=%v", added, removed, err)
+	}
+	if err := os.Rename(root, root+".offline"); err != nil {
+		t.Fatal(err)
+	}
+	if added, removed, err := SyncLibraryByID(lib.ID); err != nil || added != 0 || removed != 0 {
+		t.Fatalf("offline scan added=%d removed=%d err=%v", added, removed, err)
+	}
+
+	var count int
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "libraryId" = ?`, lib.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("offline root removed %d records, want 1 preserved", 1-count)
+	}
+}
+
+func TestSyncLibraryByIDDoesNotLeaveSourceCacheAfterFolderMove(t *testing.T) {
+	setupScannerTestDB(t)
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	sourceDir := filepath.Join(rootA, "灵魂印记")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"第1话.zip", "第2话.zip"} {
+		if err := os.WriteFile(filepath.Join(sourceDir, name), []byte(name), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	libA := &model.Library{
+		ID:          "move-source",
+		Name:        "Move Source",
+		Type:        "comic",
+		RootPath:    rootA,
+		Enabled:     true,
+		ScanEnabled: true,
+	}
+	if err := store.CreateLibrary(libA); err != nil {
+		t.Fatal(err)
+	}
+	if added, removed, err := SyncLibraryByID(libA.ID); err != nil || added != 2 || removed != 0 {
+		t.Fatalf("source scan added=%d removed=%d err=%v", added, removed, err)
+	}
+
+	targetDir := filepath.Join(rootB, "灵魂印记")
+	if err := os.Rename(sourceDir, targetDir); err != nil {
+		t.Fatal(err)
+	}
+	libB := &model.Library{
+		ID:          "move-target",
+		Name:        "Move Target",
+		Type:        "comic",
+		RootPath:    rootB,
+		Enabled:     true,
+		ScanEnabled: true,
+	}
+	if err := store.CreateLibrary(libB); err != nil {
+		t.Fatal(err)
+	}
+	if added, removed, err := SyncLibraryByID(libA.ID); err != nil || added != 0 || removed != 2 {
+		t.Fatalf("source cleanup scan added=%d removed=%d err=%v", added, removed, err)
+	}
+	if added, removed, err := SyncLibraryByID(libB.ID); err != nil || added != 2 || removed != 0 {
+		t.Fatalf("target scan added=%d removed=%d err=%v", added, removed, err)
+	}
+
+	var sourceCount, targetCount, total int
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "libraryId" = ?`, libA.ID).Scan(&sourceCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "libraryId" = ?`, libB.ID).Scan(&targetCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM "Comic"`).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if sourceCount != 0 || targetCount != 2 || total != 2 {
+		t.Fatalf("unexpected records after move: source=%d target=%d total=%d", sourceCount, targetCount, total)
+	}
+}
+
 func TestOwnershipReconcileMergesSamePhysicalFile(t *testing.T) {
 	setupScannerTestDB(t)
 	root := t.TempDir()

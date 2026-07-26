@@ -432,14 +432,14 @@ func (h *LibraryHandler) ScanLibrary(c *gin.Context) {
 		return
 	}
 
-	added, err := service.SyncLibraryByID(id)
+	added, removed, err := service.SyncLibraryByID(id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	lib, _ := store.GetLibraryByID(id)
-	c.JSON(http.StatusOK, gin.H{"added": added, "library": lib})
+	c.JSON(http.StatusOK, gin.H{"added": added, "removed": removed, "library": lib})
 }
 
 // OwnershipPreview reports rows that resolve to the same physical file or are

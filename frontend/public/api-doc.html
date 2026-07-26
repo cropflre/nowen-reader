@@ -3387,9 +3387,9 @@
     <span class="summary"><span data-en="Scan managed library" data-zh="扫描可管理书库">Scan managed library</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Scan one library after upload. Available to administrators and users with canManage permission for the target library." data-zh="上传后仅扫描目标书库。管理员或对目标书库拥有 canManage 权限的用户可调用。">Scan one library after upload. Available to administrators and users with canManage permission for the target library.</span></p>
+    <p class="description"><span data-en="Scan one managed library. A complete scan adds new files and immediately removes stale records that are no longer present, then invalidates related caches. If any root is missing or cannot be traversed, stale records are preserved to protect against temporary NAS, Docker mount, or permission failures. Available to administrators and users with canManage permission." data-zh="扫描一个可管理书库。完整扫描会新增磁盘文件、立即清理已不存在的旧记录并刷新相关缓存；任一根目录缺失或因权限无法遍历时会保留旧记录，避免 NAS、Docker 挂载或权限异常导致误删。管理员或拥有 canManage 权限的用户可调用。">Scan one managed library. A complete scan adds new files and immediately removes stale records that are no longer present, then invalidates related caches. If any root is missing or cannot be traversed, stale records are preserved to protect against temporary NAS, Docker mount, or permission failures. Available to administrators and users with canManage permission.</span></p>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <pre class="code-block"><code>{"added": 1, "library": {Library}}</code></pre>
+    <pre class="code-block"><code>{"added": 1, "removed": 0, "library": {Library}}</code></pre>
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
     </div>
@@ -3429,11 +3429,12 @@
     <span class="summary"><span data-en="Scan library" data-zh="扫描库">Scan library</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Trigger a scan of all root directories in the library. Discovers new files and adds them to the database." data-zh="触发库中所有根目录的扫描。发现新文件并将其添加到数据库。">Trigger a scan of all root directories in the library. Discovers new files and adds them to the database.</span></p>
+    <p class="description"><span data-en="Scan all root directories in the library. A complete scan adds new files and immediately removes stale records that are no longer present, then invalidates related caches. If any root is missing or cannot be traversed, stale records are preserved to protect against temporary NAS, Docker mount, or permission failures." data-zh="扫描书库的全部根目录。完整扫描会新增磁盘文件、立即清理已不存在的旧记录并刷新相关缓存；任一根目录缺失或因权限无法遍历时会保留旧记录，避免 NAS、Docker 挂载或权限异常导致误删。">Scan all root directories in the library. A complete scan adds new files and immediately removes stale records that are no longer present, then invalidates related caches. If any root is missing or cannot be traversed, stale records are preserved to protect against temporary NAS, Docker mount, or permission failures.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
   "added": 0,
+  "removed": 2,
   "library": {Library}
 }</code></pre>
     <div class="badges">
