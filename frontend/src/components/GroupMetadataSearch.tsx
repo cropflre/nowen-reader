@@ -178,7 +178,7 @@ export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType,
     } finally {
       setSearching(false);
     }
-  }, [query, enabledSources, targetPath, locale, t]);
+  }, [query, enabledSources, targetPath, locale, effectiveContentType, t]);
 
   // 应用刮削结果到系列
   const handleApply = useCallback(async (index: number) => {

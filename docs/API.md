@@ -295,6 +295,7 @@ Authorization: Bearer <token>
     {
       "id": "ser_xxx",
       "libraryId": "lib_xxx",
+      "contentType": "comic",
       "rootRelativePath": "作品目录",
       "title": "作品标题",
       "sortTitle": "作品排序标题",
@@ -337,7 +338,7 @@ Authorization: Bearer <token>
 
 返回 `{ "series": SeriesSummary, "sections": SeriesSection[], "unsectioned": SeriesItem[] }`。`sections[].items` 是已归入篇章的阅读单元，`unsectioned` 是未分篇单元；每个单元包含普通漫画对象 `comic`、`sectionId`、`sortIndex` 和 `displayLabel`。不存在返回 `404`，无目标书库查看权限返回 `403`。
 
-`series` 同时返回目录作品级作者、简介、年份、出版社、语言、类型、状态、外部评分及标签。存在刮削封面时，`coverUrl` 指向目录作品自己的缓存封面；否则继续回退到指定成员或首个阅读单元的封面。
+`series` 同时返回目录作品级作者、简介、年份、出版社、语言、类型、状态、外部评分及标签。`contentType` 由所属书库类型决定；混合书库才按成员多数计算，用于选择正确的漫画或小说刮削源。存在刮削封面时，`coverUrl` 指向目录作品自己的缓存封面；否则继续回退到指定成员或首个阅读单元的封面。
 
 ### 预览与重建
 
@@ -381,7 +382,7 @@ Content-Type: application/json
 }
 ```
 
-`query` 为空时使用目录作品当前标题；`lang` 默认为 `zh`；`contentType` 为空时根据阅读单元类型自动判断。成功返回：
+`query` 为空时使用目录作品当前标题；`lang` 默认为 `zh`。服务端以 `SeriesSummary.contentType` 为准选择并校验数据源：漫画书库固定使用漫画源，小说书库固定使用小说源，混合书库才按成员多数判断；请求中的 `contentType` 仅为兼容字段，不能覆盖服务端判断。成功返回：
 
 ```json
 {"results":[ComicMetadata],"detectedContentType":"comic"}

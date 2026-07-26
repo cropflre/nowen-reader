@@ -205,10 +205,6 @@ export default function SeriesDetailPage() {
 
   const { series } = detail;
   const overallProgress = series.itemCount > 0 ? Math.round((series.completedItemCount / series.itemCount) * 100) : 0;
-  const contentType = allItems.filter((item) => item.comic.type === "novel" || isNovelFile(item.comic.filename || "")).length > allItems.length / 2
-    ? "novel"
-    : "comic";
-
   return (
     <main className="min-h-screen bg-background pb-24">
       <header className="sticky top-0 z-30 border-b border-border/50 bg-background/85 backdrop-blur-xl">
@@ -361,7 +357,7 @@ export default function SeriesDetailPage() {
                 key={series.id}
                 seriesId={series.id}
                 groupName={series.title}
-                contentType={contentType}
+                contentType={series.contentType}
                 onApplied={async (success) => {
                   if (success) await load();
                 }}

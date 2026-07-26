@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -41,8 +42,8 @@ func TestApplySeriesScrapedMetadata(t *testing.T) {
 	}
 	if _, err := store.DB().Exec(`
 		INSERT INTO "Comic" ("id", "filename", "title", "type", "libraryId", "relativePath") VALUES
-			('scrape-volume-1', 'work/01.cbz', '01', 'comic', ?, 'work/01.cbz'),
-			('scrape-volume-2', 'work/02.cbz', '02', 'comic', ?, 'work/02.cbz')
+			('scrape-volume-1', 'work/01.epub', '01', 'novel', ?, 'work/01.epub'),
+			('scrape-volume-2', 'work/02.epub', '02', 'novel', ?, 'work/02.epub')
 	`, library.ID, library.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +99,15 @@ func TestApplySeriesScrapedMetadata(t *testing.T) {
 		detail.Series.Publisher != "Test Publisher" || detail.Series.Year == nil || *detail.Series.Year != 2026 ||
 		len(detail.Series.Tags) != 2 {
 		t.Fatalf("unexpected series metadata: %#v", detail.Series)
+	}
+	if detail.Series.ContentType != "comic" || detectSeriesContentType(detail) != "comic" {
+		t.Fatalf("comic-library series content type = %q", detail.Series.ContentType)
+	}
+	if got := filterSeriesMetadataSources(
+		[]string{"googlebooks", "anilist_novel", "bangumi", "bangumi"},
+		detail.Series.ContentType,
+	); !reflect.DeepEqual(got, []string{"bangumi"}) {
+		t.Fatalf("filtered comic sources = %#v", got)
 	}
 	if !detail.Series.MetadataLocked || detail.Series.ManualLocked {
 		t.Fatalf("unexpected metadata/structure locks: %#v", detail.Series)

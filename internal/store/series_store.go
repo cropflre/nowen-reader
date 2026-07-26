@@ -48,6 +48,7 @@ type DetectedSeriesItem struct {
 type SeriesSummary struct {
 	ID                      string     `json:"id"`
 	LibraryID               string     `json:"libraryId"`
+	ContentType             string     `json:"contentType"`
 	RootRelativePath        string     `json:"rootRelativePath"`
 	Title                   string     `json:"title"`
 	SortTitle               string     `json:"sortTitle"`
@@ -316,7 +317,14 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		stateReadTime = `COALESCE(ucs."totalReadTime", 0)`
 	}
 	query := fmt.Sprintf(`
-		SELECT s."id", s."libraryId", s."rootRelativePath", s."title", s."sortTitle", s."coverComicId", s."coverUrl",
+		SELECT s."id", s."libraryId",
+		       CASE
+		         WHEN MAX(l."type") = 'novel' THEN 'novel'
+		         WHEN MAX(l."type") = 'comic' THEN 'comic'
+		         WHEN SUM(CASE WHEN c."type" = 'novel' THEN 1 ELSE 0 END) > COUNT(DISTINCT si."comicId") / 2 THEN 'novel'
+		         ELSE 'comic'
+		       END,
+		       s."rootRelativePath", s."title", s."sortTitle", s."coverComicId", s."coverUrl",
 		       s."author", s."description", s."year", s."publisher", s."language", s."genre", s."status",
 		       s."externalRating", s."externalRatingMax", s."externalRatingSource", s."externalRatingUpdatedAt",
 		       s."metadataLocked", s."manualLocked",
@@ -325,6 +333,7 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		       COALESCE(SUM(%s), 0), COALESCE(SUM(c."fileSize"), 0), MAX(%s), MAX(%s),
 		       s."createdAt", s."updatedAt"
 		FROM "ComicSeries" s
+		JOIN "Library" l ON l."id" = s."libraryId"
 		JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
 		JOIN "Comic" c ON c."id" = si."comicId"
 		LEFT JOIN "ComicSeriesSection" sec ON sec."id" = si."sectionId"
@@ -339,7 +348,7 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 	var storedCoverURL string
 	var createdAt, updatedAt time.Time
 	if err := db.QueryRow(query, args...).Scan(
-		&summary.ID, &summary.LibraryID, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
+		&summary.ID, &summary.LibraryID, &summary.ContentType, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
 		&summary.CoverComicID, &storedCoverURL, &summary.Author, &summary.Description, &summary.Year,
 		&summary.Publisher, &summary.Language, &summary.Genre, &summary.Status,
 		&summary.ExternalRating, &summary.ExternalRatingMax, &summary.ExternalRatingSource, &summary.ExternalRatingUpdatedAt,

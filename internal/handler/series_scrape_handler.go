@@ -46,9 +46,8 @@ func (h *SeriesHandler) ScrapeMetadata(c *gin.Context) {
 	if body.Lang == "" {
 		body.Lang = "zh"
 	}
-	if body.ContentType == "" {
-		body.ContentType = detectSeriesContentType(detail)
-	}
+	body.ContentType = detectSeriesContentType(detail)
+	body.Sources = filterSeriesMetadataSources(body.Sources, body.ContentType)
 	results := service.SearchMetadata(body.Query, body.Sources, body.Lang, body.ContentType)
 	if results == nil {
 		results = []service.ComicMetadata{}
@@ -248,6 +247,9 @@ func detectSeriesContentType(detail *store.SeriesDetail) string {
 	if detail == nil {
 		return "comic"
 	}
+	if detail.Series.ContentType == "comic" || detail.Series.ContentType == "novel" {
+		return detail.Series.ContentType
+	}
 	items := append([]store.SeriesItemDetail{}, detail.Unsectioned...)
 	for _, section := range detail.Sections {
 		items = append(items, section.Items...)
@@ -262,4 +264,33 @@ func detectSeriesContentType(detail *store.SeriesDetail) string {
 		return "novel"
 	}
 	return "comic"
+}
+
+func filterSeriesMetadataSources(sources []string, contentType string) []string {
+	if len(sources) == 0 {
+		return nil
+	}
+	allowed := map[string]bool{
+		"anilist":       contentType == "comic",
+		"bangumi":       contentType == "comic",
+		"mangadex":      contentType == "comic",
+		"mangaupdates":  contentType == "comic",
+		"kitsu":         contentType == "comic",
+		"googlebooks":   contentType == "novel",
+		"bangumi_novel": contentType == "novel",
+		"anilist_novel": contentType == "novel",
+	}
+	filtered := make([]string, 0, len(sources))
+	seen := make(map[string]struct{}, len(sources))
+	for _, source := range sources {
+		if !allowed[source] {
+			continue
+		}
+		if _, exists := seen[source]; exists {
+			continue
+		}
+		seen[source] = struct{}{}
+		filtered = append(filtered, source)
+	}
+	return filtered
 }

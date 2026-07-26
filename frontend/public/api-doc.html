@@ -1611,6 +1611,7 @@
   &quot;series&quot;: [{
     &quot;id&quot;: &quot;ser_xxx&quot;,
     &quot;libraryId&quot;: &quot;lib_xxx&quot;,
+    &quot;contentType&quot;: &quot;comic&quot;,
     &quot;rootRelativePath&quot;: &quot;Series Folder&quot;,
     &quot;title&quot;: &quot;Series Title&quot;,
     &quot;coverComicId&quot;: &quot;comic_xxx&quot;,
@@ -1676,12 +1677,12 @@
     <span class="summary"><span data-en="Get directory-series details" data-zh="获取目录作品详情">Get directory-series details</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns the series summary, ordered sections and their items, plus unsectioned items. Requires canView on the owning library; inaccessible series return 403 and missing series return 404." data-zh="返回目录作品摘要、排序后的篇章及阅读单元，以及未分篇单元。要求所属书库 canView；无权限返回 403，不存在返回 404。">Returns the series summary, ordered sections and their items, plus unsectioned items. Requires canView on the owning library; inaccessible series return 403 and missing series return 404.</span></p>
+    <p class="description"><span data-en="Returns the series summary, ordered sections and their items, plus unsectioned items. series.contentType follows the owning library type; mixed libraries use the majority member type. This value selects comic or novel metadata sources. Requires canView on the owning library; inaccessible series return 403 and missing series return 404." data-zh="返回目录作品摘要、排序后的篇章及阅读单元，以及未分篇单元。series.contentType 由所属书库类型决定，混合书库才按成员多数计算，并用于选择漫画或小说元数据源。要求所属书库 canView；无权限返回 403，不存在返回 404。">Returns the series summary, ordered sections and their items, plus unsectioned items. series.contentType follows the owning library type; mixed libraries use the majority member type. This value selects comic or novel metadata sources. Requires canView on the owning library; inaccessible series return 403 and missing series return 404.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><tbody><tr><td>id</td><td>string</td><td>Yes</td><td><span data-en="Series ID" data-zh="目录作品 ID">Series ID</span></td></tr></tbody></table>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  &quot;series&quot;: { &quot;id&quot;: &quot;ser_xxx&quot;, &quot;title&quot;: &quot;Series Title&quot; },
+  &quot;series&quot;: { &quot;id&quot;: &quot;ser_xxx&quot;, &quot;title&quot;: &quot;Series Title&quot;, &quot;contentType&quot;: &quot;comic&quot; },
   &quot;sections&quot;: [{ &quot;id&quot;: &quot;section_xxx&quot;, &quot;title&quot;: &quot;Part 1&quot;, &quot;items&quot;: [] }],
   &quot;unsectioned&quot;: []
 }</code></pre>
@@ -1716,7 +1717,7 @@
     <span class="summary"><span data-en="Search directory-series metadata" data-zh="搜索目录作品元数据">Search directory-series metadata</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Searches enabled online sources using the supplied query or the current series title. Restricted to administrators and requires the scraper feature." data-zh="使用请求中的关键词或目录作品当前标题搜索已启用的在线数据源。仅限管理员并要求启用刮削功能。">Searches enabled online sources using the supplied query or the current series title. Restricted to administrators and requires the scraper feature.</span></p>
+    <p class="description"><span data-en="Searches enabled online sources using the supplied query or the current series title. Source type is enforced from SeriesSummary.contentType: comic and novel libraries use their matching sources, while mixed libraries use the majority member type. The request contentType is retained for compatibility and cannot override this decision. Restricted to administrators and requires the scraper feature." data-zh="使用请求中的关键词或目录作品当前标题搜索已启用的在线数据源。数据源类型以 SeriesSummary.contentType 为准：漫画和小说书库固定使用对应来源，混合书库才按成员多数判断；请求中的 contentType 仅作兼容，不能覆盖服务端判断。仅限管理员并要求启用刮削功能。">Searches enabled online sources using the supplied query or the current series title. Source type is enforced from SeriesSummary.contentType: comic and novel libraries use their matching sources, while mixed libraries use the majority member type. The request contentType is retained for compatibility and cannot override this decision. Restricted to administrators and requires the scraper feature.</span></p>
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
     <pre class="code-block"><code>{
   &quot;query&quot;: &quot;Series title&quot;,

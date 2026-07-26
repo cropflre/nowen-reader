@@ -3,6 +3,7 @@ import type { Comic } from "@/types/comic";
 export interface SeriesSummary {
   id: string;
   libraryId: string;
+  contentType: "comic" | "novel";
   rootRelativePath: string;
   title: string;
   sortTitle: string;
