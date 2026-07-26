@@ -25,6 +25,9 @@ interface MetadataResult {
   language?: string;
   genre?: string;
   coverUrl?: string;
+  externalRating?: number;
+  externalRatingMax?: number;
+  externalRatingSource?: string;
   source: string;
 }
 
@@ -69,18 +72,23 @@ const APPLICABLE_FIELDS = [
   { id: "year", label: "年份" },
   { id: "cover", label: "封面" },
   { id: "tags", label: "标签" },
+  { id: "rating", label: "外部评分" },
 ] as const;
 
 interface Props {
-  groupId: number;
+  groupId?: number;
+  seriesId?: string;
   groupName: string;
   contentType?: string; // "comic" | "novel" — 系列内容类型，影响数据源选择
   onApplied?: (success: boolean, message?: string) => void;
 }
 
-export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied }: Props) {
+export function GroupMetadataSearch({ groupId, seriesId, groupName, contentType, onApplied }: Props) {
   const t = useTranslation();
   const { locale } = useLocale();
+  const targetPath = seriesId
+    ? `/api/series/${encodeURIComponent(seriesId)}`
+    : `/api/groups/${groupId}`;
 
   // 根据内容类型选择数据源
   const isNovel = contentType === "novel";
@@ -149,7 +157,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     setApplied(null);
     setAiResult(null);
     try {
-      const res = await fetch(apiPath(`/api/groups/${groupId}/scrape-metadata`), {
+      const res = await fetch(apiPath(`${targetPath}/scrape-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -170,13 +178,13 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     } finally {
       setSearching(false);
     }
-  }, [query, enabledSources, groupId, locale, t]);
+  }, [query, enabledSources, targetPath, locale, t]);
 
   // 应用刮削结果到系列
   const handleApply = useCallback(async (index: number) => {
     setApplying(index);
     try {
-      const res = await fetch(apiPath(`/api/groups/${groupId}/apply-metadata`), {
+      const res = await fetch(apiPath(`${targetPath}/apply-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -197,7 +205,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     } finally {
       setApplying(null);
     }
-  }, [groupId, results, selectedFields, overwrite, syncTags, onApplied]);
+  }, [targetPath, results, selectedFields, overwrite, syncTags, syncToVolumes, onApplied]);
 
   // AI 智能识别
   const handleAiRecognize = useCallback(async () => {
@@ -206,7 +214,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     setAiResult(null);
     setError("");
     try {
-      const res = await fetch(apiPath(`/api/groups/${groupId}/ai-recognize`), {
+      const res = await fetch(apiPath(`${targetPath}/ai-recognize`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lang: locale }),
@@ -224,7 +232,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     } finally {
       setAiLoading(false);
     }
-  }, [aiLoading, groupId, locale]);
+  }, [aiLoading, targetPath, locale]);
 
   // 将 AI 识别结果作为元数据应用
   const handleApplyAiResult = useCallback(async () => {
@@ -242,7 +250,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
         source: "ai_recognize",
       };
 
-      const res = await fetch(apiPath(`/api/groups/${groupId}/apply-metadata`), {
+      const res = await fetch(apiPath(`${targetPath}/apply-metadata`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -263,7 +271,7 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
     } finally {
       setApplying(null);
     }
-  }, [aiResult, groupId, selectedFields, overwrite, syncTags, onApplied]);
+  }, [aiResult, targetPath, selectedFields, overwrite, syncTags, syncToVolumes, onApplied]);
 
   return (
     <div className="space-y-3">
@@ -518,6 +526,11 @@ export function GroupMetadataSearch({ groupId, groupName, contentType, onApplied
                       {result.year}
                       {result.publisher && ` · ${result.publisher}`}
                       {result.language && ` · ${result.language}`}
+                    </div>
+                  )}
+                  {result.externalRating != null && (
+                    <div className="text-xs text-muted">
+                      评分：{result.externalRating}{result.externalRatingMax ? `/${result.externalRatingMax}` : ""}
                     </div>
                   )}
                   {result.description && (

@@ -268,6 +268,9 @@ GET /api/comics?readingStatus=finished
 | PUT | `/api/series/:id` | 修改目录作品标题、封面或人工锁定状态，需要 `canManage` |
 | PUT | `/api/series/:id/structure` | 修改阅读单元所属篇章及顺序，需要 `canManage` |
 | POST | `/api/series/:id/re-detect` | 解除人工锁定并重新自动识别，需要 `canManage` |
+| POST | `/api/series/:id/scrape-metadata` | 从在线数据源搜索目录作品元数据，仅管理员且需启用刮削 |
+| POST | `/api/series/:id/apply-metadata` | 应用刮削元数据，可同步标签和元数据到全部阅读单元，仅管理员 |
+| POST | `/api/series/:id/ai-recognize` | 使用首个阅读单元的封面和页面进行 AI 识别，仅管理员 |
 | DELETE | `/api/series/:id` | 删除目录作品关系，不删除作品记录或磁盘文件，需要 `canManage` |
 
 ### 获取目录作品列表
@@ -297,6 +300,18 @@ Authorization: Bearer <token>
       "sortTitle": "作品排序标题",
       "coverComicId": "comic_xxx",
       "coverUrl": "/api/comics/comic_xxx/thumbnail",
+      "author": "作者",
+      "description": "作品简介",
+      "year": 2026,
+      "publisher": "出版社",
+      "language": "zh",
+      "genre": "冒险,奇幻",
+      "status": "",
+      "externalRating": 8.5,
+      "externalRatingMax": 10,
+      "externalRatingSource": "anilist",
+      "metadataLocked": true,
+      "tags": [{"id": 1, "name": "冒险", "color": ""}],
       "itemCount": 15,
       "sectionCount": 2,
       "completedItemCount": 3,
@@ -321,6 +336,8 @@ Authorization: Bearer <token>
 ```
 
 返回 `{ "series": SeriesSummary, "sections": SeriesSection[], "unsectioned": SeriesItem[] }`。`sections[].items` 是已归入篇章的阅读单元，`unsectioned` 是未分篇单元；每个单元包含普通漫画对象 `comic`、`sectionId`、`sortIndex` 和 `displayLabel`。不存在返回 `404`，无目标书库查看权限返回 `403`。
+
+`series` 同时返回目录作品级作者、简介、年份、出版社、语言、类型、状态、外部评分及标签。存在刮削封面时，`coverUrl` 指向目录作品自己的缓存封面；否则继续回退到指定成员或首个阅读单元的封面。
 
 ### 预览与重建
 
@@ -347,6 +364,75 @@ Content-Type: application/json
 ```
 
 三个字段均可省略。空标题或空 `coverComicId` 不会清除现有值；成功返回 `{"success":true}`。
+
+### 目录作品元数据刮削
+
+在线搜索：
+
+```http
+POST /api/series/:id/scrape-metadata
+Content-Type: application/json
+
+{
+  "query": "作品标题",
+  "sources": ["anilist", "bangumi"],
+  "lang": "zh",
+  "contentType": "comic"
+}
+```
+
+`query` 为空时使用目录作品当前标题；`lang` 默认为 `zh`；`contentType` 为空时根据阅读单元类型自动判断。成功返回：
+
+```json
+{"results":[ComicMetadata],"detectedContentType":"comic"}
+```
+
+应用搜索结果：
+
+```http
+POST /api/series/:id/apply-metadata
+Content-Type: application/json
+
+{
+  "metadata": {
+    "title": "作品标题",
+    "author": "作者",
+    "description": "简介",
+    "genre": "冒险,奇幻",
+    "publisher": "出版社",
+    "language": "zh",
+    "year": 2026,
+    "coverUrl": "https://example.com/cover.jpg",
+    "externalRating": 8.5,
+    "externalRatingMax": 10,
+    "externalRatingSource": "anilist",
+    "source": "anilist"
+  },
+  "fields": ["author", "description", "genre", "publisher", "language", "year", "cover", "tags", "rating"],
+  "overwrite": true,
+  "syncTags": true,
+  "syncToVolumes": true,
+  "syncRating": false
+}
+```
+
+- `fields` 为空时应用全部字段；否则只应用列出的字段。支持 `title`、`author`、`description`、`genre`、`publisher`、`language`、`year`、`cover`、`tags` 和 `rating`。
+- `overwrite=false` 时仅填充目录作品及阅读单元的空字段。
+- 成功应用后会启用独立的 `metadataLocked`，避免后续目录识别覆盖刮削标题和元数据，但不会锁住目录结构；新增或移除阅读单元仍可由扫描自动刷新。
+- `syncTags=true` 将目录作品标签增量同步到全部阅读单元。
+- `syncToVolumes=true` 将作者、简介、类型、出版社、语言和年份同步到全部阅读单元；`syncRating=true` 时同时同步外部评分。
+- 刮削封面保存到目录作品自己的缩略图缓存，不覆盖成员作品封面。
+
+AI 识别：
+
+```http
+POST /api/series/:id/ai-recognize
+Content-Type: application/json
+
+{"lang":"zh"}
+```
+
+服务端使用首个阅读单元的封面及前两页识别作品，并返回 `{"success":true,"recognized":...,"metadata":...}`。该接口要求已配置云端 AI。与合集刮削保持一致，三个接口均仅限管理员并要求启用刮削功能。应用接口成功时的 `series` 字段为更新后的 `SeriesSummary`。
 
 调整阅读单元结构：
 

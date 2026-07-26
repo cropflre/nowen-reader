@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nowen-reader/nowen-reader/internal/archive"
 	"github.com/nowen-reader/nowen-reader/internal/config"
 )
 
@@ -36,6 +37,16 @@ func BuildGroupCoverURL(groupID int) string {
 	th := config.GetThumbnailHeight()
 	cacheName := fmt.Sprintf("group_%d_%dx%d.webp", groupID, tw, th)
 	cachePath := filepath.Join(config.GetThumbnailsDir(), cacheName)
+	if info, err := os.Stat(cachePath); err == nil {
+		return fmt.Sprintf("%s?v=%d", base, info.ModTime().Unix())
+	}
+	return base
+}
+
+func BuildSeriesCoverURL(seriesID string) string {
+	coverID := "series_" + seriesID
+	base := config.JoinBasePath(fmt.Sprintf("/api/comics/%s/thumbnail", coverID))
+	cachePath := filepath.Join(config.GetThumbnailsDir(), archive.SeriesCoverCacheName(seriesID))
 	if info, err := os.Stat(cachePath); err == nil {
 		return fmt.Sprintf("%s?v=%d", base, info.ModTime().Unix())
 	}

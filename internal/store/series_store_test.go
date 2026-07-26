@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/nowen-reader/nowen-reader/internal/model"
 )
@@ -144,5 +145,138 @@ func TestSetSeriesItemStructureRejectsForeignSection(t *testing.T) {
 
 	if err := SetSeriesItemStructure("series-a", "item", "foreign-section", 0); err == nil {
 		t.Fatal("foreign section assignment succeeded, want rejection")
+	}
+}
+
+func TestSeriesMetadataAndTagsSurviveDirectoryRefresh(t *testing.T) {
+	setupTestDB(t)
+
+	library := &model.Library{
+		ID:            "metadata-series-library",
+		Name:          "Metadata Series",
+		Type:          "comic",
+		RootPath:      t.TempDir(),
+		Enabled:       true,
+		DefaultAccess: "public",
+		ScanEnabled:   true,
+	}
+	if err := CreateLibrary(library); err != nil {
+		t.Fatal(err)
+	}
+	for index, id := range []string{"metadata-volume-1", "metadata-volume-2"} {
+		if _, err := DB().Exec(`
+			INSERT INTO "Comic" ("id", "filename", "title", "type", "libraryId", "relativePath")
+			VALUES (?, ?, ?, 'comic', ?, ?)
+		`, id, "作品/卷.pdf", id, library.ID, "作品/卷"+string(rune('1'+index))+".pdf"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	detected := []DetectedSeries{{
+		ID:               "ser-metadata",
+		LibraryID:        library.ID,
+		RootRelativePath: "作品",
+		Title:            "作品",
+		SortTitle:        "作品",
+		CoverComicID:     "metadata-volume-1",
+		Items: []DetectedSeriesItem{
+			{ComicID: "metadata-volume-1", SortIndex: 0},
+			{ComicID: "metadata-volume-2", SortIndex: 1},
+		},
+	}}
+	if err := ReplaceDetectedSeries(library.ID, detected); err != nil {
+		t.Fatal(err)
+	}
+
+	title := "刮削后的作品名"
+	author := "作者"
+	description := "简介"
+	publisher := "出版社"
+	language := "zh"
+	genre := "冒险,奇幻"
+	coverURL := "https://example.com/cover.jpg"
+	year := 2026
+	rating := 8.5
+	ratingMax := 10.0
+	ratingSource := "test"
+	ratingAt := time.Now().UTC().Truncate(time.Second)
+	metadataLocked := true
+	if err := UpdateSeriesMetadata("ser-metadata", SeriesMetadataUpdate{
+		Title:                   &title,
+		CoverURL:                &coverURL,
+		Author:                  &author,
+		Description:             &description,
+		Year:                    &year,
+		Publisher:               &publisher,
+		Language:                &language,
+		Genre:                   &genre,
+		ExternalRating:          &rating,
+		ExternalRatingMax:       &ratingMax,
+		ExternalRatingSource:    &ratingSource,
+		ExternalRatingUpdatedAt: &ratingAt,
+		MetadataLocked:          &metadataLocked,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetSeriesTags("ser-metadata", []string{"冒险", "奇幻"}); err != nil {
+		t.Fatal(err)
+	}
+	total, synced, tagsCount, err := SyncSeriesTagsToItems("ser-metadata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || synced != 2 || tagsCount != 2 {
+		t.Fatalf("tag sync = total:%d synced:%d tags:%d", total, synced, tagsCount)
+	}
+
+	detected[0].Title = "扫描识别标题"
+	detected[0].SortTitle = "扫描识别标题"
+	detected[0].Items[0].DisplayLabel = "已刷新结构"
+	if err := ReplaceDetectedSeries(library.ID, detected); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := GetSeriesDetail("ser-metadata", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail == nil {
+		t.Fatal("series metadata disappeared after directory refresh")
+	}
+	got := detail.Series
+	if got.Title != title || got.Author != author || got.Description != description || got.Publisher != publisher ||
+		got.Language != language || got.Genre != genre || got.Year == nil || *got.Year != year {
+		t.Fatalf("unexpected series metadata after refresh: %#v", got)
+	}
+	if got.ExternalRating == nil || *got.ExternalRating != rating || got.ExternalRatingMax == nil || *got.ExternalRatingMax != ratingMax {
+		t.Fatalf("unexpected external rating: %#v", got)
+	}
+	if len(got.Tags) != 2 {
+		t.Fatalf("series tags = %#v, want 2", got.Tags)
+	}
+	if !got.MetadataLocked || got.ManualLocked {
+		t.Fatalf("metadata and structure locks = metadata:%v manual:%v", got.MetadataLocked, got.ManualLocked)
+	}
+	if len(detail.Unsectioned) != 2 || detail.Unsectioned[0].DisplayLabel != "已刷新结构" {
+		t.Fatalf("directory structure was not refreshed: %#v", detail.Unsectioned)
+	}
+	if got.CoverURL != "/api/comics/series_ser-metadata/thumbnail" {
+		t.Fatalf("series cover URL = %q", got.CoverURL)
+	}
+	for _, comicID := range []string{"metadata-volume-1", "metadata-volume-2"} {
+		var count int
+		err := DB().QueryRow(`SELECT COUNT(*) FROM "ComicTag" WHERE "comicId" = ?`, comicID).Scan(&count)
+		if err != nil || count != 2 {
+			t.Fatalf("comic %s tag count = %d, err=%v", comicID, count, err)
+		}
+	}
+
+	if err := ReplaceDetectedSeries(library.ID, nil); err != nil {
+		t.Fatalf("remove missing detected series: %v", err)
+	}
+	removed, err := GetSeriesDetail("ser-metadata", "")
+	if err != nil {
+		t.Fatalf("load removed series: %v", err)
+	}
+	if removed != nil {
+		t.Fatalf("metadata lock kept a stale directory series: %#v", removed.Series)
 	}
 }

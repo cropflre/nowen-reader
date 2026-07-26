@@ -1590,7 +1590,7 @@
     </div>
 
     <div id="endpoints-series" class="endpoint-group">
-    <h2 class="group-title"><span data-en="4. Directory Series" data-zh="4. 目录作品">4. Directory Series</span> <span class="group-badge"><span data-en="8 endpoints" data-zh="8 个接口">8 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="4. Directory Series" data-zh="4. 目录作品">4. Directory Series</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
     <p class="description"><span data-en="Directory series are automatically detected from directory structure in comic libraries. All endpoints require authentication. Read operations are limited by canView; management operations require canManage on the target library." data-zh="目录作品根据漫画书库的目录结构自动识别。全部接口需要认证；读取操作按 canView 过滤，管理操作要求目标书库的 canManage 权限。">Directory series are automatically detected from directory structure in comic libraries. All endpoints require authentication. Read operations are limited by canView; management operations require canManage on the target library.</span></p>
 
 <div class="endpoint auth-required" data-search="GET /api/series list directory series libraryIds search 目录作品列表" id="get-api-series">
@@ -1615,6 +1615,16 @@
     &quot;title&quot;: &quot;Series Title&quot;,
     &quot;coverComicId&quot;: &quot;comic_xxx&quot;,
     &quot;coverUrl&quot;: &quot;/api/comics/comic_xxx/thumbnail&quot;,
+    &quot;author&quot;: &quot;Author&quot;,
+    &quot;description&quot;: &quot;Description&quot;,
+    &quot;year&quot;: 2026,
+    &quot;publisher&quot;: &quot;Publisher&quot;,
+    &quot;language&quot;: &quot;zh&quot;,
+    &quot;genre&quot;: &quot;Adventure,Fantasy&quot;,
+    &quot;externalRating&quot;: 8.5,
+    &quot;externalRatingMax&quot;: 10,
+    &quot;metadataLocked&quot;: true,
+    &quot;tags&quot;: [{&quot;id&quot;: 1, &quot;name&quot;: &quot;Adventure&quot;, &quot;color&quot;: &quot;&quot;}],
     &quot;itemCount&quot;: 15,
     &quot;sectionCount&quot;: 2,
     &quot;completedItemCount&quot;: 3,
@@ -1696,6 +1706,66 @@
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{ &quot;success&quot;: true }</code></pre>
     <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/series/:id/scrape-metadata scrape directory series metadata 刮削目录作品元数据" id="post-api-series-id-scrape-metadata">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/series/:id/scrape-metadata</span>
+    <span class="summary"><span data-en="Search directory-series metadata" data-zh="搜索目录作品元数据">Search directory-series metadata</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Searches enabled online sources using the supplied query or the current series title. Restricted to administrators and requires the scraper feature." data-zh="使用请求中的关键词或目录作品当前标题搜索已启用的在线数据源。仅限管理员并要求启用刮削功能。">Searches enabled online sources using the supplied query or the current series title. Restricted to administrators and requires the scraper feature.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{
+  &quot;query&quot;: &quot;Series title&quot;,
+  &quot;sources&quot;: [&quot;anilist&quot;, &quot;bangumi&quot;],
+  &quot;lang&quot;: &quot;zh&quot;,
+  &quot;contentType&quot;: &quot;comic&quot;
+}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{&quot;results&quot;: [ComicMetadata], &quot;detectedContentType&quot;: &quot;comic&quot;}</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span><span class="badge badge-scraper"><span data-en="Scraper Required" data-zh="需要爬虫">Scraper Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/series/:id/apply-metadata apply directory series metadata 应用目录作品元数据" id="post-api-series-id-apply-metadata">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/series/:id/apply-metadata</span>
+    <span class="summary"><span data-en="Apply directory-series metadata" data-zh="应用目录作品元数据">Apply directory-series metadata</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Stores selected title, author, description, genre, publisher, language, year, cover, tags, and external rating fields on the directory series. Metadata is protected from later title detection without locking automatic member refresh. Tags and metadata may also be synchronized to every reading unit. Scraped covers use a series-specific cache and do not replace member covers." data-zh="将选中的标题、作者、简介、类型、出版社、语言、年份、封面、标签和外部评分保存到目录作品；元数据会被保护，后续标题识别不会覆盖，同时不影响成员结构自动刷新。可将标签和元数据同步到全部阅读单元。刮削封面使用目录作品专用缓存，不替换成员封面。">Stores selected title, author, description, genre, publisher, language, year, cover, tags, and external rating fields on the directory series. Metadata is protected from later title detection without locking automatic member refresh. Tags and metadata may also be synchronized to every reading unit. Scraped covers use a series-specific cache and do not replace member covers.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{
+  &quot;metadata&quot;: ComicMetadata,
+  &quot;fields&quot;: [&quot;author&quot;, &quot;description&quot;, &quot;genre&quot;, &quot;cover&quot;, &quot;tags&quot;, &quot;rating&quot;],
+  &quot;overwrite&quot;: true,
+  &quot;syncTags&quot;: true,
+  &quot;syncToVolumes&quot;: true,
+  &quot;syncRating&quot;: false
+}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{&quot;success&quot;: true, &quot;series&quot;: SeriesSummary, &quot;syncSuccess&quot;: 2, &quot;syncErrors&quot;: 0}</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span><span class="badge badge-scraper"><span data-en="Scraper Required" data-zh="需要爬虫">Scraper Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/series/:id/ai-recognize AI recognize directory series metadata AI识别目录作品" id="post-api-series-id-ai-recognize">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/series/:id/ai-recognize</span>
+    <span class="summary"><span data-en="AI-recognize directory-series metadata" data-zh="AI 识别目录作品元数据">AI-recognize directory-series metadata</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Uses the first reading unit's cover and first two pages to recognize the directory series, then completes metadata using the configured cloud AI." data-zh="使用首个阅读单元的封面和前两页识别目录作品，再通过已配置的云端 AI 补全元数据。">Uses the first reading unit's cover and first two pages to recognize the directory series, then completes metadata using the configured cloud AI.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{&quot;lang&quot;: &quot;zh&quot;}</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{&quot;success&quot;: true, &quot;recognized&quot;: RecognitionResult, &quot;metadata&quot;: ComicMetadata}</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span><span class="badge badge-scraper"><span data-en="Scraper Required" data-zh="需要爬虫">Scraper Required</span></span><span class="badge badge-ai"><span data-en="AI Required" data-zh="需要AI">AI Required</span></span></div>
   </div>
 </div>
 

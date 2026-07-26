@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"fmt"
@@ -216,7 +216,14 @@ func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsS
 	if err != nil || group == nil || len(group.Comics) == 0 {
 		return 0, 0, fmt.Errorf("系列不存在或没有漫画")
 	}
+	comicIDs := make([]string, 0, len(group.Comics))
+	for _, comic := range group.Comics {
+		comicIDs = append(comicIDs, comic.ComicID)
+	}
+	return syncMetadataToComicIDs(comicIDs, meta, fieldsSet, overwrite, syncRating)
+}
 
+func syncMetadataToComicIDs(comicIDs []string, meta service.ComicMetadata, fieldsSet map[string]bool, overwrite, syncRating bool) (successCount, errorCount int, err error) {
 	applyAll := len(fieldsSet) == 0
 	shouldApply := func(field string) bool {
 		return applyAll || fieldsSet[field]
@@ -224,11 +231,11 @@ func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsS
 
 	// 预构建评分更新 map（所有卷共享同一评分）
 	ratingUpdates := map[string]interface{}{}
-	if syncRating {
+	if syncRating && shouldApply("rating") {
 		ratingUpdates = service.BuildRatingUpdates(meta)
 	}
 
-	for _, comic := range group.Comics {
+	for _, comicID := range comicIDs {
 		updates := map[string]interface{}{}
 
 		if meta.Author != "" && shouldApply("author") {
@@ -256,12 +263,12 @@ func syncGroupMetadataToVolumes(groupID int, meta service.ComicMetadata, fieldsS
 
 		if !overwrite {
 			// 非覆盖模式：只填充空字段，需要先查询当前值
-			updates = filterEmptyFieldsOnly(comic.ComicID, updates)
+			updates = filterEmptyFieldsOnly(comicID, updates)
 		}
 
 		if len(updates) > 0 {
-			if err := store.UpdateComicFields(comic.ComicID, updates); err != nil {
-				log.Printf("[API] syncGroupMetadataToVolumes: failed to update comic %s: %v", comic.ComicID, err)
+			if err := store.UpdateComicFields(comicID, updates); err != nil {
+				log.Printf("[API] sync metadata to item failed for %s: %v", comicID, err)
 				errorCount++
 			} else {
 				successCount++

@@ -20,7 +20,8 @@ import (
 const maxCoverDownloadBytes = 20 << 20
 
 // 合集封面下载去重：同一 groupID 同时只有一个下载任务，其余等待结果
-var groupCoverDownload sync.Map // groupID -> chan struct{}
+var groupCoverDownload sync.Map  // groupID -> chan struct{}
+var seriesCoverDownload sync.Map // seriesID -> chan struct{}
 
 // ============================================================
 // Apply metadata to comic
@@ -319,6 +320,61 @@ func CacheGroupCoverDataURL(groupID int, coverDataURL string) error {
 	}
 	log.Printf("[metadata] Group cover cached locally for group %d", groupID)
 	return nil
+}
+
+func DownloadSeriesCover(seriesID, coverURL string) {
+	if seriesID == "" || coverURL == "" {
+		return
+	}
+	coverURL = strings.Replace(coverURL, "http://", "https://", 1)
+	if err := store.UpdateSeriesMetadata(seriesID, store.SeriesMetadataUpdate{CoverURL: &coverURL}); err != nil {
+		log.Printf("[metadata] Series cover URL save failed for %s: %v", seriesID, err)
+		return
+	}
+
+	thumbDir := config.GetThumbnailsDir()
+	if err := os.MkdirAll(thumbDir, 0755); err != nil {
+		return
+	}
+	cachePath := filepath.Join(thumbDir, archive.SeriesCoverCacheName(seriesID))
+	ch, loaded := seriesCoverDownload.LoadOrStore(seriesID, make(chan struct{}))
+	done := ch.(chan struct{})
+	if loaded {
+		<-done
+		return
+	}
+	defer func() {
+		close(done)
+		seriesCoverDownload.Delete(seriesID)
+	}()
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, coverURL, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("User-Agent", "NowenReader/1.0")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return
+	}
+	defer resp.Body.Close()
+	imgData, err := io.ReadAll(io.LimitReader(resp.Body, maxCoverDownloadBytes+1))
+	if err != nil || len(imgData) == 0 || len(imgData) > maxCoverDownloadBytes {
+		return
+	}
+	webpData, _, err := archive.ResizeImageToWebP(imgData, config.GetThumbnailWidth(), config.GetThumbnailHeight(), 85)
+	if err != nil {
+		return
+	}
+	archive.ClearSeriesCoverCache(seriesID)
+	if err := os.WriteFile(cachePath, webpData, 0644); err != nil {
+		return
+	}
+	log.Printf("[metadata] Series cover cached locally for %s", seriesID)
 }
 
 // ============================================================

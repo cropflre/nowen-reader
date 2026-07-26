@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/nowen-reader/nowen-reader/internal/config"
 )
 
 const SeriesShelfIDPrefix = "series-"
@@ -48,24 +46,37 @@ type DetectedSeriesItem struct {
 }
 
 type SeriesSummary struct {
-	ID                 string  `json:"id"`
-	LibraryID          string  `json:"libraryId"`
-	RootRelativePath   string  `json:"rootRelativePath"`
-	Title              string  `json:"title"`
-	SortTitle          string  `json:"sortTitle"`
-	CoverComicID       string  `json:"coverComicId"`
-	CoverURL           string  `json:"coverUrl"`
-	ItemCount          int     `json:"itemCount"`
-	SectionCount       int     `json:"sectionCount"`
-	CompletedItemCount int     `json:"completedItemCount"`
-	TotalReadTime      int     `json:"totalReadTime"`
-	FileSize           int64   `json:"fileSize"`
-	LastReadAt         *string `json:"lastReadAt"`
-	IsFavorite         bool    `json:"isFavorite"`
-	ManualLocked       bool    `json:"manualLocked"`
-	CanManage          bool    `json:"canManage,omitempty"`
-	CreatedAt          string  `json:"createdAt"`
-	UpdatedAt          string  `json:"updatedAt"`
+	ID                      string     `json:"id"`
+	LibraryID               string     `json:"libraryId"`
+	RootRelativePath        string     `json:"rootRelativePath"`
+	Title                   string     `json:"title"`
+	SortTitle               string     `json:"sortTitle"`
+	CoverComicID            string     `json:"coverComicId"`
+	CoverURL                string     `json:"coverUrl"`
+	Author                  string     `json:"author"`
+	Description             string     `json:"description"`
+	Year                    *int       `json:"year"`
+	Publisher               string     `json:"publisher"`
+	Language                string     `json:"language"`
+	Genre                   string     `json:"genre"`
+	Status                  string     `json:"status"`
+	ExternalRating          *float64   `json:"externalRating"`
+	ExternalRatingMax       *float64   `json:"externalRatingMax"`
+	ExternalRatingSource    string     `json:"externalRatingSource"`
+	ExternalRatingUpdatedAt *time.Time `json:"externalRatingUpdatedAt"`
+	MetadataLocked          bool       `json:"metadataLocked"`
+	Tags                    []Tag      `json:"tags"`
+	ItemCount               int        `json:"itemCount"`
+	SectionCount            int        `json:"sectionCount"`
+	CompletedItemCount      int        `json:"completedItemCount"`
+	TotalReadTime           int        `json:"totalReadTime"`
+	FileSize                int64      `json:"fileSize"`
+	LastReadAt              *string    `json:"lastReadAt"`
+	IsFavorite              bool       `json:"isFavorite"`
+	ManualLocked            bool       `json:"manualLocked"`
+	CanManage               bool       `json:"canManage,omitempty"`
+	CreatedAt               string     `json:"createdAt"`
+	UpdatedAt               string     `json:"updatedAt"`
 }
 
 type SeriesItemDetail struct {
@@ -182,8 +193,8 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 			INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "detectionSource", "manualLocked", "createdAt", "updatedAt")
 			VALUES (?, ?, ?, ?, ?, ?, 'directory', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 			ON CONFLICT("libraryId", "rootRelativePath") DO UPDATE SET
-				"title" = excluded."title",
-				"sortTitle" = excluded."sortTitle",
+				"title" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."title" ELSE excluded."title" END,
+				"sortTitle" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."sortTitle" ELSE excluded."sortTitle" END,
 				"coverComicId" = CASE WHEN "ComicSeries"."coverComicId" = '' THEN excluded."coverComicId" ELSE "ComicSeries"."coverComicId" END,
 				"updatedAt" = CURRENT_TIMESTAMP
 		`, series.ID, series.LibraryID, series.RootRelativePath, series.Title, series.SortTitle, series.CoverComicID); err != nil {
@@ -232,7 +243,11 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 		}
 	}
 
-	staleRows, err := tx.Query(`SELECT "id", "rootRelativePath" FROM "ComicSeries" WHERE "libraryId" = ? AND "manualLocked" = 0`, libraryID)
+	staleRows, err := tx.Query(`
+		SELECT "id", "rootRelativePath"
+		FROM "ComicSeries"
+		WHERE "libraryId" = ? AND "manualLocked" = 0
+	`, libraryID)
 	if err != nil {
 		return err
 	}
@@ -301,7 +316,10 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		stateReadTime = `COALESCE(ucs."totalReadTime", 0)`
 	}
 	query := fmt.Sprintf(`
-		SELECT s."id", s."libraryId", s."rootRelativePath", s."title", s."sortTitle", s."coverComicId", s."manualLocked",
+		SELECT s."id", s."libraryId", s."rootRelativePath", s."title", s."sortTitle", s."coverComicId", s."coverUrl",
+		       s."author", s."description", s."year", s."publisher", s."language", s."genre", s."status",
+		       s."externalRating", s."externalRatingMax", s."externalRatingSource", s."externalRatingUpdatedAt",
+		       s."metadataLocked", s."manualLocked",
 		       COUNT(DISTINCT si."comicId"), COUNT(DISTINCT sec."id"),
 		       SUM(CASE WHEN %s = 'finished' OR (c."pageCount" > 0 AND %s IS NOT NULL AND %s >= c."pageCount" - 1) THEN 1 ELSE 0 END),
 		       COALESCE(SUM(%s), 0), COALESCE(SUM(c."fileSize"), 0), MAX(%s), MAX(%s),
@@ -318,10 +336,14 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 	var summary SeriesSummary
 	var lastRead sql.NullString
 	var favorite sql.NullBool
+	var storedCoverURL string
 	var createdAt, updatedAt time.Time
 	if err := db.QueryRow(query, args...).Scan(
 		&summary.ID, &summary.LibraryID, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
-		&summary.CoverComicID, &summary.ManualLocked, &summary.ItemCount, &summary.SectionCount,
+		&summary.CoverComicID, &storedCoverURL, &summary.Author, &summary.Description, &summary.Year,
+		&summary.Publisher, &summary.Language, &summary.Genre, &summary.Status,
+		&summary.ExternalRating, &summary.ExternalRatingMax, &summary.ExternalRatingSource, &summary.ExternalRatingUpdatedAt,
+		&summary.MetadataLocked, &summary.ManualLocked, &summary.ItemCount, &summary.SectionCount,
 		&summary.CompletedItemCount, &summary.TotalReadTime, &summary.FileSize, &lastRead, &favorite,
 		&createdAt, &updatedAt,
 	); err == sql.ErrNoRows {
@@ -336,11 +358,18 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		summary.LastReadAt = &value
 	}
 	summary.IsFavorite = favorite.Valid && favorite.Bool
+	tags, err := GetSeriesTags(id)
+	if err != nil {
+		return nil, err
+	}
+	summary.Tags = tags
 	if summary.CoverComicID == "" {
 		_ = db.QueryRow(`SELECT "comicId" FROM "ComicSeriesItem" WHERE "seriesId" = ? ORDER BY "sortIndex", "comicId" LIMIT 1`, id).Scan(&summary.CoverComicID)
 	}
-	if summary.CoverComicID != "" {
-		summary.CoverURL = config.JoinBasePath("/api/comics/" + summary.CoverComicID + "/thumbnail")
+	if storedCoverURL != "" {
+		summary.CoverURL = BuildSeriesCoverURL(id)
+	} else if summary.CoverComicID != "" {
+		summary.CoverURL = BuildComicCoverURL(summary.CoverComicID)
 	}
 	return &summary, nil
 }
@@ -653,6 +682,113 @@ func UpdateSeries(id, title, coverComicID string, manualLocked *bool) error {
 	args = append(args, id)
 	_, err := db.Exec(`UPDATE "ComicSeries" SET `+strings.Join(sets, ", ")+` WHERE "id" = ?`, args...)
 	return err
+}
+
+type SeriesMetadataUpdate struct {
+	Title                   *string
+	CoverURL                *string
+	Author                  *string
+	Description             *string
+	Year                    *int
+	Publisher               *string
+	Language                *string
+	Genre                   *string
+	Status                  *string
+	ExternalRating          *float64
+	ExternalRatingMax       *float64
+	ExternalRatingSource    *string
+	ExternalRatingUpdatedAt *time.Time
+	MetadataLocked          *bool
+	ManualLocked            *bool
+}
+
+func UpdateSeriesMetadata(id string, update SeriesMetadataUpdate) error {
+	sets := []string{`"updatedAt" = CURRENT_TIMESTAMP`}
+	args := []interface{}{}
+	appendValue := func(column string, value interface{}) {
+		sets = append(sets, `"`+column+`" = ?`)
+		args = append(args, value)
+	}
+	if update.Title != nil {
+		title := strings.TrimSpace(*update.Title)
+		appendValue("title", title)
+		appendValue("sortTitle", BuildTitleSortKey(title))
+	}
+	if update.CoverURL != nil {
+		appendValue("coverUrl", *update.CoverURL)
+	}
+	if update.Author != nil {
+		appendValue("author", *update.Author)
+	}
+	if update.Description != nil {
+		appendValue("description", *update.Description)
+	}
+	if update.Year != nil {
+		appendValue("year", *update.Year)
+	}
+	if update.Publisher != nil {
+		appendValue("publisher", *update.Publisher)
+	}
+	if update.Language != nil {
+		appendValue("language", *update.Language)
+	}
+	if update.Genre != nil {
+		appendValue("genre", *update.Genre)
+	}
+	if update.Status != nil {
+		appendValue("status", *update.Status)
+	}
+	if update.ExternalRating != nil {
+		appendValue("externalRating", *update.ExternalRating)
+	}
+	if update.ExternalRatingMax != nil {
+		appendValue("externalRatingMax", *update.ExternalRatingMax)
+	}
+	if update.ExternalRatingSource != nil {
+		appendValue("externalRatingSource", *update.ExternalRatingSource)
+	}
+	if update.ExternalRatingUpdatedAt != nil {
+		appendValue("externalRatingUpdatedAt", *update.ExternalRatingUpdatedAt)
+	}
+	if update.MetadataLocked != nil {
+		appendValue("metadataLocked", *update.MetadataLocked)
+	}
+	if update.ManualLocked != nil {
+		appendValue("manualLocked", *update.ManualLocked)
+	}
+	args = append(args, id)
+	_, err := db.Exec(`UPDATE "ComicSeries" SET `+strings.Join(sets, ", ")+` WHERE "id" = ?`, args...)
+	return err
+}
+
+func GetSeriesStoredCoverURL(id string) (string, error) {
+	var coverURL string
+	err := db.QueryRow(`SELECT "coverUrl" FROM "ComicSeries" WHERE "id" = ?`, id).Scan(&coverURL)
+	return coverURL, err
+}
+
+func GetSeriesMemberComicIDs(id string) ([]string, error) {
+	rows, err := db.Query(`
+		SELECT si."comicId"
+		FROM "ComicSeriesItem" si
+		JOIN "ComicSeries" s ON s."id" = si."seriesId"
+		JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
+		WHERE si."seriesId" = ?
+		ORDER BY si."sortIndex", si."comicId"
+	`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var comicID string
+		if err := rows.Scan(&comicID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, comicID)
+	}
+	return ids, rows.Err()
 }
 
 func DeleteSeriesRelationship(id string) error {

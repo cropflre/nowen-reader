@@ -137,7 +137,8 @@ VOLUME ["/data", "/app/comics", "/app/novels", "/app/.cache"]
 # entrypoint runs as root to fix bind-mount permissions,
 # then drops to appuser via su-exec before starting the server.
 
-# Health check
+# Health check. BusyBox wget may not honor no_proxy consistently, so bypass
+# proxies explicitly for this container-local request.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD base_path="${BASE_PATH:-/}"; \
         case "$base_path" in \
@@ -145,7 +146,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
           /*) base_path="${base_path%/}" ;; \
           *) base_path="/${base_path%/}" ;; \
         esac; \
-        wget -q --spider "http://localhost:${PORT:-3000}${base_path}/api/health" || exit 1
+        wget -q --spider -Y off "http://localhost:${PORT:-3000}${base_path}/api/health" || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/docker-entrypoint.sh"]

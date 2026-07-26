@@ -17,6 +17,9 @@ func registerSeriesRoutes(api *gin.RouterGroup) {
 		series.PUT("/:id", handler.Update)
 		series.PUT("/:id/structure", handler.UpdateStructure)
 		series.POST("/:id/re-detect", handler.Redetect)
+		series.POST("/:id/scrape-metadata", middleware.AdminRequired(), middleware.ScraperRequired(), handler.ScrapeMetadata)
+		series.POST("/:id/apply-metadata", middleware.AdminRequired(), middleware.ScraperRequired(), handler.ApplyScrapedMetadata)
+		series.POST("/:id/ai-recognize", middleware.AdminRequired(), middleware.ScraperRequired(), handler.AIRecognize)
 		series.DELETE("/:id", handler.Delete)
 	}
 }

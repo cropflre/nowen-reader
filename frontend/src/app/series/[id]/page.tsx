@@ -16,10 +16,14 @@ import {
   Pencil,
   RefreshCw,
   Save,
+  Sparkles,
   Unlock,
+  X,
 } from "lucide-react";
 import { fetchSeriesDetail, redetectSeries, updateSeries, updateSeriesStructure } from "@/api/series";
+import { GroupMetadataSearch } from "@/components/GroupMetadataSearch";
 import type { SeriesDetail, SeriesItem } from "@/types/series";
+import { useAuth } from "@/lib/auth-context";
 import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/progress";
 import { formatDuration, formatFileSize, isNovelFile } from "@/lib/comic-utils";
 
@@ -53,6 +57,8 @@ function isFinished(item: SeriesItem): boolean {
 export default function SeriesDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const id = String(params?.id || "");
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,6 +72,7 @@ export default function SeriesDetailPage() {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [manageStructure, setManageStructure] = useState(false);
+  const [showScraper, setShowScraper] = useState(false);
   const [draftItems, setDraftItems] = useState<Record<string, { sectionId: string; sortIndex: number }>>({});
 
   const load = useCallback(async () => {
@@ -198,6 +205,9 @@ export default function SeriesDetailPage() {
 
   const { series } = detail;
   const overallProgress = series.itemCount > 0 ? Math.round((series.completedItemCount / series.itemCount) * 100) : 0;
+  const contentType = allItems.filter((item) => item.comic.type === "novel" || isNovelFile(item.comic.filename || "")).length > allItems.length / 2
+    ? "novel"
+    : "comic";
 
   return (
     <main className="min-h-screen bg-background pb-24">
@@ -255,9 +265,32 @@ export default function SeriesDetailPage() {
               <div className="mt-5 flex flex-wrap gap-2">
                 {continueItem && <a href={readerURL(continueItem)} className="flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-white shadow-lg shadow-accent/20"><BookOpen className="h-4 w-4" />{itemProgress(continueItem) > 0 ? "继续阅读" : "开始阅读"}</a>}
                 {series.canManage && <button onClick={() => setManageStructure((value) => !value)} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-foreground hover:bg-background"><Layers3 className="h-4 w-4" />调整结构</button>}
+                {isAdmin && <button onClick={() => setShowScraper(true)} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-foreground hover:bg-background"><Sparkles className="h-4 w-4 text-purple-400" />刮削元数据</button>}
                 {series.canManage && <button onClick={toggleLock} disabled={busy} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-muted hover:text-foreground">{series.manualLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}{series.manualLocked ? "恢复自动" : "锁定结构"}</button>}
                 {series.canManage && <button onClick={handleRedetect} disabled={busy || series.manualLocked} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-muted hover:text-foreground disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />重新识别</button>}
               </div>
+
+              {(series.author || series.year || series.publisher || series.language || series.genre || series.description || series.tags.length > 0 || series.externalRating != null) && (
+                <div className="mt-5 max-w-3xl space-y-3 border-t border-border/50 pt-5">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+                    {series.author && <span>作者：<span className="text-foreground">{series.author}</span></span>}
+                    {series.year && <span>年份：<span className="text-foreground">{series.year}</span></span>}
+                    {series.publisher && <span>出版：<span className="text-foreground">{series.publisher}</span></span>}
+                    {series.language && <span>语言：<span className="text-foreground">{series.language}</span></span>}
+                    {series.externalRating != null && (
+                      <span>评分：<span className="text-foreground">{series.externalRating}{series.externalRatingMax ? `/${series.externalRatingMax}` : ""}</span></span>
+                    )}
+                  </div>
+                  {(series.tags.length > 0 || series.genre) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(series.tags.length > 0 ? series.tags.map((tag) => tag.name) : series.genre.split(",").map((name) => name.trim()).filter(Boolean)).map((name) => (
+                        <span key={name} className="rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">{name}</span>
+                      ))}
+                    </div>
+                  )}
+                  {series.description && <p className="whitespace-pre-line text-sm leading-6 text-muted">{series.description}</p>}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -310,6 +343,33 @@ export default function SeriesDetailPage() {
           </div>
         </section>
       </div>
+
+      {isAdmin && showScraper && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4" onClick={() => setShowScraper(false)}>
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-card shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-400" />
+                <h2 className="text-base font-semibold text-foreground">目录作品元数据刮削</h2>
+              </div>
+              <button onClick={() => setShowScraper(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-card-hover" title="关闭">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5">
+              <GroupMetadataSearch
+                key={series.id}
+                seriesId={series.id}
+                groupName={series.title}
+                contentType={contentType}
+                onApplied={async (success) => {
+                  if (success) await load();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

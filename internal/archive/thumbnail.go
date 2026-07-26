@@ -468,6 +468,26 @@ func GroupCoverCacheName(groupID int) string {
 	return fmt.Sprintf("group_%d_%dx%d.webp", groupID, tw, th)
 }
 
+func SeriesCoverCacheName(seriesID string) string {
+	tw := config.GetThumbnailWidth()
+	th := config.GetThumbnailHeight()
+	return fmt.Sprintf("series_%s_%dx%d.webp", seriesID, tw, th)
+}
+
+func ClearSeriesCoverCache(seriesID string) {
+	thumbDir := config.GetThumbnailsDir()
+	entries, err := os.ReadDir(thumbDir)
+	if err != nil {
+		return
+	}
+	prefix := "series_" + seriesID + "_"
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), prefix) {
+			_ = os.Remove(filepath.Join(thumbDir, entry.Name()))
+		}
+	}
+}
+
 // ClearGroupCoverCache removes all cached cover files for a given group ID.
 func ClearGroupCoverCache(groupID int) {
 	thumbDir := config.GetThumbnailsDir()
