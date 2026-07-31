@@ -171,14 +171,22 @@ class Comic {
   String thumbnailUrl(String serverUrl) =>
       '$serverUrl/api/comics/$id/thumbnail';
 
-  /// 是否为小说（严格按后端 type 字段判断，不再依赖文件扩展名）
-  bool get isNovel => comicType == 'novel';
+  /// 是否为 PDF 文件。文件格式优先于所在书库的内容类型。
+  bool get isPdf => filename.toLowerCase().endsWith('.pdf');
+
+  /// PDF 使用独立阅读器，不能因为位于小说库就当作章节小说打开。
+  bool get isNovel => comicType == 'novel' && !isPdf;
 
   /// 是否为图片文件夹漫画（filename 以 "/" 结尾）
   bool get isImageFolder => filename.endsWith('/');
 
-  /// 是否为 PDF 文件
-  bool get isPdf => filename.toLowerCase().endsWith('.pdf');
+  /// 返回与真实文件格式匹配的阅读入口。
+  String readerRoute({int? position}) {
+    final current = position ?? lastReadPage;
+    if (isPdf) return '/pdf/$id?page=$current';
+    if (isNovel) return '/novel/$id?chapter=$current';
+    return '/reader/$id?page=$current';
+  }
 
   /// 复制并修改部分字段
   Comic copyWith({

@@ -8,7 +8,6 @@ import '../data/api/comic_api.dart';
 import '../data/models/comic.dart';
 import '../data/providers/auth_provider.dart';
 import 'authenticated_image.dart';
-import '../features/reader/novel_reader_screen.dart';
 import 'animations.dart';
 
 /// 继续阅读 — 优雅的横向滚动卡片
@@ -152,20 +151,7 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
                     timeStr: _formatTime(comic.lastReadAt!),
                     onTap: () {
                       HapticFeedback.lightImpact();
-                      if (comic.isNovel) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => NovelReaderScreen(
-                              comicId: comic.id,
-                              initialChapter: comic.lastReadPage,
-                            ),
-                          ),
-                        );
-                      } else {
-                        context.push(
-                          '/reader/${comic.id}?page=${comic.lastReadPage}',
-                        );
-                      }
+                      context.push(comic.readerRoute());
                     },
                   );
                 },
@@ -247,7 +233,8 @@ class _ContinueReadingCard extends StatelessWidget {
                           color: cs.surfaceContainerHighest,
                           child: Center(
                             child: Icon(Icons.image_outlined,
-                                size: 22, color: cs.onSurfaceVariant.withOpacity(0.3)),
+                                size: 22,
+                                color: cs.onSurfaceVariant.withOpacity(0.3)),
                           ),
                         ),
                         errorWidget: Container(
@@ -273,7 +260,8 @@ class _ContinueReadingCard extends StatelessWidget {
                             children: [
                               // 进度文字
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     comic.pageCount > 0
@@ -303,7 +291,8 @@ class _ContinueReadingCard extends StatelessWidget {
                                   value: progress / 100,
                                   minHeight: 2.5,
                                   backgroundColor: Colors.white.withAlpha(30),
-                                  valueColor: AlwaysStoppedAnimation(cs.primary),
+                                  valueColor:
+                                      AlwaysStoppedAnimation(cs.primary),
                                 ),
                               ),
                             ],
