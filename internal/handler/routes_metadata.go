@@ -117,6 +117,7 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		opdsGroup.GET("/search.xml", opds.SearchDescription)
 		opdsGroup.GET("/search", opds.Search)
 		opdsGroup.GET("/cover/:id", opds.Cover)
+		opdsGroup.GET("/stream/:id", opds.StreamPage)
 		opdsGroup.GET("/download/:id", opds.Download)
 		opdsGroup.HEAD("/download/:id", opds.Download)
 		opdsGroup.GET("/download/:id/:filename", opds.Download)

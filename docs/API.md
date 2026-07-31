@@ -790,6 +790,7 @@ Content-Type: application/json
 | GET | `/api/opds/search.xml` | OpenSearch 搜索描述 |
 | GET | `/api/opds/search` | OPDS 搜索 |
 | GET | `/api/opds/cover/:id` | OPDS 漫画封面 |
+| GET | `/api/opds/stream/:id` | OPDS-PSE 1.2 逐页 JPEG |
 | GET/HEAD | `/api/opds/download/:id/:filename` | 下载原始文件，支持字节范围请求 |
 | GET/HEAD | `/api/opds/download/:id` | 兼容旧版下载地址 |
 | GET | `/api/recommendations` | 个性化推荐 |
@@ -812,11 +813,16 @@ Content-Type: application/json
 - **合集过滤**：合集及成员使用与普通 OPDS 条目相同的 `canDownload`、漫画书库和文件格式过滤。漫画书库中的 EPUB、MOBI、AZW3 等受支持成员会计入合集；过滤后少于两本的合集不会显示，无权访问或不存在的合集 ID 返回 `404`。
 - **合集关系**：属于合集的普通漫画条目带有标准 `rel=collection` 链接，指向对应合集 Feed。客户端是否据此自动分组取决于客户端实现。
 - **直链保护**：封面与下载接口都会重新校验身份、下载权限、文件格式和书库状态。小说书库中的条目或不支持格式的 ID 返回 `404`，无下载权限返回 `403`；合集封面同样只会解析为当前用户可下载的成员封面。
+- **OPDS-PSE 1.2**：可逐页阅读的漫画条目额外提供 `rel=http://vaemendis.net/opds-pse/stream` 链接和 `pse:count` 页数。原始 acquisition 下载链接继续保留，旧客户端行为不变。
+- **逐页范围**：PSE 链接只提供给 `Comic.type=comic`、`pageCount>0` 且可按图片页面解析的 CBZ/ZIP、CBR/RAR、CB7/7Z、PDF，以及已识别为图片漫画的 EPUB、MOBI、AZW3。文本小说、TXT 和 HTML 仍可通过原始 acquisition 链接下载，但不会发布 PSE 链接。
+- **逐页图片**：`/api/opds/stream/:id` 固定返回 `image/jpeg`。JPEG 原页在无需缩小时直接返回；其他图片格式和 PDF 渲染结果会保持宽高比转换为 JPEG，不放大、不裁剪。
+- **逐页缓存**：转换结果按作品、源文件版本、页码和宽度缓存在页面缓存目录中，支持 `ETag` 和私有缓存。源文件大小或修改时间变化后不会继续命中旧版本缓存。
+- **阅读位置**：PSE 链接可包含当前用户独立的 `pse:lastRead` 和 `pse:lastReadDate`。`lastRead` 从 1 开始；未开始阅读时省略。OPDS-PSE 没有标准进度回写接口，页面请求本身不会更新阅读进度，以免把客户端预加载误记为已阅读。
 - **Feed 类型**：`/api/opds` 和 `/api/opds/series` 返回 `kind=navigation`；合集详情、列表与搜索返回 `kind=acquisition`。
 - **搜索发现**：根目录通过 `rel=search` 指向 `/api/opds/search.xml`，搜索模板使用 `/api/opds/search?q={searchTerms}`。
 - **分页**：`all`、`recent`、`favorites`、`series`、合集详情和 `search` 支持 `page`、`pageSize`。默认每页 100 条，`pageSize` 最大 500；响应包含 OpenSearch 统计及 `first`、`last`、`previous`、`next` 链接。
 - **收藏隔离**：`favorites` 读取当前用户的 `UserComicState`，不会混用其他用户或旧的全局收藏字段。
-- **获取方式**：条目只提供受认证保护的标准 acquisition 文件链接，不声明 `open-access`，也不提供 OPDS-PSE 逐页流式接口。
+- **获取方式**：条目提供受认证保护的标准 acquisition 文件链接，不声明 `open-access`；符合逐页条件的漫画会同时提供 OPDS-PSE 1.2 链接。
 
 搜索参数：
 
@@ -825,6 +831,18 @@ Content-Type: application/json
 | `q` | string | 是 | 匹配漫画标题或作者 |
 | `page` | integer | 否 | 页码，从 1 开始 |
 | `pageSize` | integer | 否 | 每页数量，默认 100，最大 500 |
+
+### `GET /api/opds/stream/:id`
+
+- **认证**：与其他 OPDS 接口一致，支持 Session、Bearer API Key 和“用户名 + API Key”形式的 HTTP Basic Auth。
+- **权限**：需要作品所在漫画书库的 `canDownload` 权限。仅有 `canView` 权限返回 `403`。
+- **响应**：成功返回 `image/jpeg`；不存在、不支持逐页读取或页码越界返回 `404`；参数错误返回 `400`。
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---:|:---|
+| `id` | path | string | 是 | 漫画 ID |
+| `page` | query | integer | 是 | 从 0 开始的页面索引 |
+| `width` | query | integer | 否 | 最大输出宽度，范围 1～4096；省略或传 0 使用默认上限，只缩小、不放大 |
 
 ### `POST /api/upload`
 

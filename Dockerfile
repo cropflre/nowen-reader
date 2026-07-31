@@ -83,6 +83,7 @@ LABEL description="NowenReader - Self-hosted comic management platform"
 # - poppler-utils: preferred PDF page rendering (pdftoppm) and metadata (pdfinfo)
 # - mupdf-tools: PDF rendering fallback (mutool draw)
 # - libwebp-tools: for thumbnail WebP conversion (cwebp)
+# - ffmpeg: fallback decoder for AVIF and uncommon comic page formats
 # - tini: proper PID 1 signal handling
 # - ca-certificates: for HTTPS requests (metadata scrapers, AI APIs)
 # - tzdata: timezone support
@@ -95,6 +96,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     mupdf-tools \
     poppler-utils \
     libwebp-tools \
+    ffmpeg \
     tini \
     su-exec \
     ca-certificates \

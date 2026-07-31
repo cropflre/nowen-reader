@@ -983,10 +983,13 @@ type OPDSComicRow struct {
 	UpdatedAt    string
 	Tags         []string
 	Filename     string
+	ComicType    string
 	SeriesID     string
 	SeriesTitle  string
 	SectionTitle string
 	DisplayLabel string
+	LastReadPage int
+	LastReadAt   string
 }
 
 // OPDSSeriesRow is a series from a comic library exposed by the OPDS catalog.
@@ -1054,7 +1057,8 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 		`l."enabled" = 1`,
 		opdsPublicationFormatCondition("c"),
 	}
-	args := make([]interface{}, 0, len(opts.LibraryIDs)+3)
+	args := make([]interface{}, 0, len(opts.LibraryIDs)+4)
+	args = append(args, opts.UserID)
 
 	if len(opts.LibraryIDs) == 0 {
 		conditions = append(conditions, `1 = 0`)
@@ -1087,6 +1091,8 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 	fromWhere := `
 		FROM "Comic" c
 		JOIN "Library" l ON l."id" = c."libraryId"
+		LEFT JOIN "UserComicState" opds_ucs
+			ON opds_ucs."comicId" = c."id" AND opds_ucs."userId" = ?
 		LEFT JOIN "ComicSeriesItem" csi ON csi."comicId" = c."id"
 		LEFT JOIN (
 			SELECT csi2."seriesId"
@@ -1114,9 +1120,10 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 	query := fmt.Sprintf(`
 		SELECT c."id", c."title", c."author", c."description", c."language",
 		       c."genre", c."publisher", c."year", c."pageCount", c."fileSize",
-		       c."addedAt", c."updatedAt", c."filename",
+		       c."addedAt", c."updatedAt", c."filename", c."type",
 		       COALESCE(cs."id", ''), COALESCE(cs."title", ''),
-		       COALESCE(css."title", ''), COALESCE(csi."displayLabel", '')
+		       COALESCE(css."title", ''), COALESCE(csi."displayLabel", ''),
+		       COALESCE(opds_ucs."lastReadPage", 0), opds_ucs."lastReadAt"
 		%s %s
 	`, fromWhere, orderBy)
 	if opts.Limit > 0 {
@@ -1137,12 +1144,13 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 		var c OPDSComicRow
 		var addedAt, updatedAt time.Time
 		var year sql.NullInt64
+		var lastReadAt sql.NullString
 
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Author, &c.Description, &c.Language,
 			&c.Genre, &c.Publisher, &year, &c.PageCount, &c.FileSize,
-			&addedAt, &updatedAt, &c.Filename, &c.SeriesID, &c.SeriesTitle,
-			&c.SectionTitle, &c.DisplayLabel,
+			&addedAt, &updatedAt, &c.Filename, &c.ComicType, &c.SeriesID, &c.SeriesTitle,
+			&c.SectionTitle, &c.DisplayLabel, &c.LastReadPage, &lastReadAt,
 		); err != nil {
 			continue
 		}
@@ -1150,6 +1158,9 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 		c.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
 		if year.Valid {
 			c.Year = int(year.Int64)
+		}
+		if lastReadAt.Valid {
+			c.LastReadAt = lastReadAt.String
 		}
 		c.Tags = []string{}
 		comics = append(comics, c)

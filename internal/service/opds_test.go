@@ -47,22 +47,25 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		Title:   "Library",
 		FeedID:  "http://example.test/api/opds/search?q=%E4%B9%A6",
 		Comics: []OPDSComic{{
-			ID:          "comic-1",
-			Title:       "Comic",
-			Author:      "Author",
-			Description: "Description",
-			Language:    "zh-CN",
-			Genre:       "Action, Drama",
-			Publisher:   "Publisher",
-			Year:        2025,
-			PageCount:   42,
-			FileSize:    123456,
-			AddedAt:     "2025-01-02T03:04:05Z",
-			UpdatedAt:   "2025-02-03T04:05:06Z",
-			Tags:        []string{"Drama", "Complete"},
-			Filename:    "comic.cbz",
-			SeriesID:    "series-1",
-			SeriesTitle: "Series One",
+			ID:           "comic-1",
+			Title:        "Comic",
+			Author:       "Author",
+			Description:  "Description",
+			Language:     "zh-CN",
+			Genre:        "Action, Drama",
+			Publisher:    "Publisher",
+			Year:         2025,
+			PageCount:    42,
+			FileSize:     123456,
+			AddedAt:      "2025-01-02T03:04:05Z",
+			UpdatedAt:    "2025-02-03T04:05:06Z",
+			Tags:         []string{"Drama", "Complete"},
+			Filename:     "comic.cbz",
+			ComicType:    "comic",
+			SeriesID:     "series-1",
+			SeriesTitle:  "Series One",
+			LastReadPage: 9,
+			LastReadAt:   "2025-02-03T04:05:06Z",
 		}},
 		Pagination: OPDSPagination{
 			SelfHref:     "/api/opds/search?page=2&pageSize=1&q=%E4%B9%A6",
@@ -79,6 +82,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 
 	for _, expected := range []string{
 		`xmlns:dcterms="` + dctermsNS + `"`,
+		`xmlns:pse="` + opdsPSENS + `"`,
 		`xmlns:opensearch="` + openSearchNS + `"`,
 		`<opensearch:totalResults>3</opensearch:totalResults>`,
 		`<opensearch:itemsPerPage>1</opensearch:itemsPerPage>`,
@@ -87,6 +91,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		`rel="previous"`,
 		`href="http://example.test/api/opds/cover/comic-1"`,
 		`href="http://example.test/api/opds/download/comic-1/comic.cbz" type="application/vnd.comicbook+zip" length="123456"`,
+		`rel="` + opdsPSEStream + `" href="http://example.test/api/opds/stream/comic-1?page={pageNumber}&amp;width={maxWidth}" type="image/jpeg" pse:count="42" pse:lastRead="10" pse:lastReadDate="2025-02-03T04:05:06Z"`,
 		`rel="collection" href="http://example.test/api/opds/series/series-1" type="` + OPDSAcquisitionMIME + `" title="Series One"`,
 		`<dcterms:language>zh-CN</dcterms:language>`,
 		`<dcterms:publisher>Publisher</dcterms:publisher>`,
@@ -100,6 +105,38 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 	}
 	if strings.Contains(feed, "acquisition/open-access") {
 		t.Fatalf("authenticated acquisition feed must not claim open access: %s", feed)
+	}
+}
+
+func TestAcquisitionFeedOnlyAdvertisesPageStreamingForPageBasedComics(t *testing.T) {
+	feed := GenerateAcquisitionFeed(OPDSAcquisitionFeedOptions{
+		BaseURL: "http://example.test",
+		Title:   "Library",
+		FeedID:  "urn:test:library",
+		Comics: []OPDSComic{
+			{ID: "comic", Title: "Comic", Filename: "comic.cbz", ComicType: "comic", PageCount: 12},
+			{ID: "novel", Title: "Novel", Filename: "novel.epub", ComicType: "novel", PageCount: 12},
+			{ID: "unknown-pages", Title: "Unknown", Filename: "unknown.cbz", ComicType: "comic"},
+			{ID: "text", Title: "Text", Filename: "text.txt", ComicType: "comic", PageCount: 12},
+		},
+		Pagination: OPDSPagination{
+			SelfHref:     "/api/opds/all?page=1&pageSize=100",
+			TotalResults: 4,
+			ItemsPerPage: 100,
+		},
+	})
+	assertValidXML(t, feed)
+
+	if strings.Count(feed, `rel="`+opdsPSEStream+`"`) != 1 {
+		t.Fatalf("unexpected OPDS-PSE link count: %s", feed)
+	}
+	if !strings.Contains(feed, `/api/opds/stream/comic?`) {
+		t.Fatalf("page-based comic is missing OPDS-PSE link: %s", feed)
+	}
+	for _, id := range []string{"novel", "unknown-pages", "text"} {
+		if strings.Contains(feed, `/api/opds/stream/`+id+`?`) {
+			t.Fatalf("non-page publication %q advertised OPDS-PSE: %s", id, feed)
+		}
 	}
 }
 

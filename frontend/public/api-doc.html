@@ -6363,8 +6363,8 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-opds" class="endpoint-group">
-    <h2 class="group-title"><span data-en="24. OPDS" data-zh="24. OPDS">24. OPDS</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
-    <p class="description"><span data-en="Comic-library OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole, while EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible. View-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded." data-zh="以漫画书库为边界的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开 Library.type 为 comic、已启用且当前用户拥有 canDownload 权限的书库中的受支持文件。Library.type 为 novel 的小说书库整体排除，但漫画书库中的 EPUB、MOBI、AZW3、TXT 和 HTML 文件仍可发布；仅可查看书库、已停用书库和 OPDS-PSE 逐页流式接口也不接入。">Comic-library OPDS 1.2 catalog. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole, while EPUB, MOBI, AZW3, TXT, and HTML files stored in comic libraries remain eligible. View-only libraries, disabled libraries, and OPDS-PSE page streaming are excluded.</span></p>
+    <h2 class="group-title"><span data-en="24. OPDS" data-zh="24. OPDS">24. OPDS</span> <span class="group-badge"><span data-en="12 endpoints" data-zh="12 个接口">12 endpoints</span></span></h2>
+    <p class="description"><span data-en="Comic-library OPDS 1.2 catalog with OPDS-PSE 1.2 page streaming. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole. Page-based comics additionally expose authenticated JPEG page streams, while original acquisition links remain available." data-zh="以漫画书库为边界、支持 OPDS-PSE 1.2 逐页读取的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开 Library.type 为 comic、已启用且当前用户拥有 canDownload 权限的书库中的受支持文件，Library.type 为 novel 的小说书库整体排除。可按页解析的漫画会额外提供受认证保护的 JPEG 页面流，原始 acquisition 下载链接继续保留。">Comic-library OPDS 1.2 catalog with OPDS-PSE 1.2 page streaming. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole. Page-based comics additionally expose authenticated JPEG page streams, while original acquisition links remain available.</span></p>
 <div class="endpoint auth-required" data-search="GET /api/opds OPDS catalog root" id="get-api-opds">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -6411,8 +6411,14 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=acquisition
 
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot;&gt;
+&lt;feed xmlns=&quot;http://www.w3.org/2005/Atom&quot; xmlns:pse=&quot;http://vaemendis.net/opds-pse/ns&quot;&gt;
   &lt;title&gt;All Comics&lt;/title&gt;
+  &lt;entry&gt;
+    ...
+    &lt;link rel=&quot;http://vaemendis.net/opds-pse/stream&quot;
+          href=&quot;http://example/api/opds/stream/comic-id?page={pageNumber}&amp;amp;width={maxWidth}&quot;
+          type=&quot;image/jpeg&quot; pse:count=&quot;190&quot; /&gt;
+  &lt;/entry&gt;
   ...
 &lt;/feed&gt;</code></pre>
 
@@ -6619,6 +6625,35 @@ Content-Type: actual thumbnail media type</code></pre>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>Binary image response
 Content-Type: actual thumbnail media type</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/opds/stream/:id OPDS PSE page stream JPEG 逐页" id="get-api-opds-stream-id">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/opds/stream/:id</span>
+    <span class="summary"><span data-en="OPDS-PSE comic page stream" data-zh="OPDS-PSE 漫画逐页读取">OPDS-PSE comic page stream</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns one zero-based comic page as JPEG for OPDS-PSE 1.2 clients. The source page or rendered PDF page is converted without cropping and is only downscaled when width is smaller than the source. The endpoint rechecks enabled comic-library membership and canDownload permission. Page requests do not update reading progress because clients may prefetch pages." data-zh="为 OPDS-PSE 1.2 客户端返回一张从 0 开始编号的 JPEG 漫画页面。原始图片或 PDF 渲染页会在不裁剪的情况下转换，仅当 width 小于原图宽度时缩小。接口会重新检查已启用漫画书库归属和 canDownload 权限。由于客户端可能预加载，页面请求不会自动更新阅读进度。">Returns one zero-based comic page as JPEG for OPDS-PSE 1.2 clients. The source page or rendered PDF page is converted without cropping and is only downscaled when width is smaller than the source. The endpoint rechecks enabled comic-library membership and canDownload permission. Page requests do not update reading progress because clients may prefetch pages.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><tbody>
+      <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+    </tbody></table>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table"><tbody>
+      <tr><td>page</td><td>int</td><td>Yes</td><td>Zero-based page index</td></tr>
+      <tr><td>width</td><td>int</td><td>No</td><td>Maximum JPEG width (1-4096); omit or use 0 for the default cap; never upscales</td></tr>
+    </tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>Content-Type: image/jpeg
+Cache-Control: private, max-age=86400, must-revalidate
+ETag: &quot;...&quot;
+
+Binary JPEG page</code></pre>
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
     </div>

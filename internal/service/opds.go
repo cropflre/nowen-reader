@@ -17,28 +17,33 @@ const (
 
 	opdsNS        = "http://www.w3.org/2005/Atom"
 	opdsCatalogNS = "http://opds-spec.org/2010/catalog"
+	opdsPSENS     = "http://vaemendis.net/opds-pse/ns"
+	opdsPSEStream = "http://vaemendis.net/opds-pse/stream"
 	dctermsNS     = "http://purl.org/dc/terms/"
 	openSearchNS  = "http://a9.com/-/spec/opensearch/1.1/"
 )
 
 // OPDSComic holds comic data for OPDS feed generation.
 type OPDSComic struct {
-	ID          string
-	Title       string
-	Author      string
-	Description string
-	Language    string
-	Genre       string
-	Publisher   string
-	Year        int
-	PageCount   int
-	FileSize    int64
-	AddedAt     string
-	UpdatedAt   string
-	Tags        []string
-	Filename    string
-	SeriesID    string
-	SeriesTitle string
+	ID           string
+	Title        string
+	Author       string
+	Description  string
+	Language     string
+	Genre        string
+	Publisher    string
+	Year         int
+	PageCount    int
+	FileSize     int64
+	AddedAt      string
+	UpdatedAt    string
+	Tags         []string
+	Filename     string
+	ComicType    string
+	SeriesID     string
+	SeriesTitle  string
+	LastReadPage int
+	LastReadAt   string
 }
 
 type OPDSSeries struct {
@@ -79,6 +84,7 @@ type atomFeed struct {
 	XMLName      xml.Name    `xml:"feed"`
 	XMLNS        string      `xml:"xmlns,attr"`
 	OPDS         string      `xml:"xmlns:opds,attr,omitempty"`
+	PSE          string      `xml:"xmlns:pse,attr,omitempty"`
 	DCTerms      string      `xml:"xmlns:dcterms,attr,omitempty"`
 	OpenSearch   string      `xml:"xmlns:opensearch,attr,omitempty"`
 	ID           string      `xml:"id"`
@@ -98,11 +104,14 @@ type atomAuthor struct {
 }
 
 type atomLink struct {
-	Rel    string `xml:"rel,attr"`
-	Href   string `xml:"href,attr"`
-	Type   string `xml:"type,attr,omitempty"`
-	Title  string `xml:"title,attr,omitempty"`
-	Length string `xml:"length,attr,omitempty"`
+	Rel          string `xml:"rel,attr"`
+	Href         string `xml:"href,attr"`
+	Type         string `xml:"type,attr,omitempty"`
+	Title        string `xml:"title,attr,omitempty"`
+	Length       string `xml:"length,attr,omitempty"`
+	Count        int    `xml:"pse:count,attr,omitempty"`
+	LastRead     *int   `xml:"pse:lastRead,attr,omitempty"`
+	LastReadDate string `xml:"pse:lastReadDate,attr,omitempty"`
 }
 
 type atomEntry struct {
@@ -284,6 +293,26 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 			Language:  strings.TrimSpace(comic.Language),
 			Publisher: strings.TrimSpace(comic.Publisher),
 		}
+		if OPDSPSESupported(comic.Filename, comic.ComicType, comic.PageCount) {
+			streamLink := atomLink{
+				Rel:   opdsPSEStream,
+				Href:  absoluteOPDSURL(opts.BaseURL, opdsPSEStreamPath(comic.ID)),
+				Type:  "image/jpeg",
+				Count: comic.PageCount,
+			}
+			if comic.LastReadAt != "" {
+				lastRead := comic.LastReadPage + 1
+				if lastRead < 1 {
+					lastRead = 1
+				}
+				if lastRead > comic.PageCount {
+					lastRead = comic.PageCount
+				}
+				streamLink.LastRead = &lastRead
+				streamLink.LastReadDate = validAtomDate(comic.LastReadAt, "")
+			}
+			entry.Links = append(entry.Links, streamLink)
+		}
 		if comic.SeriesID != "" {
 			entry.Links = append(entry.Links, atomLink{
 				Rel:   "collection",
@@ -314,6 +343,7 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 	feed := atomFeed{
 		XMLNS:        opdsNS,
 		OPDS:         opdsCatalogNS,
+		PSE:          opdsPSENS,
 		DCTerms:      dctermsNS,
 		OpenSearch:   openSearchNS,
 		ID:           opts.FeedID,
@@ -333,6 +363,26 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 	appendOPDSPaginationLinks(&feed, opts.BaseURL, opts.Pagination, OPDSAcquisitionMIME)
 
 	return marshalOPDSXML(feed)
+}
+
+// OPDSPSESupported reports whether a publication can be represented as
+// zero-based image pages. Text-oriented publications remain downloadable
+// through OPDS but do not advertise page streaming.
+func OPDSPSESupported(filename, comicType string, pageCount int) bool {
+	if comicType != "comic" || pageCount <= 0 {
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".cbz", ".zip", ".cbr", ".rar", ".cb7", ".7z", ".pdf",
+		".epub", ".mobi", ".azw3":
+		return true
+	default:
+		return false
+	}
+}
+
+func opdsPSEStreamPath(comicID string) string {
+	return "/api/opds/stream/" + comicID + "?page={pageNumber}&width={maxWidth}"
 }
 
 func opdsDownloadPath(comicID, filename string) string {

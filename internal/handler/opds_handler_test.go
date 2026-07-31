@@ -3,6 +3,10 @@ package handler
 import (
 	"archive/zip"
 	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -60,6 +64,12 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovelLibraries(t *testing.T) {
 	createOPDSHandlerComic(t, "opds-download-ebook", "Download Ebook.epub", "novel", "opds-download-lib")
 	createOPDSHandlerComic(t, "opds-view-comic", "View Comic.cbz", "comic", "opds-view-lib")
 	createOPDSHandlerComic(t, "opds-novel", "Novel.epub", "novel", "opds-novel-lib")
+	if _, err := store.DB().Exec(`
+		UPDATE "Comic" SET "pageCount" = 12
+		WHERE "id" IN ('opds-download-comic', 'opds-download-ebook')
+	`); err != nil {
+		t.Fatalf("set OPDS page counts failed: %v", err)
+	}
 
 	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{
 		{LibraryID: "opds-download-lib", CanDownload: true},
@@ -93,10 +103,108 @@ func TestOPDSFeedRequiresDownloadAccessAndExcludesNovelLibraries(t *testing.T) {
 	if !strings.Contains(body, `<opensearch:totalResults>2</opensearch:totalResults>`) {
 		t.Fatalf("feed total does not reflect permission and type filters: %s", body)
 	}
+	if !strings.Contains(body, `/api/opds/stream/opds-download-comic?`) {
+		t.Fatalf("comic is missing OPDS-PSE link: %s", body)
+	}
+	if strings.Contains(body, `/api/opds/stream/opds-download-ebook?`) {
+		t.Fatalf("text novel advertised OPDS-PSE: %s", body)
+	}
 
 	novelDownload := performOPDSBasicRequest(router, "/api/opds/download/opds-novel", user.Username, token)
 	if novelDownload.Code != http.StatusNotFound {
 		t.Fatalf("direct novel download returned %d, want 404: %s", novelDownload.Code, novelDownload.Body.String())
+	}
+}
+
+func TestOPDSPSEStreamsJPEGWithDownloadPermission(t *testing.T) {
+	router := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	user, token := createOPDSTestUserAndKey(t, "opds-pse-user", "opds-pse-user")
+	viewer, viewerToken := createOPDSTestUserAndKey(t, "opds-pse-viewer", "opds-pse-viewer")
+
+	libraryDir := t.TempDir()
+	library := &model.Library{
+		ID:            "opds-pse-lib",
+		Name:          "opds-pse-lib",
+		Type:          "comic",
+		RootPath:      libraryDir,
+		Enabled:       true,
+		DefaultAccess: "private",
+		ScanEnabled:   true,
+	}
+	if err := store.CreateLibrary(library); err != nil {
+		t.Fatalf("CreateLibrary failed: %v", err)
+	}
+
+	filename := "PSE Comic.cbz"
+	if err := os.WriteFile(filepath.Join(libraryDir, filename), createImageCBZ(t), 0o600); err != nil {
+		t.Fatalf("write PSE CBZ failed: %v", err)
+	}
+	createOPDSHandlerComic(t, "opds-pse-comic", filename, "comic", library.ID)
+	readAt := time.Now().UTC().Truncate(time.Second)
+	if _, err := store.DB().Exec(`
+		UPDATE "Comic" SET "pageCount" = 1 WHERE "id" = 'opds-pse-comic';
+		INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt")
+		VALUES (?, 'opds-pse-comic', 0, ?)
+	`, user.ID, readAt); err != nil {
+		t.Fatalf("prepare PSE comic state failed: %v", err)
+	}
+	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{{
+		LibraryID: library.ID, CanDownload: true,
+	}}); err != nil {
+		t.Fatalf("set PSE download access failed: %v", err)
+	}
+	if err := store.SetUserLibraryAccess(viewer.ID, []store.LibraryAccessReq{{
+		LibraryID: library.ID, CanView: true,
+	}}); err != nil {
+		t.Fatalf("set PSE view access failed: %v", err)
+	}
+
+	feed := performOPDSBasicRequest(router, "/api/opds/all", user.Username, token)
+	if feed.Code != http.StatusOK {
+		t.Fatalf("PSE feed returned %d: %s", feed.Code, feed.Body.String())
+	}
+	for _, expected := range []string{
+		`xmlns:pse="http://vaemendis.net/opds-pse/ns"`,
+		`rel="http://vaemendis.net/opds-pse/stream"`,
+		`pse:count="1"`,
+		`pse:lastRead="1"`,
+		`pse:lastReadDate="` + readAt.Format(time.RFC3339) + `"`,
+	} {
+		if !strings.Contains(feed.Body.String(), expected) {
+			t.Fatalf("PSE feed missing %q: %s", expected, feed.Body.String())
+		}
+	}
+
+	streamPath := "/api/opds/stream/opds-pse-comic?page=0&width=2"
+	page := performOPDSBasicRequest(router, streamPath, user.Username, token)
+	if page.Code != http.StatusOK {
+		t.Fatalf("PSE page returned %d: %s", page.Code, page.Body.String())
+	}
+	if got := page.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("PSE Content-Type = %q, want image/jpeg", got)
+	}
+	if got := page.Header().Get("Cache-Control"); !strings.HasPrefix(got, "private,") {
+		t.Fatalf("PSE Cache-Control = %q, want private cache", got)
+	}
+	decoded, err := jpeg.Decode(bytes.NewReader(page.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("decode PSE JPEG: %v", err)
+	}
+	if got := decoded.Bounds().Size(); got.X != 2 || got.Y != 1 {
+		t.Fatalf("PSE JPEG size = %dx%d, want 2x1", got.X, got.Y)
+	}
+
+	etag := page.Header().Get("ETag")
+	notModified := performOPDSRequest(router, http.MethodGet, streamPath, user.Username, token, map[string]string{"If-None-Match": etag})
+	if notModified.Code != http.StatusNotModified {
+		t.Fatalf("PSE conditional request returned %d, want 304", notModified.Code)
+	}
+	denied := performOPDSBasicRequest(router, streamPath, viewer.Username, viewerToken)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("view-only PSE request returned %d, want 403", denied.Code)
 	}
 }
 
@@ -364,6 +472,29 @@ func createTestCBZ(t *testing.T) []byte {
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close test CBZ failed: %v", err)
+	}
+	return buffer.Bytes()
+}
+
+func createImageCBZ(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	entry, err := writer.Create("001.png")
+	if err != nil {
+		t.Fatalf("create image CBZ entry failed: %v", err)
+	}
+	page := image.NewNRGBA(image.Rect(0, 0, 4, 2))
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 4; x++ {
+			page.Set(x, y, color.NRGBA{R: 20, G: 80, B: 180, A: 255})
+		}
+	}
+	if err := png.Encode(entry, page); err != nil {
+		t.Fatalf("encode image CBZ page failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close image CBZ failed: %v", err)
 	}
 	return buffer.Bytes()
 }

@@ -1059,13 +1059,20 @@ func invalidatePageImageCacheIfNeeded(comicID string, entries []string) {
 
 	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
 
-	// Build a fingerprint from the first, middle, and last entry names + total count.
-	// More robust than just first+last for detecting ordering changes.
-	fingerprint := fmt.Sprintf("%s|%s|%s|%d",
+	// Include both page order and source file identity so replacing a file at
+	// the same path cannot leave stale extracted or OPDS-PSE pages behind.
+	sourceFingerprint := ""
+	if sourcePath, _, err := FindComicFilePath(comicID); err == nil {
+		if info, statErr := os.Stat(sourcePath); statErr == nil {
+			sourceFingerprint = fmt.Sprintf("%d|%d", info.Size(), info.ModTime().UnixNano())
+		}
+	}
+	fingerprint := fmt.Sprintf("%s|%s|%s|%d|%s",
 		entries[0],
 		entries[len(entries)/2],
 		entries[len(entries)-1],
-		len(entries))
+		len(entries),
+		sourceFingerprint)
 
 	fpPath := filepath.Join(cacheDir, ".order-fp")
 	existing, err := os.ReadFile(fpPath)
@@ -1084,7 +1091,7 @@ func invalidatePageImageCacheIfNeeded(comicID string, entries []string) {
 		if e.Name() == ".order-fp" {
 			continue
 		}
-		_ = os.Remove(filepath.Join(cacheDir, e.Name()))
+		_ = os.RemoveAll(filepath.Join(cacheDir, e.Name()))
 	}
 
 	_ = os.MkdirAll(cacheDir, 0755)

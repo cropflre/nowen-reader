@@ -90,6 +90,14 @@ func TestGetOPDSComicsIsComicLibraryScopedAndUserScoped(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("insert favorites failed: %v", err)
 	}
+	lastReadAt := time.Now().UTC().Truncate(time.Second)
+	if _, err := db.Exec(`
+		UPDATE "UserComicState"
+		SET "lastReadPage" = 7, "lastReadAt" = ?
+		WHERE "userId" = 'opds-a' AND "comicId" = 'comic-ok'
+	`, lastReadAt); err != nil {
+		t.Fatalf("insert OPDS progress failed: %v", err)
+	}
 
 	libraryIDs := []string{"opds-comics", "opds-novels", "opds-off"}
 	rows, total, err := GetOPDSComics(OPDSQueryOptions{
@@ -126,6 +134,9 @@ func TestGetOPDSComicsIsComicLibraryScopedAndUserScoped(t *testing.T) {
 	}
 	if total != 1 || len(favorites) != 1 || favorites[0].ID != "comic-ok" {
 		t.Fatalf("user favorites = %v, total=%d; want [comic-ok]", opdsRowIDs(favorites), total)
+	}
+	if favorites[0].LastReadPage != 7 || favorites[0].LastReadAt == "" {
+		t.Fatalf("user OPDS progress = page %d at %q; want page 7 with timestamp", favorites[0].LastReadPage, favorites[0].LastReadAt)
 	}
 
 	empty, total, err := GetOPDSComics(OPDSQueryOptions{Sort: OPDSSortTitle, Limit: 100})

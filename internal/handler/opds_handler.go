@@ -21,6 +21,7 @@ import (
 const (
 	opdsDefaultPageSize = 100
 	opdsMaxPageSize     = 500
+	opdsPSEMaxWidth     = 4096
 )
 
 type OPDSHandler struct{}
@@ -143,6 +144,7 @@ func (h *OPDSHandler) SeriesDetail(c *gin.Context) {
 	page, pageSize := parseOPDSPagination(c)
 	rows, total, err := store.GetOPDSComics(store.OPDSQueryOptions{
 		LibraryIDs: libraryIDs,
+		UserID:     getOPDSUserID(c),
 		SeriesID:   series.ID,
 		Limit:      pageSize,
 		Offset:     (page - 1) * pageSize,
@@ -196,6 +198,7 @@ func (h *OPDSHandler) renderAcquisitionFeed(c *gin.Context, title string, opts s
 
 	page, pageSize := parseOPDSPagination(c)
 	opts.LibraryIDs = libraryIDs
+	opts.UserID = userID
 	opts.Limit = pageSize
 	opts.Offset = (page - 1) * pageSize
 	rows, total, err := store.GetOPDSComics(opts)
@@ -351,6 +354,61 @@ func (h *OPDSHandler) Download(c *gin.Context) {
 	http.ServeContent(c.Writer, c.Request, filepath.Base(comic.Filename), info.ModTime(), file)
 }
 
+// GET /api/opds/stream/:id?page={pageNumber}&width={maxWidth}
+func (h *OPDSHandler) StreamPage(c *gin.Context) {
+	comic, ok := getOPDSPublication(c.Param("id"))
+	if !ok || !service.OPDSPSESupported(comic.Filename, comic.ComicType, comic.PageCount) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic page stream not found"})
+		return
+	}
+	if err := checkComicDownloadAccess(c, comic.ID); err != nil {
+		return
+	}
+
+	pageIndex, err := strconv.Atoi(c.Query("page"))
+	if err != nil || pageIndex < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page"})
+		return
+	}
+	if pageIndex >= comic.PageCount {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Page not found"})
+		return
+	}
+
+	maxWidth := 0
+	if rawWidth := strings.TrimSpace(c.Query("width")); rawWidth != "" {
+		maxWidth, err = strconv.Atoi(rawWidth)
+		if err != nil || maxWidth < 0 || maxWidth > opdsPSEMaxWidth {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("width must be between 0 and %d", opdsPSEMaxWidth)})
+			return
+		}
+	}
+
+	result, err := service.GetOPDSPSEPageImage(comic.ID, pageIndex, maxWidth)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to render page"})
+		return
+	}
+	if result == nil || len(result.Data) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Page not found"})
+		return
+	}
+
+	sum := sha256.Sum256(result.Data)
+	etag := fmt.Sprintf(`"%x"`, sum[:12])
+	c.Header("Content-Type", "image/jpeg")
+	c.Header("Content-Length", strconv.Itoa(len(result.Data)))
+	c.Header("Cache-Control", "private, max-age=86400, must-revalidate")
+	c.Header("Vary", "Authorization, Cookie")
+	c.Header("ETag", etag)
+	c.Header("X-Content-Type-Options", "nosniff")
+	if c.GetHeader("If-None-Match") == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	c.Data(http.StatusOK, "image/jpeg", result.Data)
+}
+
 func setOPDSPrivateResponseHeaders(c *gin.Context) {
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("Vary", "Authorization, Cookie")
@@ -410,22 +468,25 @@ func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 	comics := make([]service.OPDSComic, 0, len(rows))
 	for _, row := range rows {
 		comics = append(comics, service.OPDSComic{
-			ID:          row.ID,
-			Title:       row.Title,
-			Author:      row.Author,
-			Description: row.Description,
-			Language:    row.Language,
-			Genre:       row.Genre,
-			Publisher:   row.Publisher,
-			Year:        row.Year,
-			PageCount:   row.PageCount,
-			FileSize:    row.FileSize,
-			AddedAt:     row.AddedAt,
-			UpdatedAt:   row.UpdatedAt,
-			Tags:        row.Tags,
-			Filename:    row.Filename,
-			SeriesID:    row.SeriesID,
-			SeriesTitle: row.SeriesTitle,
+			ID:           row.ID,
+			Title:        row.Title,
+			Author:       row.Author,
+			Description:  row.Description,
+			Language:     row.Language,
+			Genre:        row.Genre,
+			Publisher:    row.Publisher,
+			Year:         row.Year,
+			PageCount:    row.PageCount,
+			FileSize:     row.FileSize,
+			AddedAt:      row.AddedAt,
+			UpdatedAt:    row.UpdatedAt,
+			Tags:         row.Tags,
+			Filename:     row.Filename,
+			ComicType:    row.ComicType,
+			SeriesID:     row.SeriesID,
+			SeriesTitle:  row.SeriesTitle,
+			LastReadPage: row.LastReadPage,
+			LastReadAt:   row.LastReadAt,
 		})
 	}
 	return comics
