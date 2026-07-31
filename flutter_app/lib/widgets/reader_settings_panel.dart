@@ -10,22 +10,31 @@ enum ReadingDirection { ltr, rtl, ttb }
 /// 适应显示模式
 enum FitMode { contain, width, height }
 
+T _enumValue<T>(List<T> values, int? index, T fallback) {
+  if (index == null || index < 0 || index >= values.length) return fallback;
+  return values[index];
+}
+
 /// 阅读器设置 — 持久化到 SharedPreferences
 class ReaderSettings {
+  static const int settingsVersion = 2;
+
   final ComicReadingMode mode;
   final ReadingDirection direction;
   final FitMode fitMode;
   final bool showPageNumber;
   final int autoPageInterval; // 秒，0=禁用
+
   /// 双页模式下封面单独显示（错页 1 页），日漫见开页对齐用
   final bool doubleCoverAlone;
+
   /// 双页模式贴合（去除中间缝隙），让两页在屏幕中央对齐拼接
   final bool doublePageNoGap;
 
   const ReaderSettings({
     this.mode = ComicReadingMode.single,
     this.direction = ReadingDirection.ltr,
-    this.fitMode = FitMode.contain,
+    this.fitMode = FitMode.width,
     this.showPageNumber = true,
     this.autoPageInterval = 10,
     this.doubleCoverAlone = true,
@@ -52,13 +61,41 @@ class ReaderSettings {
     );
   }
 
-  /// 从 SharedPreferences 读取
+  /// 从 SharedPreferences 读取。
+  ///
+  /// v2 将旧版默认的“完整容纳”迁移为“适应宽度”。旧默认会把长图完整
+  /// 压进一屏，导致漫画文字非常小；用户仍可在设置中切回完整显示。
   static Future<ReaderSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
+    final storedVersion = prefs.getInt('reader_settings_version') ?? 1;
+    var fitModeIndex = prefs.getInt('reader_fitMode');
+
+    if (fitModeIndex == null ||
+        (storedVersion < settingsVersion &&
+            fitModeIndex == FitMode.contain.index)) {
+      fitModeIndex = FitMode.width.index;
+      await prefs.setInt('reader_fitMode', fitModeIndex);
+    }
+    if (storedVersion < settingsVersion) {
+      await prefs.setInt('reader_settings_version', settingsVersion);
+    }
+
     return ReaderSettings(
-      mode: ComicReadingMode.values[prefs.getInt('reader_mode') ?? 0],
-      direction: ReadingDirection.values[prefs.getInt('reader_direction') ?? 0],
-      fitMode: FitMode.values[prefs.getInt('reader_fitMode') ?? 0],
+      mode: _enumValue(
+        ComicReadingMode.values,
+        prefs.getInt('reader_mode'),
+        ComicReadingMode.single,
+      ),
+      direction: _enumValue(
+        ReadingDirection.values,
+        prefs.getInt('reader_direction'),
+        ReadingDirection.ltr,
+      ),
+      fitMode: _enumValue(
+        FitMode.values,
+        fitModeIndex,
+        FitMode.width,
+      ),
       showPageNumber: prefs.getBool('reader_showPageNumber') ?? true,
       autoPageInterval: prefs.getInt('reader_autoPageInterval') ?? 10,
       doubleCoverAlone: prefs.getBool('reader_doubleCoverAlone') ?? true,
@@ -69,6 +106,7 @@ class ReaderSettings {
   /// 保存到 SharedPreferences
   Future<void> save() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('reader_settings_version', settingsVersion);
     await prefs.setInt('reader_mode', mode.index);
     await prefs.setInt('reader_direction', direction.index);
     await prefs.setInt('reader_fitMode', fitMode.index);
@@ -194,7 +232,7 @@ class _ReaderSettingsPanelState extends State<ReaderSettingsPanel> {
                     _ToggleGroup<FitMode>(
                       value: _settings.fitMode,
                       items: const [
-                        _ToggleItem(FitMode.contain, '容器'),
+                        _ToggleItem(FitMode.contain, '完整'),
                         _ToggleItem(FitMode.width, '宽度'),
                         _ToggleItem(FitMode.height, '高度'),
                       ],
