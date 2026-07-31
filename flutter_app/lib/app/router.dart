@@ -10,10 +10,10 @@ import '../features/favorites/favorites_screen.dart';
 import '../features/groups/group_detail_v2_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/metadata/metadata_screen.dart';
-import '../features/reader/comic_reader_screen.dart';
 import '../features/reader/novel_reader_screen.dart';
 import '../features/reader/offline_novel_reader_screen.dart';
 import '../features/reader/pdf_reader_screen.dart';
+import '../features/reader/reader_dispatch_screen.dart';
 import '../features/scan_rules/scan_rules_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/server/server_config_screen.dart';
@@ -78,9 +78,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           final comicId = state.pathParameters['id']!;
           final pageStr = state.uri.queryParameters['page'];
           final initialPage = pageStr != null ? int.tryParse(pageStr) ?? 0 : 0;
-          return ComicReaderScreen(
+          return ReaderDispatchScreen(
             comicId: comicId,
-            initialPage: initialPage,
+            initialPosition: initialPage,
           );
         },
       ),
