@@ -1829,7 +1829,7 @@
     <span class="summary"><span data-en="Get comic pages list" data-zh="获取漫画页面列表">Get comic pages list</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns the list of pages for a comic including metadata like title, URL, and content type flags." data-zh="返回漫画页面列表，包括标题、URL和内容类型标志等元数据。">Returns the list of pages for a comic including metadata like title, URL, and content type flags.</span></p>
+    <p class="description"><span data-en="Returns a flat list of comic pages or novel chapters. Novel entries may include level, parentIndex, and hasChildren so clients can rebuild a collapsible multi-level table of contents without changing the stable chapter index." data-zh="返回漫画页面或小说章节的平铺列表。小说条目可包含 level、parentIndex 和 hasChildren，客户端可据此重建可折叠的多级目录，同时保持章节 index 稳定不变。">Returns a flat list of comic pages or novel chapters. Novel entries may include level, parentIndex, and hasChildren so clients can rebuild a collapsible multi-level table of contents without changing the stable chapter index.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
@@ -1843,16 +1843,26 @@
     <pre class="code-block"><code>{
   "comicId": "string",
   "title": "string",
-  "totalPages": 0,
+  "totalPages": 2,
   "pages": [
     {
       "index": 0,
-      "name": "string",
-      "url": "string",
-      "title": "string"
+      "name": "chapter-0001.html",
+      "url": "/api/comics/string/chapter/0",
+      "title": "Volume One",
+      "level": 0,
+      "hasChildren": true
+    },
+    {
+      "index": 1,
+      "name": "chapter-0002.html",
+      "url": "/api/comics/string/chapter/1",
+      "title": "Chapter One",
+      "level": 1,
+      "parentIndex": 0
     }
   ],
-  "isNovel": false,
+  "isNovel": true,
   "isPdf": false
 }</code></pre>
 

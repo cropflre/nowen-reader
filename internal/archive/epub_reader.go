@@ -32,6 +32,15 @@ type epubChapter struct {
 	htmlContent string // sanitized HTML content for rich rendering
 }
 
+// EpubChapterInfo describes one flattened EPUB TOC entry while preserving
+// enough hierarchy metadata for clients to rebuild the navigation tree.
+type EpubChapterInfo struct {
+	Title       string
+	Level       int
+	ParentIndex int
+	HasChildren bool
+}
+
 type epubChapterRef struct {
 	title      string
 	href       string
@@ -40,6 +49,12 @@ type epubChapterRef struct {
 	playOrder  int
 	spineIndex int
 	source     string
+}
+
+type epubChapterPart struct {
+	href          string
+	startFragment string
+	endFragment   string
 }
 
 type epubReader struct {
@@ -232,21 +247,43 @@ func (r *epubReader) parseEpub() error {
 		chapterRefs = spineRefs
 	}
 
-	// Step 5: Extract each chapter's text content
+	// Step 5: Extract chapter content. TOC entries define visible chapter
+	// boundaries, while the spine supplies every XHTML document in that range.
+	// This supports converted EPUBs that split a title page and its body into
+	// adjacent spine documents.
 	r.chapters = make([]epubChapter, 0, len(chapterRefs))
 	r.entries = make([]Entry, 0, len(chapterRefs))
 
 	for i, ref := range chapterRefs {
-		data, err := r.readZipFile(ref.href)
-		if err != nil {
+		parts := chapterParts(chapterRefs, spineRefs, i)
+		var titleHTML string
+		var textParts []string
+		var htmlParts []string
+		for _, part := range parts {
+			data, err := r.readZipFile(part.href)
+			if err != nil {
+				continue
+			}
+			rawHTML := string(data)
+			if titleHTML == "" {
+				titleHTML = rawHTML
+			}
+			chapterHTML := sliceXHTMLByFragments(rawHTML, part.startFragment, part.endFragment)
+			if textContent := strings.TrimSpace(extractTextFromXHTML(chapterHTML)); textContent != "" {
+				textParts = append(textParts, textContent)
+			}
+			chapterDir := path.Dir(part.href)
+			if htmlContent := sanitizeEpubHTML(chapterHTML, chapterDir); htmlContent != "" {
+				htmlParts = append(htmlParts, htmlContent)
+			}
+		}
+		if titleHTML == "" {
 			continue
 		}
 
-		rawHTML := string(data)
-
 		title := strings.TrimSpace(ref.title)
 		if title == "" {
-			title = extractXHTMLTitle(rawHTML)
+			title = extractXHTMLTitle(titleHTML)
 		}
 		if title == "" {
 			title = fmt.Sprintf("第 %d 章", i+1)
@@ -258,12 +295,6 @@ func (r *epubReader) parseEpub() error {
 			IsDirectory: false,
 		})
 
-		textContent := extractTextFromXHTML(rawHTML)
-
-		// Sanitize HTML: keep formatting tags, rewrite image src to API URLs
-		chapterDir := path.Dir(ref.href)
-		htmlContent := sanitizeEpubHTML(rawHTML, chapterDir)
-
 		r.chapters = append(r.chapters, epubChapter{
 			title:       title,
 			href:        ref.href,
@@ -272,8 +303,8 @@ func (r *epubReader) parseEpub() error {
 			playOrder:   ref.playOrder,
 			spineIndex:  ref.spineIndex,
 			source:      ref.source,
-			content:     strings.TrimSpace(textContent),
-			htmlContent: htmlContent,
+			content:     strings.Join(textParts, "\n\n"),
+			htmlContent: strings.Join(htmlParts, "\n"),
 		})
 	}
 
@@ -355,6 +386,9 @@ func resolveEpubHref(baseDir, href string) (string, string) {
 	if decoded, err := url.PathUnescape(filePart); err == nil {
 		filePart = decoded
 	}
+	if decoded, err := url.PathUnescape(fragment); err == nil {
+		fragment = decoded
+	}
 	filePart = strings.TrimPrefix(filePart, "/")
 	if filePart == "" {
 		return "", fragment
@@ -367,6 +401,127 @@ func resolveEpubHref(baseDir, href string) (string, string) {
 		filePart = ""
 	}
 	return filePart, fragment
+}
+
+func chapterParts(chapterRefs, spineRefs []epubChapterRef, chapterIndex int) []epubChapterPart {
+	ref := chapterRefs[chapterIndex]
+	direct := func(endFragment string) []epubChapterPart {
+		return []epubChapterPart{{
+			href:          ref.href,
+			startFragment: ref.fragment,
+			endFragment:   endFragment,
+		}}
+	}
+	if ref.spineIndex < 0 || ref.source == "spine" {
+		return direct("")
+	}
+
+	endSpineIndex := -1
+	for i := chapterIndex + 1; i < len(chapterRefs); i++ {
+		next := chapterRefs[i]
+		if next.spineIndex < 0 {
+			continue
+		}
+		if next.spineIndex < ref.spineIndex {
+			// A non-monotonic TOC cannot safely define a spine range.
+			return direct("")
+		}
+		if next.spineIndex == ref.spineIndex {
+			if next.href == ref.href && next.fragment != ref.fragment {
+				return direct(next.fragment)
+			}
+			return direct("")
+		}
+		endSpineIndex = next.spineIndex
+		break
+	}
+
+	parts := make([]epubChapterPart, 0, 2)
+	for _, spineRef := range spineRefs {
+		if spineRef.spineIndex < ref.spineIndex {
+			continue
+		}
+		if endSpineIndex >= 0 && spineRef.spineIndex >= endSpineIndex {
+			break
+		}
+		part := epubChapterPart{href: spineRef.href}
+		if spineRef.spineIndex == ref.spineIndex && spineRef.href == ref.href {
+			part.startFragment = ref.fragment
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 || parts[0].href != ref.href {
+		return direct("")
+	}
+	return parts
+}
+
+func sliceXHTMLByFragments(rawHTML, startFragment, endFragment string) string {
+	if startFragment == "" && endFragment == "" {
+		return rawHTML
+	}
+
+	tokenizer := html.NewTokenizer(strings.NewReader(rawHTML))
+	offset := 0
+	bodyStart := 0
+	bodyEnd := len(rawHTML)
+	startOffset := -1
+	endOffset := -1
+
+	for {
+		tokenType := tokenizer.Next()
+		rawToken := tokenizer.Raw()
+		tokenStart := offset
+		offset += len(rawToken)
+
+		switch tokenType {
+		case html.ErrorToken:
+			if startFragment != "" && startOffset < 0 {
+				return rawHTML
+			}
+			if endFragment != "" && endOffset < 0 {
+				endOffset = bodyEnd
+			}
+			if startOffset < 0 {
+				startOffset = bodyStart
+			}
+			if endOffset < 0 {
+				endOffset = bodyEnd
+			}
+			if startOffset >= endOffset || startOffset < 0 || endOffset > len(rawHTML) {
+				return rawHTML
+			}
+			return rawHTML[startOffset:endOffset]
+
+		case html.StartTagToken, html.SelfClosingTagToken:
+			token := tokenizer.Token()
+			if strings.EqualFold(token.Data, "body") {
+				bodyStart = offset
+			}
+			fragment := tokenFragment(token)
+			if startFragment != "" && startOffset < 0 && fragment == startFragment {
+				startOffset = tokenStart
+			}
+			if endFragment != "" && endOffset < 0 && fragment == endFragment {
+				endOffset = tokenStart
+			}
+
+		case html.EndTagToken:
+			token := tokenizer.Token()
+			if strings.EqualFold(token.Data, "body") {
+				bodyEnd = tokenStart
+			}
+		}
+	}
+}
+
+func tokenFragment(token html.Token) string {
+	for _, attr := range token.Attr {
+		if strings.EqualFold(attr.Key, "id") || strings.EqualFold(attr.Key, "name") {
+			return attr.Val
+		}
+	}
+	return ""
 }
 
 func (r *epubReader) validChapterRefs(refs []epubChapterRef) []epubChapterRef {
@@ -1014,6 +1169,41 @@ func GetEpubChapterTitles(r Reader) []string {
 		return titles
 	}
 	return nil
+}
+
+// GetEpubChapterInfos returns flattened chapter entries with their original
+// TOC hierarchy. ParentIndex is -1 for top-level entries.
+func GetEpubChapterInfos(r Reader) []EpubChapterInfo {
+	er, ok := r.(*epubReader)
+	if !ok {
+		return nil
+	}
+
+	infos := make([]EpubChapterInfo, len(er.chapters))
+	ancestors := make([]int, 0, 4)
+	for i, chapter := range er.chapters {
+		level := max(chapter.level, 0)
+		if level > len(ancestors) {
+			level = len(ancestors)
+		}
+		for len(ancestors) > level {
+			ancestors = ancestors[:len(ancestors)-1]
+		}
+		parentIndex := -1
+		if level > 0 && len(ancestors) > 0 {
+			parentIndex = ancestors[len(ancestors)-1]
+		}
+		infos[i] = EpubChapterInfo{
+			Title:       chapter.title,
+			Level:       level,
+			ParentIndex: parentIndex,
+		}
+		ancestors = append(ancestors, i)
+	}
+	for i := 0; i+1 < len(infos); i++ {
+		infos[i].HasChildren = infos[i+1].Level > infos[i].Level
+	}
+	return infos
 }
 
 // GetEpubCoverImage extracts the cover image from an EPUB Reader.

@@ -124,6 +124,7 @@ func InvalidateReaderPool() {
 type pageListCacheEntry struct {
 	entries       []string
 	chapterTitles []string
+	chapterInfos  []ChapterInfo
 	isPdf         bool
 	isNovel       bool
 	ts            time.Time
@@ -166,10 +167,19 @@ func FindComicFilePath(comicID string) (string, string, error) {
 // Get comic pages (list of page entry names)
 // ============================================================
 
+// ChapterInfo carries optional hierarchy metadata for a flattened novel TOC.
+type ChapterInfo struct {
+	Title       string
+	Level       int
+	ParentIndex int
+	HasChildren bool
+}
+
 // PagesResult holds page list data with optional chapter info for novels.
 type PagesResult struct {
 	Entries       []string
 	ChapterTitles []string // non-nil only for novel formats
+	ChapterInfos  []ChapterInfo
 	IsNovel       bool
 	IsPdf         bool
 }
@@ -219,6 +229,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 		result := &PagesResult{Entries: cached.entries, IsNovel: isNovel, IsPdf: cached.isPdf}
 		if isNovel {
 			result.ChapterTitles = cached.chapterTitles
+			result.ChapterInfos = cached.chapterInfos
 		}
 		return result, nil
 	}
@@ -226,6 +237,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 
 	var entries []string
 	var chapterTitles []string
+	var chapterInfos []ChapterInfo
 	var isPdf bool
 
 	switch {
@@ -256,6 +268,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 			}
 		}
 		chapterTitles = getChapterTitles(reader, archiveType)
+		chapterInfos = getChapterInfos(reader, archiveType, chapterTitles)
 
 	default:
 		reader, err := getPooledReader(fp)
@@ -278,7 +291,14 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 
 	// Update cache — 使用包含 updatedAt 的 key
 	pageListCacheMu.Lock()
-	pageListCache[cacheKey] = &pageListCacheEntry{entries: entries, chapterTitles: chapterTitles, isPdf: isPdf, isNovel: isNovel, ts: time.Now()}
+	pageListCache[cacheKey] = &pageListCacheEntry{
+		entries:       entries,
+		chapterTitles: chapterTitles,
+		chapterInfos:  chapterInfos,
+		isPdf:         isPdf,
+		isNovel:       isNovel,
+		ts:            time.Now(),
+	}
 	pageListCacheMu.Unlock()
 
 	// Invalidate disk cache if page order changed (e.g. zip→spine order fix)
@@ -287,6 +307,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 	return &PagesResult{
 		Entries:       entries,
 		ChapterTitles: chapterTitles,
+		ChapterInfos:  chapterInfos,
 		IsNovel:       isNovel,
 		IsPdf:         isPdf,
 	}, nil
@@ -319,6 +340,28 @@ func getChapterTitles(r archive.Reader, archiveType archive.ArchiveType) []strin
 		return archive.GetHtmlChapterTitles(r)
 	}
 	return nil
+}
+
+func getChapterInfos(r archive.Reader, archiveType archive.ArchiveType, titles []string) []ChapterInfo {
+	if archiveType == archive.TypeEpub {
+		epubInfos := archive.GetEpubChapterInfos(r)
+		infos := make([]ChapterInfo, len(epubInfos))
+		for i, info := range epubInfos {
+			infos[i] = ChapterInfo{
+				Title:       info.Title,
+				Level:       info.Level,
+				ParentIndex: info.ParentIndex,
+				HasChildren: info.HasChildren,
+			}
+		}
+		return infos
+	}
+
+	infos := make([]ChapterInfo, len(titles))
+	for i, title := range titles {
+		infos[i] = ChapterInfo{Title: title, ParentIndex: -1}
+	}
+	return infos
 }
 
 // ============================================================

@@ -156,6 +156,9 @@ interface ChapterInfo {
   name: string;
   url: string;
   title?: string;
+  level?: number;
+  parentIndex?: number;
+  hasChildren?: boolean;
 }
 
 interface TextReaderViewProps {
@@ -170,4 +173,3 @@ interface TextReaderViewProps {
   externalShowSettings?: boolean;
   comicId?: string;
 }
-

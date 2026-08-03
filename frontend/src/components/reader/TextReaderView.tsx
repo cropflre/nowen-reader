@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, BookOpenCheck, Bookmark, BookmarkPlus, Trash2, Search, X, Copy, MessageSquare, Highlighter, Volume2, Pause, Play, Timer, Square } from "lucide-react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import { useLocale, useTranslation } from "@/lib/i18n";
@@ -45,6 +45,7 @@ export default function TextReaderView({
   });
   const [showTOC, setShowTOC] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [collapsedTOCIndexes, setCollapsedTOCIndexes] = useState<Set<number>>(() => new Set());
   // 章节摘要状态
   const [chapterSummaries, setChapterSummaries] = useState<Record<number, string>>({});
   const [summaryLoadingIdx, setSummaryLoadingIdx] = useState<number | null>(null);
@@ -77,6 +78,61 @@ export default function TextReaderView({
   useEffect(() => {
     onShowSettingsChange?.(showSettings);
   }, [showSettings, onShowSettingsChange]);
+
+  const normalizedTOCChapters = useMemo(() => {
+    const ancestors: number[] = [];
+    const normalized = chapters.map((chapter, index) => {
+      const level = Math.min(Math.max(0, chapter.level ?? 0), ancestors.length);
+      while (ancestors.length > level) ancestors.pop();
+      let parentIndex = chapter.parentIndex;
+      if (parentIndex === undefined && level > 0 && ancestors.length > 0) {
+        parentIndex = ancestors[ancestors.length - 1];
+      }
+      ancestors.push(index);
+      return { ...chapter, level, parentIndex };
+    });
+    return normalized.map((chapter, index) => ({
+      ...chapter,
+      hasChildren:
+        chapter.hasChildren ??
+        (index + 1 < normalized.length && normalized[index + 1].level > chapter.level),
+    }));
+  }, [chapters]);
+
+  const visibleTOCChapters = useMemo(() => {
+    return normalizedTOCChapters
+      .map((chapter, index) => ({ chapter, index }))
+      .filter(({ chapter }) => {
+        let parentIndex = chapter.parentIndex;
+        const visited = new Set<number>();
+        while (parentIndex !== undefined && parentIndex >= 0 && !visited.has(parentIndex)) {
+          if (collapsedTOCIndexes.has(parentIndex)) return false;
+          visited.add(parentIndex);
+          parentIndex = normalizedTOCChapters[parentIndex]?.parentIndex;
+        }
+        return true;
+      });
+  }, [normalizedTOCChapters, collapsedTOCIndexes]);
+
+  useEffect(() => {
+    setCollapsedTOCIndexes(new Set());
+  }, [chapters]);
+
+  useEffect(() => {
+    if (!showTOC) return;
+    setCollapsedTOCIndexes((previous) => {
+      const next = new Set(previous);
+      let changed = false;
+      let parentIndex = normalizedTOCChapters[currentPage]?.parentIndex;
+      const visited = new Set<number>();
+      while (parentIndex !== undefined && parentIndex >= 0 && !visited.has(parentIndex)) {
+        if (next.delete(parentIndex)) changed = true;
+        visited.add(parentIndex);
+        parentIndex = normalizedTOCChapters[parentIndex]?.parentIndex;
+      }
+      return changed ? next : previous;
+    });
+  }, [showTOC, currentPage, normalizedTOCChapters]);
   const [fontFamily, setFontFamily] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("textReaderFontFamily") || "system";
@@ -1926,48 +1982,79 @@ export default function TextReaderView({
             {/* 目录内容 */}
             {tocTab === 'toc' && (
               <div className="px-2 pb-4">
-                {chapters.map((ch, i) => (
-                  <button
+                {visibleTOCChapters.map(({ chapter: ch, index: i }) => (
+                  <div
                     key={i}
-                    onClick={() => {
-                      onPageChange(i);
-                      setShowTOC(false);
-                    }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    className={`flex w-full items-start rounded-lg pr-1 text-left text-sm transition-colors ${
                       i === currentPage
                         ? `${theme.tocActiveBg} ${theme.tocActiveText}`
                         : `${theme.tocText} ${theme.tocHoverBg}`
                     }`}
+                    style={{ paddingLeft: `${Math.min(ch.level, 6) * 12}px` }}
                   >
-                    <span className="mr-2 inline-block w-8 text-right text-xs opacity-50">
-                      {i + 1}.
-                    </span>
-                    <span className="flex-1">
-                      {ch.title || ch.name}
-                      {/* 书签标记 */}
-                      {bookmarks.some(b => b.chapterIndex === i) && (
-                        <Bookmark className="inline-block h-3 w-3 ml-1 text-amber-500 fill-amber-500" />
-                      )}
-                      {/* 章节摘要显示 */}
-                      {showSummaries && chapterSummaries[i] && (
-                        <span className={`mt-0.5 block text-[10px] leading-tight ${
-                          isDark ? "text-purple-400/60" : "text-purple-500/60"
-                        }`}>
-                          {chapterSummaries[i]}
+                    {ch.hasChildren ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCollapsedTOCIndexes((previous) => {
+                            const next = new Set(previous);
+                            if (next.has(i)) next.delete(i);
+                            else next.add(i);
+                            return next;
+                          });
+                        }}
+                        className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded"
+                        title={locale === "zh-CN" ? "展开或折叠子目录" : "Expand or collapse section"}
+                        aria-label={locale === "zh-CN" ? "展开或折叠子目录" : "Expand or collapse section"}
+                        aria-expanded={!collapsedTOCIndexes.has(i)}
+                      >
+                        <ChevronRight
+                          className={`h-3.5 w-3.5 transition-transform ${
+                            collapsedTOCIndexes.has(i) ? "" : "rotate-90"
+                          }`}
+                        />
+                      </button>
+                    ) : (
+                      <span className="h-6 w-6 shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPageChange(i);
+                        setShowTOC(false);
+                      }}
+                      className="flex min-w-0 flex-1 items-start py-2 text-left"
+                    >
+                      <span className="mr-2 inline-block w-8 shrink-0 text-right text-xs opacity-50">
+                        {i + 1}.
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className={ch.hasChildren ? "font-medium" : ""}>
+                          {ch.title || ch.name}
                         </span>
-                      )}
-                      {showSummaries && !chapterSummaries[i] && summaryLoadingIdx === i && (
-                        <span className={`mt-0.5 flex items-center gap-1 text-[10px] ${
-                          isDark ? "text-zinc-500" : "text-zinc-400"
-                        }`}>
-                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                          {locale === "zh-CN" ? "生成中..." : "Generating..."}
-                        </span>
-                      )}
-                    </span>
-                    {/* AI 摘要按钮 */}
+                        {bookmarks.some(b => b.chapterIndex === i) && (
+                          <Bookmark className="ml-1 inline-block h-3 w-3 fill-amber-500 text-amber-500" />
+                        )}
+                        {showSummaries && chapterSummaries[i] && (
+                          <span className={`mt-0.5 block text-[10px] leading-tight ${
+                            isDark ? "text-purple-400/60" : "text-purple-500/60"
+                          }`}>
+                            {chapterSummaries[i]}
+                          </span>
+                        )}
+                        {showSummaries && !chapterSummaries[i] && summaryLoadingIdx === i && (
+                          <span className={`mt-0.5 flex items-center gap-1 text-[10px] ${
+                            isDark ? "text-zinc-500" : "text-zinc-400"
+                          }`}>
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                            {locale === "zh-CN" ? "生成中..." : "Generating..."}
+                          </span>
+                        )}
+                      </span>
+                    </button>
                     {showSummaries && comicId && aiConfigured && !chapterSummaries[i] && summaryLoadingIdx !== i && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSummaryLoadingIdx(i);
@@ -1993,7 +2080,7 @@ export default function TextReaderView({
                         <Brain className="h-2.5 w-2.5" />
                       </button>
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

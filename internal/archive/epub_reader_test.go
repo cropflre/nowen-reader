@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +83,166 @@ func TestEpubReaderPrefersNCXOverSpine(t *testing.T) {
 			t.Fatalf("title[%d] = %q, want %q", i, titles[i], want)
 		}
 	}
+
+	infos := GetEpubChapterInfos(reader)
+	if infos[0].Level != 0 || infos[0].ParentIndex != -1 || infos[0].HasChildren {
+		t.Fatalf("chapter info[0] = %+v, want top-level leaf", infos[0])
+	}
+	if infos[1].Level != 0 || infos[1].ParentIndex != -1 || !infos[1].HasChildren {
+		t.Fatalf("chapter info[1] = %+v, want top-level parent", infos[1])
+	}
+	if infos[2].Level != 1 || infos[2].ParentIndex != 1 || infos[2].HasChildren {
+		t.Fatalf("chapter info[2] = %+v, want child of chapter 1", infos[2])
+	}
+}
+
+func TestEpubReaderAggregatesSpineDocumentsWithinTOCBoundary(t *testing.T) {
+	fp := writeTestEpub(t, "split-chapters.epub", map[string]string{
+		"mimetype":               "application/epub+zip",
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf": testOPF(
+			[]string{"title1.xhtml", "body1.xhtml", "title2.xhtml", "body2.xhtml"},
+			true,
+		),
+		"OEBPS/toc.ncx": testNCX(
+			`<navPoint id="one" playOrder="1"><navLabel><text>第一章</text></navLabel><content src="title1.xhtml"/></navPoint>`,
+			`<navPoint id="two" playOrder="2"><navLabel><text>第二章</text></navLabel><content src="title2.xhtml"/></navPoint>`,
+		),
+		"OEBPS/title1.xhtml": testXHTML("第一章", "chapter one title"),
+		"OEBPS/body1.xhtml":  testXHTML("第一章", "chapter one body"),
+		"OEBPS/title2.xhtml": testXHTML("第二章", "chapter two title"),
+		"OEBPS/body2.xhtml":  testXHTML("第二章", "chapter two body"),
+	})
+
+	reader, err := NewReader(fp)
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	defer reader.Close()
+
+	first, err := reader.ExtractEntry("chapter-0001.html")
+	if err != nil {
+		t.Fatalf("ExtractEntry(first) error = %v", err)
+	}
+	if !containsAll(string(first), "chapter one title", "chapter one body") {
+		t.Fatalf("first chapter did not aggregate its spine range: %s", first)
+	}
+	if containsAll(string(first), "chapter two title") {
+		t.Fatalf("first chapter crossed the next TOC boundary: %s", first)
+	}
+
+	second, err := reader.ExtractEntry("chapter-0002.html")
+	if err != nil {
+		t.Fatalf("ExtractEntry(second) error = %v", err)
+	}
+	if !containsAll(string(second), "chapter two title", "chapter two body") {
+		t.Fatalf("second chapter did not include trailing spine content: %s", second)
+	}
+}
+
+func TestEpubReaderSlicesSharedDocumentByFragments(t *testing.T) {
+	fp := writeTestEpub(t, "fragment-chapters.epub", map[string]string{
+		"mimetype":               "application/epub+zip",
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf":      testOPF([]string{"shared.xhtml"}, true),
+		"OEBPS/toc.ncx": testNCX(
+			`<navPoint id="one" playOrder="1"><navLabel><text>第一节</text></navLabel><content src="shared.xhtml#one"/></navPoint>`,
+			`<navPoint id="two" playOrder="2"><navLabel><text>第二节</text></navLabel><content src="shared.xhtml#two"/></navPoint>`,
+		),
+		"OEBPS/shared.xhtml": `<?xml version="1.0" encoding="UTF-8"?>
+<html><head><title>Shared</title></head><body>
+<h2 id="one">第一节</h2><p>alpha section</p>
+<h2 id="two">第二节</h2><p>beta section</p>
+</body></html>`,
+	})
+
+	reader, err := NewReader(fp)
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	defer reader.Close()
+
+	first, err := reader.ExtractEntry("chapter-0001.html")
+	if err != nil {
+		t.Fatalf("ExtractEntry(first) error = %v", err)
+	}
+	if !containsAll(string(first), "alpha section") || containsAll(string(first), "beta section") {
+		t.Fatalf("first fragment slice is incorrect: %s", first)
+	}
+
+	second, err := reader.ExtractEntry("chapter-0002.html")
+	if err != nil {
+		t.Fatalf("ExtractEntry(second) error = %v", err)
+	}
+	if !containsAll(string(second), "beta section") || containsAll(string(second), "alpha section") {
+		t.Fatalf("second fragment slice is incorrect: %s", second)
+	}
+}
+
+func TestEpubReaderSpineFallbackKeepsDocumentsSeparate(t *testing.T) {
+	fp := writeTestEpub(t, "spine-only.epub", map[string]string{
+		"mimetype":               "application/epub+zip",
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf":      testOPF([]string{"one.xhtml", "two.xhtml"}, false),
+		"OEBPS/one.xhtml":        testXHTML("One", "first document"),
+		"OEBPS/two.xhtml":        testXHTML("Two", "second document"),
+	})
+
+	reader, err := NewReader(fp)
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	defer reader.Close()
+
+	entries := reader.ListEntries()
+	if len(entries) != 2 {
+		t.Fatalf("ListEntries() length = %d, want 2", len(entries))
+	}
+	first, err := reader.ExtractEntry(entries[0].Name)
+	if err != nil {
+		t.Fatalf("ExtractEntry(first) error = %v", err)
+	}
+	if !containsAll(string(first), "first document") || containsAll(string(first), "second document") {
+		t.Fatalf("spine fallback merged separate documents: %s", first)
+	}
+}
+
+const testContainerXML = `<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`
+
+func testOPF(chapters []string, withNCX bool) string {
+	manifest := ""
+	spine := ""
+	for i, chapter := range chapters {
+		id := "chapter" + string(rune('a'+i))
+		manifest += `<item href="` + chapter + `" id="` + id + `" media-type="application/xhtml+xml"/>`
+		spine += `<itemref idref="` + id + `"/>`
+	}
+	tocManifest := ""
+	tocAttr := ""
+	if withNCX {
+		tocManifest = `<item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>`
+		tocAttr = ` toc="ncx"`
+	}
+	return `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata><title>Test</title></metadata><manifest>` +
+		manifest + tocManifest + `</manifest><spine` + tocAttr + `>` + spine + `</spine></package>`
+}
+
+func testNCX(points ...string) string {
+	body := ""
+	for _, point := range points {
+		body += point
+	}
+	return `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>` +
+		body + `</navMap></ncx>`
+}
+
+func containsAll(s string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(s, part) {
+			return false
+		}
+	}
+	return true
 }
 
 func writeTestEpub(t *testing.T, name string, files map[string]string) string {

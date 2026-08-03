@@ -32,6 +32,9 @@ export interface ChapterInfo {
   name: string;
   url: string;
   title?: string;
+  level?: number;
+  parentIndex?: number;
+  hasChildren?: boolean;
 }
 
 export interface TextReaderViewProps {

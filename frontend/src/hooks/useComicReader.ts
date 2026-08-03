@@ -8,7 +8,15 @@ interface PagesResponse {
   comicId: string;
   title: string;
   totalPages: number;
-  pages: { index: number; name: string; url: string; title?: string }[];
+  pages: {
+    index: number;
+    name: string;
+    url: string;
+    title?: string;
+    level?: number;
+    parentIndex?: number;
+    hasChildren?: boolean;
+  }[];
   isNovel?: boolean;
   isPdf?: boolean;
 }
@@ -18,7 +26,7 @@ interface PagesResponse {
  */
 export function useComicPages(comicId: string) {
   const [pages, setPages] = useState<string[]>([]);
-  const [chapters, setChapters] = useState<{ index: number; name: string; url: string; title?: string }[]>([]);
+  const [chapters, setChapters] = useState<PagesResponse["pages"]>([]);
   const [title, setTitle] = useState("");
   const [isNovel, setIsNovel] = useState(false);
   const [isPdf, setIsPdf] = useState(false);

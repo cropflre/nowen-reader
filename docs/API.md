@@ -642,6 +642,44 @@ Content-Type: application/json
 | POST | `/api/comics/:id/warmup-done` | 预热完成 |
 | POST | `/api/thumbnails/manage` | 缩略图管理 🔒管理员 |
 
+### 页面与小说目录
+
+`GET /api/comics/:id/pages` 返回漫画页面或小说章节的平铺列表。小说章节继续使用稳定的 `index` 作为阅读进度、书签、搜索和章节内容接口的定位值，同时提供可选的目录层级字段：
+
+- `level`：目录深度，顶级为 `0`。
+- `parentIndex`：父目录节点在同一 `pages` 数组中的 `index`；顶级节点不返回。
+- `hasChildren`：存在子目录时为 `true`；叶子节点不返回。
+
+客户端可以按层级展示或折叠目录，但不应重新排列数组或改变章节 `index`。
+
+```json
+{
+  "comicId": "string",
+  "title": "string",
+  "totalPages": 2,
+  "pages": [
+    {
+      "index": 0,
+      "name": "chapter-0001.html",
+      "url": "/api/comics/string/chapter/0",
+      "title": "第一卷",
+      "level": 0,
+      "hasChildren": true
+    },
+    {
+      "index": 1,
+      "name": "chapter-0002.html",
+      "url": "/api/comics/string/chapter/1",
+      "title": "第一章",
+      "level": 1,
+      "parentIndex": 0
+    }
+  ],
+  "isNovel": true,
+  "isPdf": false
+}
+```
+
 ## 🌐 元数据
 
 | 方法 | 路径 | 说明 |

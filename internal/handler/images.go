@@ -141,10 +141,13 @@ func (h *ImageHandler) GetPages(c *gin.Context) {
 	}
 
 	type pageInfo struct {
-		Index int    `json:"index"`
-		Name  string `json:"name"`
-		URL   string `json:"url"`
-		Title string `json:"title,omitempty"`
+		Index       int    `json:"index"`
+		Name        string `json:"name"`
+		URL         string `json:"url"`
+		Title       string `json:"title,omitempty"`
+		Level       *int   `json:"level,omitempty"`
+		ParentIndex *int   `json:"parentIndex,omitempty"`
+		HasChildren bool   `json:"hasChildren,omitempty"`
 	}
 	pageList := make([]pageInfo, len(result.Entries))
 	for i, name := range result.Entries {
@@ -156,6 +159,16 @@ func (h *ImageHandler) GetPages(c *gin.Context) {
 			pi.URL = fmt.Sprintf("/api/comics/%s/chapter/%d", id, i)
 			if result.ChapterTitles != nil && i < len(result.ChapterTitles) {
 				pi.Title = result.ChapterTitles[i]
+			}
+			if i < len(result.ChapterInfos) {
+				info := result.ChapterInfos[i]
+				level := info.Level
+				pi.Level = &level
+				if info.ParentIndex >= 0 {
+					parentIndex := info.ParentIndex
+					pi.ParentIndex = &parentIndex
+				}
+				pi.HasChildren = info.HasChildren
 			}
 		} else {
 			pi.URL = fmt.Sprintf("/api/comics/%s/page/%d", id, i)
