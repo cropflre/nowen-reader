@@ -1,13 +1,12 @@
 "use client";
 
 import LogsPanel from "@/components/LogsPanel";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 import { AlertTriangle } from "lucide-react";
 
 export default function LogsPage() {
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="错误日志"
         description="查看接口异常记录并导出诊断数据"
@@ -16,6 +15,6 @@ export default function LogsPage() {
       <PageContent width="management">
         <LogsPanel showTitle={false} />
       </PageContent>
-    </AppShell>
+    </>
   );
 }

@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { calculateStoredReadingProgress, getReadingPageNumber, isStoredReadingFinished } from "@/lib/progress";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface ApiComic {
@@ -181,7 +180,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="阅读历史"
         description={summary.total > 0
@@ -268,7 +267,7 @@ export default function HistoryPage() {
         </>
       )}
       </PageContent>
-    </AppShell>
+    </>
   );
 }
 

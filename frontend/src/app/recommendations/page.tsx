@@ -10,7 +10,6 @@ import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { fetchGroupedComicMap, fetchGroups } from "@/api/groups";
 import type { ComicGroup } from "@/hooks/useComicTypes";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface RecommendedComic {
@@ -146,7 +145,7 @@ export default function RecommendationsPage() {
   };
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title={t.recommend?.title || "为你推荐"}
         description="根据阅读记录与内容偏好生成推荐"
@@ -244,6 +243,6 @@ export default function RecommendationsPage() {
           ))}
         </div>
       </PageContent>
-    </AppShell>
+    </>
   );
 }

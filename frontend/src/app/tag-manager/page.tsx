@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface TagItem {
@@ -826,7 +825,7 @@ export default function TagManagerPage() {
   const allPageCatsSelected = pagedCategories.length > 0 && pagedCategories.every((c) => selectedCategories.has(c.slug));
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title={t.tagManager?.title || "标签与分类"}
         description="整理标签、分类与内容归属"
@@ -1637,6 +1636,6 @@ export default function TagManagerPage() {
       {batchColorPicker && (
         <div className="fixed inset-0 z-10" onClick={() => setBatchColorPicker(false)} />
       )}
-    </AppShell>
+    </>
   );
 }

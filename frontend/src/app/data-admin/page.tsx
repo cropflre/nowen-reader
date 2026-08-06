@@ -26,7 +26,6 @@ import {
   type CacheBucket,
   type StorageThreshold,
 } from "@/api/admin";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 // ============================================================
@@ -265,7 +264,7 @@ export default function DataAdminPage() {
   // ============================================================
 
   return (
-    <AppShell>
+    <>
       {/* Toast */}
       {toast && (
         <div
@@ -613,7 +612,7 @@ export default function DataAdminPage() {
           </div>
         </section>
       </PageContent>
-    </AppShell>
+    </>
   );
 }
 

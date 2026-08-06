@@ -21,7 +21,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface EnhancedStats {
@@ -120,7 +119,7 @@ export default function StatsPage() {
 
   if (loading) {
     return (
-      <AppShell>
+      <>
         <PageHeader title="阅读统计" description="正在加载阅读数据" icon={BarChart3} />
         <PageContent width="management" className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -133,20 +132,20 @@ export default function StatsPage() {
             <div className="h-64 animate-pulse rounded-lg bg-card/60" />
           </div>
         </PageContent>
-      </AppShell>
+      </>
     );
   }
 
   if (!stats) {
     return (
-      <AppShell>
+      <>
         <PageHeader title="阅读统计" description="查看阅读数据、习惯与目标进度" icon={BarChart3} />
         <PageContent width="management">
           <p className="rounded-lg border border-border bg-card p-6 text-center text-muted">
             {t.stats.cannotLoadStats}
           </p>
         </PageContent>
-      </AppShell>
+      </>
     );
   }
 
@@ -164,7 +163,7 @@ export default function StatsPage() {
   ];
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="阅读统计"
         description="查看阅读数据、习惯与目标进度"
@@ -466,6 +465,6 @@ export default function StatsPage() {
         </div>
 
       </PageContent>
-    </AppShell>
+    </>
   );
 }

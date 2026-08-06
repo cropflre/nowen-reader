@@ -12,7 +12,6 @@ import {
   Shuffle,
   BookOpen,
 } from "lucide-react";
-import AppShell from "@/components/AppShell";
 import DashboardTopBar from "@/components/DashboardTopBar";
 import { ContinueReading } from "@/components/ContinueReading";
 import ServerActivityPanel from "@/components/ServerActivityPanel";
@@ -58,7 +57,7 @@ export default function Home() {
   }, [refetch]);
 
   return (
-    <AppShell className="overflow-x-hidden">
+    <>
       {/* 背景氛围渐变 — 蓝紫光晕 */}
       <div className="dashboard-ambient-bg fixed inset-0 pointer-events-none z-0" />
 
@@ -194,7 +193,7 @@ export default function Home() {
         onClose={() => setUploadDialogOpen(false)}
         onUploaded={async () => { await refetch(); }}
       />
-    </AppShell>
+    </>
   );
 }
 

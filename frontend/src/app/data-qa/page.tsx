@@ -29,7 +29,6 @@ import {
   type DataQASkip,
 } from "@/api/dataQa";
 import { useTranslation } from "@/lib/i18n";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 // ============================================================
@@ -228,7 +227,7 @@ export default function DataQAPage() {
   const dataQa = t.dataQa;
 
   return (
-    <AppShell>
+    <>
       {/* Toast */}
       {toast && (
         <div
@@ -506,7 +505,7 @@ export default function DataQAPage() {
           )}
         </div>
       </PageContent>
-    </AppShell>
+    </>
   );
 }
 

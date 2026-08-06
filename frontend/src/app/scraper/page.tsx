@@ -42,7 +42,6 @@ import {
   CircleHelp,
   AlertTriangle,
 } from "lucide-react";
-import AppShell from "@/components/AppShell";
 import { PageHeader } from "@/components/PageHeader";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
@@ -387,18 +386,18 @@ export default function ScraperPage() {
   // 加载中（注意：必须放在所有 Hooks 调用之后再做条件渲染，避免 Hooks 顺序变化）
   if (scraperEnabled === null) {
     return (
-      <AppShell>
+      <>
         <div className="flex min-h-screen items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted" />
         </div>
-      </AppShell>
+      </>
     );
   }
 
   // 刮削功能未启用时显示提示页面
   if (scraperEnabled === false) {
     return (
-      <AppShell>
+      <>
         <PageHeader
           title={scraperT.title || "元数据抓取"}
           description={scraperT.subtitle || "自动获取封面、简介与标签信息"}
@@ -430,12 +429,12 @@ export default function ScraperPage() {
           </button>
           </div>
         </div>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell>
+    <>
       <div className="flex h-screen flex-col bg-background">
         <PageHeader
           title={scraperT.title || "元数据抓取"}
@@ -2234,6 +2233,6 @@ export default function ScraperPage() {
         />
       )}
       </div>
-    </AppShell>
+    </>
   );
 }

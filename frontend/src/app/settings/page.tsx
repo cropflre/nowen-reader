@@ -38,7 +38,6 @@ import { useReaderOptions } from "@/hooks/useReaderOptions";
 import { defaultReaderOptions } from "@/types/reader";
 import dynamic from "next/dynamic";
 import { appPath } from "@/lib/base-path";
-import AppShell from "@/components/AppShell";
 import { PageHeader } from "@/components/PageHeader";
 
 /* ── 懒加载面板 ── */
@@ -343,7 +342,7 @@ export default function SettingsPage() {
   );
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title={t.settings?.title || "设置"}
         description="管理账户、书库与系统偏好"
@@ -498,7 +497,7 @@ export default function SettingsPage() {
           </div>
         </main>
       </div>
-    </AppShell>
+    </>
   );
 }
 

@@ -42,7 +42,6 @@ import type { ComicGroup } from "@/hooks/useComicTypes";
 import AutoDetectPanel from "@/components/AutoDetectPanel";
 import { fetchCatalogItems } from "@/api/catalog";
 import type { CatalogItem } from "@/api/catalog";
-import AppShell from "@/components/AppShell";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 // ============================================================
@@ -440,7 +439,7 @@ export default function CollectionsPage() {
   }, [selectedIds, toast, tCollections]);
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title={tCollections.title || "合集"}
         description={`管理自动识别和手动创建的合集 · ${filteredAndSorted.length} 个`}
@@ -1302,7 +1301,7 @@ export default function CollectionsPage() {
           </div>
           </div>
       )}
-    </AppShell>
+    </>
   );
 }
 
