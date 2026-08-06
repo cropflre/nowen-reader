@@ -38,13 +38,25 @@ type GroupCleanupResult struct {
 func DetectGroupDirtyData() ([]GroupDirtyIssue, error) {
 	var issues []GroupDirtyIssue
 
-	// 1. 检测空系列（0卷）
+	// 1. 检测空系列（既没有散本，也没有目录作品）
 	rows, err := db.Query(`
 		SELECT g."id", g."name",
-		       (SELECT COUNT(*) FROM "ComicGroupItem" gi WHERE gi."groupId" = g."id") as totalLinks,
-		       (SELECT COUNT(*) FROM "ComicGroupItem" gi
-		        JOIN "Comic" c ON c."id" = gi."comicId"
-		        WHERE gi."groupId" = g."id") as validLinks
+		       (
+		           SELECT COUNT(*) FROM "ComicGroupItem" gi
+		           WHERE gi."groupId" = g."id"
+		       ) + (
+		           SELECT COUNT(*) FROM "ComicGroupSeries" cgs
+		           WHERE cgs."groupId" = g."id"
+		       ) as totalLinks,
+		       (
+		           SELECT COUNT(*) FROM "ComicGroupItem" gi
+		           JOIN "Comic" c ON c."id" = gi."comicId"
+		           WHERE gi."groupId" = g."id"
+		       ) + (
+		           SELECT COUNT(*) FROM "ComicGroupSeries" cgs
+		           JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
+		           WHERE cgs."groupId" = g."id"
+		       ) as validLinks
 		FROM "ComicGroup" g
 		ORDER BY g."name"
 	`)
@@ -74,28 +86,28 @@ func DetectGroupDirtyData() ([]GroupDirtyIssue, error) {
 				Type:        "empty_group",
 				GroupID:     g.id,
 				GroupName:   g.name,
-				Description: fmt.Sprintf("系列「%s」没有包含任何漫画", g.name),
+				Description: fmt.Sprintf("系列「%s」没有包含任何内容", g.name),
 				Suggestion:  "删除此空系列",
 				AutoFixable: true,
 			})
 		} else if g.validLinks == 0 {
-			// 有关联记录但全部指向已删除的漫画
+			// 有关联记录但全部指向已删除的漫画或目录作品
 			issues = append(issues, GroupDirtyIssue{
 				Type:        "empty_group",
 				GroupID:     g.id,
 				GroupName:   g.name,
-				Description: fmt.Sprintf("系列「%s」包含 %d 条关联记录，但对应的漫画已全部被删除", g.name, g.totalLinks),
+				Description: fmt.Sprintf("系列「%s」包含 %d 条关联记录，但对应的内容已全部被删除", g.name, g.totalLinks),
 				Suggestion:  "清理无效关联并删除此空系列",
 				AutoFixable: true,
 			})
 		} else if g.validLinks < g.totalLinks {
-			// 部分关联记录指向已删除的漫画
+			// 部分关联记录指向已删除的漫画或目录作品
 			orphanCount := g.totalLinks - g.validLinks
 			issues = append(issues, GroupDirtyIssue{
 				Type:        "orphan_link",
 				GroupID:     g.id,
 				GroupName:   g.name,
-				Description: fmt.Sprintf("系列「%s」中有 %d 条孤立关联（指向已删除的漫画）", g.name, orphanCount),
+				Description: fmt.Sprintf("系列「%s」中有 %d 条孤立关联（指向已删除的内容）", g.name, orphanCount),
 				Suggestion:  fmt.Sprintf("清理 %d 条无效关联记录", orphanCount),
 				AutoFixable: true,
 			})
@@ -202,7 +214,7 @@ func normalizeGroupName(name string) string {
 	return buf.String()
 }
 
-// CleanupEmptyGroups 清理空系列（没有有效漫画关联的系列）。
+// CleanupEmptyGroups 清理既没有散本也没有目录作品关联的空系列。
 func CleanupEmptyGroups() (int, error) {
 	// 先清理孤立的关联记录（指向已删除漫画的）
 	_, err := db.Exec(`
@@ -213,11 +225,16 @@ func CleanupEmptyGroups() (int, error) {
 		return 0, fmt.Errorf("清理孤立关联失败: %w", err)
 	}
 
-	// 删除没有任何漫画关联的空系列
+	// 目录作品也是合集成员；只删除两种成员关系都不存在的合集。
 	result, err := db.Exec(`
-		DELETE FROM "ComicGroup"
-		WHERE "id" NOT IN (
-			SELECT DISTINCT "groupId" FROM "ComicGroupItem"
+		DELETE FROM "ComicGroup" AS g
+		WHERE NOT EXISTS (
+			SELECT 1 FROM "ComicGroupItem" gi
+			WHERE gi."groupId" = g."id"
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM "ComicGroupSeries" cgs
+			WHERE cgs."groupId" = g."id"
 		)
 	`)
 	if err != nil {
