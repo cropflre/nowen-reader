@@ -671,12 +671,14 @@ function PasswordSection() {
                 setMessage(null);
               }}
               placeholder="输入当前密码"
-              className="w-full pl-10 pr-10 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              aria-label="当前密码"
+              className="w-full pl-10 pr-12 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
             />
             <button
               type="button"
               onClick={() => setShowOld(!showOld)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
+              aria-label={showOld ? "隐藏当前密码" : "显示当前密码"}
+              className="absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted transition-colors hover:text-foreground"
             >
               {showOld ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -696,13 +698,15 @@ function PasswordSection() {
                 setMessage(null);
               }}
               placeholder="输入新密码（至少 6 个字符）"
-              className="w-full pl-10 pr-10 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              aria-label="新密码"
+              className="w-full pl-10 pr-12 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
               minLength={6}
             />
             <button
               type="button"
               onClick={() => setShowNew(!showNew)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
+              aria-label={showNew ? "隐藏新密码" : "显示新密码"}
+              className="absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted transition-colors hover:text-foreground"
             >
               {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -722,13 +726,15 @@ function PasswordSection() {
                 setMessage(null);
               }}
               placeholder="再次输入新密码"
-              className="w-full pl-10 pr-10 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              aria-label="确认新密码"
+              className="w-full pl-10 pr-12 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
               minLength={6}
             />
             <button
               type="button"
               onClick={() => setShowConfirm(!showConfirm)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
+              aria-label={showConfirm ? "隐藏确认密码" : "显示确认密码"}
+              className="absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted transition-colors hover:text-foreground"
             >
               {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>

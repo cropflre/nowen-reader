@@ -45,7 +45,7 @@ const BookFlipDevPage = React.lazy(() => import("@/app/dev/book-flip/page"));
 function SiteTitle() {
   const { siteName } = useSiteSettings();
   React.useEffect(() => {
-    document.title = `${siteName} - Comic Reader`;
+    document.title = `${siteName} - 数字阅读库`;
   }, [siteName]);
   return null;
 }
@@ -94,7 +94,7 @@ function AnimatedRoutes() {
         <Route path="/novel/:id" element={<NovelReader />} />
         <Route path="/series/:id" element={<SeriesDetail />} />
         <Route path="/recommendations" element={<Recommendations />} />
-        <Route path="/stats" element={<AdminRoute><Stats /></AdminRoute>} />
+        <Route path="/stats" element={<Stats />} />
         <Route path="/logs" element={<AdminRoute><Logs /></AdminRoute>} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/history" element={<History />} />

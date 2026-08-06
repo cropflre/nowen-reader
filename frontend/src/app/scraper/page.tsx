@@ -4,7 +4,6 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  ArrowLeft,
   Database,
   Sparkles,
   Search,
@@ -43,6 +42,8 @@ import {
   CircleHelp,
   AlertTriangle,
 } from "lucide-react";
+import AppShell from "@/components/AppShell";
+import { PageHeader } from "@/components/PageHeader";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { apiPath } from "@/lib/base-path";
@@ -386,17 +387,26 @@ export default function ScraperPage() {
   // 加载中（注意：必须放在所有 Hooks 调用之后再做条件渲染，避免 Hooks 顺序变化）
   if (scraperEnabled === null) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted" />
-      </div>
+      <AppShell>
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted" />
+        </div>
+      </AppShell>
     );
   }
 
   // 刮削功能未启用时显示提示页面
   if (scraperEnabled === false) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
+      <AppShell>
+        <PageHeader
+          title={scraperT.title || "元数据抓取"}
+          description={scraperT.subtitle || "自动获取封面、简介与标签信息"}
+          icon={Database}
+          width="full"
+        />
+        <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center">
+          <div className="flex max-w-md flex-col items-center gap-4 px-6 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/20">
             <Database className="h-8 w-8 text-muted" />
           </div>
@@ -413,43 +423,27 @@ export default function ScraperPage() {
             前往设置
           </button>
           <button
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/books")}
             className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground hover:bg-card-hover transition-colors"
           >
-            返回首页
+            返回书库
           </button>
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      {/* ═══════════ Header ═══════════ */}
-      <header data-guide="header" className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-2xl flex-shrink-0">
-        <div className="mx-auto flex h-14 sm:h-16 max-w-[1800px] items-center gap-3 px-3 sm:px-6">
-          <button
-            onClick={() => router.push("/")}
-            className="group flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/50 text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-          </button>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-purple-500/20">
-              <Database className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-foreground">
-                {scraperT.title || "元数据刮削"}
-              </h1>
-              <p className="hidden sm:block text-xs text-muted -mt-0.5">
-                {scraperT.subtitle || "自动获取封面、简介、标签等信息"}
-              </p>
-            </div>
-          </div>
-
-          {/* 统计信息 */}
-          <div className="ml-auto flex items-center gap-3">
+    <AppShell>
+      <div className="flex h-screen flex-col bg-background">
+        <PageHeader
+          title={scraperT.title || "元数据抓取"}
+          description={scraperT.subtitle || "自动获取封面、简介与标签信息"}
+          icon={Database}
+          width="full"
+          actions={
+            <>
             {stats && (
               <div className="hidden sm:flex items-center gap-4 text-xs">
                 <div className="flex items-center gap-1.5">
@@ -468,7 +462,7 @@ export default function ScraperPage() {
                 {/* 进度条 */}
                 <div className="w-20 h-1.5 rounded-full bg-border/30 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-accent to-emerald-500 transition-all duration-700"
+                    className="h-full rounded-full bg-accent transition-all duration-700"
                     style={{ width: `${metaPercent}%` }}
                   />
                 </div>
@@ -482,9 +476,9 @@ export default function ScraperPage() {
             >
               <RotateCcw className={`h-3.5 w-3.5 ${statsLoading ? "animate-spin" : ""}`} />
             </button>
-          </div>
-        </div>
-      </header>
+            </>
+          }
+        />
 
       {/* ═══════════ 主体：左右分栏 ═══════════ */}
       <div className="flex-1 flex overflow-hidden">
@@ -2239,6 +2233,7 @@ export default function ScraperPage() {
           currentStep={guideCurrentStep}
         />
       )}
-    </div>
+      </div>
+    </AppShell>
   );
 }

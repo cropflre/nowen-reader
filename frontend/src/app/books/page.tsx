@@ -24,7 +24,7 @@ import DuplicateDetector from "@/components/DuplicateDetector";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
 import UploadDialog from "@/components/UploadDialog";
 import { LibraryTabsBar } from "@/components/home/LibraryTabsBar";
-import MobileBottomNav from "@/components/MobileBottomNav";
+import AppShell from "@/components/AppShell";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -881,7 +881,7 @@ export default function BooksPage() {
   );
 
   return (
-    <div className="min-h-screen overflow-x-hidden" style={{ background: "var(--theme-background)" }}>
+    <AppShell className="overflow-x-hidden">
 
       <Navbar
         searchQuery={searchQuery}
@@ -892,6 +892,7 @@ export default function BooksPage() {
         onAiSearchModeChange={aiConfigured ? setAiSearchMode : undefined}
         onScanLibrary={handleScanLibrary}
         scanning={scanningLibrary}
+        withinShell
       />
 
       {/* Main Content */}
@@ -1608,6 +1609,6 @@ export default function BooksPage() {
         defaultLibraryId={selectedLibraryId}
         onUploaded={async () => { await refetch(); }}
       />
-    </div>
+    </AppShell>
   );
 }

@@ -51,7 +51,7 @@ const zhCN = {
     sortByCustom: "自定义排序",
     ascending: "升序",
     descending: "降序",
-    emptyLibrary: "漫画库为空",
+    emptyLibrary: "书库为空",
     emptyNovelLibrary: "小说库为空",
     noMatchingComics: "没有找到匹配的漫画",
     noMatchingNovels: "没有找到匹配的小说",
@@ -765,7 +765,7 @@ const zhCN = {
 
   // Dashboard 首页
   dashboard: {
-    title: "仪表盘",
+    title: "首页",
     continueReading: "继续阅读",
     continueSubtitle: "继续上次的阅读",
     recentlyAdded: "最近添加",

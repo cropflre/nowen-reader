@@ -56,7 +56,7 @@ function methodColor(method: string): string {
   }
 }
 
-export default function LogsPanel() {
+export default function LogsPanel({ showTitle = true }: { showTitle?: boolean }) {
   const t = useTranslation();
   const logT = (t as unknown as Record<string, Record<string, string>>).errorLogs || {};
 
@@ -175,11 +175,15 @@ export default function LogsPanel() {
     <div className="space-y-6">
       {/* 工具栏 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-1">
-          <AlertTriangle className="h-5 w-5 text-accent" />
-          <h2 className="text-sm font-medium text-foreground">
-            {logT.title || "错误日志"}
-          </h2>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {showTitle && (
+            <>
+              <AlertTriangle className="h-5 w-5 text-accent" />
+              <h2 className="text-sm font-medium text-foreground">
+                {logT.title || "错误日志"}
+              </h2>
+            </>
+          )}
           {total > 0 && (
             <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-400">
               {total}
@@ -244,7 +248,7 @@ export default function LogsPanel() {
 
       {/* 统计信息折叠 */}
       {stats && stats.total > 0 && (
-        <div className="rounded-xl bg-card p-4 sm:p-6">
+        <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
           <button
             onClick={() => setShowStats(!showStats)}
             className="flex w-full items-center justify-between text-sm font-medium text-muted hover:text-foreground transition-colors"
@@ -327,7 +331,7 @@ export default function LogsPanel() {
       ) : (
         <div className="space-y-2">
           {logs.map((entry, idx) => (
-            <div key={`${entry.time}-${idx}`} className="group rounded-xl bg-card p-3 sm:p-4 hover:bg-card-hover transition-colors">
+            <div key={`${entry.time}-${idx}`} className="group rounded-lg border border-border bg-card p-3 transition-colors hover:bg-card-hover sm:p-4">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2.5 text-xs">
                   <span className="text-muted/70">{entry.time}</span>

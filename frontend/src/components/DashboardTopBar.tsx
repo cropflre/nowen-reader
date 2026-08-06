@@ -70,7 +70,7 @@ export default function DashboardTopBar({
           )}
         </div>
         <h1 className="hidden lg:block text-lg font-semibold text-foreground">
-          {t.dashboard?.title || "Dashboard"}
+          {t.dashboard?.title || "首页"}
         </h1>
       </div>
 
@@ -81,7 +81,8 @@ export default function DashboardTopBar({
           <button
             onClick={onScanLibrary}
             disabled={scanning}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-foreground hover:bg-card-hover transition-all disabled:opacity-50"
+            aria-label={scanning ? "正在扫描书库" : "扫描书库"}
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card-hover hover:text-foreground disabled:opacity-50"
             title="扫描文库"
           >
             <RefreshCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
@@ -93,7 +94,7 @@ export default function DashboardTopBar({
           <button
             onClick={onUpload}
             disabled={uploading}
-            className="hidden sm:flex h-9 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-white transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/30 disabled:opacity-50"
+            className="hidden h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50 sm:flex"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             <span className="hidden md:inline">{uploading ? "上传中..." : "上传"}</span>
@@ -104,13 +105,15 @@ export default function DashboardTopBar({
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-foreground hover:bg-card-hover transition-all"
+            aria-label="打开更多操作"
+            aria-expanded={menuOpen}
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card-hover hover:text-foreground"
           >
             <MoreVertical className="h-4 w-4" />
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-elevated/95 backdrop-blur-xl shadow-2xl py-1.5 animate-modal-in">
+            <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-border bg-elevated/95 py-1.5 shadow-xl backdrop-blur-xl animate-modal-in">
               <button
                 onClick={() => { toggleTheme(); setMenuOpen(false); }}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-card-hover transition-colors"

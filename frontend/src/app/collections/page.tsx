@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Layers,
   Search,
   Plus,
@@ -43,6 +42,8 @@ import type { ComicGroup } from "@/hooks/useComicTypes";
 import AutoDetectPanel from "@/components/AutoDetectPanel";
 import { fetchCatalogItems } from "@/api/catalog";
 import type { CatalogItem } from "@/api/catalog";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 // ============================================================
 // 类型与工具函数
@@ -439,80 +440,55 @@ export default function CollectionsPage() {
   }, [selectedIds, toast, tCollections]);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* ── 顶部导航栏 ── */}
-      <div className="sticky top-0 z-30 border-b border-border/30 bg-background/95 backdrop-blur-xl">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
-          {/* 第一行：返回 + 标题 + 操作 */}
-          <div className="flex h-14 sm:h-16 items-center gap-3">
-            <Link
-              href="/"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card hover:text-foreground"
+    <AppShell>
+      <PageHeader
+        title={tCollections.title || "合集"}
+        description={`管理自动识别和手动创建的合集 · ${filteredAndSorted.length} 个`}
+        icon={Layers}
+        actions={
+          <>
+            <button
+              onClick={() => loadGroups(true)}
+              disabled={refreshing}
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card hover:text-foreground disabled:opacity-50"
+              title={tCollections.refresh || "刷新"}
             >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              <Layers className="h-5 w-5 text-accent flex-shrink-0" />
-              <h1 className="text-lg font-bold text-foreground truncate">
-                {tCollections.title || "合集管理"}
-              </h1>
-              <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent flex-shrink-0">
-                {filteredAndSorted.length}
-              </span>
-            </div>
-
-            {/* 操作按钮 */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* 刷新 */}
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
+            {groups.length > 0 && (
               <button
-                onClick={() => loadGroups(true)}
-                disabled={refreshing}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card hover:text-foreground disabled:opacity-50"
-                title={tCollections.refresh || "刷新"}
+                onClick={() => batchMode ? exitBatchMode() : setBatchMode(true)}
+                className={`hidden h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors sm:flex ${
+                  batchMode ? "bg-accent text-white" : "border border-border/50 text-muted hover:bg-card hover:text-foreground"
+                }`}
               >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                <CheckSquare className="h-4 w-4" />
+                {batchMode ? (tCollections.batchModeExit || "退出批量") : (tCollections.batchMode || "批量管理")}
               </button>
-
-              {/* 批量管理 */}
-              {groups.length > 0 && (
-                <button
-                  onClick={() => batchMode ? exitBatchMode() : setBatchMode(true)}
-                  className={`hidden sm:flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    batchMode
-                      ? "bg-accent text-white"
-                      : "border border-border/50 text-muted hover:text-foreground hover:bg-card"
-                  }`}
-                >
-                  <CheckSquare className="h-4 w-4" />
-                  {batchMode ? (tCollections.batchModeExit || "退出批量") : (tCollections.batchMode || "批量管理")}
-                </button>
-              )}
-
-              {/* 智能合集 */}
-              {!batchMode && (
-                <button
-                  onClick={() => setShowAutoDetect(true)}
-                  className="hidden sm:flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/20"
-                >
-                  <Wand2 className="h-4 w-4" />
-                  {tGroup.autoDetect || "智能合集"}
-                </button>
-              )}
-
-              {/* 手动创建 */}
-              {!batchMode && (
-                <button
-                  onClick={() => setShowCreateDialog(true)}
-                  className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span className="hidden sm:inline">{tGroup.createGroup || "新建合集"}</span>
-                </button>
-              )}
-            </div>
-          </div>
-
+            )}
+            {!batchMode && (
+              <button
+                onClick={() => setShowAutoDetect(true)}
+                className="hidden h-10 items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/20 sm:flex"
+              >
+                <Wand2 className="h-4 w-4" />
+                {tGroup.autoDetect || "智能合集"}
+              </button>
+            )}
+            {!batchMode && (
+              <button
+                onClick={() => setShowCreateDialog(true)}
+                className="flex h-10 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">{tGroup.createGroup || "新建合集"}</span>
+              </button>
+            )}
+          </>
+        }
+      />
+      <div className="border-b border-border/30 bg-background/80">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
           {/* 批量操作工具栏 */}
           {batchMode && (
             <div className="flex items-center gap-2 pb-2 border-b border-accent/20 mb-2 animate-card-in">
@@ -696,7 +672,7 @@ export default function CollectionsPage() {
       </div>
 
       {/* ── 主体内容 ── */}
-      <main className="mx-auto max-w-[1400px] px-4 sm:px-6 py-6">
+      <PageContent width="management">
           {/* 移动端批量管理入口 */}
         {groups.length > 0 && (
           <div className="flex sm:hidden items-center gap-2 mb-3">
@@ -984,7 +960,7 @@ export default function CollectionsPage() {
             </span>
           </div>
         )}
-      </main>
+      </PageContent>
 
       {/* ── 智能合集面板 ── */}
       <AutoDetectPanel
@@ -1326,7 +1302,7 @@ export default function CollectionsPage() {
           </div>
           </div>
       )}
-    </div>
+    </AppShell>
   );
 }
 

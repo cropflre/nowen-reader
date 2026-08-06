@@ -2,9 +2,7 @@
 
 import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Tag,
   Layers,
   Pencil,
@@ -32,6 +30,8 @@ import {
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface TagItem {
   id: number;
@@ -267,7 +267,6 @@ type SortDir = "asc" | "desc";
 import { Pagination } from "@/components/Pagination";
 
 export default function TagManagerPage() {
-  const router = useRouter();
   const t = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -827,20 +826,13 @@ export default function TagManagerPage() {
   const allPageCatsSelected = pagedCategories.length > 0 && pagedCategories.every((c) => selectedCategories.has(c.slug));
 
   return (
-    <div className="min-h-screen bg-background pb-20 sm:pb-6">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-2xl">
-        <div className="mx-auto flex h-14 sm:h-16 max-w-5xl items-center gap-3 px-3 sm:px-6">
-          <button
-            onClick={() => router.push("/")}
-            className="group flex h-8 w-8 items-center justify-center rounded-xl border border-border/50 text-muted transition-all hover:border-accent/40 hover:text-accent"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-          </button>
-          <h1 className="text-lg font-bold text-foreground">
-            {t.tagManager?.title || "标签与分类管理"}
-          </h1>
-          <div className="flex-1" />
+    <AppShell>
+      <PageHeader
+        title={t.tagManager?.title || "标签与分类"}
+        description="整理标签、分类与内容归属"
+        icon={Tag}
+        actions={
+          <>
           {isAdmin && (
             <button
               onClick={() => setShowAIPanel(!showAIPanel)}
@@ -862,10 +854,10 @@ export default function TagManagerPage() {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-3 sm:px-6 pt-4 sm:pt-6">
+          </>
+        }
+      />
+      <PageContent width="management">
         {/* Tab Switcher */}
         <div className="flex gap-1 rounded-xl bg-card p-1 mb-4">
           <button
@@ -1549,7 +1541,7 @@ export default function TagManagerPage() {
             />
           </div>
         )}
-      </main>
+      </PageContent>
 
       {/* Merge Tags Modal */}
       {showMerge && (
@@ -1645,6 +1637,6 @@ export default function TagManagerPage() {
       {batchColorPicker && (
         <div className="fixed inset-0 z-10" onClick={() => setBatchColorPicker(false)} />
       )}
-    </div>
+    </AppShell>
   );
 }

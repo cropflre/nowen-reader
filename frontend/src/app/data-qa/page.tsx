@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   RefreshCw,
   Search,
   Filter,
@@ -31,6 +29,8 @@ import {
   type DataQASkip,
 } from "@/api/dataQa";
 import { useTranslation } from "@/lib/i18n";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 // ============================================================
 // Issue type display name map
@@ -104,7 +104,6 @@ function SummaryCards({ summary }: { summary: DataQASummary }) {
 // ============================================================
 
 export default function DataQAPage() {
-  const router = useRouter();
   const t = useTranslation();
   const [summary, setSummary] = useState<DataQASummary | null>(null);
   const [issues, setIssues] = useState<DataQAIssue[]>([]);
@@ -229,7 +228,7 @@ export default function DataQAPage() {
   const dataQa = t.dataQa;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <AppShell>
       {/* Toast */}
       {toast && (
         <div
@@ -269,20 +268,11 @@ export default function DataQAPage() {
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="rounded-xl p-2 text-muted hover:bg-card-hover">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">{dataQa?.title ?? "Data QA"}</h1>
-              <p className="text-xs text-muted">
-                {dataQa?.settingsDesc ?? "Check pageCount, read time, orphan tags/categories, and abnormal sessions."}
-              </p>
-            </div>
-          </div>
+      <PageHeader
+        title={dataQa?.title ?? "数据巡检"}
+        description={dataQa?.settingsDesc ?? "检查页数、阅读时长、孤立标签与异常会话"}
+        icon={Shield}
+        actions={
           <button
             onClick={load}
             disabled={loading}
@@ -291,7 +281,9 @@ export default function DataQAPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             {dataQa?.refresh ?? "Refresh"}
           </button>
-        </div>
+        }
+      />
+      <PageContent width="management" className="space-y-6">
 
         {/* Summary */}
         {summary && <SummaryCards summary={summary} />}
@@ -513,8 +505,8 @@ export default function DataQAPage() {
             ))
           )}
         </div>
-      </div>
-    </div>
+      </PageContent>
+    </AppShell>
   );
 }
 

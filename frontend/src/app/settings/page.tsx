@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/base-path";
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -27,9 +27,9 @@ import {
   Search,
   X,
   RefreshCw,
-  Download,
-  Upload,
   Eye,
+  ChevronRight,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
@@ -38,14 +38,16 @@ import { useReaderOptions } from "@/hooks/useReaderOptions";
 import { defaultReaderOptions } from "@/types/reader";
 import dynamic from "next/dynamic";
 import { appPath } from "@/lib/base-path";
+import AppShell from "@/components/AppShell";
+import { PageHeader } from "@/components/PageHeader";
 
 /* ── 懒加载面板 ── */
 const LoadingSkeleton = () => (
   <div className="space-y-4 p-2">
     <div className="h-6 w-40 animate-pulse rounded-lg bg-card" />
-    <div className="h-32 animate-pulse rounded-2xl bg-card" />
-    <div className="h-48 animate-pulse rounded-2xl bg-card" />
-    <div className="h-24 animate-pulse rounded-2xl bg-card" />
+    <div className="h-32 animate-pulse rounded-lg bg-card" />
+    <div className="h-48 animate-pulse rounded-lg bg-card" />
+    <div className="h-24 animate-pulse rounded-lg bg-card" />
   </div>
 );
 
@@ -61,16 +63,6 @@ const AISettingsPanel = dynamic(
 
 const ScanRulesPanel = dynamic(
   () => import("@/components/ScanRulesPanel").then((mod) => mod.ScanRulesPanel),
-  { loading: LoadingSkeleton }
-);
-
-const StatsPanel = dynamic(
-  () => import("@/components/StatsPanel"),
-  { loading: LoadingSkeleton }
-);
-
-const LogsPanel = dynamic(
-  () => import("@/components/LogsPanel"),
   { loading: LoadingSkeleton }
 );
 
@@ -129,12 +121,20 @@ interface TabDef {
   icon: React.ReactNode;
   desc?: string;
   keywords?: string[];
+  href?: string;
 }
 
 interface TabGroup {
   title: string;
   tabs: TabDef[];
 }
+
+const standaloneSettingsRoutes: Partial<Record<SettingsTab, string>> = {
+  stats: "/stats",
+  logs: "/logs",
+  "data-admin": "/data-admin",
+  "data-qa": "/data-qa",
+};
 
 /* ── 搜索匹配 ── */
 function matchesSearch(tab: TabDef, groupTitle: string, query: string): boolean {
@@ -157,44 +157,36 @@ export default function SettingsPage() {
   const validTabs: SettingsTab[] = [
     "account",
     ...(isAdmin
-      ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const, "libraries" as const, "user-groups" as const, "diagnostics" as const, "reader" as const, "data-qa" as const, "sync-backup" as const]
+      ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const, "libraries" as const, "user-groups" as const, "diagnostics" as const, "reader" as const, "data-admin" as const, "data-qa" as const, "sync-backup" as const]
       : []),
     "about",
   ];
 
   const tabFromUrl = searchParams.get("tab") as SettingsTab | null;
   const [activeTab, setActiveTab] = useState<SettingsTab>(
-    tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "account"
+    tabFromUrl && validTabs.includes(tabFromUrl) && !standaloneSettingsRoutes[tabFromUrl]
+      ? tabFromUrl
+      : "account"
+  );
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(
+    Boolean(tabFromUrl && validTabs.includes(tabFromUrl) && !standaloneSettingsRoutes[tabFromUrl])
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [contentKey, setContentKey] = useState(0);
-  const mobileTabsRef = useRef<HTMLDivElement>(null);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  /* 滚动检测 */
-  const checkScroll = useCallback(() => {
-    const el = mobileTabsRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  }, []);
-
   useEffect(() => {
-    const el = mobileTabsRef.current;
-    if (!el) return;
-    checkScroll();
-    el.addEventListener("scroll", checkScroll, { passive: true });
-    return () => el.removeEventListener("scroll", checkScroll);
-  }, [checkScroll]);
-
-  useEffect(() => {
-    const el = mobileTabsRef.current;
-    if (!el) return;
-    const btn = el.querySelector<HTMLElement>("[data-active='true']");
-    if (btn) btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  }, [activeTab]);
+    if (!tabFromUrl) return;
+    const route = standaloneSettingsRoutes[tabFromUrl];
+    if (route) {
+      router.replace(route);
+      return;
+    }
+    if (validTabs.includes(tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+      setMobileDetailOpen(true);
+    }
+  }, [isAdmin, router, tabFromUrl]);
 
   /* ── Tab 定义 ── */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -206,51 +198,75 @@ export default function SettingsPage() {
         { id: "account", label: "我的账户", icon: <UserCog className="h-[18px] w-[18px]" />, desc: "密码、昵称", keywords: ["密码", "昵称", "password", "profile"] },
         ...(isAdmin
           ? [
-              { id: "site" as const, label: t.siteSettings?.tab || "站点设置", icon: <Globe className="h-[18px] w-[18px]" />, desc: "名称、目录、缓存", keywords: ["站点", "目录", "缓存", "site", "cache"] },
-              { id: "ai" as const, label: t.ai?.title || "AI 功能", icon: <Brain className="h-[18px] w-[18px]" />, desc: "智能识别与推荐", keywords: ["AI", "智能", "推荐", "识别", "模型"] },
-              { id: "scan-rules" as const, label: "扫描规则", icon: <Wand2 className="h-[18px] w-[18px]" />, desc: "AI 识别 + 自动归类", keywords: ["扫描", "规则", "归类", "scan", "rules"] },
-              { id: "users" as const, label: "用户管理", icon: <Users className="h-[18px] w-[18px]" />, desc: "账号、角色、注册策略", keywords: ["用户", "账号", "角色", "user", "role"] },
-              { id: "libraries" as const, label: "书库管理", icon: <BookOpen className="h-[18px] w-[18px]" />, desc: "目录、权限、公开策略", keywords: ["书库", "目录", "权限", "library"] },
-              { id: "user-groups" as const, label: "权限组", icon: <Users className="h-[18px] w-[18px]" />, desc: "批量管理用户书库权限", keywords: ["权限组", "用户组", "权限", "group"] },
-              { id: "diagnostics" as const, label: "系统诊断", icon: <Shield className="h-[18px] w-[18px]" />, desc: "环境检查、权限、工具", keywords: ["诊断", "检查", "权限", "diagnostics"] },
+              { id: "site" as const, label: "站点设置", icon: <Globe className="h-[18px] w-[18px]" />, desc: "名称、目录、缓存", keywords: ["站点", "目录", "缓存", "site", "cache"] },
               { id: "reader" as const, label: "阅读器偏好", icon: <Eye className="h-[18px] w-[18px]" />, desc: "方向、缩放、翻页、背景", keywords: ["reader", "reading", "page", "zoom", "direction", "animation", "progress", "阅读器", "阅读", "方向", "缩放", "翻页", "页码", "进度"] },
             ]
           : []),
       ],
     },
     {
-      title: t.settings?.groupData || "数据",
+      title: "书库与权限",
       tabs: [
         ...(isAdmin
           ? [
-              { id: "stats" as const, label: t.stats?.title || "阅读统计", icon: <BarChart3 className="h-[18px] w-[18px]" />, desc: "时长、趋势、目标", keywords: ["统计", "时长", "趋势", "stats", "reading"] },
-              { id: "file-stats" as const, label: "文件统计", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "格式、大小、分布", keywords: ["文件", "大小", "格式", "file", "storage"] },
-              { id: "logs" as const, label: tAny.errorLogs?.title || "错误日志", icon: <AlertTriangle className="h-[18px] w-[18px]" />, desc: "接口异常记录", keywords: ["日志", "错误", "异常", "logs", "error"] },
+              { id: "libraries" as const, label: "书库管理", icon: <BookOpen className="h-[18px] w-[18px]" />, desc: "目录、权限、公开策略", keywords: ["书库", "目录", "权限", "library"] },
+              { id: "users" as const, label: "用户管理", icon: <Users className="h-[18px] w-[18px]" />, desc: "账号、角色、注册策略", keywords: ["用户", "账号", "角色", "user", "role"] },
+              { id: "user-groups" as const, label: "权限组", icon: <Users className="h-[18px] w-[18px]" />, desc: "批量管理用户书库权限", keywords: ["权限组", "用户组", "权限", "group"] },
             ]
           : []),
+      ],
+    },
+    {
+      title: "自动化",
+      tabs: [
         ...(isAdmin
           ? [
-              { id: "data-admin" as const, label: "数据管理", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "存储、缓存、数据库维护", keywords: ["数据", "管理", "存储", "缓存", "数据库", "data", "admin", "storage", "cache", "database"] },
-              { id: "data-qa" as const, label: "数据巡检", icon: <Database className="h-[18px] w-[18px]" />, desc: "一致性检查、安全修复", keywords: ["data", "qa", "health", "repair", "scan", "fix", "dry-run", "数据", "巡检", "修复", "扫描", "异常", "健康"] },
-              { id: "sync-backup" as const, label: "同步与备份", icon: <RefreshCw className="h-[18px] w-[18px]" />, desc: "备份、导入、导出", keywords: ["sync", "backup", "export", "import", "restore", "同步", "备份", "导出", "导入", "恢复"] },
+              { id: "ai" as const, label: t.ai?.title || "AI 功能", icon: <Brain className="h-[18px] w-[18px]" />, desc: "智能识别与推荐", keywords: ["AI", "智能", "推荐", "识别", "模型"] },
+              { id: "scan-rules" as const, label: "扫描规则", icon: <Wand2 className="h-[18px] w-[18px]" />, desc: "AI 识别 + 自动归类", keywords: ["扫描", "规则", "归类", "scan", "rules"] },
+            ]
+          : []),
+      ],
+    },
+    {
+      title: "系统",
+      tabs: [
+        ...(isAdmin
+          ? [
+              { id: "diagnostics" as const, label: "系统诊断", icon: <Shield className="h-[18px] w-[18px]" />, desc: "环境检查、权限、工具", keywords: ["诊断", "检查", "权限", "diagnostics"] },
             ]
           : []),
         { id: "about", label: t.settings?.about || "关于", icon: <Info className="h-[18px] w-[18px]" />, desc: t.settings?.aboutDesc || "版本与项目信息", keywords: ["关于", "版本", "about", "version"] },
       ],
     },
+    {
+      title: "管理工具",
+      tabs: isAdmin
+        ? [
+            { id: "stats" as const, label: t.stats?.title || "阅读统计", icon: <BarChart3 className="h-[18px] w-[18px]" />, desc: "时长、趋势、目标", keywords: ["统计", "时长", "趋势", "stats", "reading"], href: "/stats" },
+            { id: "file-stats" as const, label: "文件统计", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "格式、大小、分布", keywords: ["文件", "大小", "格式", "file", "storage"] },
+            { id: "logs" as const, label: tAny.errorLogs?.title || "错误日志", icon: <AlertTriangle className="h-[18px] w-[18px]" />, desc: "接口异常记录", keywords: ["日志", "错误", "异常", "logs", "error"], href: "/logs" },
+            { id: "data-admin" as const, label: "数据管理", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "存储、缓存、数据库维护", keywords: ["数据", "管理", "存储", "缓存", "数据库", "data", "admin", "storage", "cache", "database"], href: "/data-admin" },
+            { id: "data-qa" as const, label: "数据巡检", icon: <Database className="h-[18px] w-[18px]" />, desc: "一致性检查、安全修复", keywords: ["data", "qa", "health", "repair", "scan", "fix", "dry-run", "数据", "巡检", "修复", "扫描", "异常", "健康"], href: "/data-qa" },
+            { id: "sync-backup" as const, label: "同步与备份", icon: <RefreshCw className="h-[18px] w-[18px]" />, desc: "规划中的备份与同步能力", keywords: ["sync", "backup", "export", "import", "restore", "同步", "备份", "导出", "导入", "恢复"] },
+          ]
+        : [],
+    },
   ];
 
   const allTabs = groups.flatMap((g) => g.tabs);
   const currentTab = allTabs.find((tab) => tab.id === activeTab);
-  const isFullWidthTab = ["stats", "file-stats", "logs", "libraries"].includes(activeTab);
+  const isFullWidthTab = ["file-stats", "libraries"].includes(activeTab);
 
   /* ── 搜索过滤 ── */
   const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) return groups;
     return groups
       .map((group) => ({
         ...group,
-        tabs: group.tabs.filter((tab) => validTabs.includes(tab.id) && matchesSearch(tab, group.title, searchQuery)),
+        tabs: group.tabs.filter(
+          (tab) =>
+            validTabs.includes(tab.id) &&
+            (!searchQuery.trim() || matchesSearch(tab, group.title, searchQuery))
+        ),
       }))
       .filter((group) => group.tabs.length > 0);
   }, [groups, searchQuery, validTabs]);
@@ -259,11 +275,17 @@ export default function SettingsPage() {
 
   /* ── Tab 切换动画 ── */
   const switchTab = useCallback(
-    (tabId: SettingsTab) => {
+    (tabId: SettingsTab, openMobileDetail = false) => {
+      const route = standaloneSettingsRoutes[tabId];
+      if (route) {
+        router.push(route);
+        return;
+      }
+      router.replace(`/settings?tab=${tabId}`);
+      if (openMobileDetail) setMobileDetailOpen(true);
       if (tabId === activeTab) return;
       setIsTransitioning(true);
       setContentKey((k) => k + 1);
-      // Small delay for exit animation
       requestAnimationFrame(() => {
         setActiveTab(tabId);
         requestAnimationFrame(() => {
@@ -271,127 +293,146 @@ export default function SettingsPage() {
         });
       });
     },
-    [activeTab]
+    [activeTab, router]
+  );
+
+  const activePanel = (
+    <div
+      key={contentKey}
+      className={`transition-all duration-200 ease-out ${
+        isTransitioning ? "translate-y-1 opacity-0" : "translate-y-0 opacity-100"
+      }`}
+    >
+      {activeTab === "account" && <AccountPanel />}
+      {activeTab === "site" && <SiteSettingsPanel />}
+      {activeTab === "ai" && <AISettingsPanel />}
+      {activeTab === "scan-rules" && <ScanRulesPanel />}
+      {activeTab === "users" && <UserManagementPanel />}
+      {activeTab === "libraries" && <LibraryManagementPanel />}
+      {activeTab === "user-groups" && <UserGroupManagementPanel />}
+      {activeTab === "diagnostics" && <NASDiagnosticsPanel />}
+      {activeTab === "reader" && <ReaderPreferencesPanel />}
+      {activeTab === "sync-backup" && <SyncBackupPanel />}
+      {activeTab === "file-stats" && <FileStatsPanel />}
+      {activeTab === "about" && <AboutPanel />}
+    </div>
+  );
+
+  const searchField = (
+    <div className="relative w-full sm:w-64">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+      <input
+        type="search"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="搜索设置"
+        aria-label="搜索设置"
+        className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted/60 focus:border-accent"
+      />
+      {searchQuery && (
+        <button
+          type="button"
+          onClick={() => setSearchQuery("")}
+          aria-label="清除搜索"
+          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-card-hover hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   );
 
   return (
-    <div className="min-h-screen bg-background pb-20 sm:pb-0">
-      {/* ═══════════ Header ═══════════ */}
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-2xl">
-        <div className="mx-auto flex h-14 sm:h-16 max-w-[1800px] items-center gap-3 px-3 sm:px-6">
-          <button
-            onClick={() => router.push("/")}
-            className="group flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/50 text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-          </button>
-          <div className="flex items-center gap-2 min-w-0">
-            <h1 className="text-base sm:text-lg font-bold text-foreground truncate">
-              {t.settings?.title || "设置"}
-            </h1>
-            {/* 面包屑：当前 tab 名 */}
-            {currentTab && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-muted/60">
-                <span>/</span>
-                <span className="truncate max-w-[200px]">{currentTab.label}</span>
-              </span>
-            )}
-          </div>
-          {/* Search */}
-          <div className="ml-auto relative hidden sm:flex items-center">
-            <Search className="absolute left-3 h-3.5 w-3.5 text-muted/50 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索设置…"
-              className="h-8 w-48 rounded-lg border border-border/50 bg-card/50 pl-9 pr-8 text-sm text-foreground placeholder:text-muted/40 outline-none transition-all duration-200 focus:border-accent/40 focus:w-64 focus:bg-card"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 text-muted/40 hover:text-foreground transition-colors"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+    <AppShell>
+      <PageHeader
+        title={t.settings?.title || "设置"}
+        description="管理账户、书库与系统偏好"
+        icon={SettingsIcon}
+        width="wide"
+        actions={<div className="hidden sm:block">{searchField}</div>}
+      />
 
-      {/* ═══════════ Mobile Tab Bar ═══════════ */}
-      <div className="sm:hidden border-b border-border/40 bg-background/60 backdrop-blur-xl relative">
-        {/* Mobile search */}
-        <div className="px-3 pt-2 pb-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted/50 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索设置…"
-              className="h-9 w-full rounded-lg border border-border/50 bg-card/50 pl-9 pr-8 text-sm text-foreground placeholder:text-muted/40 outline-none transition-all focus:border-accent/40"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted/40 hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-        {canScrollLeft && (
-          <div className="pointer-events-none absolute left-0 top-12 bottom-0 w-8 z-10 bg-gradient-to-r from-background to-transparent" />
-        )}
-        {canScrollRight && (
-          <div className="pointer-events-none absolute right-0 top-12 bottom-0 w-8 z-10 bg-gradient-to-l from-background to-transparent" />
-        )}
-        <div
-          ref={mobileTabsRef}
-          className="flex px-2 py-2 gap-1 overflow-x-auto scrollbar-hide"
-        >
-          {(searchQuery ? filteredGroups.flatMap((g) => g.tabs) : allTabs)
-            .filter((tab) => validTabs.includes(tab.id))
-            .map((tab) => (
-              <button
-                key={tab.id}
-                data-active={activeTab === tab.id}
-                onClick={() => switchTab(tab.id)}
-                className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 ${
-                  activeTab === tab.id
-                    ? "bg-accent text-white shadow-sm shadow-accent/25"
-                    : "text-muted hover:text-foreground hover:bg-card"
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
+      <section className="sm:hidden">
+        {!mobileDetailOpen ? (
+          <div className="space-y-5 px-4 py-4">
+            {searchField}
+            {filteredGroups.map((group) => (
+              <section key={group.title}>
+                <h2 className="mb-2 px-1 text-xs font-semibold text-muted">{group.title}</h2>
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  {group.tabs
+                    .filter((tab) => validTabs.includes(tab.id))
+                    .map((tab, index) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => switchTab(tab.id, true)}
+                        className={`flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-card-hover ${
+                          index > 0 ? "border-t border-border/70" : ""
+                        }`}
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background text-accent">
+                          {tab.icon}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-foreground">{tab.label}</span>
+                          {tab.desc && <span className="mt-0.5 block truncate text-xs text-muted">{tab.desc}</span>}
+                        </span>
+                        {tab.href ? (
+                          <ExternalLink className="h-4 w-4 shrink-0 text-muted" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+                        )}
+                      </button>
+                    ))}
+                </div>
+              </section>
             ))}
-        </div>
-        {!hasSearchResults && searchQuery && (
-          <div className="px-4 py-3 text-center text-xs text-muted/50">
-            没有匹配的设置项
+            {searchQuery && !hasSearchResults && (
+              <div className="py-10 text-center text-sm text-muted">没有匹配的设置项</div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-border bg-background/95 px-3 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileDetailOpen(false);
+                  setSearchQuery("");
+                  router.replace("/settings");
+                }}
+                aria-label="返回设置列表"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card hover:text-foreground"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-card text-accent">
+                {currentTab?.icon}
+              </span>
+              <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+                {currentTab?.label}
+              </h2>
+            </div>
+            <div className="p-4">{activePanel}</div>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* ═══════════ Main Layout ═══════════ */}
-      <div className={`mx-auto flex ${isFullWidthTab ? "max-w-[1800px]" : "max-w-5xl"} transition-all duration-300`}>
-
-        {/* ── Desktop Sidebar ── */}
-        <aside className="hidden sm:flex flex-col w-60 flex-shrink-0 border-r border-border/40 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto p-3 gap-1 bg-background/40 backdrop-blur-sm">
+      <div
+        className={`mx-auto hidden sm:flex ${
+          isFullWidthTab ? "max-w-[1760px]" : "max-w-5xl"
+        } transition-all duration-300`}
+      >
+        <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-60 flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-border p-3">
           {filteredGroups.map((group, gi) => (
             <div key={gi} className={gi > 0 ? "mt-4" : ""}>
-              {/* 合集标题 */}
               <div className="flex items-center gap-2 px-3 mb-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted/60">
+                <span className="text-xs font-semibold text-muted">
                   {group.title}
                 </span>
-                <div className="flex-1 h-px bg-border/30" />
+                <div className="h-px flex-1 bg-border" />
               </div>
-              {/* Tab 按钮 */}
               {group.tabs
                 .filter((tab) => validTabs.includes(tab.id))
                 .map((tab) => {
@@ -400,22 +441,21 @@ export default function SettingsPage() {
                     <button
                       key={tab.id}
                       onClick={() => switchTab(tab.id)}
-                      className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200 ${
+                      className={`group relative flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
                         isActive
-                          ? "bg-accent/10 text-accent shadow-sm shadow-accent/5"
+                          ? "bg-accent/10 text-accent"
                           : "text-muted hover:bg-card-hover hover:text-foreground"
                       }`}
                     >
-                      {/* 滑动高亮条 */}
                       <div
-                        className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-accent transition-all duration-200 ${
+                        className={`absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-accent transition-all duration-200 ${
                           isActive ? "h-5 opacity-100" : "h-0 opacity-0"
                         }`}
                       />
                       <span
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 ${
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
                           isActive
-                            ? "bg-accent/15 text-accent scale-105"
+                            ? "bg-accent/15 text-accent"
                             : "bg-card text-muted group-hover:bg-card-hover group-hover:text-foreground"
                         }`}
                       >
@@ -426,11 +466,12 @@ export default function SettingsPage() {
                           {tab.label}
                         </div>
                         {tab.desc && (
-                          <div className="text-[10px] text-muted/60 truncate leading-tight mt-0.5">
+                          <div className="mt-0.5 truncate text-xs leading-tight text-muted">
                             {tab.desc}
                           </div>
                         )}
                       </div>
+                      {tab.href && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted/50" />}
                     </button>
                   );
                 })}
@@ -443,7 +484,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted/50">没有匹配的设置项</p>
               <button
                 onClick={() => setSearchQuery("")}
-                className="mt-2 text-xs text-accent/60 hover:text-accent transition-colors"
+                className="mt-2 min-h-10 text-xs text-accent transition-colors hover:underline"
               >
                 清除搜索
               </button>
@@ -451,38 +492,13 @@ export default function SettingsPage() {
           )}
         </aside>
 
-        {/* ── Content Area ── */}
-        <main className="flex-1 min-h-[calc(100vh-4rem)] min-w-0">
+        <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1">
           <div className={`p-4 sm:p-8 ${isFullWidthTab ? "" : "max-w-3xl"}`}>
-            <div
-              key={contentKey}
-              className={`transition-all duration-250 ease-out ${
-                isTransitioning
-                  ? "opacity-0 translate-y-1"
-                  : "opacity-100 translate-y-0"
-              }`}
-            >
-              {activeTab === "account" && <AccountPanel />}
-              {activeTab === "site" && <SiteSettingsPanel />}
-              {activeTab === "ai" && <AISettingsPanel />}
-              {activeTab === "scan-rules" && <ScanRulesPanel />}
-              {activeTab === "users" && <UserManagementPanel />}
-              {activeTab === "libraries" && <LibraryManagementPanel />}
-              {activeTab === "user-groups" && <UserGroupManagementPanel />}
-              {activeTab === "diagnostics" && <NASDiagnosticsPanel />}
-              {activeTab === "reader" && <ReaderPreferencesPanel />}
-              {activeTab === "data-admin" && <DataAdminSettingsPanel />}
-              {activeTab === "data-qa" && <DataQASettingsPanel />}
-              {activeTab === "sync-backup" && <SyncBackupPanel />}
-              {activeTab === "stats" && <StatsPanel />}
-              {activeTab === "file-stats" && <FileStatsPanel />}
-              {activeTab === "logs" && <LogsPanel />}
-              {activeTab === "about" && <AboutPanel />}
-            </div>
+            {activePanel}
           </div>
         </main>
       </div>
-    </div>
+    </AppShell>
   );
 }
 
@@ -519,17 +535,17 @@ function ReaderPreferencesPanel() {
   if (!loaded) {
     return (
       <div className="space-y-4 p-2">
-        <div className="h-24 animate-pulse rounded-2xl bg-card" />
-        <div className="h-48 animate-pulse rounded-2xl bg-card" />
+        <div className="h-24 animate-pulse rounded-lg bg-card" />
+        <div className="h-48 animate-pulse rounded-lg bg-card" />
       </div>
     );
   }
 
   return (
     <div className="space-y-5 max-w-2xl">
-      <div className="rounded-2xl border border-border/40 bg-gradient-to-br from-accent/5 via-card to-card p-5 sm:p-6">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
             <Eye className="h-4 w-4" />
           </span>
           <div>
@@ -537,12 +553,12 @@ function ReaderPreferencesPanel() {
             <p className="text-xs text-muted">调整阅读方向、缩放与进度跟踪，设置会保存到当前浏览器并在阅读器中自动生效。</p>
           </div>
         </div>
-        <p className="mt-3 rounded-xl bg-card/60 p-3 text-xs text-muted/80 border border-border/30">
+        <p className="mt-3 rounded-lg border border-border bg-background p-3 text-xs text-muted">
           跨设备同步将在后续版本支持。
         </p>
       </div>
 
-      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="divide-y divide-border/25">
           {/* Direction */}
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -633,7 +649,7 @@ function ReaderPreferencesPanel() {
           <div className="p-4 flex items-center gap-2">
             <button
               onClick={handleResetDefaults}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+              className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 resetConfirm
                   ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
                   : "border border-border/40 text-muted hover:text-foreground hover:bg-card-hover"
@@ -651,232 +667,51 @@ function ReaderPreferencesPanel() {
     </div>
   );
 }
-/* ── Data QA Settings Panel ── */
-function DataQASettingsPanel() {
-  const router = useRouter();
-  const t = useTranslation();
-  const d = t.dataQa;
-
-  const capabilities = [
-    { icon: <Eye className="h-3.5 w-3.5" />, text: d?.capReadOnly ?? '只读扫描：检查 pageCount、阅读时长、孤儿标签 / 分类、异常 session' },
-    { icon: <Wand2 className="h-3.5 w-3.5" />, text: d?.capDryRun ?? 'dry-run 预览：先查看修复计划，不直接修改数据' },
-    { icon: <Shield className="h-3.5 w-3.5" />, text: d?.capSafeFix ?? '安全修复：仅在 confirm:true 时执行低风险修复' },
-    { icon: <AlertTriangle className="h-3.5 w-3.5" />, text: d?.capHighRisk ?? '高风险问题仅 skipped / 半自动策略，避免误伤数据' },
-  ];
-
+/* ── Sync & Backup Panel ── */
+function SyncBackupPanel() {
   return (
-    <div className="space-y-5 max-w-2xl">
-      <div className="rounded-2xl border border-border/40 bg-gradient-to-br from-accent/5 via-card to-card p-5 sm:p-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
-            <Database className="h-4 w-4" />
+    <div className="max-w-2xl space-y-5">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <HardDrive className="h-4 w-4" />
           </span>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">{d?.settingsTitle ?? '数据巡检'}</h2>
-            <p className="text-xs text-muted">{d?.settingsDesc ?? '用于检查 pageCount、阅读时长、孤儿标签、孤儿分类、异常 session 等问题。'}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-foreground">同步与备份</h2>
+              <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted">
+                规划中
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              用于备份应用配置、阅读数据和跨设备同步进度。
+            </p>
           </div>
         </div>
-        <p className="mt-3 text-xs text-muted/80">
-          {d?.settingsHint ?? '如果需要执行真实扫描、预览修复计划或执行安全修复，请前往独立的 Data QA 管理页。'}
-        </p>
       </div>
 
-      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border/30">
-          <h3 className="text-sm font-semibold text-foreground">{d?.capabilitiesTitle ?? '能力总览'}</h3>
-        </div>
-        <div className="divide-y divide-border/20">
-          {capabilities.map((item) => (
-            <div key={item.text} className="flex items-start gap-3 px-5 py-3.5">
-              <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                {item.icon}
-              </span>
-              <p className="text-sm text-muted">{item.text}</p>
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="divide-y divide-border">
+          {[
+            { title: "自动备份", description: "按计划备份应用配置和阅读数据。" },
+            { title: "配置导入与导出", description: "迁移站点设置、书库配置与权限规则。" },
+            { title: "阅读数据备份", description: "导出阅读历史、进度与统计数据。" },
+            { title: "跨设备同步", description: "同步阅读进度、书签和阅读历史。" },
+          ].map((item) => (
+            <div key={item.title} className="flex min-h-16 items-center gap-4 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground">{item.title}</div>
+                <p className="mt-0.5 text-xs text-muted">{item.description}</p>
+              </div>
+              <span className="shrink-0 text-xs text-muted">暂未开放</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => router.push('/data-qa')}
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <ExternalLink className="h-4 w-4" />
-          {d?.openDataQaPage ?? '打开 Data QA 管理页'}
-        </button>
-        <span className="text-xs text-muted/60">{d?.openDataQaHint ?? '独立页面中包含 summary、issues、fix-preview、真实修复和 pagecount-rescan。'}</span>
-      </div>
-    </div>
-  );
-}
-
-/* ── Data Admin Panel ── */
-function DataAdminSettingsPanel() {
-  const router = useRouter();
-
-  return (
-    <div className="space-y-5 max-w-2xl">
-      <div className="rounded-2xl border border-border/40 bg-gradient-to-br from-accent/5 via-card to-card p-5 sm:p-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
-            <HardDrive className="h-4 w-4" />
-          </span>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">数据管理</h2>
-            <p className="text-xs text-muted">存储概览、缓存清理、数据库维护与优化。</p>
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-muted/80">
-          管理应用的存储空间、缓存策略和数据库健康状态。支持缓存清理、数据库检查点、分析、压缩和完整性检查。
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
-        <div className="divide-y divide-border/25">
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div>
-              <div className="text-sm font-medium text-foreground">存储概览</div>
-              <div className="text-xs text-muted">查看各分类的存储占用和缓存状态。</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <HardDrive className="h-4 w-4 text-muted" />
-              <span className="text-xs text-muted">实时数据</span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div>
-              <div className="text-sm font-medium text-foreground">缓存管理</div>
-              <div className="text-xs text-muted">清理缩略图、元数据等缓存数据。</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 text-muted" />
-              <span className="text-xs text-muted">按需清理</span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div>
-              <div className="text-sm font-medium text-foreground">数据库维护</div>
-              <div className="text-xs text-muted">检查点、分析、压缩、完整性检查。</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4 text-muted" />
-              <span className="text-xs text-muted">定期维护</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col items-center gap-2 pt-2">
-        <button
-          onClick={() => router.push("/data-admin")}
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <ExternalLink className="h-4 w-4" />
-          打开数据管理页
-        </button>
-        <span className="text-xs text-muted/60">独立页面中包含完整的存储概览、缓存清理和数据库维护功能。</span>
-      </div>
-    </div>
-  );
-}
-
-/* ── Sync & Backup Panel ── */
-function SyncBackupPanel() {
-  const [autoBackup, setAutoBackup] = useState(false);
-
-  return (
-    <div className="space-y-5 max-w-2xl">
-      <div className="rounded-2xl border border-border/40 bg-gradient-to-br from-accent/5 via-card to-card p-5 sm:p-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
-            <HardDrive className="h-4 w-4" />
-          </span>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">同步与备份</h2>
-            <p className="text-xs text-muted">管理自动备份、导入导出与阅读数据备份能力，当前为本地管理预留入口。</p>
-          </div>
-        </div>
-        <p className="mt-3 rounded-xl bg-card/60 p-3 text-xs text-muted/80 border border-border/30">
-          以下功能为后续真实备份 API 预留，当前按钮与状态仅做占位展示。
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
-        <div className="divide-y divide-border/25">
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div>
-              <div className="text-sm font-medium text-foreground">自动备份</div>
-              <div className="text-xs text-muted">启用后将按固定策略备份应用配置与阅读数据。</div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoBackup}
-              onClick={() => setAutoBackup(!autoBackup)}
-              className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${autoBackup ? 'bg-accent' : 'bg-muted/40'}`}
-            >
-              <span
-                aria-hidden
-                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${autoBackup ? 'translate-x-5' : 'translate-x-0'}`}
-              />
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-1 p-4">
-            <div className="text-sm font-medium text-foreground">备份路径</div>
-            <div className="rounded-lg border border-dashed border-border/50 bg-card/60 px-3 py-2 text-xs text-muted">
-              /data/backup
-            </div>
-            <p className="text-[11px] text-muted/60">后续将展示真实备份目录与最近一次写入状态。</p>
-          </div>
-
-          <div className="p-4">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button
-                disabled
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/50 bg-card px-4 py-2.5 text-sm text-muted transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Download className="h-4 w-4" />
-                导出配置
-              </button>
-              <button
-                disabled
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/50 bg-card px-4 py-2.5 text-sm text-muted transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Upload className="h-4 w-4" />
-                导入配置
-              </button>
-              <button
-                disabled
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/50 bg-card px-4 py-2.5 text-sm text-muted transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
-              >
-                <RefreshCw className="h-4 w-4" />
-                导出阅读数据
-              </button>
-            </div>
-            <p className="mt-3 text-[11px] text-muted/60">导入导出按钮暂时置灰，待后续接口就绪后启用。</p>
-          </div>
-
-          <div className="flex flex-col gap-1 p-4">
-            <div className="text-sm font-medium text-foreground">同步阅读进度</div>
-            <p className="text-xs text-muted">
-              后续可用于跨设备同步阅读进度、书签与阅读历史。当前版本暂未开放自动同步。
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1 p-4">
-            <div className="text-sm font-medium text-foreground">最近备份时间</div>
-            <div className="text-xs text-muted">--</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-600 dark:text-amber-400">
-        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        <div>
-          当前为本地管理阶段，备份、导入、导出与同步能力需要接入真实 API 后才能正式使用。
-        </div>
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-background p-4 text-xs text-muted">
+        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+        <p>该页面仅展示后续能力范围，相关接口就绪前不会保存任何设置。</p>
       </div>
     </div>
   );
@@ -910,14 +745,10 @@ function AboutPanel() {
   return (
     <div className="space-y-6 max-w-lg mx-auto">
       {/* Brand Card */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-br from-accent/5 via-card to-card p-6 sm:p-8">
-        {/* 装饰背景 */}
-        <div className="absolute -top-20 -right-20 h-56 w-56 rounded-full bg-accent/5 blur-3xl" />
-        <div className="absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-accent/5 blur-3xl" />
-
-        <div className="relative flex flex-col items-center text-center gap-4">
+      <div className="overflow-hidden rounded-lg border border-border bg-card p-6 sm:p-8">
+        <div className="flex flex-col items-center gap-4 text-center">
           {/* Logo */}
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent shadow-lg shadow-accent/25">
+          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-accent">
             <BookOpen className="h-8 w-8 text-white" />
           </div>
           <div>
@@ -939,9 +770,15 @@ function AboutPanel() {
           </div>
           {versionInfo && (
             <div className="flex items-center gap-3 text-[11px] text-muted/60">
-              <span>⏱ 运行时间: {versionInfo.uptime}</span>
+              <span className="inline-flex items-center gap-1">
+                <Server className="h-3 w-3" />
+                运行时间: {versionInfo.uptime}
+              </span>
               {versionInfo.runtime && (
-                <span>💾 {versionInfo.runtime.memoryMB} MB</span>
+                <span className="inline-flex items-center gap-1">
+                  <HardDrive className="h-3 w-3" />
+                  {versionInfo.runtime.memoryMB} MB
+                </span>
               )}
             </div>
           )}
@@ -949,7 +786,7 @@ function AboutPanel() {
       </div>
 
       {/* Tech Stack */}
-      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="px-5 py-3.5 border-b border-border/30">
           <h3 className="text-sm font-semibold text-foreground">
             {t.settings?.aboutTechStack || "技术栈"}
@@ -974,7 +811,7 @@ function AboutPanel() {
           href="https://github.com/cropflre/nowen-reader"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
+          className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
         >
           <Github className="h-4 w-4" />
           GitHub
@@ -984,7 +821,7 @@ function AboutPanel() {
           href={appPath("/api-doc.html")}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-xl border border-border/40 bg-card px-4 py-2.5 text-sm text-muted transition-all hover:border-accent/40 hover:text-accent hover:bg-accent/5"
+          className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
         >
           <FileText className="h-4 w-4" />
           API Docs
@@ -999,4 +836,3 @@ function AboutPanel() {
     </div>
   );
 }
-

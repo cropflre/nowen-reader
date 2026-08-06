@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   HardDrive,
   Database,
   RefreshCw,
@@ -28,6 +26,8 @@ import {
   type CacheBucket,
   type StorageThreshold,
 } from "@/api/admin";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 // ============================================================
 // 子组件
@@ -80,7 +80,6 @@ function UsageBar({ value, max, color = "bg-blue-500" }: { value: number; max: n
 // ============================================================
 
 export default function DataAdminPage() {
-  const router = useRouter();
 
   const [data, setData] = useState<StorageOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -266,7 +265,7 @@ export default function DataAdminPage() {
   // ============================================================
 
   return (
-    <div className="min-h-screen bg-background pb-16">
+    <AppShell>
       {/* Toast */}
       {toast && (
         <div
@@ -280,22 +279,11 @@ export default function DataAdminPage() {
         </div>
       )}
 
-      {/* 顶栏 */}
-      <div className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
-          <button
-            onClick={() => router.back()}
-            className="rounded p-1.5 text-muted hover:bg-card-hover hover:text-foreground"
-            aria-label="back"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <HardDrive className="h-5 w-5 text-blue-400" />
-          <h1 className="text-base font-semibold">数据管理</h1>
-          <span className="ml-2 rounded bg-muted/15 px-2 py-0.5 text-[11px] text-muted">
-            管理员
-          </span>
-          <div className="ml-auto flex items-center gap-2">
+      <PageHeader
+        title="数据管理"
+        description="存储概览、缓存清理与数据库维护"
+        icon={HardDrive}
+        actions={
             <button
               onClick={() => refresh(true)}
               disabled={loading}
@@ -304,11 +292,9 @@ export default function DataAdminPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               刷新
             </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-6xl px-4 py-5">
+        }
+      />
+      <PageContent width="management">
         {error && (
           <div className="mb-4 rounded border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-400">
             {error}
@@ -626,8 +612,8 @@ export default function DataAdminPage() {
             </button>
           </div>
         </section>
-      </div>
-    </div>
+      </PageContent>
+    </AppShell>
   );
 }
 

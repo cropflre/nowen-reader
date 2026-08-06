@@ -1,11 +1,9 @@
 "use client";
 
 import { apiPath } from "@/lib/base-path";
-import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Clock,
   BookOpen,
   BarChart3,
@@ -14,17 +12,17 @@ import {
   Flame,
   Zap,
   PieChart,
-  Timer,
   Target,
   Edit3,
   Trash2,
   Check,
-  Trophy,
   ArrowRight,
   ChevronDown,
   Sparkles,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface EnhancedStats {
   totalReadTime: number;
@@ -67,7 +65,6 @@ interface GoalProgress {
 }
 
 export default function StatsPage() {
-  const router = useRouter();
   const [stats, setStats] = useState<EnhancedStats | null>(null);
   const [loading, setLoading] = useState(true);
   const t = useTranslation();
@@ -104,15 +101,6 @@ export default function StatsPage() {
     return `${m}m`;
   }
 
-  function fmtLong(seconds: number) {
-    if (!seconds || seconds <= 0) return "0 分钟";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0 && m > 0) return `${h} 小时 ${m} 分钟`;
-    if (h > 0) return `${h} 小时`;
-    return `${m} 分钟`;
-  }
-
   const genrePercentages = useMemo(() => {
     if (!stats?.genreStats?.length) return [];
     const total = stats.genreStats.reduce((s, g) => s + g.totalTime, 0);
@@ -132,37 +120,40 @@ export default function StatsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-8 space-y-6">
-          <div className="h-8 w-48 animate-pulse rounded-xl bg-card/60" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-2xl bg-card/60" />
+      <AppShell>
+        <PageHeader title="阅读统计" description="正在加载阅读数据" icon={BarChart3} />
+        <PageContent width="management" className="space-y-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-24 animate-pulse rounded-lg bg-card/60" />
             ))}
           </div>
           <div className="grid lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 h-64 animate-pulse rounded-2xl bg-card/60" />
-            <div className="h-64 animate-pulse rounded-2xl bg-card/60" />
+            <div className="h-64 animate-pulse rounded-lg bg-card/60 lg:col-span-2" />
+            <div className="h-64 animate-pulse rounded-lg bg-card/60" />
           </div>
-        </div>
-      </div>
+        </PageContent>
+      </AppShell>
     );
   }
 
   if (!stats) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted">{t.stats.cannotLoadStats}</p>
-      </div>
+      <AppShell>
+        <PageHeader title="阅读统计" description="查看阅读数据、习惯与目标进度" icon={BarChart3} />
+        <PageContent width="management">
+          <p className="rounded-lg border border-border bg-card p-6 text-center text-muted">
+            {t.stats.cannotLoadStats}
+          </p>
+        </PageContent>
+      </AppShell>
     );
   }
 
   const heroCards = [
     { icon: <Clock className="h-5 w-5" />, label: "今日阅读", value: fmt(stats.todayReadTime || 0), color: "text-accent", bg: "bg-accent/10" },
     { icon: <Calendar className="h-5 w-5" />, label: "本周阅读", value: fmt(stats.weekReadTime || 0), color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    { icon: <Timer className="h-5 w-5" />, label: "总阅读时长", value: fmtLong(stats.totalReadTime || 0), color: "text-blue-400", bg: "bg-blue-500/10" },
     { icon: <Flame className="h-5 w-5" />, label: "连续阅读", value: `${stats.currentStreak || 0} 天`, color: "text-orange-400", bg: "bg-orange-500/10" },
-    { icon: <Trophy className="h-5 w-5" />, label: "最长连续", value: `${stats.longestStreak || 0} 天`, color: "text-amber-400", bg: "bg-amber-500/10" },
     { icon: <Zap className="h-5 w-5" />, label: "阅读速度", value: `${Math.round(stats.avgPagesPerHour || 0)} 页/时`, color: "text-violet-400", bg: "bg-violet-500/10" },
   ];
 
@@ -173,30 +164,19 @@ export default function StatsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-20 sm:pb-8">
-      {/* Header */}
-      <div className="sticky top-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 sm:h-16 max-w-6xl items-center gap-4 px-4 sm:px-6 lg:px-10">
-          <button
-            onClick={() => router.back()}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-muted transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <h1 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-accent" />
-            阅读仪表盘
-          </h1>
-        </div>
-      </div>
-
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-6 space-y-6">
+    <AppShell>
+      <PageHeader
+        title="阅读统计"
+        description="查看阅读数据、习惯与目标进度"
+        icon={BarChart3}
+      />
+      <PageContent width="management" className="space-y-6">
 
         {/* ═══════ HERO CARDS ═══════ */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {heroCards.map((c) => (
-            <div key={c.label} className="group rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-4 transition-all hover:border-border/50 hover:bg-card/80">
-              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${c.bg} ${c.color} mb-3`}>
+            <div key={c.label} className="group rounded-lg border border-border/50 bg-card p-4 transition-colors hover:border-border">
+              <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${c.bg} ${c.color}`}>
                 {c.icon}
               </div>
               <div className="text-lg sm:text-xl font-bold text-foreground leading-tight">{c.value}</div>
@@ -209,7 +189,7 @@ export default function StatsPage() {
         <div className="grid lg:grid-cols-3 gap-4">
 
           {/* Trend Chart */}
-          <div className="lg:col-span-2 rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-5">
+          <div className="rounded-lg border border-border/50 bg-card p-5 lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <TrendingUp className="h-4 w-4 text-accent" />
@@ -220,7 +200,7 @@ export default function StatsPage() {
                   <button
                     key={r}
                     onClick={() => setTrendRange(r)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`min-h-10 px-3 py-1.5 text-xs font-medium transition-colors ${
                       trendRange === r ? "bg-accent text-white" : "text-muted hover:text-foreground"
                     }`}
                   >
@@ -257,7 +237,7 @@ export default function StatsPage() {
           {/* Goals / Streak / Speed */}
           <div className="space-y-4">
             {/* Goals */}
-            <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-5">
+            <div className="rounded-lg border border-border/50 bg-card p-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
                 <Target className="h-4 w-4 text-accent" />
                 阅读目标
@@ -265,12 +245,17 @@ export default function StatsPage() {
               {goals.length > 0 ? (
                 <div className="space-y-3">
                   {goals.map((g) => (
-                    <div key={g.goal.id} className={`rounded-xl p-3 border ${g.achieved ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/30 bg-background/50"}`}>
+                    <div key={g.goal.id} className={`rounded-lg border p-3 ${g.achieved ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/50 bg-background/50"}`}>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-medium text-foreground">
                           {g.goal.goalType === "daily" ? "每日目标" : "每周目标"}
                         </span>
-                        {g.achieved && <span className="text-[10px] text-emerald-400">🎉 达成!</span>}
+                        {g.achieved && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+                            <Check className="h-3 w-3" />
+                            已达成
+                          </span>
+                        )}
                       </div>
                       {g.goal.targetMins > 0 && (
                         <div>
@@ -317,7 +302,7 @@ export default function StatsPage() {
                     <button
                       key={type}
                       onClick={() => { setEditingGoal(type); setGoalMins(type === "daily" ? "30" : "120"); setGoalBooks(""); }}
-                      className="w-full rounded-xl border border-dashed border-border/40 py-3 text-xs text-muted hover:text-foreground hover:border-accent/40 transition-all"
+                      className="min-h-10 w-full rounded-lg border border-dashed border-border/50 py-2.5 text-xs text-muted transition-colors hover:border-accent/40 hover:text-foreground"
                     >
                       + {type === "daily" ? "设定每日目标" : "设定每周目标"}
                     </button>
@@ -327,7 +312,7 @@ export default function StatsPage() {
 
               {/* Edit Modal Inline */}
               {editingGoal && (
-                <div className="mt-3 rounded-xl border border-border/40 bg-background/80 p-3 space-y-2">
+                <div className="mt-3 space-y-2 rounded-lg border border-border/50 bg-background/80 p-3">
                   <div className="flex items-center gap-2">
                     <input type="number" value={goalMins} onChange={(e) => setGoalMins(e.target.value)} className="w-20 rounded-md border border-border/60 bg-card px-2 py-1 text-sm text-foreground outline-none focus:border-accent/50" placeholder="分钟" />
                     <span className="text-xs text-muted">分钟</span>
@@ -345,7 +330,7 @@ export default function StatsPage() {
             </div>
 
             {/* Reading Speed */}
-            <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-5">
+            <div className="rounded-lg border border-border/50 bg-card p-5">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="h-4 w-4 text-violet-400" />
                 <span className="text-sm font-semibold text-foreground">阅读速度</span>
@@ -358,7 +343,7 @@ export default function StatsPage() {
 
         {/* ═══════ MONTHLY TREND ═══════ */}
         {(stats.monthlyStats || []).length > 0 && (
-          <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-5">
+          <div className="rounded-lg border border-border/50 bg-card p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground mb-4">
               <Calendar className="h-4 w-4 text-emerald-400" />
               月度趋势
@@ -390,7 +375,7 @@ export default function StatsPage() {
 
           {/* Genre Preferences */}
           {genrePercentages.length > 0 && (
-            <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-5">
+            <div className="rounded-lg border border-border/50 bg-card p-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground mb-4">
                 <PieChart className="h-4 w-4 text-rose-400" />
                 类型偏好
@@ -422,13 +407,13 @@ export default function StatsPage() {
           )}
 
           {/* Recent Sessions */}
-          <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-5">
+          <div className="rounded-lg border border-border/50 bg-card p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Clock className="h-4 w-4 text-blue-400" />
                 最近阅读
               </h2>
-              <Link href="/history" className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors">
+              <Link href="/history" className="flex min-h-10 items-center gap-1 text-xs text-accent transition-colors hover:text-accent/80">
                 查看全部 <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -438,7 +423,7 @@ export default function StatsPage() {
                   <Link
                     key={s.id}
                     href={`/comic/${s.comicId}`}
-                    className="group flex items-center gap-3 rounded-xl p-2.5 -mx-1 transition-all hover:bg-background/60"
+                    className="group -mx-1 flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-background/60"
                   >
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent text-xs font-bold shrink-0">
                       {i + 1}
@@ -462,25 +447,25 @@ export default function StatsPage() {
 
         {/* ═══════ STATS OVERVIEW (Totals) ═══════ */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-4 text-center">
+          <div className="rounded-lg border border-border/50 bg-card p-4 text-center">
             <div className="text-2xl font-bold text-foreground">{stats.totalSessions || 0}</div>
             <div className="text-xs text-muted mt-1">总阅读次数</div>
           </div>
-          <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-4 text-center">
+          <div className="rounded-lg border border-border/50 bg-card p-4 text-center">
             <div className="text-2xl font-bold text-foreground">{stats.totalComicsRead || 0}</div>
             <div className="text-xs text-muted mt-1">作品数</div>
           </div>
-          <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-4 text-center">
+          <div className="rounded-lg border border-border/50 bg-card p-4 text-center">
             <div className="text-2xl font-bold text-foreground">{stats.currentStreak || 0}</div>
             <div className="text-xs text-muted mt-1">当前连续天数</div>
           </div>
-          <div className="rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-4 text-center">
+          <div className="rounded-lg border border-border/50 bg-card p-4 text-center">
             <div className="text-2xl font-bold text-foreground">{stats.longestStreak || 0}</div>
             <div className="text-xs text-muted mt-1">最长连续天数</div>
           </div>
         </div>
 
-      </main>
-    </div>
+      </PageContent>
+    </AppShell>
   );
 }

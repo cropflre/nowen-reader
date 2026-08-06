@@ -38,6 +38,7 @@ interface NavbarProps {
   onAiSearchModeChange?: (mode: boolean) => void;
   onScanLibrary?: () => void;
   scanning?: boolean;
+  withinShell?: boolean;
 }
 
 export default function Navbar({
@@ -49,6 +50,7 @@ export default function Navbar({
   onAiSearchModeChange,
   onScanLibrary,
   scanning,
+  withinShell = false,
 }: NavbarProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const t = useTranslation();
@@ -61,12 +63,16 @@ export default function Navbar({
   const { siteName, siteIcon, scraperEnabled } = useSiteSettings();
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-surface/80 backdrop-blur-2xl backdrop-saturate-200">
+    <nav className={`fixed top-0 right-0 z-50 border-b border-border/50 bg-surface/90 backdrop-blur-xl ${
+      withinShell ? "left-0 lg:left-[220px] xl:left-[240px]" : "left-0"
+    }`}>
       <div className="mx-auto flex h-14 sm:h-16 max-w-[1760px] items-center justify-between px-6 sm:px-8 lg:px-12">
         {/* Logo — 点击返回仪表盘 */}
         <Link
           href="/"
-          className="flex items-center gap-2 sm:gap-2.5 shrink-0 rounded-xl transition-opacity hover:opacity-80"
+          className={`items-center gap-2 sm:gap-2.5 shrink-0 rounded-lg transition-opacity hover:opacity-80 ${
+            withinShell ? "flex lg:hidden" : "flex"
+          }`}
           title={t.navbar?.backToDashboard || "返回仪表盘"}
         >
           {siteIcon ? (
@@ -106,6 +112,7 @@ export default function Navbar({
             <Search className={`absolute ${onAiSearchModeChange ? "left-10" : "left-3"} h-4 w-4 text-muted`} />
             <input
               type="text"
+              aria-label={aiSearchMode ? "AI 搜索书库" : "搜索书库"}
               placeholder={aiSearchMode
                 ? (t.navbar?.aiSearchPlaceholder || "用自然语言搜索，如「关于巨人的漫画」")
                 : t.navbar.searchPlaceholder
@@ -231,8 +238,9 @@ function MoreMenu({
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
-        title="Menu"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
+        title="更多操作"
+        aria-label="更多操作"
         aria-expanded={open}
         aria-haspopup="true"
       >

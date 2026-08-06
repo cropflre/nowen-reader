@@ -12,7 +12,7 @@ import {
   Shuffle,
   BookOpen,
 } from "lucide-react";
-import DesktopSidebar from "@/components/DesktopSidebar";
+import AppShell from "@/components/AppShell";
 import DashboardTopBar from "@/components/DashboardTopBar";
 import { ContinueReading } from "@/components/ContinueReading";
 import ServerActivityPanel from "@/components/ServerActivityPanel";
@@ -58,13 +58,11 @@ export default function Home() {
   }, [refetch]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden" style={{ background: "var(--theme-background)" }}>
+    <AppShell className="overflow-x-hidden">
       {/* 背景氛围渐变 — 蓝紫光晕 */}
       <div className="dashboard-ambient-bg fixed inset-0 pointer-events-none z-0" />
 
-      <DesktopSidebar />
-
-      <div className="lg:ml-[220px] xl:ml-[240px] relative z-10">
+      <div className="relative z-10">
         <DashboardTopBar
           onUpload={() => setUploadDialogOpen(true)}
           uploading={uploading}
@@ -152,12 +150,12 @@ export default function Home() {
                   })}
                 </div>
               ) : (
-                <div className="dashboard-glass rounded-2xl p-8 text-center">
+                <div className="dashboard-glass rounded-lg p-8 text-center">
                   <p className="text-muted text-sm">{t.dashboard.emptyRecentlyAdded}</p>
                   {isAdmin && (
                     <button
                       onClick={() => setUploadDialogOpen(true)}
-                      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
+                      className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                     >
                       <Upload className="h-4 w-4" />
                       {t.dashboard.uploadFile}
@@ -171,7 +169,7 @@ export default function Home() {
             <div className="px-5 pb-20 sm:pb-8 sm:hidden">
               <Link
                 href="/books"
-                className="flex items-center justify-center gap-2 rounded-xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm font-medium text-accent hover:bg-accent/20 transition-colors"
+                className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-4 py-3 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
               >
                 <Layers className="h-4 w-4" />
                 {t.dashboard.enterLibrary}
@@ -196,7 +194,7 @@ export default function Home() {
         onClose={() => setUploadDialogOpen(false)}
         onUploaded={async () => { await refetch(); }}
       />
-    </div>
+    </AppShell>
   );
 }
 

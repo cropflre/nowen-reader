@@ -4,9 +4,7 @@ import { apiPath } from "@/lib/base-path";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Clock,
   BookOpen,
   Filter,
@@ -20,6 +18,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { calculateStoredReadingProgress, getReadingPageNumber, isStoredReadingFinished } from "@/lib/progress";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface ApiComic {
   id: string;
@@ -106,7 +106,6 @@ function getDateGroup(dateStr: string | null): string {
 const GROUP_ORDER = ["今天", "昨天", "近 7 天", "更早"];
 
 export default function HistoryPage() {
-  const router = useRouter();
   const t = useTranslation();
   const [comics, setComics] = useState<ApiComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,7 +173,7 @@ export default function HistoryPage() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-2xl bg-card/60" />
+            <div key={i} className="h-28 animate-pulse rounded-lg bg-card/60" />
           ))}
         </div>
       </div>
@@ -182,32 +181,16 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-6 lg:px-10 py-6 sm:py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <button
-          onClick={() => router.push("/")}
-          className="mb-4 flex items-center gap-1.5 text-sm text-muted hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {t.common?.back || "返回首页"}
-        </button>
-
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
-              <Clock className="h-6 w-6 sm:h-7 sm:w-7 text-accent" />
-              阅读历史
-            </h1>
-            <p className="mt-1 text-sm text-muted">
-              {summary.total > 0
-                ? `共 ${summary.total} 部作品，累计阅读 ${formatDuration(summary.totalTime)}`
-                : "开始阅读一本作品后，它会出现在这里。"}
-            </p>
-          </div>
-        </div>
-      </div>
-
+    <AppShell>
+      <PageHeader
+        title="阅读历史"
+        description={summary.total > 0
+          ? `共 ${summary.total} 部作品，累计阅读 ${formatDuration(summary.totalTime)}`
+          : "开始阅读一本作品后，它会出现在这里"}
+        icon={Clock}
+        width="wide"
+      />
+      <PageContent width="wide">
       {comics.length === 0 ? (
         <EmptyState />
       ) : (
@@ -220,7 +203,7 @@ export default function HistoryPage() {
               { icon: <BookMarked className="h-4 w-4" />, label: "在读", value: String(summary.readingCount), color: "text-blue-400" },
               { icon: <Sparkles className="h-4 w-4" />, label: "已完成", value: String(summary.finishedCount), color: "text-amber-400" },
             ].map((s) => (
-              <div key={s.label} className="rounded-xl border border-border/40 bg-card/60 backdrop-blur-sm p-3 sm:p-4">
+              <div key={s.label} className="rounded-lg border border-border/50 bg-card p-3 sm:p-4">
                 <div className={`flex items-center gap-2 ${s.color} mb-1`}>
                   {s.icon}
                   <span className="text-xs">{s.label}</span>
@@ -284,7 +267,8 @@ export default function HistoryPage() {
           </div>
         </>
       )}
-    </div>
+      </PageContent>
+    </AppShell>
   );
 }
 
@@ -316,11 +300,11 @@ function HistoryCard({ comic }: { comic: ApiComic }) {
   const progressBarWidth = hasStarted && progress === 0 ? 2 : progress;
 
   return (
-    <div className="group flex gap-3 sm:gap-4 rounded-2xl border border-border/30 bg-card/60 backdrop-blur-sm p-3 sm:p-4 transition-all hover:border-border/60 hover:bg-card/80">
+    <div className="group flex gap-3 rounded-lg border border-border/50 bg-card p-3 transition-colors hover:border-border hover:bg-card-hover sm:gap-4 sm:p-4">
       {/* Cover */}
       <Link
         href={`/comic/${comic.id}`}
-        className="relative h-20 w-14 sm:h-24 sm:w-[68px] flex-shrink-0 overflow-hidden rounded-xl bg-muted/10"
+        className="relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-muted/10 sm:h-24 sm:w-[68px]"
       >
         {comic.coverUrl ? (
           <Image
@@ -409,7 +393,7 @@ function HistoryCard({ comic }: { comic: ApiComic }) {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/10">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-lg bg-muted/10">
         <BookOpen className="h-8 w-8 text-muted/40" />
       </div>
       <h3 className="text-base font-semibold text-foreground mb-2">还没有阅读历史</h3>
@@ -417,8 +401,8 @@ function EmptyState() {
         开始阅读一本作品后，它会出现在这里。
       </p>
       <Link
-        href="/"
-        className="inline-flex items-center gap-2 rounded-xl bg-accent/10 text-accent px-5 py-2.5 text-sm font-medium hover:bg-accent/20 transition-all"
+        href="/books"
+        className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-accent/10 px-5 py-2.5 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
       >
         <BookOpen className="h-4 w-4" />
         去书库看看

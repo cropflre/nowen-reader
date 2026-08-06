@@ -5,11 +5,13 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Sparkles, RefreshCw, Brain, Loader2 } from "lucide-react";
+import { Sparkles, RefreshCw, Brain, Loader2 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { fetchGroupedComicMap, fetchGroups } from "@/api/groups";
 import type { ComicGroup } from "@/hooks/useComicTypes";
+import AppShell from "@/components/AppShell";
+import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface RecommendedComic {
   id: string;
@@ -144,23 +146,14 @@ export default function RecommendationsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="sticky top-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 sm:h-16 max-w-5xl items-center gap-2 sm:gap-4 px-3 sm:px-6">
-          <Link
-            href="/"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-muted transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-amber-400" />
-            <h1 className="text-lg font-bold text-foreground">
-              {t.recommend?.title || "Recommended for You"}
-            </h1>
-          </div>
-          <div className="flex-1" />
+    <AppShell>
+      <PageHeader
+        title={t.recommend?.title || "为你推荐"}
+        description="根据阅读记录与内容偏好生成推荐"
+        icon={Sparkles}
+        width="wide"
+        actions={
+          <>
           {aiConfigured && (
             <button
               onClick={fetchAiReasons}
@@ -179,10 +172,10 @@ export default function RecommendationsPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             <span className="hidden sm:inline">{t.recommend?.refresh || "Refresh"}</span>
           </button>
-        </div>
-      </div>
-
-      <main className="mx-auto max-w-5xl px-3 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
+          </>
+        }
+      />
+      <PageContent width="wide" className="pb-24 sm:pb-8">
         {loading && recommendations.length === 0 && (
           <div className="flex items-center justify-center py-32">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-accent" />
@@ -250,7 +243,7 @@ export default function RecommendationsPage() {
             </Link>
           ))}
         </div>
-      </main>
-    </div>
+      </PageContent>
+    </AppShell>
   );
 }
