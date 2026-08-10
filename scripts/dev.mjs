@@ -34,6 +34,22 @@ function portIsFree(port) {
   });
 }
 
+function terminateProcessTree(child) {
+  if (!child.pid || child.exitCode !== null || child.killed) return;
+
+  try {
+    if (isWindows) {
+      spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
+    } else {
+      child.kill("SIGTERM");
+    }
+  } catch {
+    // Process may already have exited.
+  }
+}
+
 if (!commandAvailable(goCommand, ["version"])) {
   fail("未检测到 Go。请先安装 Go 1.23+，并确认 go 已加入 PATH。");
 }
@@ -44,6 +60,10 @@ if (!existsSync(path.join(frontendDir, "package.json"))) {
 
 if (!(await portIsFree(backendPort))) {
   fail(`后端端口 ${backendPort} 已被占用。请先关闭占用该端口的旧开发进程后再重试。`);
+}
+
+if (!(await portIsFree(frontendPort))) {
+  fail(`前端端口 ${frontendPort} 已被占用。请先关闭占用该端口的旧开发进程后再重试。`);
 }
 
 const viteBin = path.join(
@@ -102,16 +122,10 @@ function stopAll(exitCode = 0) {
   stopping = true;
 
   for (const child of children) {
-    if (child.exitCode === null && !child.killed) {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // Process may already have exited.
-      }
-    }
+    terminateProcessTree(child);
   }
 
-  setTimeout(() => process.exit(exitCode), 800).unref();
+  setTimeout(() => process.exit(exitCode), 300).unref();
 }
 
 process.on("SIGINT", () => stopAll(0));
