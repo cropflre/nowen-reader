@@ -8,8 +8,8 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, "..");
 const frontendDir = path.join(rootDir, "frontend");
 const isWindows = process.platform === "win32";
-const npmCommand = isWindows ? "npm.cmd" : "npm";
 const goCommand = isWindows ? "go.exe" : "go";
+const windowsShell = process.env.ComSpec || "cmd.exe";
 const backendPort = 5080;
 const frontendPort = 5090;
 
@@ -21,6 +21,28 @@ function fail(message) {
 function commandAvailable(command, args) {
   const result = spawnSync(command, args, { stdio: "ignore", cwd: rootDir });
   return !result.error && result.status === 0;
+}
+
+function npmInvocation(args) {
+  if (isWindows) {
+    // npm on Windows is a .cmd shim. Spawning npm.cmd directly can throw
+    // EINVAL on some Node 20 / Windows combinations, so invoke it through
+    // the system command processor instead.
+    return {
+      command: windowsShell,
+      args: ["/d", "/s", "/c", `npm ${args.join(" ")}`],
+    };
+  }
+
+  return { command: "npm", args };
+}
+
+function runNpmSync(args, cwd) {
+  const invocation = npmInvocation(args);
+  return spawnSync(invocation.command, invocation.args, {
+    cwd,
+    stdio: "inherit",
+  });
 }
 
 function portIsFree(port) {
@@ -35,7 +57,7 @@ function portIsFree(port) {
 }
 
 function terminateProcessTree(child) {
-  if (!child.pid || child.exitCode !== null || child.killed) return;
+  if (!child?.pid || child.exitCode !== null || child.killed) return;
 
   try {
     if (isWindows) {
@@ -75,10 +97,7 @@ const viteBin = path.join(
 
 if (!existsSync(viteBin)) {
   console.log("[dev] 首次启动：正在安装前端依赖...");
-  const install = spawnSync(npmCommand, ["install"], {
-    cwd: frontendDir,
-    stdio: "inherit",
-  });
+  const install = runNpmSync(["install"], frontendDir);
   if (install.error || install.status !== 0) {
     fail("前端依赖安装失败，请检查 npm 输出后重试。");
   }
@@ -92,13 +111,32 @@ console.log("[dev] 按 Ctrl+C 同时停止前后端。\n");
 const children = [];
 let stopping = false;
 
+function stopAll(exitCode = 0) {
+  if (stopping) return;
+  stopping = true;
+
+  for (const child of children) {
+    terminateProcessTree(child);
+  }
+
+  setTimeout(() => process.exit(exitCode), 300).unref();
+}
+
 function start(name, command, args, cwd, env = process.env) {
-  const child = spawn(command, args, {
-    cwd,
-    env,
-    stdio: "inherit",
-    windowsHide: false,
-  });
+  let child;
+
+  try {
+    child = spawn(command, args, {
+      cwd,
+      env,
+      stdio: "inherit",
+      windowsHide: false,
+    });
+  } catch (error) {
+    console.error(`[dev] ${name} 启动失败: ${error.message}`);
+    stopAll(1);
+    return null;
+  }
 
   children.push(child);
 
@@ -117,15 +155,9 @@ function start(name, command, args, cwd, env = process.env) {
   return child;
 }
 
-function stopAll(exitCode = 0) {
-  if (stopping) return;
-  stopping = true;
-
-  for (const child of children) {
-    terminateProcessTree(child);
-  }
-
-  setTimeout(() => process.exit(exitCode), 300).unref();
+function startNpm(name, args, cwd) {
+  const invocation = npmInvocation(args);
+  return start(name, invocation.command, invocation.args, cwd);
 }
 
 process.on("SIGINT", () => stopAll(0));
@@ -139,4 +171,4 @@ start(
   { ...process.env, PORT: String(backendPort) },
 );
 
-start("前端", npmCommand, ["run", "dev"], frontendDir);
+startNpm("前端", ["run", "dev"], frontendDir);
