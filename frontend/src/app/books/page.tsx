@@ -533,6 +533,18 @@ export default function BooksPage() {
     return filteredComics;
   }, [filteredComics]);
 
+  const sortFieldLabel = {
+    title: t.home.sortByTitle,
+    addedAt: t.home.sortByAdded,
+    lastReadAt: t.home.sortByLastRead,
+    rating: t.home.sortByRating,
+    custom: t.home.sortByCustom,
+  }[sortBy] || t.home.sortByTitle;
+  const sortDirectionLabel = sortOrder === "asc" ? t.home.ascending : t.home.descending;
+  const nextSortDirectionLabel = sortOrder === "asc" ? t.home.descending : t.home.ascending;
+  const sortStatus = `${sortFieldLabel} · ${sortDirectionLabel}`;
+  const sortToggleLabel = `${sortStatus} → ${nextSortDirectionLabel}`;
+
   const effectiveTotalPages = Math.max(1, totalPages);
 
   useEffect(() => {
@@ -1006,6 +1018,7 @@ export default function BooksPage() {
               <StatsBar
                 totalComics={apiTotal}
                 filteredCount={apiTotal}
+                sortStatus={sortStatus}
               />
 
               {/* Sort & Filter Controls — horizontally scrollable on mobile */}
@@ -1125,7 +1138,8 @@ export default function BooksPage() {
                     setSortOrder((o) => (o === "asc" ? "desc" : "asc"))
                   }
                   className="motion-button flex h-8 w-8 items-center justify-center rounded-lg border border-border/40 bg-card text-muted transition-colors hover:text-foreground"
-                  title={sortOrder === "asc" ? t.home.ascending : t.home.descending}
+                  title={sortToggleLabel}
+                  aria-label={sortToggleLabel}
                 >
                   {sortOrder === "asc" ? "↑" : "↓"}
                 </button>

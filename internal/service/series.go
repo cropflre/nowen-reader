@@ -146,7 +146,7 @@ func DetectComicSeries(libraryID string, items []store.SeriesSourceItem) []store
 			LibraryID:        libraryID,
 			RootRelativePath: root,
 			Title:            root,
-			SortTitle:        strings.ToLower(root),
+			SortTitle:        store.BuildTitleSortKey(root),
 			CoverComicID:     members[0].source.ID,
 		}
 

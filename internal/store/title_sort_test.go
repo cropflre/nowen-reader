@@ -33,6 +33,65 @@ func TestBuildTitleSortKeyChinesePinyinOrder(t *testing.T) {
 	}
 }
 
+func TestSortSeriesShelfItemsChineseTitleDirections(t *testing.T) {
+	titles := []string{
+		"龙珠漫画",
+		"刺客信条：鹰之传奇",
+		"刺客信条：英灵殿",
+		"刺客信条：圣殿骑士",
+		"刺客信条：起义",
+		"刺客信条：密谋",
+		"刺客信条：记忆",
+		"刺客信条：羁绊 第01卷",
+		"刺客信条：刺客",
+		"刺客信条：王朝",
+		"镖人1-11（共11册）-许先哲",
+		"西游记漫画全套（共20册）",
+	}
+	items := make([]ComicListItem, len(titles))
+	for i, title := range titles {
+		// Leave TitleSortKey empty to verify the mixed-shelf fallback too.
+		items[i] = ComicListItem{ID: title, Title: title}
+	}
+
+	assertOrder := func(order string, want []string) {
+		t.Helper()
+		gotItems := append([]ComicListItem(nil), items...)
+		sortSeriesShelfItems(gotItems, "title", order)
+		got := make([]string, len(gotItems))
+		for i := range gotItems {
+			got[i] = gotItems[i].Title
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s title order mismatch: got %v, want %v", order, got, want)
+			}
+		}
+	}
+
+	ascending := []string{
+		"镖人1-11（共11册）-许先哲",
+		"刺客信条：刺客",
+		"刺客信条：羁绊 第01卷",
+		"刺客信条：记忆",
+		"刺客信条：密谋",
+		"刺客信条：起义",
+		"刺客信条：圣殿骑士",
+		"刺客信条：王朝",
+		"刺客信条：英灵殿",
+		"刺客信条：鹰之传奇",
+		"龙珠漫画",
+		"西游记漫画全套（共20册）",
+	}
+	assertOrder("asc", ascending)
+
+	descending := append([]string(nil), ascending...)
+	for left, right := 0, len(descending)-1; left < right; left, right = left+1, right-1 {
+		descending[left], descending[right] = descending[right], descending[left]
+	}
+	assertOrder("desc", descending)
+}
+
 func TestTitleSortKeySQLFunction(t *testing.T) {
 	dbPath := testDBPath(t)
 	if err := InitDB(dbPath); err != nil {

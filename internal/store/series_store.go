@@ -190,6 +190,7 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 		if locked[series.RootRelativePath] {
 			continue
 		}
+		sortTitle := BuildTitleSortKey(series.Title)
 		if _, err := tx.Exec(`
 			INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "detectionSource", "manualLocked", "createdAt", "updatedAt")
 			VALUES (?, ?, ?, ?, ?, ?, 'directory', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -198,7 +199,7 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 				"sortTitle" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."sortTitle" ELSE excluded."sortTitle" END,
 				"coverComicId" = CASE WHEN "ComicSeries"."coverComicId" = '' THEN excluded."coverComicId" ELSE "ComicSeries"."coverComicId" END,
 				"updatedAt" = CURRENT_TIMESTAMP
-		`, series.ID, series.LibraryID, series.RootRelativePath, series.Title, series.SortTitle, series.CoverComicID); err != nil {
+		`, series.ID, series.LibraryID, series.RootRelativePath, series.Title, sortTitle, series.CoverComicID); err != nil {
 			return err
 		}
 
@@ -537,6 +538,12 @@ func sortSeriesShelfItems(items []ComicListItem, sortBy, sortOrder string) {
 		}
 		return int64(*value)
 	}
+	titleSortKey := func(item ComicListItem) string {
+		if item.TitleSortKey != "" {
+			return item.TitleSortKey
+		}
+		return BuildTitleSortKey(item.Title)
+	}
 
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
@@ -557,10 +564,10 @@ func sortSeriesShelfItems(items []ComicListItem, sortBy, sortOrder string) {
 		case "metadataSource":
 			cmp = compareString(a.MetadataSource, b.MetadataSource)
 		default:
-			cmp = compareString(a.TitleSortKey, b.TitleSortKey)
+			cmp = compareString(titleSortKey(a), titleSortKey(b))
 		}
 		if cmp == 0 {
-			cmp = compareString(a.TitleSortKey, b.TitleSortKey)
+			cmp = compareString(titleSortKey(a), titleSortKey(b))
 		}
 		if cmp == 0 {
 			cmp = compareString(a.Title, b.Title)
@@ -678,7 +685,8 @@ func UpdateSeries(id, title, coverComicID string, manualLocked *bool) error {
 	args := []interface{}{}
 	if strings.TrimSpace(title) != "" {
 		sets = append(sets, `"title" = ?`, `"sortTitle" = ?`)
-		args = append(args, strings.TrimSpace(title), strings.ToLower(strings.TrimSpace(title)))
+		trimmedTitle := strings.TrimSpace(title)
+		args = append(args, trimmedTitle, BuildTitleSortKey(trimmedTitle))
 	}
 	if coverComicID != "" {
 		sets = append(sets, `"coverComicId" = ?`)

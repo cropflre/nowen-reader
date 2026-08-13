@@ -1,14 +1,15 @@
 "use client";
 
-import { Library, BookOpen, Clock } from "lucide-react";
+import { Library, BookOpen, ArrowUpDown } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
 interface StatsBarProps {
   totalComics: number;
   filteredCount: number;
+  sortStatus: string;
 }
 
-export default function StatsBar({ totalComics, filteredCount }: StatsBarProps) {
+export default function StatsBar({ totalComics, filteredCount, sortStatus }: StatsBarProps) {
   const t = useTranslation();
 
   return (
@@ -30,8 +31,8 @@ export default function StatsBar({ totalComics, filteredCount }: StatsBarProps) 
         )}
       </div>
       <div className="hidden sm:flex items-center gap-2 text-muted">
-        <Clock className="h-3.5 w-3.5" />
-        <span className="text-xs">{t.statsBar.recentUpdate}</span>
+        <ArrowUpDown className="h-3.5 w-3.5" />
+        <span className="text-xs">{sortStatus}</span>
       </div>
     </div>
   );
