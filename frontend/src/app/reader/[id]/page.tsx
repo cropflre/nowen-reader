@@ -96,7 +96,7 @@ export default function ReaderPage() {
   // State
   const [currentPage, setCurrentPage] = useState(0);
   const [mode, setMode] = useState<ComicReadingMode>("single");
-  const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches);
   const [isLandscape, setIsLandscape] = useState(() => typeof window !== "undefined" && window.innerWidth > window.innerHeight)
   useEffect(() => {
     const mql = window.matchMedia("(max-width: 767px)");
@@ -112,7 +112,8 @@ export default function ReaderPage() {
     setIsLandscape(mql.matches);
     return () => mql.removeEventListener("change", handler);
   }, []);
-  const effectiveMode: ComicReadingMode = isSmallScreen && mode === "double" ? "single" : mode;
+  // 尊重用户显式选择的阅读模式；小屏仅用于 UI 布局和提示，不再强制双页降级为单页。
+  const effectiveMode: ComicReadingMode = mode;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const isMobile = window.matchMedia("(max-width: 767px)").matches;
@@ -257,7 +258,6 @@ export default function ReaderPage() {
   const currentVolumeIdx = seriesVolumes.findIndex(v => v.comicId === comicId);
   const prevVolume = currentVolumeIdx > 0 ? seriesVolumes[currentVolumeIdx - 1] : null;
   const nextVolume = currentVolumeIdx >= 0 && currentVolumeIdx < seriesVolumes.length - 1 ? seriesVolumes[currentVolumeIdx + 1] : null;
-
   // 无感跨卷跳转
   const handleBoundaryReached = useCallback((dir: "next" | "prev") => {
     if (dir === "next" && nextVolume) {
@@ -382,14 +382,16 @@ export default function ReaderPage() {
     return () => window.removeEventListener("wheel", handleWheel);
   }, [mode, effectiveMode, currentPage, pages.length, showInfoPanel, showOptionsPanel, toolbarInteracting, handleBoundaryReached]);
 
-  // Fullscreen
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
+  // Fullscreen — fullscreenchange is the single source of truth for isFullscreen.
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen?.();
+      } else {
+        await document.exitFullscreen?.();
+      }
+    } catch {
+      // 浏览器拒绝或不支持全屏时保持当前状态，交由 fullscreenchange 同步真实结果。
     }
   }, []);
 
@@ -517,7 +519,6 @@ export default function ReaderPage() {
     if (reducedMotion) return t.readerToolbar?.realisticFlipDisabledReducedMotion || "系统已开启减少动态效果";
     return null;
   }, [isNovel, isPdf, usePdfView, effectiveMode, pages.length, isSmallScreen, reducedMotion, t]);
-
   const canUseRealisticFlip = realisticFlipDisabledReason === null;
 
   // Debug log for realistic flip conditions (dev only)
