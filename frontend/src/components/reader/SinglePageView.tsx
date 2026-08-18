@@ -43,7 +43,7 @@ export default function SinglePageView({
   const [imageError, setImageError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [scale, setScale] = useState(1);
-  // 拖拽平移偏移量（缩放后拖拽查看）
+  // 拖拽平移偏移量（缩放后或图片本身溢出视口时可拖拽查看）
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
   // 翻页动画方向
   const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
@@ -52,14 +52,46 @@ export default function SinglePageView({
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef<number>(1);
-  // 拖拽平移状态（缩放后单指拖拽）
+  // 拖拽平移状态（缩放后或图片溢出视口时单指拖拽）
   const panStartRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const isPanningRef = useRef(false);
   // 标记touch事件已处理翻页，防止后续合成click再次触发
   const touchHandledRef = useRef(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   // Preload next N pages
   useImagePreloader(pages, currentPage, preloadCount, comicId);
+
+  // 根据图片实际渲染尺寸计算可平移边界。使用 offsetWidth/offsetHeight
+  // 避免父级 transform 影响测量，从而同时支持 100% 比例的横向双页图和缩放后的图片。
+  const getPanBounds = useCallback((targetScale: number) => {
+    const viewport = viewportRef.current;
+    const img = imgRef.current;
+    if (!viewport || !img) return { x: 0, y: 0 };
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const scaledWidth = img.offsetWidth * targetScale;
+    const scaledHeight = img.offsetHeight * targetScale;
+
+    return {
+      x: Math.max(0, (scaledWidth - viewportRect.width) / 2),
+      y: Math.max(0, (scaledHeight - viewportRect.height) / 2),
+    };
+  }, []);
+
+  const clampTranslate = useCallback((next: { x: number; y: number }, targetScale: number) => {
+    const bounds = getPanBounds(targetScale);
+    return {
+      x: Math.max(-bounds.x, Math.min(bounds.x, next.x)),
+      y: Math.max(-bounds.y, Math.min(bounds.y, next.y)),
+    };
+  }, [getPanBounds]);
+
+  const canPan = useCallback((targetScale: number) => {
+    const bounds = getPanBounds(targetScale);
+    return bounds.x > 1 || bounds.y > 1;
+  }, [getPanBounds]);
 
   // Reset loaded state and scale when page changes
   useEffect(() => {
@@ -80,9 +112,17 @@ export default function SinglePageView({
     };
   }, [currentPage]);
 
+  // 视口尺寸变化后重新约束偏移，避免旋转屏幕/进入全屏后图片停在可视区域之外。
+  useEffect(() => {
+    const handleResize = () => {
+      setTranslate((prev) => clampTranslate(prev, scale));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [clampTranslate, scale]);
+
   // 检查缓存图片：组件挂载时或页码变化后，如果图片已在浏览器缓存中加载完成，
   // onLoad 可能不会触发，需要手动检查 img.complete 来解除 loading 状态
-  const imgRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
     const img = imgRef.current;
     if (img && img.complete && img.naturalWidth > 0) {
@@ -113,8 +153,8 @@ export default function SinglePageView({
         y: e.touches[0].clientY,
         time: Date.now(),
       };
-      // 缩放状态下准备拖拽
-      if (scale > 1.1) {
+      // 只有存在真实可平移区域时才抢占单指拖拽；普通图片继续保留滑动翻页。
+      if (canPan(scale)) {
         panStartRef.current = {
           x: e.touches[0].clientX,
           y: e.touches[0].clientY,
@@ -124,7 +164,7 @@ export default function SinglePageView({
         isPanningRef.current = false;
       }
     }
-  }, [scale, translate]);
+  }, [scale, translate, canPan]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
@@ -134,22 +174,27 @@ export default function SinglePageView({
       const dist = Math.hypot(dx, dy);
       const newScale = Math.min(3, Math.max(0.5, pinchStartScaleRef.current * (dist / pinchStartDistRef.current)));
       setScale(newScale);
+      setTranslate((prev) => clampTranslate(prev, newScale));
       e.preventDefault();
-    } else if (e.touches.length === 1 && panStartRef.current && scale > 1.1) {
-      // 缩放后单指拖拽平移
+    } else if (e.touches.length === 1 && panStartRef.current) {
       const dx = e.touches[0].clientX - panStartRef.current.x;
       const dy = e.touches[0].clientY - panStartRef.current.y;
-      // 移动超过 5px 判定为拖拽
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-        isPanningRef.current = true;
-      }
-      setTranslate({
+      const next = clampTranslate({
         x: panStartRef.current.tx + dx,
         y: panStartRef.current.ty + dy,
-      });
-      e.preventDefault();
+      }, scale);
+
+      // 只有实际发生了可见平移才判定为拖拽。若已经抵达边缘，继续向外滑仍可交给翻页逻辑处理。
+      if (
+        Math.abs(next.x - panStartRef.current.tx) > 5 ||
+        Math.abs(next.y - panStartRef.current.ty) > 5
+      ) {
+        isPanningRef.current = true;
+      }
+      setTranslate(next);
+      if (isPanningRef.current) e.preventDefault();
     }
-  }, [scale]);
+  }, [scale, clampTranslate]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     // 捏合缩放结束
@@ -159,14 +204,19 @@ export default function SinglePageView({
       if (Math.abs(scale - 1) < 0.15) {
         setScale(1);
         setTranslate({ x: 0, y: 0 });
+      } else {
+        setTranslate((prev) => clampTranslate(prev, scale));
       }
       return;
     }
 
-    // 如果正在拖拽平移，不触发翻页
+    // 如果正在拖拽平移，不触发翻页，并抑制浏览器随后合成的 click。
     if (isPanningRef.current) {
       isPanningRef.current = false;
       panStartRef.current = null;
+      touchStartRef.current = null;
+      touchHandledRef.current = true;
+      setTimeout(() => { touchHandledRef.current = false; }, 400);
       return;
     }
     panStartRef.current = null;
@@ -253,7 +303,7 @@ export default function SinglePageView({
         }
       }
     }
-  }, [direction, currentPage, pages.length, goToPage, onTapCenter, scale, onBoundaryReached]);
+  }, [direction, currentPage, pages.length, goToPage, onTapCenter, scale, onBoundaryReached, clampTranslate]);
 
   // 双击缩放（改进：双击位置为缩放中心）+ 延迟单击防止双击冲突
   const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
@@ -280,16 +330,17 @@ export default function SinglePageView({
         setScale(1);
         setTranslate({ x: 0, y: 0 });
       } else {
-        setScale(2);
+        const nextScale = 2;
+        setScale(nextScale);
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        setTranslate({
-          x: (centerX - clickX) * 1,
-          y: (centerY - clickY) * 1,
-        });
+        setTranslate(clampTranslate({
+          x: centerX - clickX,
+          y: centerY - clickY,
+        }, nextScale));
       }
       lastTapRef.current = { time: 0, x: 0, y: 0 };
       e.preventDefault();
@@ -338,18 +389,18 @@ export default function SinglePageView({
         }
       }
     }, 250);
-  }, [scale, direction, currentPage, pages.length, goToPage, onTapCenter, onBoundaryReached]);
+  }, [scale, direction, currentPage, pages.length, goToPage, onTapCenter, onBoundaryReached, clampTranslate]);
 
   // 根据 fitMode 计算图片样式
   const getImageClass = () => {
     switch (fitMode) {
       case "width":
-        return "w-full h-auto object-contain";
+        return "w-full h-auto shrink-0 object-contain";
       case "height":
-        return "h-full w-auto object-contain";
+        return "h-full w-auto max-w-none shrink-0 object-contain";
       case "container":
       default:
-        return "max-h-full max-w-full object-contain";
+        return "max-h-full max-w-full shrink-0 object-contain";
     }
   };
 
@@ -363,6 +414,7 @@ export default function SinglePageView({
 
   return (
     <div
+      ref={viewportRef}
       className={`relative flex h-dvh w-full cursor-pointer items-center justify-center select-none transition-colors duration-300 overflow-hidden ${
         readerTheme === "day" ? "bg-gray-100" : "bg-black"
       }`}
@@ -415,7 +467,12 @@ export default function SinglePageView({
             className={`${getImageClass()} transition-opacity duration-200 ${
               imageLoaded ? "opacity-100" : "opacity-0"
             }`}
-            onLoad={() => setImageLoaded(true)}
+            onLoad={() => {
+              setImageLoaded(true);
+              requestAnimationFrame(() => {
+                setTranslate((prev) => clampTranslate(prev, scale));
+              });
+            }}
             onError={() => setImageError(true)}
             draggable={false}
             style={imageFilter ? { filter: imageFilter } : undefined}
