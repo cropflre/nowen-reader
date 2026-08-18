@@ -166,6 +166,7 @@ Authorization: Bearer <token>
 - 没有任何书库访问权限的普通用户返回空列表，不会退化成全库查询。
 - `sortBy=title` 时会按服务端维护的 `titleSortKey` 排序，效果上 `第2卷` 在 `第10卷` 前，常见中文标题按拼音顺序排列。
 - `seriesView=true` 专供统一书架展示：服务端先执行当前列表的权限和筛选条件，再把命中的目录作品成员折叠为一个虚拟条目。虚拟条目的 ID 为 `series-<seriesId>`，不是真实漫画 ID；`comicCount` 表示目录作品包含的阅读单元数。客户端应从该条目进入 `/api/series/:id`，不要把虚拟 ID 传给漫画详情、阅读或下载接口。
+- 当 `seriesView=true&sortBy=title` 时，标记为书架系列的合集会作为一个连续排序块：合集名称决定该块在全局标题顺序中的位置，合集成员按 `shelfSortMode` 排列。`sortOrder=desc` 只反转排序块之间的顺序，不反转系列内部顺序。
 - 折叠在分页之前完成，响应中的 `total`、`pageSize` 和 `totalPages` 均按折叠后的逻辑作品计算。需要明确区分散本和目录作品的选择器应优先使用 `/api/catalog/items`，避免解析虚拟 ID。
 
 ### 合集可选作品列表
@@ -545,6 +546,8 @@ Content-Type: application/json
 {
   "id": 1,
   "name": "合集名称",
+  "shelfSeries": true,
+  "shelfSortMode": "custom",
   "comicCount": 3,
   "seriesList": [
     {
@@ -565,6 +568,33 @@ Content-Type: application/json
 - 普通用户的 `seriesList`、`seriesList[].comics` 和 `comics` 均按可查看书库过滤。
 - 普通用户无法访问合集内任何阅读单元时返回 `403`；管理员请求不存在的合集时返回 `404`。
 - `contentType=comic|novel` 可继续筛选详情；目录作品只参与漫画结果，小说仍以散本返回。
+
+### 书架系列排序
+
+`PUT /api/groups/:id` 可将普通合集标记为书架系列：
+
+```http
+PUT /api/groups/:id
+Content-Type: application/json
+
+{
+  "shelfSeries": true,
+  "shelfSortMode": "custom"
+}
+```
+
+`shelfSortMode` 支持：
+
+| 值 | 系列内部排序规则 |
+|:---|:---|
+| `custom` | 使用 `/api/groups/:id/series/reorder` 和 `/api/groups/:id/reorder` 保存的拖动顺序；目录作品区整体排在直属散本区之前 |
+| `publication` | 优先按作品元数据中的出版年份升序排列；年份相同或缺失时回退到拖动顺序，缺失年份排在末尾 |
+| `volume` | 按作品元数据标题的中文拼音与数字自然顺序排列，例如第 2 卷排在第 10 卷之前；相同时回退到拖动顺序 |
+
+- 只有 `seriesView=true&sortBy=title` 的书架列表会使用书架系列排序；其他排序字段不受影响。
+- 同一散本或目录作品最多只能属于一个已启用的书架系列，但仍可同时属于任意数量的普通合集。
+- 启用存在重复归属的合集，或向已启用合集添加已被其他书架系列占用的成员时返回 `409`。
+- 设置无效的 `shelfSortMode` 时返回 `400`。
 
 ### 分组元数据管理 🔒管理员
 

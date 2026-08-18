@@ -13,47 +13,55 @@ import (
 // ComicGroup CRUD
 // ============================================================
 
-var ErrGroupSeriesOrderMismatch = errors.New("series list does not match group membership")
+var (
+	ErrGroupSeriesOrderMismatch = errors.New("series list does not match group membership")
+	ErrShelfSeriesConflict      = errors.New("item already belongs to another shelf series")
+	ErrShelfSortModeInvalid     = errors.New("invalid shelf series sort mode")
+)
 
 // ComicGroupWithCount 返回系列信息及其漫画数量。
 type ComicGroupWithCount struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	CoverURL    string `json:"coverUrl"`
-	SortOrder   int    `json:"sortOrder"`
-	Author      string `json:"author"`
-	Description string `json:"description"`
-	Tags        string `json:"tags"`
-	Year        *int   `json:"year"`
-	Publisher   string `json:"publisher"`
-	Language    string `json:"language"`
-	Genre       string `json:"genre"`
-	Status      string `json:"status"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
-	ComicCount  int    `json:"comicCount"`
-	ContentType string `json:"contentType"` // 系列主要内容类型: "comic" | "novel"
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	CoverURL      string `json:"coverUrl"`
+	SortOrder     int    `json:"sortOrder"`
+	ShelfSeries   bool   `json:"shelfSeries"`
+	ShelfSortMode string `json:"shelfSortMode"`
+	Author        string `json:"author"`
+	Description   string `json:"description"`
+	Tags          string `json:"tags"`
+	Year          *int   `json:"year"`
+	Publisher     string `json:"publisher"`
+	Language      string `json:"language"`
+	Genre         string `json:"genre"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
+	ComicCount    int    `json:"comicCount"`
+	ContentType   string `json:"contentType"` // 系列主要内容类型: "comic" | "novel"
 }
 
 // ComicGroupDetail 包含系列详情和所属漫画列表。
 type ComicGroupDetail struct {
-	ID          int               `json:"id"`
-	Name        string            `json:"name"`
-	CoverURL    string            `json:"coverUrl"`
-	SortOrder   int               `json:"sortOrder"`
-	Author      string            `json:"author"`
-	Description string            `json:"description"`
-	Tags        string            `json:"tags"`
-	Year        *int              `json:"year"`
-	Publisher   string            `json:"publisher"`
-	Language    string            `json:"language"`
-	Genre       string            `json:"genre"`
-	Status      string            `json:"status"`
-	CreatedAt   string            `json:"createdAt"`
-	UpdatedAt   string            `json:"updatedAt"`
-	ComicCount  int               `json:"comicCount"`
-	SeriesList  []GroupSeriesItem `json:"seriesList"`
-	Comics      []GroupComicItem  `json:"comics"`
+	ID            int               `json:"id"`
+	Name          string            `json:"name"`
+	CoverURL      string            `json:"coverUrl"`
+	SortOrder     int               `json:"sortOrder"`
+	ShelfSeries   bool              `json:"shelfSeries"`
+	ShelfSortMode string            `json:"shelfSortMode"`
+	Author        string            `json:"author"`
+	Description   string            `json:"description"`
+	Tags          string            `json:"tags"`
+	Year          *int              `json:"year"`
+	Publisher     string            `json:"publisher"`
+	Language      string            `json:"language"`
+	Genre         string            `json:"genre"`
+	Status        string            `json:"status"`
+	CreatedAt     string            `json:"createdAt"`
+	UpdatedAt     string            `json:"updatedAt"`
+	ComicCount    int               `json:"comicCount"`
+	SeriesList    []GroupSeriesItem `json:"seriesList"`
+	Comics        []GroupComicItem  `json:"comics"`
 }
 
 // GroupSeriesItem 分组内的目录作品条目。
@@ -219,7 +227,7 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 	}
 	args := append(joinArgs, whereArgs...)
 	rows, err := db.Query(expandedMembersCTE+`
-		SELECT g."id", g."name", g."coverUrl", g."sortOrder",
+		SELECT g."id", g."name", g."coverUrl", g."sortOrder", g."shelfSeries", g."shelfSortMode",
 		       g."author", g."description", g."tags", g."year",
 		       g."publisher", g."language", g."genre", g."status",
 		       g."createdAt", g."updatedAt",
@@ -243,7 +251,7 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 	for rows.Next() {
 		var g ComicGroupWithCount
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&g.ID, &g.Name, &g.CoverURL, &g.SortOrder,
+		if err := rows.Scan(&g.ID, &g.Name, &g.CoverURL, &g.SortOrder, &g.ShelfSeries, &g.ShelfSortMode,
 			&g.Author, &g.Description, &g.Tags, &g.Year,
 			&g.Publisher, &g.Language, &g.Genre, &g.Status,
 			&createdAt, &updatedAt, &g.ComicCount, &g.ContentType); err != nil {
@@ -304,13 +312,13 @@ func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupD
 
 	queryArgs := append(countArgs, groupID)
 	err := db.QueryRow(`
-		SELECT g."id", g."name", g."coverUrl", g."sortOrder",
+		SELECT g."id", g."name", g."coverUrl", g."sortOrder", g."shelfSeries", g."shelfSortMode",
 		       g."author", g."description", g."tags", g."year",
 		       g."publisher", g."language", g."genre", g."status",
 		       g."createdAt", g."updatedAt",
 		       `+countSubQuery+` as comicCount
 		FROM "ComicGroup" g WHERE g."id" = ?
-	`, queryArgs...).Scan(&g.ID, &g.Name, &g.CoverURL, &g.SortOrder,
+	`, queryArgs...).Scan(&g.ID, &g.Name, &g.CoverURL, &g.SortOrder, &g.ShelfSeries, &g.ShelfSortMode,
 		&g.Author, &g.Description, &g.Tags, &g.Year,
 		&g.Publisher, &g.Language, &g.Genre, &g.Status,
 		&createdAt, &updatedAt, &g.ComicCount)
@@ -582,6 +590,83 @@ func UpdateGroup(groupID int, name string, coverURL string) error {
 	return err
 }
 
+// UpdateGroupShelfSettings controls whether a collection participates in the
+// title-sorted shelf and how its members are ordered inside that shelf block.
+func UpdateGroupShelfSettings(groupID int, enabled bool, sortMode string) error {
+	sortMode = strings.ToLower(strings.TrimSpace(sortMode))
+	if sortMode == "" {
+		sortMode = "custom"
+	}
+	if sortMode != "custom" && sortMode != "publication" && sortMode != "volume" {
+		return ErrShelfSortModeInvalid
+	}
+	if enabled {
+		var conflict int
+		err := db.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1
+				FROM "ComicGroupSeries" mine
+				JOIN "ComicGroupSeries" other ON other."seriesId" = mine."seriesId" AND other."groupId" != mine."groupId"
+				JOIN "ComicGroup" owner ON owner."id" = other."groupId" AND owner."shelfSeries" = 1
+				WHERE mine."groupId" = ?
+				UNION ALL
+				SELECT 1
+				FROM "ComicGroupItem" mine
+				JOIN "ComicGroupItem" other ON other."comicId" = mine."comicId" AND other."groupId" != mine."groupId"
+				JOIN "ComicGroup" owner ON owner."id" = other."groupId" AND owner."shelfSeries" = 1
+				WHERE mine."groupId" = ?
+				LIMIT 1
+			)
+		`, groupID, groupID).Scan(&conflict)
+		if err != nil {
+			return err
+		}
+		if conflict != 0 {
+			return ErrShelfSeriesConflict
+		}
+	}
+
+	_, err := db.Exec(`
+		UPDATE "ComicGroup"
+		SET "shelfSeries" = ?, "shelfSortMode" = ?, "updatedAt" = ?
+		WHERE "id" = ?
+	`, enabled, sortMode, time.Now().UTC(), groupID)
+	return err
+}
+
+func groupUsesShelfSeries(groupID int) (bool, error) {
+	var enabled bool
+	err := db.QueryRow(`SELECT "shelfSeries" FROM "ComicGroup" WHERE "id" = ?`, groupID).Scan(&enabled)
+	return enabled, err
+}
+
+func ensureShelfMembersAvailable(groupID int, memberTable, memberColumn string, memberIDs []string) error {
+	if len(memberIDs) == 0 {
+		return nil
+	}
+	enabled, err := groupUsesShelfSeries(groupID)
+	if err != nil || !enabled {
+		return err
+	}
+	for _, memberID := range memberIDs {
+		var conflict int
+		query := fmt.Sprintf(`
+			SELECT EXISTS (
+				SELECT 1 FROM %s member
+				JOIN "ComicGroup" owner ON owner."id" = member."groupId" AND owner."shelfSeries" = 1
+				WHERE member.%s = ? AND member."groupId" != ?
+			)
+		`, memberTable, memberColumn)
+		if err := db.QueryRow(query, memberID, groupID).Scan(&conflict); err != nil {
+			return err
+		}
+		if conflict != 0 {
+			return ErrShelfSeriesConflict
+		}
+	}
+	return nil
+}
+
 func GetGroupStoredCoverURL(groupID int) (string, error) {
 	var coverURL string
 	err := db.QueryRow(`SELECT "coverUrl" FROM "ComicGroup" WHERE "id" = ?`, groupID).Scan(&coverURL)
@@ -771,6 +856,9 @@ func naturalSortKey(s string) string {
 // AddComicsToGroup 将多本漫画添加到分组。
 // 添加前会按标题自然排序（数字感知），确保 "第3卷" 排在 "第29卷" 前面。
 func AddComicsToGroup(groupID int, comicIDs []string) error {
+	if err := ensureShelfMembersAvailable(groupID, `"ComicGroupItem"`, `"comicId"`, comicIDs); err != nil {
+		return err
+	}
 	// 查询漫画标题用于自然排序
 	if len(comicIDs) > 1 {
 		titleMap := make(map[string]string) // comicID → title
@@ -828,6 +916,9 @@ func RemoveComicFromGroup(groupID int, comicID string) error {
 func AddSeriesToGroup(groupID int, seriesIDs []string) error {
 	if len(seriesIDs) == 0 {
 		return nil
+	}
+	if err := ensureShelfMembersAvailable(groupID, `"ComicGroupSeries"`, `"seriesId"`, seriesIDs); err != nil {
+		return err
 	}
 	var maxIdx int
 	db.QueryRow(`SELECT COALESCE(MAX("sortIndex"), -1) FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID).Scan(&maxIdx)

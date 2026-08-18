@@ -181,31 +181,74 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 	}
 
 	var body struct {
-		Name        string  `json:"name"`
-		CoverURL    string  `json:"coverUrl"`
-		Author      *string `json:"author"`
-		Description *string `json:"description"`
-		Tags        *string `json:"tags"`
-		Year        *int    `json:"year"`
-		Publisher   *string `json:"publisher"`
-		Language    *string `json:"language"`
-		Genre       *string `json:"genre"`
-		Status      *string `json:"status"`
+		Name          *string `json:"name"`
+		CoverURL      *string `json:"coverUrl"`
+		Author        *string `json:"author"`
+		Description   *string `json:"description"`
+		Tags          *string `json:"tags"`
+		Year          *int    `json:"year"`
+		Publisher     *string `json:"publisher"`
+		Language      *string `json:"language"`
+		Genre         *string `json:"genre"`
+		Status        *string `json:"status"`
+		ShelfSeries   *bool   `json:"shelfSeries"`
+		ShelfSortMode *string `json:"shelfSortMode"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
-
-	// 更新基本信息（名称和封面）
-	if err := store.UpdateGroup(id, body.Name, body.CoverURL); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新分组失败"})
+	current, err := store.GetGroupByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取分组失败"})
 		return
+	}
+	if current == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "分组不存在"})
+		return
+	}
+	if body.ShelfSeries != nil || body.ShelfSortMode != nil {
+		enabled := current.ShelfSeries
+		sortMode := current.ShelfSortMode
+		if body.ShelfSeries != nil {
+			enabled = *body.ShelfSeries
+		}
+		if body.ShelfSortMode != nil {
+			sortMode = *body.ShelfSortMode
+		}
+		if err := store.UpdateGroupShelfSettings(id, enabled, sortMode); err != nil {
+			if errors.Is(err, store.ErrShelfSeriesConflict) {
+				c.JSON(http.StatusConflict, gin.H{"error": "部分作品已属于其他书架系列"})
+				return
+			}
+			if errors.Is(err, store.ErrShelfSortModeInvalid) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列内部排序方式"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新书架系列设置失败"})
+			return
+		}
+	}
+
+	// 名称与封面是局部更新；只修改书架设置时无需重复提交它们。
+	if body.Name != nil || body.CoverURL != nil {
+		name := current.Name
+		coverURL := ""
+		if body.Name != nil {
+			name = *body.Name
+		}
+		if body.CoverURL != nil {
+			coverURL = *body.CoverURL
+		}
+		if err := store.UpdateGroup(id, name, coverURL); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新分组失败"})
+			return
+		}
 	}
 
 	// 如果提供了外部封面 URL，触发异步下载到本地缓存
-	if body.CoverURL != "" && (strings.HasPrefix(body.CoverURL, "http://") || strings.HasPrefix(body.CoverURL, "https://")) {
-		go service.DownloadGroupCover(id, body.CoverURL)
+	if body.CoverURL != nil && *body.CoverURL != "" && (strings.HasPrefix(*body.CoverURL, "http://") || strings.HasPrefix(*body.CoverURL, "https://")) {
+		go service.DownloadGroupCover(id, *body.CoverURL)
 	}
 
 	// 如果有元数据字段，也一并更新
@@ -268,6 +311,10 @@ func (h *GroupHandler) AddComics(c *gin.Context) {
 	}
 
 	if err := store.AddComicsToGroup(id, body.ComicIDs); err != nil {
+		if errors.Is(err, store.ErrShelfSeriesConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "漫画已属于其他书架系列"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "添加漫画到分组失败"})
 		return
 	}
@@ -318,6 +365,10 @@ func (h *GroupHandler) AddSeries(c *gin.Context) {
 	}
 
 	if err := store.AddSeriesToGroup(id, body.SeriesIDs); err != nil {
+		if errors.Is(err, store.ErrShelfSeriesConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "目录作品已属于其他书架系列"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "添加目录作品到分组失败"})
 		return
 	}

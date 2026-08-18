@@ -358,6 +358,9 @@ func createTables() error {
 			"userId"      TEXT NOT NULL DEFAULT '',
 			"coverUrl"    TEXT NOT NULL DEFAULT '',
 			"sortOrder"   INTEGER NOT NULL DEFAULT 0,
+			"shelfSeries" BOOLEAN NOT NULL DEFAULT 0,
+			"shelfSortMode" TEXT NOT NULL DEFAULT 'custom',
+			"shelfSortTitle" TEXT NOT NULL DEFAULT '',
 			"author"      TEXT NOT NULL DEFAULT '',
 			"description" TEXT NOT NULL DEFAULT '',
 			"tags"        TEXT NOT NULL DEFAULT '',
@@ -371,6 +374,16 @@ func createTables() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS "ComicGroup_name_idx" ON "ComicGroup"("name")`,
 		`CREATE INDEX IF NOT EXISTS "ComicGroup_userId_idx" ON "ComicGroup"("userId")`,
+		`CREATE INDEX IF NOT EXISTS "ComicGroup_shelfSeries_sort_idx" ON "ComicGroup"("shelfSeries", "shelfSortTitle", "id")`,
+		`CREATE TRIGGER IF NOT EXISTS "ComicGroup_shelfSortTitle_ai" AFTER INSERT ON "ComicGroup"
+		 WHEN new."shelfSortTitle" = ''
+		 BEGIN
+		   UPDATE "ComicGroup" SET "shelfSortTitle" = title_sort_key(new."name") WHERE "id" = new."id";
+		 END`,
+		`CREATE TRIGGER IF NOT EXISTS "ComicGroup_shelfSortTitle_au" AFTER UPDATE OF "name" ON "ComicGroup"
+		 BEGIN
+		   UPDATE "ComicGroup" SET "shelfSortTitle" = title_sort_key(new."name") WHERE "id" = new."id";
+		 END`,
 
 		// ============================================================
 		// ComicGroupItem (分组内漫画关联)

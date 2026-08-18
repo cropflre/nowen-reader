@@ -2,6 +2,7 @@ package store
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -90,6 +91,76 @@ func TestSortSeriesShelfItemsChineseTitleDirections(t *testing.T) {
 		descending[left], descending[right] = descending[right], descending[left]
 	}
 	assertOrder("desc", descending)
+}
+
+func TestSortSeriesShelfItemsKeepsShelfSeriesTogether(t *testing.T) {
+	items := []ComicListItem{
+		{ID: "series-memory", Title: "刺客信条：记忆"},
+		{ID: "dragon-ball", Title: "龙珠漫画"},
+		{ID: "series-eagle", Title: "刺客信条：鹰之传奇"},
+		{ID: "blades", Title: "镖人"},
+		{ID: "series-dynasty", Title: "刺客信条：王朝"},
+	}
+	groupKey := BuildTitleSortKey("刺客信条")
+	orders := map[string]shelfSeriesOrder{
+		"series-memory":  {GroupID: 7, GroupSortKey: groupKey, SortMode: "custom", MemberIndex: 1},
+		"series-eagle":   {GroupID: 7, GroupSortKey: groupKey, SortMode: "custom", MemberIndex: 0},
+		"series-dynasty": {GroupID: 7, GroupSortKey: groupKey, SortMode: "custom", MemberIndex: 2},
+	}
+
+	assertTitles := func(order string, want []string) {
+		t.Helper()
+		got := append([]ComicListItem(nil), items...)
+		sortSeriesShelfItemsWithOrders(got, "title", order, orders)
+		for index, title := range want {
+			if got[index].Title != title {
+				t.Fatalf("%s title order = %v, want %v", order, comicTitles(got), want)
+			}
+		}
+	}
+
+	seriesOrder := []string{"刺客信条：鹰之传奇", "刺客信条：记忆", "刺客信条：王朝"}
+	assertTitles("asc", append([]string{"镖人"}, append(seriesOrder, "龙珠漫画")...))
+	assertTitles("desc", append([]string{"龙珠漫画"}, append(seriesOrder, "镖人")...))
+}
+
+func TestSortSeriesShelfItemsInternalModes(t *testing.T) {
+	year2020, year2022 := 2020, 2022
+	items := []ComicListItem{
+		{ID: "book-10", Title: "系列 第10卷"},
+		{ID: "book-2", Title: "系列 第2卷"},
+		{ID: "book-unknown", Title: "系列 外传"},
+	}
+	groupKey := BuildTitleSortKey("系列")
+	orders := map[string]shelfSeriesOrder{
+		"book-10":      {GroupID: 8, GroupSortKey: groupKey, SortMode: "volume", MemberIndex: 0, MemberYear: &year2022, MemberSortKey: BuildTitleSortKey("系列 第10卷")},
+		"book-2":       {GroupID: 8, GroupSortKey: groupKey, SortMode: "volume", MemberIndex: 1, MemberYear: &year2020, MemberSortKey: BuildTitleSortKey("系列 第2卷")},
+		"book-unknown": {GroupID: 8, GroupSortKey: groupKey, SortMode: "volume", MemberIndex: 2, MemberSortKey: BuildTitleSortKey("系列 外传")},
+	}
+
+	volume := append([]ComicListItem(nil), items...)
+	sortSeriesShelfItemsWithOrders(volume, "title", "desc", orders)
+	if got := comicTitles(volume); strings.Join(got, "|") != "系列 第2卷|系列 第10卷|系列 外传" {
+		t.Fatalf("volume order = %v", got)
+	}
+
+	for id, order := range orders {
+		order.SortMode = "publication"
+		orders[id] = order
+	}
+	publication := append([]ComicListItem(nil), items...)
+	sortSeriesShelfItemsWithOrders(publication, "title", "asc", orders)
+	if got := comicTitles(publication); strings.Join(got, "|") != "系列 第2卷|系列 第10卷|系列 外传" {
+		t.Fatalf("publication order = %v", got)
+	}
+}
+
+func comicTitles(items []ComicListItem) []string {
+	titles := make([]string, len(items))
+	for index := range items {
+		titles[index] = items[index].Title
+	}
+	return titles
 }
 
 func TestTitleSortKeySQLFunction(t *testing.T) {

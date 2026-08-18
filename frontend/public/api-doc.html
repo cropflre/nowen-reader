@@ -983,7 +983,7 @@
         <tr><td>untagged</td><td>string</td><td>No</td><td>Only return comics without tags (&quot;true&quot;)</td></tr>
         <tr><td>page</td><td>int</td><td>No</td><td>Page number (default: 0)</td></tr>
         <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (default: 0)</td></tr>
-        <tr><td>seriesView</td><td>string</td><td>No</td><td><span data-en="Set to true to collapse matching directory-series members before pagination. total and totalPages describe the resulting logical shelf, and comicCount is the number of reading units in a directory work. Omit it for ordinary per-publication rows." data-zh="设为 true 时，在分页前将命中的目录作品成员折叠为书架虚拟条目，total 与 totalPages 按折叠后的逻辑作品计算，comicCount 表示目录作品的阅读单元数；省略时仍逐本返回。">Set to true to collapse matching directory-series members before pagination. total and totalPages describe the resulting logical shelf, and comicCount is the number of reading units in a directory work. Omit it for ordinary per-publication rows.</span></td></tr>
+        <tr><td>seriesView</td><td>string</td><td>No</td><td><span data-en="Set to true to collapse matching directory-series members before pagination. With sortBy=title, enabled shelf-series groups form contiguous blocks: the group name positions the block and shelfSortMode orders its members. Descending order reverses blocks, not member order. total and totalPages describe the logical shelf." data-zh="设为 true 时，在分页前将命中的目录作品成员折叠为书架虚拟条目。配合 sortBy=title，已启用的书架系列会形成连续排序块：合集名称决定块的位置，shelfSortMode 决定内部顺序；降序只反转系列块，不反转系列内部。total 与 totalPages 按逻辑书架计算。">Set to true to collapse matching directory-series members before pagination. With sortBy=title, enabled shelf-series groups form contiguous blocks: the group name positions the block and shelfSortMode orders its members. Descending order reverses blocks, not member order. total and totalPages describe the logical shelf.</span></td></tr>
       </tbody>
     </table>
 
@@ -4344,6 +4344,8 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <pre class="code-block"><code>{
   "id": 1,
   "name": "Group name",
+  "shelfSeries": true,
+  "shelfSortMode": "custom",
   "comicCount": 3,
   "seriesList": [{
     "id": "ser_xxx",
@@ -4388,7 +4390,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="Update group" data-zh="更新分组">Update group</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Updates group name, cover URL, author, description, tags, year, publisher, language, genre, and status." data-zh="更新分组名称、封面URL、作者、描述、标签、年份、出版社、语言、类型和状态。">Updates group name, cover URL, author, description, tags, year, publisher, language, genre, and status.</span></p>
+    <p class="description"><span data-en="Updates group metadata and shelf-series settings. When shelfSeries is enabled, the group becomes a contiguous block in seriesView title sorting. shelfSortMode accepts custom, publication, or volume. An item already owned by another enabled shelf series returns 409; an invalid mode returns 400." data-zh="更新分组元数据与书架系列设置。启用 shelfSeries 后，该合集在 seriesView 标题排序中成为连续排序块。shelfSortMode 支持 custom、publication、volume；成员已被其他书架系列占用时返回 409，模式无效时返回 400。">Updates group metadata and shelf-series settings. When shelfSeries is enabled, the group becomes a contiguous block in seriesView title sorting. shelfSortMode accepts custom, publication, or volume. An item already owned by another enabled shelf series returns 409; an invalid mode returns 400.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead><tbody>
       <tr><td>id</td><td>int</td><td>Yes</td><td>Group ID</td></tr>
@@ -4404,7 +4406,9 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   "publisher": "string",
   "language": "string",
   "genre": "string",
-  "status": "string"
+  "status": "string",
+  "shelfSeries": true,
+  "shelfSortMode": "custom"
 }</code></pre>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{"success": true}</code></pre>

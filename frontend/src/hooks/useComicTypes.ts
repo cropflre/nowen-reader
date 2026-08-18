@@ -69,6 +69,8 @@ export interface ComicGroup {
   name: string;
   coverUrl: string;
   sortOrder: number;
+  shelfSeries: boolean;
+  shelfSortMode: "custom" | "publication" | "volume";
   author: string;
   description: string;
   tags: string;
@@ -112,6 +114,8 @@ export interface ComicGroupDetail {
   name: string;
   coverUrl: string;
   sortOrder: number;
+  shelfSeries: boolean;
+  shelfSortMode: "custom" | "publication" | "volume";
   author: string;
   description: string;
   tags: string;

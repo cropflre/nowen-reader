@@ -762,6 +762,38 @@ func TestReorderGroupSeries(t *testing.T) {
 	}
 }
 
+func TestShelfSeriesRejectsDuplicateSeriesOwnership(t *testing.T) {
+	setupTestDB(t)
+	if _, err := db.Exec(`INSERT INTO "Library" ("id", "name", "rootPath") VALUES ('shelf-lib', 'Shelf', '/tmp')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title") VALUES ('shared-series', 'shelf-lib', 'shared', 'Shared')`); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := CreateGroup("First")
+	second, _ := CreateGroup("Second")
+	if err := AddSeriesToGroup(int(first), []string{"shared-series"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddSeriesToGroup(int(second), []string{"shared-series"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateGroupShelfSettings(int(first), true, "custom"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateGroupShelfSettings(int(second), true, "custom"); err != ErrShelfSeriesConflict {
+		t.Fatalf("second shelf series error = %v, want conflict", err)
+	}
+
+	third, _ := CreateGroup("Third")
+	if err := UpdateGroupShelfSettings(int(third), true, "volume"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddSeriesToGroup(int(third), []string{"shared-series"}); err != ErrShelfSeriesConflict {
+		t.Fatalf("add to enabled shelf series error = %v, want conflict", err)
+	}
+}
+
 func TestCreateGroupWithItemsRollsBackInvalidMembership(t *testing.T) {
 	setupTestDB(t)
 

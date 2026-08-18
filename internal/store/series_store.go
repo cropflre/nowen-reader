@@ -475,7 +475,14 @@ func getAllComicsSeriesView(opts ComicListOptions) (*ComicListResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	sortSeriesShelfItems(items, opts.SortBy, opts.SortOrder)
+	shelfOrders := map[string]shelfSeriesOrder{}
+	if opts.SortBy == "" || opts.SortBy == "title" {
+		shelfOrders, err = loadShelfSeriesOrders()
+		if err != nil {
+			return nil, fmt.Errorf("load shelf series order: %w", err)
+		}
+	}
+	sortSeriesShelfItemsWithOrders(items, opts.SortBy, opts.SortOrder, shelfOrders)
 
 	total := len(items)
 	totalPages := 1
@@ -506,7 +513,75 @@ func getAllComicsSeriesView(opts ComicListOptions) (*ComicListResult, error) {
 	}, nil
 }
 
+type shelfSeriesOrder struct {
+	GroupID       int
+	GroupSortKey  string
+	SortMode      string
+	MemberKind    int
+	MemberIndex   int
+	MemberYear    *int
+	MemberSortKey string
+}
+
+func loadShelfSeriesOrders() (map[string]shelfSeriesOrder, error) {
+	rows, err := db.Query(`
+		SELECT 'series', cgs."seriesId", g."id",
+		       COALESCE(NULLIF(g."shelfSortTitle", ''), title_sort_key(g."name")),
+		       g."shelfSortMode", cgs."sortIndex", cs."year", cs."sortTitle"
+		FROM "ComicGroup" g
+		JOIN "ComicGroupSeries" cgs ON cgs."groupId" = g."id"
+		JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
+		WHERE g."shelfSeries" = 1
+		UNION ALL
+		SELECT 'comic', gi."comicId", g."id",
+		       COALESCE(NULLIF(g."shelfSortTitle", ''), title_sort_key(g."name")),
+		       g."shelfSortMode", gi."sortIndex", c."year",
+		       COALESCE(NULLIF(c."titleSortKey", ''), title_sort_key(c."title"))
+		FROM "ComicGroup" g
+		JOIN "ComicGroupItem" gi ON gi."groupId" = g."id"
+		JOIN "Comic" c ON c."id" = gi."comicId"
+		WHERE g."shelfSeries" = 1
+		ORDER BY 3 ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	orders := make(map[string]shelfSeriesOrder)
+	for rows.Next() {
+		var kind, id string
+		var order shelfSeriesOrder
+		var year sql.NullInt64
+		if err := rows.Scan(
+			&kind, &id, &order.GroupID, &order.GroupSortKey, &order.SortMode,
+			&order.MemberIndex, &year, &order.MemberSortKey,
+		); err != nil {
+			return nil, err
+		}
+		if kind == "comic" {
+			order.MemberKind = 1
+		}
+		if year.Valid {
+			value := int(year.Int64)
+			order.MemberYear = &value
+		}
+		key := id
+		if kind == "series" {
+			key = SeriesShelfIDPrefix + id
+		}
+		if _, exists := orders[key]; !exists {
+			orders[key] = order
+		}
+	}
+	return orders, rows.Err()
+}
+
 func sortSeriesShelfItems(items []ComicListItem, sortBy, sortOrder string) {
+	sortSeriesShelfItemsWithOrders(items, sortBy, sortOrder, nil)
+}
+
+func sortSeriesShelfItemsWithOrders(items []ComicListItem, sortBy, sortOrder string, shelfOrders map[string]shelfSeriesOrder) {
 	desc := strings.EqualFold(sortOrder, "desc")
 	compareString := func(a, b string) int {
 		if a < b {
@@ -564,6 +639,70 @@ func sortSeriesShelfItems(items []ComicListItem, sortBy, sortOrder string) {
 		case "metadataSource":
 			cmp = compareString(a.MetadataSource, b.MetadataSource)
 		default:
+			aShelf, aGrouped := shelfOrders[a.ID]
+			bShelf, bGrouped := shelfOrders[b.ID]
+			aBlockKey := titleSortKey(a)
+			bBlockKey := titleSortKey(b)
+			if aGrouped {
+				aBlockKey = aShelf.GroupSortKey
+			}
+			if bGrouped {
+				bBlockKey = bShelf.GroupSortKey
+			}
+			cmp = compareString(aBlockKey, bBlockKey)
+			if desc {
+				cmp = -cmp
+			}
+			if cmp == 0 && aGrouped && bGrouped && aShelf.GroupID == bShelf.GroupID {
+				switch aShelf.SortMode {
+				case "publication":
+					aYear, bYear := int64(1<<62), int64(1<<62)
+					if aShelf.MemberYear != nil {
+						aYear = int64(*aShelf.MemberYear)
+					}
+					if bShelf.MemberYear != nil {
+						bYear = int64(*bShelf.MemberYear)
+					}
+					cmp = compareInt64(aYear, bYear)
+					if cmp == 0 {
+						cmp = compareInt64(int64(aShelf.MemberIndex), int64(bShelf.MemberIndex))
+					}
+				case "volume":
+					cmp = compareString(aShelf.MemberSortKey, bShelf.MemberSortKey)
+					if cmp == 0 {
+						cmp = compareInt64(int64(aShelf.MemberIndex), int64(bShelf.MemberIndex))
+					}
+				default:
+					cmp = compareInt64(int64(aShelf.MemberKind), int64(bShelf.MemberKind))
+					if cmp == 0 {
+						cmp = compareInt64(int64(aShelf.MemberIndex), int64(bShelf.MemberIndex))
+					}
+				}
+				if cmp == 0 {
+					cmp = compareString(titleSortKey(a), titleSortKey(b))
+				}
+				if cmp == 0 {
+					cmp = compareString(a.ID, b.ID)
+				}
+				return cmp < 0
+			}
+			if cmp == 0 {
+				aBlockID := "item:" + a.ID
+				bBlockID := "item:" + b.ID
+				if aGrouped {
+					aBlockID = fmt.Sprintf("group:%020d", aShelf.GroupID)
+				}
+				if bGrouped {
+					bBlockID = fmt.Sprintf("group:%020d", bShelf.GroupID)
+				}
+				cmp = compareString(aBlockID, bBlockID)
+				if desc {
+					cmp = -cmp
+				}
+			}
+			if cmp != 0 {
+				return cmp < 0
+			}
 			cmp = compareString(titleSortKey(a), titleSortKey(b))
 		}
 		if cmp == 0 {

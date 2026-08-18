@@ -58,6 +58,26 @@ export async function updateGroup(groupId: number, name: string, coverUrl?: stri
   }
 }
 
+/** 设置合集是否作为书架系列，以及系列内部排序方式。 */
+export async function updateGroupShelfSettings(
+  groupId: number,
+  shelfSeries: boolean,
+  shelfSortMode: "custom" | "publication" | "volume"
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await apiClient.put(`/api/groups/${groupId}`, {
+      shelfSeries,
+      shelfSortMode,
+    });
+    return { success: true };
+  } catch (error) {
+    const message = typeof error === "object" && error !== null && "message" in error
+      ? String(error.message)
+      : "更新书架系列设置失败";
+    return { success: false, error: message };
+  }
+}
+
 /** 更新系列元数�?*/
 export async function updateGroupMetadata(
   groupId: number,

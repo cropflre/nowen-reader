@@ -28,6 +28,7 @@ import {
   Loader2,
   AlertTriangle,
   Copy,
+  ListOrdered,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useToast } from "@/components/Toast";
@@ -36,6 +37,7 @@ import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/p
 import {
   fetchGroupDetail,
   updateGroup,
+  updateGroupShelfSettings,
   deleteGroup,
   removeComicFromGroup,
   removeSeriesFromGroup,
@@ -148,6 +150,7 @@ export default function GroupDetailPage() {
   const [seriesTouchDragId, setSeriesTouchDragId] = useState<string | null>(null);
   const [seriesReordering, setSeriesReordering] = useState(false);
   const [seriesSavingId, setSeriesSavingId] = useState<string | null>(null);
+  const [shelfSettingsSaving, setShelfSettingsSaving] = useState(false);
   const seriesListRef = useRef<HTMLDivElement>(null);
 
   const loadGroup = useCallback(async () => {
@@ -170,6 +173,28 @@ export default function GroupDetailPage() {
     }
     setLoading(false);
   }, [groupId, contentType]);
+
+  const handleShelfSettingsChange = useCallback(async (
+    shelfSeries: boolean,
+    shelfSortMode: "custom" | "publication" | "volume"
+  ) => {
+    if (!group || shelfSettingsSaving) return;
+    setShelfSettingsSaving(true);
+    const previous = group;
+    setGroup({ ...group, shelfSeries, shelfSortMode });
+    const result = await updateGroupShelfSettings(
+      group.id,
+      shelfSeries,
+      shelfSortMode
+    );
+    if (result.success) {
+      toast.success(shelfSeries ? "书架系列设置已更新" : "已停止参与书架系列排序");
+    } else {
+      setGroup(previous);
+      toast.error(result.error || "更新书架系列设置失败");
+    }
+    setShelfSettingsSaving(false);
+  }, [group, shelfSettingsSaving, toast]);
 
   useEffect(() => {
     loadGroup();
@@ -1474,6 +1499,57 @@ export default function GroupDetailPage() {
             </div>
           </div>
         </div>
+
+        {isAdmin && (
+          <section className="mb-7 border-y border-border/40 py-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <ListOrdered className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground">书架系列排序</div>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    启用后，合集名称决定整个系列在按标题书架中的位置，内部顺序不会随升降序反转。
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
+                {group.shelfSeries && (
+                  <select
+                    value={group.shelfSortMode || "custom"}
+                    disabled={shelfSettingsSaving}
+                    onChange={(event) => handleShelfSettingsChange(
+                      true,
+                      event.target.value as "custom" | "publication" | "volume"
+                    )}
+                    className="h-9 rounded-lg border border-border/60 bg-card px-3 text-sm text-foreground outline-none focus:border-accent/60 disabled:opacity-50"
+                    aria-label="系列内部排序方式"
+                  >
+                    <option value="custom">自定义拖动顺序</option>
+                    <option value="publication">出版年份</option>
+                    <option value="volume">卷号与标题</option>
+                  </select>
+                )}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={group.shelfSeries}
+                  aria-label="作为书架系列排序"
+                  disabled={shelfSettingsSaving}
+                  onClick={() => handleShelfSettingsChange(!group.shelfSeries, group.shelfSortMode || "custom")}
+                  className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+                    group.shelfSeries ? "bg-accent" : "bg-border"
+                  }`}
+                >
+                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    group.shelfSeries ? "translate-x-6" : "translate-x-1"
+                  }`} />
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* 合集内容 */}
         <div className="mb-4 flex items-center justify-between">
