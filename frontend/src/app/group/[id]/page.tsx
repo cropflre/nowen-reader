@@ -1542,7 +1542,7 @@ export default function GroupDetailPage() {
                     group.shelfSeries ? "bg-accent" : "bg-border"
                   }`}
                 >
-                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                  <span className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
                     group.shelfSeries ? "translate-x-6" : "translate-x-1"
                   }`} />
                 </button>
