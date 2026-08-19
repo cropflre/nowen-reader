@@ -51,3 +51,8 @@ services:
       # - UMASK=0002
       # 如果 NAS/SMB/NFS 无法 chown，且 PUID/PGID 仍无法写入，可开启宽松回退
       # - PERMISSION_FIX_MODE=relaxed
+      # 如果“容器创建时已有文件能打开，但后来新增文件 permission denied”，
+      # 可临时开启 recursive，重建容器后递归修复已有文件；修好后建议切回 auto，避免大书库每次启动遍历。
+      # - PERMISSION_FIX_MODE=recursive
+      # NAS/SMB/NFS 无法 chown 时使用递归宽松模式（会回退到 a+rwX，请仅在可信媒体目录使用）
+      # - PERMISSION_FIX_MODE=recursive-relaxed
