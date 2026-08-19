@@ -85,6 +85,11 @@ services:
       # - UMASK=0002
       # 如果 NAS/SMB/NFS 无法 chown，且 PUID/PGID 仍无法写入，可开启宽松回退
       # - PERMISSION_FIX_MODE=relaxed
+      # 如果 compose 创建时已有漫画正常、后来新增文件 permission denied，
+      # 可临时开启 recursive 并重建容器做一次递归修复；修好后建议切回 auto。
+      # - PERMISSION_FIX_MODE=recursive
+      # 飞牛共享目录/SMB 无法 chown 时使用递归宽松模式（会回退到 a+rwX）
+      # - PERMISSION_FIX_MODE=recursive-relaxed
 
     # 内存限制（飞牛OS设备内存通常有限，可根据需要调整）
     deploy:
