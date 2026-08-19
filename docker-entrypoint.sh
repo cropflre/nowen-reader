@@ -58,20 +58,82 @@ mkdir -p "${NOVELS_DIR}" 2>/dev/null || true
 
 # ============================================================
 # 权限修复函数
-# 策略：先验证 appuser 是否真的可写，再按需修复。
 # PERMISSION_FIX_MODE:
-#   auto    - 默认：尝试 chown/chmod 到 PUID:PGID + 组可写
-#   relaxed - auto 失败后，再回退到 a+rwX（适合无法 chown 的 NAS/SMB）
-#   off     - 不修复权限，只做可写性检测
+#   auto              - 默认：仅在根目录不可写时尝试修复，避免大书库每次启动递归扫盘
+#   relaxed           - auto 失败后回退到 a+rwX（适合无法 chown 的 NAS/SMB）
+#   recursive         - 强制递归修复现有文件。适合“旧文件正常、后来新增文件 permission denied”
+#   recursive-relaxed - recursive + a+rwX 回退。适合 NAS/SMB/NFS 无法 chown 的场景
+#   off               - 不修复权限，只做根目录可写性检测
+#
+# recursive 模式可能遍历大量文件，建议只在修复权限时临时开启；修好后切回 auto。
 # ============================================================
 user_can_write() {
     local dir="$1"
     su-exec appuser sh -c 'test -d "$1" && touch "$1/.nowen-reader-write-test" && rm -f "$1/.nowen-reader-write-test"' sh "$dir" >/dev/null 2>&1
 }
 
+is_recursive_mode() {
+    case "$PERMISSION_FIX_MODE" in
+        recursive|recursive-relaxed|recursive-permissive) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_relaxed_mode() {
+    case "$PERMISSION_FIX_MODE" in
+        relaxed|permissive|recursive-relaxed|recursive-permissive) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+recursive_fix_permissions() {
+    local dir="$1"
+
+    echo "[init] Recursively fixing permissions for $dir..."
+    echo "[init]    This may take a while on large NAS libraries."
+
+    if chown -R "${PUID}:${PGID}" "$dir" 2>/dev/null; then
+        echo "[init] ✅ recursive owner set to ${PUID}:${PGID}: $dir"
+    else
+        echo "[init] ⚠️  recursive chown failed for $dir (common on NAS/NFS/CIFS/SMB mounts)"
+    fi
+
+    if chmod -R u+rwX,g+rwX "$dir" 2>/dev/null; then
+        echo "[init] ✅ recursive user/group permissions applied: $dir"
+    else
+        echo "[init] ⚠️  recursive chmod u+rwX,g+rwX failed for $dir"
+    fi
+
+    if user_can_write "$dir"; then
+        echo "[init] ✅ writable by appuser after recursive repair: $dir"
+        return
+    fi
+
+    if is_relaxed_mode; then
+        echo "[init] ⚠️  trying recursive relaxed chmod a+rwX for $dir"
+        if chmod -R a+rwX "$dir" 2>/dev/null && user_can_write "$dir"; then
+            echo "[init] ✅ recursive relaxed permissions applied: $dir"
+            return
+        fi
+    fi
+
+    echo "[init] ❌ appuser still cannot write after recursive repair: $dir"
+    echo "[init]    Check the host/NAS ACL and set PUID/PGID to the owner of the media files."
+    if ! is_relaxed_mode; then
+        echo "[init]    For NAS/SMB/NFS mounts that reject chown, try PERMISSION_FIX_MODE=recursive-relaxed."
+    fi
+}
+
 fix_permissions() {
     local dir="$1"
     if [ ! -d "$dir" ]; then
+        return
+    fi
+
+    # recursive 模式必须绕过“根目录可写就直接返回”的快速路径。
+    # 否则后来新增且权限不同的媒体文件永远不会被修复。
+    if is_recursive_mode; then
+        recursive_fix_permissions "$dir"
         return
     fi
 
@@ -96,7 +158,7 @@ fix_permissions() {
         return
     fi
 
-    # Existing SQLite files, thumbnails, and uploaded files may also need adjustment.
+    # 根目录仍不可写时，再递归修复已有文件。
     if chown -R "${PUID}:${PGID}" "$dir" 2>/dev/null; then
         chmod -R u+rwX,g+rwX "$dir" 2>/dev/null || true
         if user_can_write "$dir"; then
@@ -117,7 +179,7 @@ fix_permissions() {
 
     # Some NAS/SMB mounts map container users to a guest/nobody identity. Make the
     # broad fallback explicit so operators can opt in instead of silently using 777.
-    if [ "$PERMISSION_FIX_MODE" = "relaxed" ] || [ "$PERMISSION_FIX_MODE" = "permissive" ]; then
+    if is_relaxed_mode; then
         echo "[init] ⚠️  trying relaxed chmod a+rwX for $dir"
         if chmod -R a+rwX "$dir" 2>/dev/null && user_can_write "$dir"; then
             echo "[init] ✅ relaxed permissions allow writes: $dir"
