@@ -1,4 +1,4 @@
-# NowenReader
+# Nowen Reader（弄文阅读）
 
 <p align="center">
   <img src="https://img.shields.io/github/license/cropflre/nowen-reader?style=flat-square" alt="License" />
@@ -32,7 +32,7 @@
 
 ## 💡 Introduction
 
-NowenReader is a self-hosted manga / novel management and reading platform optimized for NAS and personal server environments.
+Nowen Reader（弄文阅读） is a self-hosted manga / novel management and reading platform optimized for NAS and personal server environments.
 
 | 🏆 Highlights | Description |
 |:---|:---|
@@ -127,7 +127,7 @@ To deploy at `https://example.com/reader/`, set `BASE_PATH=/reader` and configur
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                  NowenReader Architecture                │
+│              Nowen Reader Architecture                  │
 ├──────────────────────┬──────────────────────────────────┤
 │   Frontend (SPA)     │   Backend (Go)                   │
 │  React 19 + Vite 6   │   Gin + SQLite (WAL + FTS5)      │
@@ -175,7 +175,7 @@ If this project helps you, please consider starring it ⭐
 
 ## 💖 Support & Community
 
-If NowenReader is useful to you, you can support continued development via Alipay or WeChat. You can also follow the WeChat Official Account **Nowen 开源实验室** or join the QQ group for help, feedback, and feature discussions.
+If Nowen Reader（弄文阅读） is useful to you, you can support continued development via Alipay or WeChat. You can also follow the WeChat Official Account **Nowen 开源实验室** or join the QQ group for help, feedback, and feature discussions.
 
 <table>
   <tr>
