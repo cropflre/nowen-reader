@@ -6,6 +6,7 @@ import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../widgets/authenticated_image.dart';
 
 /// 合集详情页。
@@ -56,6 +57,127 @@ class _GroupDetailV2ScreenState
         _loading = false;
         _error = error.toString();
       });
+    }
+  }
+
+  Future<void> _showEditDialog(Map<String, dynamic> detail) async {
+    final nameController =
+        TextEditingController(text: detail['name']?.toString() ?? '');
+    final coverController = TextEditingController();
+    var resetCover = false;
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('编辑合集'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: '合集名称',
+                    hintText: '输入合集名称',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: coverController,
+                  enabled: !resetCover,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: '封面图片 URL',
+                    hintText: 'https://example.com/cover.jpg',
+                    helperText: '留空保持当前封面；支持 HTTP/HTTPS 图片地址',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: resetCover,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('恢复默认封面'),
+                  subtitle: const Text('清除自定义封面，自动使用合集第一本作品的封面'),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      resetCover = value ?? false;
+                      if (resetCover) coverController.clear();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final name = nameController.text.trim();
+    final coverUrl = coverController.text.trim();
+    nameController.dispose();
+    coverController.dispose();
+
+    if (shouldSave != true) return;
+    if (name.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('合集名称不能为空')),
+        );
+      }
+      return;
+    }
+    if (!resetCover &&
+        coverUrl.isNotEmpty &&
+        !coverUrl.startsWith('http://') &&
+        !coverUrl.startsWith('https://')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('封面地址需以 http:// 或 https:// 开头')),
+        );
+      }
+      return;
+    }
+
+    final payload = <String, dynamic>{'name': name};
+    if (resetCover) {
+      payload['coverUrl'] = '';
+    } else if (coverUrl.isNotEmpty) {
+      payload['coverUrl'] = coverUrl;
+    }
+
+    try {
+      await ref.read(apiClientProvider).put(
+            '/groups/${widget.groupId}',
+            data: payload,
+          );
+      ref.invalidate(groupsProvider);
+      ref.invalidate(groupedComicMapProvider);
+      await _loadDetail();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resetCover ? '合集已更新，封面已恢复默认' : '合集已更新')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失败: $error')),
+        );
+      }
     }
   }
 
@@ -183,6 +305,11 @@ class _GroupDetailV2ScreenState
               pinned: true,
               title: Text(name),
               actions: [
+                IconButton(
+                  tooltip: '编辑合集',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => _showEditDialog(detail),
+                ),
                 IconButton(
                   tooltip: _gridView ? '列表视图' : '网格视图',
                   icon: Icon(_gridView
