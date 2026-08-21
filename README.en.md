@@ -170,6 +170,25 @@ If this project helps you, please consider starring it ⭐
 ## 📮 Contact
 
 - 🐛 Bug / Feature: [GitHub Issues](https://github.com/cropflre/nowen-reader/issues) / [Discussions](https://github.com/cropflre/nowen-reader/discussions)
+- 💬 QQ Group: **1093473044**
+- 📢 WeChat Official Account: **Nowen 开源实验室**
+
+## 💖 Support & Community
+
+If NowenReader is useful to you, you can support continued development via Alipay or WeChat. You can also follow the WeChat Official Account **Nowen 开源实验室** or join the QQ group for help, feedback, and feature discussions.
+
+<table>
+  <tr>
+    <td align="center" width="50%"><b>Alipay</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-note/main/frontend/src/assets/sponsor/zhifubao.png" alt="Alipay donation QR code" width="240"></td>
+    <td align="center" width="50%"><b>WeChat Donation</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-note/main/frontend/src/assets/sponsor/weixin.jpg" alt="WeChat donation QR code" width="240"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>WeChat Official Account · Nowen 开源实验室</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-video/main/docs/assets/branding/nowen-open-lab-wechat.jpg" alt="WeChat Official Account · Nowen 开源实验室" width="240"></td>
+    <td align="center"><b>QQ Group · 1093473044</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-note/main/frontend/src/assets/feedback/qq-group.jpg" alt="Nowen QQ Group QR code" width="240"></td>
+  </tr>
+</table>
+
+> Donations are entirely optional and do not affect free and open-source use of the project. Thank you for supporting the Nowen open-source projects ❤️
 
 ## 📄 License
 
