@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/animations.dart';
 
@@ -42,6 +44,11 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     _createController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _invalidateGroupCaches() {
+    ref.invalidate(groupsProvider);
+    ref.invalidate(groupedComicMapProvider);
   }
 
   Future<void> _loadGroups() async {
@@ -90,6 +97,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       final api = ref.read(comicApiProvider);
       await api.createGroup(name.trim());
       _createController.clear();
+      _invalidateGroupCaches();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('合集已创建')),
@@ -126,6 +134,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     try {
       final api = ref.read(comicApiProvider);
       await api.deleteGroup(groupId);
+      _invalidateGroupCaches();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('合集已删除')),
@@ -136,6 +145,126 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('删除失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showEditCollectionDialog(ComicGroup group) async {
+    final nameController = TextEditingController(text: group.name);
+    final coverController = TextEditingController();
+    var resetCover = false;
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('编辑合集'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: '合集名称',
+                    hintText: '输入合集名称',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: coverController,
+                  enabled: !resetCover,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: '封面图片 URL',
+                    hintText: 'https://example.com/cover.jpg',
+                    helperText: '留空保持当前封面；支持 HTTP/HTTPS 图片地址',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: resetCover,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('恢复默认封面'),
+                  subtitle: const Text('清除自定义封面，自动使用合集第一本作品的封面'),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      resetCover = value ?? false;
+                      if (resetCover) coverController.clear();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final name = nameController.text.trim();
+    final coverUrl = coverController.text.trim();
+    nameController.dispose();
+    coverController.dispose();
+
+    if (shouldSave != true) return;
+    if (name.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('合集名称不能为空')),
+        );
+      }
+      return;
+    }
+    if (!resetCover &&
+        coverUrl.isNotEmpty &&
+        !coverUrl.startsWith('http://') &&
+        !coverUrl.startsWith('https://')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('封面地址需以 http:// 或 https:// 开头')),
+        );
+      }
+      return;
+    }
+
+    final payload = <String, dynamic>{'name': name};
+    if (resetCover) {
+      payload['coverUrl'] = '';
+    } else if (coverUrl.isNotEmpty) {
+      payload['coverUrl'] = coverUrl;
+    }
+
+    try {
+      await ref.read(apiClientProvider).put(
+            '/groups/${group.id}',
+            data: payload,
+          );
+      _invalidateGroupCaches();
+      await _loadGroups();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resetCover ? '合集已更新，封面已恢复默认' : '合集已更新')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失败: $e')),
         );
       }
     }
@@ -651,6 +780,15 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 context.push('/group/${group.id}');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.edit_outlined, color: cs.primary),
+              title: const Text('编辑合集'),
+              subtitle: const Text('修改名称或设置自定义封面'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showEditCollectionDialog(group);
               },
             ),
             ListTile(
