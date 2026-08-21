@@ -1,4 +1,4 @@
-# NowenReader
+# Nowen Reader（弄文阅读）
 
 <p align="center">
   <img src="https://img.shields.io/github/license/cropflre/nowen-reader?style=flat-square" alt="License" />
@@ -34,7 +34,7 @@
 
 ## 💡 项目简介
 
-NowenReader 是一个专为 NAS 与个人服务器场景优化的自托管漫画 / 小说管理阅读平台。
+Nowen Reader（弄文阅读）是一个专为 NAS 与个人服务器场景优化的自托管漫画 / 小说管理阅读平台。
 
 | 🏆 核心优势 | 说明 |
 |:---|:---|
@@ -129,7 +129,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                  NowenReader Architecture                │
+│              Nowen Reader Architecture                  │
 ├──────────────────────┬──────────────────────────────────┤
 │   Frontend (SPA)     │   Backend (Go)                   │
 │  React 19 + Vite 6   │   Gin + SQLite (WAL + FTS5)      │
@@ -179,7 +179,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## 💖 赞赏与交流
 
-如果 NowenReader 对你有帮助，欢迎通过支付宝或微信赞赏支持项目持续维护。也欢迎关注微信公众号「Nowen 开源实验室」或加入 QQ 群交流使用体验、反馈问题和新功能建议。
+如果 Nowen Reader（弄文阅读）对你有帮助，欢迎通过支付宝或微信赞赏支持项目持续维护。也欢迎关注微信公众号「Nowen 开源实验室」或加入 QQ 群交流使用体验、反馈问题和新功能建议。
 
 <table>
   <tr>
