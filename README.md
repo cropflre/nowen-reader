@@ -1,4 +1,4 @@
-# Nowen Reader（弄文阅读）
+<h1 align="center">Nowen Reader（弄文阅读）</h1>
 
 <p align="center">
   <img src="https://img.shields.io/github/license/cropflre/nowen-reader?style=flat-square" alt="License" />
