@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/api/api_client.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/continue_reading.dart';
@@ -21,13 +22,16 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  static const _groupByFolderPreferenceKey = 'home_group_by_folder';
+
   final _scrollController = ScrollController();
-  bool _groupByFolder = true; // 默认按文件夹收起
+  bool _groupByFolder = true; // 首次使用默认按文件夹收起，之后记住用户选择
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadGroupByFolderPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final currentParams = ref.read(comicListProvider).params;
       if (currentParams.search != null ||
@@ -45,6 +49,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(comicListProvider.notifier).loadComics();
       }
     });
+  }
+
+  Future<void> _loadGroupByFolderPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getBool(_groupByFolderPreferenceKey);
+    if (!mounted || saved == null) return;
+    setState(() => _groupByFolder = saved);
+  }
+
+  Future<void> _toggleGroupByFolder() async {
+    final next = !_groupByFolder;
+    setState(() => _groupByFolder = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_groupByFolderPreferenceKey, next);
   }
 
   @override
@@ -214,7 +232,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        setState(() => _groupByFolder = !_groupByFolder);
+        _toggleGroupByFolder();
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
