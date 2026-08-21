@@ -175,6 +175,24 @@ docker compose -f docker-compose.prod.yml up -d
 
 - 🐛 Bug / 功能建议：[GitHub Issues](https://github.com/cropflre/nowen-reader/issues) / [Discussions](https://github.com/cropflre/nowen-reader/discussions)
 - 💬 QQ 交流群：**1093473044**
+- 📢 微信公众号：**Nowen 开源实验室**
+
+## 💖 赞赏与交流
+
+如果 NowenReader 对你有帮助，欢迎通过支付宝或微信赞赏支持项目持续维护。也欢迎关注微信公众号「Nowen 开源实验室」或加入 QQ 群交流使用体验、反馈问题和新功能建议。
+
+<table>
+  <tr>
+    <td align="center" width="50%"><b>支付宝赞赏</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-note/main/frontend/src/assets/sponsor/zhifubao.png" alt="支付宝赞赏码" width="240"></td>
+    <td align="center" width="50%"><b>微信赞赏</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-note/main/frontend/src/assets/sponsor/weixin.jpg" alt="微信赞赏码" width="240"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>微信公众号 · Nowen 开源实验室</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-video/main/docs/assets/branding/nowen-open-lab-wechat.jpg" alt="微信公众号 · Nowen 开源实验室" width="240"></td>
+    <td align="center"><b>QQ 交流群 · 1093473044</b><br><br><img src="https://raw.githubusercontent.com/cropflre/nowen-note/main/frontend/src/assets/feedback/qq-group.jpg" alt="Nowen QQ 交流群二维码" width="240"></td>
+  </tr>
+</table>
+
+> 赞赏完全自愿，不影响项目的免费开源使用。感谢每一位支持 Nowen 开源项目的朋友 ❤️
 
 ## 📄 开源协议
 
