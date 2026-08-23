@@ -862,10 +862,12 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 	}
 
 	type comicUpdate struct {
-		ID         string
-		NewLibID   string
-		NewRelPath string
-		NewType    string
+		ID           string
+		NewLibID     string
+		NewRelPath   string
+		NewType      string
+		Moved        bool
+		TypeFixed    bool
 	}
 	var toUpdate []comicUpdate
 
@@ -883,9 +885,12 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 		newLibID := libID
 		newRelPath := relPath
 		newType := comicType
+		wasMoved := false
+		wasTypeFixed := false
 		if diskLibID != "" && libID != diskLibID {
 			newLibID = diskLibID
 			needsUpdate = true
+			wasMoved = true
 		}
 		if diskRelPath, ok := fileRelPathMap[id]; ok && diskRelPath != "" && relPath != diskRelPath {
 			newRelPath = diskRelPath
@@ -895,18 +900,18 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 			if source == "comics" && comicType != "comic" {
 				newType = "comic"
 				needsUpdate = true
-				typeFixed++
+				wasTypeFixed = true
 			} else if source == "novels" && comicType != "novel" {
 				newType = "novel"
 				needsUpdate = true
-				typeFixed++
+				wasTypeFixed = true
 			}
 		}
 		if needsUpdate {
-			toUpdate = append(toUpdate, comicUpdate{ID: id, NewLibID: newLibID, NewRelPath: newRelPath, NewType: newType})
-			if newLibID != libID {
-				moved++
-			}
+			toUpdate = append(toUpdate, comicUpdate{
+				ID: id, NewLibID: newLibID, NewRelPath: newRelPath, NewType: newType,
+				Moved: wasMoved, TypeFixed: wasTypeFixed,
+			})
 		}
 	}
 	rows.Close()
@@ -915,28 +920,50 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 		return 0, 0
 	}
 
+	const assignmentBatchSize = 500
 	now := time.Now().UTC()
-	if err := runSerializedDBWrite("scanner-fix-library-assignments", func() error {
-		tx, err := db.Begin()
-		if err != nil {
-			return err
+	committedMoved := 0
+	committedTypeFixed := 0
+	for i := 0; i < len(toUpdate); i += assignmentBatchSize {
+		end := i + assignmentBatchSize
+		if end > len(toUpdate) {
+			end = len(toUpdate)
 		}
-		defer tx.Rollback()
-		stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "relativePath" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-		for _, u := range toUpdate {
-			if _, err := stmt.Exec(u.NewLibID, u.NewRelPath, u.NewType, now, u.ID); err != nil {
+		batch := toUpdate[i:end]
+
+		err := runSerializedDBWrite("scanner-fix-library-assignments", func() error {
+			tx, err := db.Begin()
+			if err != nil {
 				return err
 			}
+			defer tx.Rollback()
+			stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "relativePath" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
+			if err != nil {
+				return err
+			}
+			defer stmt.Close()
+			for _, u := range batch {
+				if _, err := stmt.Exec(u.NewLibID, u.NewRelPath, u.NewType, now, u.ID); err != nil {
+					return err
+				}
+			}
+			return tx.Commit()
+		})
+		if err != nil {
+			return committedMoved, committedTypeFixed
 		}
-		return tx.Commit()
-	}); err != nil {
-		return 0, 0
+
+		for _, u := range batch {
+			if u.Moved {
+				committedMoved++
+			}
+			if u.TypeFixed {
+				committedTypeFixed++
+			}
+		}
 	}
-	return moved, typeFixed
+
+	return committedMoved, committedTypeFixed
 }
 
 func MarkComicsAsMissing(ids []string) error {
