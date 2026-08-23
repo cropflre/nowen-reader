@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// ComicOwnershipRecord contains the fields needed to resolve a database row
-// back to its physical file.
 type ComicOwnershipRecord struct {
 	ID           string
 	Filename     string
@@ -42,57 +40,58 @@ func GetComicOwnershipRecords() ([]ComicOwnershipRecord, error) {
 }
 
 // ReconcileComicOwnership merges duplicate rows into keeperID and then moves
-// the keeper to its canonical library identity. All database changes happen in
-// one transaction. Source files are never changed.
+// the keeper to its canonical library identity. The complete merge is one
+// serialized writer transaction so background scanner metadata writes cannot
+// interleave with ownership migration.
 func ReconcileComicOwnership(keeperID string, duplicateIDs []string, newID, libraryID, relativePath, comicType string) error {
 	if keeperID == "" || newID == "" || libraryID == "" || relativePath == "" {
 		return fmt.Errorf("invalid ownership reconciliation identity")
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	for _, sourceID := range duplicateIDs {
-		if sourceID == "" || sourceID == keeperID {
-			continue
-		}
-		if err := mergeComicRows(tx, sourceID, keeperID); err != nil {
-			return fmt.Errorf("merge comic %s into %s: %w", sourceID, keeperID, err)
-		}
-	}
-
-	if keeperID != newID {
-		var count int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "id" = ?`, newID).Scan(&count); err != nil {
+	return runSerializedDBWrite("scanner-reconcile-library-ownership", func() error {
+		tx, err := db.Begin()
+		if err != nil {
 			return err
 		}
-		if count > 0 {
-			return fmt.Errorf("target comic id already exists: %s", newID)
-		}
-	}
+		defer tx.Rollback()
 
-	if _, err := tx.Exec(`
-		UPDATE "Comic"
-		SET "id" = ?, "filename" = ?, "relativePath" = ?, "libraryId" = ?,
-		    "type" = ?, "updatedAt" = ?
-		WHERE "id" = ?
-	`, newID, relativePath, relativePath, libraryID, comicType, time.Now().UTC(), keeperID); err != nil {
-		return fmt.Errorf("move keeper to canonical identity: %w", err)
-	}
-	if keeperID != newID {
-		if _, err := tx.Exec(`UPDATE "ScanRuleOpLog" SET "comicId" = ? WHERE "comicId" = ?`, newID, keeperID); err != nil && !isMissingTableError(err) {
-			return err
+		for _, sourceID := range duplicateIDs {
+			if sourceID == "" || sourceID == keeperID {
+				continue
+			}
+			if err := mergeComicRows(tx, sourceID, keeperID); err != nil {
+				return fmt.Errorf("merge comic %s into %s: %w", sourceID, keeperID, err)
+			}
 		}
-	}
 
-	return tx.Commit()
+		if keeperID != newID {
+			var count int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM "Comic" WHERE "id" = ?`, newID).Scan(&count); err != nil {
+				return err
+			}
+			if count > 0 {
+				return fmt.Errorf("target comic id already exists: %s", newID)
+			}
+		}
+
+		if _, err := tx.Exec(`
+			UPDATE "Comic"
+			SET "id" = ?, "filename" = ?, "relativePath" = ?, "libraryId" = ?,
+			    "type" = ?, "updatedAt" = ?
+			WHERE "id" = ?
+		`, newID, relativePath, relativePath, libraryID, comicType, time.Now().UTC(), keeperID); err != nil {
+			return fmt.Errorf("move keeper to canonical identity: %w", err)
+		}
+		if keeperID != newID {
+			if _, err := tx.Exec(`UPDATE "ScanRuleOpLog" SET "comicId" = ? WHERE "comicId" = ?`, newID, keeperID); err != nil && !isMissingTableError(err) {
+				return err
+			}
+		}
+
+		return tx.Commit()
+	})
 }
 
 func mergeComicRows(tx *sql.Tx, sourceID, targetID string) error {
-	// Preserve the richest metadata while keeping the canonical target's
-	// identity and explicit values.
 	if _, err := tx.Exec(`
 		UPDATE "Comic" AS target SET
 			"title" = CASE

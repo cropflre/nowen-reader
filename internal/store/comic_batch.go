@@ -17,22 +17,25 @@ func BatchDeleteComics(comicIDs []string) (int64, error) {
 		return 0, nil
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
+	var rowsAffected int64
+	err := runSerializedDBWrite("batch-delete-comics", func() error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
 
-	rowsAffected, err := deleteComicsByIDBatches(tx, comicIDs)
+		rowsAffected, err = deleteComicsByIDBatches(tx, comicIDs)
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
 	if err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 
 	_, _ = CleanupEmptyGroups()
-
 	return rowsAffected, nil
 }
 
@@ -97,7 +100,6 @@ func BatchRemoveTags(comicIDs []string, tagNames []string) error {
 		return nil
 	}
 
-	// 构建 comic ID IN 子句
 	cph := make([]string, len(comicIDs))
 	cargs := make([]interface{}, len(comicIDs))
 	for i, id := range comicIDs {
@@ -106,7 +108,6 @@ func BatchRemoveTags(comicIDs []string, tagNames []string) error {
 	}
 	cidIn := strings.Join(cph, ",")
 
-	// 构建 tag name IN 子句
 	tph := make([]string, len(tagNames))
 	targs := make([]interface{}, len(tagNames))
 	for i, name := range tagNames {
@@ -115,7 +116,6 @@ func BatchRemoveTags(comicIDs []string, tagNames []string) error {
 	}
 	tnameIn := strings.Join(tph, ",")
 
-	// 删除匹配的 ComicTag 记录
 	_, err := db.Exec(
 		fmt.Sprintf(`DELETE FROM "ComicTag" WHERE "comicId" IN (%s) AND "tagId" IN (SELECT "id" FROM "Tag" WHERE "name" IN (%s))`, cidIn, tnameIn),
 		append(cargs, targs...)...,
@@ -123,9 +123,6 @@ func BatchRemoveTags(comicIDs []string, tagNames []string) error {
 	if err != nil {
 		return err
 	}
-
-	// 注意：故意不清理孤立 Tag 记录。Tag 本身可能被管理页面使用，不应因移除关联而被删除。
-
 	return nil
 }
 
@@ -136,9 +133,8 @@ func BatchSetReadingStatus(userID string, comicIDs []string, status string) erro
 		return nil
 	}
 
-	// 校验合法状态
 	validStatuses := map[string]bool{
-		"":         true, // 清空状态
+		"":         true,
 		"want":     true,
 		"reading":  true,
 		"finished": true,
@@ -184,9 +180,7 @@ func BatchSetReadingStatus(userID string, comicIDs []string, status string) erro
 					return err
 				}
 			}
-			if _, err := tx.Exec(`
-				UPDATE "Comic" SET "lastReadPage" = 0, "lastReadAt" = NULL, "readingStatus" = '' WHERE "id" = ?
-			`, comicID); err != nil {
+			if _, err := tx.Exec(`UPDATE "Comic" SET "lastReadPage" = 0, "lastReadAt" = NULL, "readingStatus" = '' WHERE "id" = ?`, comicID); err != nil {
 				return err
 			}
 			continue
@@ -245,15 +239,16 @@ func UpdateLibraryComicsType(libraryID, libType string) error {
 	if libType == "novel" {
 		targetType = "novel"
 	}
-	_, err := db.Exec(`UPDATE "Comic" SET "type" = ? WHERE "libraryId" = ? AND "type" != ?`, targetType, libraryID, targetType)
-	return err
+	return runSerializedDBWrite("scanner-update-library-content-type", func() error {
+		_, err := db.Exec(`UPDATE "Comic" SET "type" = ? WHERE "libraryId" = ? AND "type" != ?`, targetType, libraryID, targetType)
+		return err
+	})
 }
 
 // ============================================================
 // 快速同步辅助函数 (scanner 使用)
 // ============================================================
 
-// GetAllComicIDs 返回数据库中所有漫画的ID。
 func GetAllComicIDs() ([]string, error) {
 	rows, err := db.Query(`SELECT "id" FROM "Comic"`)
 	if err != nil {
@@ -281,35 +276,35 @@ func BulkCreateComics(comics []struct {
 	if len(comics) == 0 {
 		return nil
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	now := time.Now().UTC()
-	stmt, err := tx.Prepare(`
-		INSERT INTO "Comic" ("id", "filename", "title", "titleSortKey", "pageCount", "fileSize", "type", "addedAt", "updatedAt")
-		VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
-		ON CONFLICT("id") DO NOTHING
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, c := range comics {
-		comicType := detectComicType(c.Filename)
-		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, BuildTitleSortKey(c.Title), c.FileSize, comicType, now, now); err != nil {
+	return runSerializedDBWrite("scanner-bulk-create", func() error {
+		tx, err := db.Begin()
+		if err != nil {
 			return err
 		}
-	}
-	return tx.Commit()
+		defer tx.Rollback()
+
+		now := time.Now().UTC()
+		stmt, err := tx.Prepare(`
+			INSERT INTO "Comic" ("id", "filename", "title", "titleSortKey", "pageCount", "fileSize", "type", "addedAt", "updatedAt")
+			VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
+			ON CONFLICT("id") DO NOTHING
+		`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		for _, c := range comics {
+			comicType := detectComicType(c.Filename)
+			if _, err := stmt.Exec(c.ID, c.Filename, c.Title, BuildTitleSortKey(c.Title), c.FileSize, comicType, now, now); err != nil {
+				return err
+			}
+		}
+		return tx.Commit()
+	})
 }
 
-// detectComicType 根据文件名后缀判断内容类型。
 func detectComicType(filename string) string {
-	// 图片文件夹漫画：filename 以 "/" 结尾
 	if strings.HasSuffix(filename, "/") {
 		return "comic"
 	}
@@ -319,7 +314,6 @@ func detectComicType(filename string) string {
 		strings.HasSuffix(lower, ".html") || strings.HasSuffix(lower, ".htm") {
 		return "novel"
 	}
-	// .azw3 不再硬编码为 novel，由扫描器根据内容检测自动分类
 	return "comic"
 }
 
@@ -336,49 +330,47 @@ func BulkCreateComicsWithSource(comics []struct {
 	if len(comics) == 0 {
 		return nil
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return runSerializedDBWrite("scanner-bulk-create-with-source", func() error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
 
-	now := time.Now().UTC()
-	stmt, err := tx.Prepare(`
-		INSERT INTO "Comic" ("id", "filename", "title", "titleSortKey", "pageCount", "fileSize", "type", "libraryId", "relativePath", "addedAt", "updatedAt")
-		VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT("id") DO NOTHING
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+		now := time.Now().UTC()
+		stmt, err := tx.Prepare(`
+			INSERT INTO "Comic" ("id", "filename", "title", "titleSortKey", "pageCount", "fileSize", "type", "libraryId", "relativePath", "addedAt", "updatedAt")
+			VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT("id") DO NOTHING
+		`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
 
-	for _, c := range comics {
-		// 严格按来源目录决定类型：
-		// - 来自漫画库目录的文件 → 强制标记为 comic
-		// - 来自电子书目录的文件 → 强制标记为 novel
-		// - 无法确定来源时 → 根据文件后缀判断（兜底）
-		comicType := detectComicType(c.Filename)
-		if source, ok := fileSourceMap[c.ID]; ok {
-			if source == "novels" {
-				comicType = "novel"
-			} else if source == "comics" {
-				comicType = "comic"
+		for _, c := range comics {
+			comicType := detectComicType(c.Filename)
+			if source, ok := fileSourceMap[c.ID]; ok {
+				if source == "novels" {
+					comicType = "novel"
+				} else if source == "comics" {
+					comicType = "comic"
+				}
+			}
+			libID := strings.TrimSpace(fileLibraryMap[c.ID])
+			if libID == "" {
+				return fmt.Errorf("missing library assignment for %s (%s)", c.Filename, c.ID)
+			}
+			relPath := c.Filename
+			if _, err := stmt.Exec(c.ID, c.Filename, c.Title, BuildTitleSortKey(c.Title), c.FileSize, comicType, libID, relPath, now, now); err != nil {
+				return fmt.Errorf("insert %s into library %s: %w", c.Filename, libID, err)
 			}
 		}
-		libID := strings.TrimSpace(fileLibraryMap[c.ID])
-		if libID == "" {
-			return fmt.Errorf("missing library assignment for %s (%s)", c.Filename, c.ID)
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit scanned contents: %w", err)
 		}
-		relPath := c.Filename
-		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, BuildTitleSortKey(c.Title), c.FileSize, comicType, libID, relPath, now, now); err != nil {
-			return fmt.Errorf("insert %s into library %s: %w", c.Filename, libID, err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit scanned contents: %w", err)
-	}
-	return nil
+		return nil
+	})
 }
 
 // BulkDeleteComicsByIDs 批量删除指定ID的漫画及其关联数据。
@@ -387,21 +379,22 @@ func BulkDeleteComicsByIDs(ids []string) error {
 		return nil
 	}
 
-	tx, err := db.Begin()
+	err := runSerializedDBWrite("scanner-bulk-delete", func() error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		if _, err := deleteComicsByIDBatches(tx, ids); err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
-	if _, err := deleteComicsByIDBatches(tx, ids); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
 	_, _ = CleanupEmptyGroups()
-
 	return nil
 }
 
@@ -473,25 +466,27 @@ func BulkUpdateComicLibraryID(ids []string, libraryID string, comicType string) 
 	if len(ids) == 0 {
 		return nil
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	now := time.Now().UTC()
-	for _, id := range ids {
-		if _, err := stmt.Exec(libraryID, comicType, now, id); err != nil {
+	return runSerializedDBWrite("scanner-move-library-content", func() error {
+		tx, err := db.Begin()
+		if err != nil {
 			return err
 		}
-	}
-	return tx.Commit()
+		defer tx.Rollback()
+
+		stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		now := time.Now().UTC()
+		for _, id := range ids {
+			if _, err := stmt.Exec(libraryID, comicType, now, id); err != nil {
+				return err
+			}
+		}
+		return tx.Commit()
+	})
 }
 
 // GetComicsNeedingPageCount 返回 pageCount=0 或 -1 的漫画（需要全量同步）。
@@ -524,14 +519,12 @@ func GetComicsNeedingPageCount(limit int) ([]struct {
 	return result, nil
 }
 
-// ComicIDFilename 保存缩略图管理所需的最小漫画信息。
 type ComicIDFilename struct {
 	ID       string
 	Filename string
 	Title    string
 }
 
-// GetAllComicIDsAndFilenames 返回所有漫画的ID、文件名和标题。
 func GetAllComicIDsAndFilenames() ([]ComicIDFilename, error) {
 	rows, err := db.Query(`SELECT "id", "filename", COALESCE("title", '') FROM "Comic"`)
 	if err != nil {
@@ -549,7 +542,6 @@ func GetAllComicIDsAndFilenames() ([]ComicIDFilename, error) {
 	return result, nil
 }
 
-// GetAllComicIDsAndLibraryIDs 返回所有漫画的ID和所属书库ID。
 func GetAllComicIDsAndLibraryIDs() (map[string]string, error) {
 	rows, err := db.Query(`SELECT "id", COALESCE("libraryId", '') FROM "Comic"`)
 	if err != nil {
@@ -567,13 +559,11 @@ func GetAllComicIDsAndLibraryIDs() (map[string]string, error) {
 	return result, nil
 }
 
-// GetComicsLibraryIDsByIDs 批量查询指定漫画ID的书库ID（比 GetAllComicIDsAndLibraryIDs 更高效）。
 func GetComicsLibraryIDsByIDs(ids []string) (map[string]string, error) {
 	if len(ids) == 0 {
 		return map[string]string{}, nil
 	}
 	result := make(map[string]string, len(ids))
-	// 分批查询，避免 SQLite 参数过多
 	const batchSize = 500
 	for i := 0; i < len(ids); i += batchSize {
 		end := i + batchSize
@@ -605,35 +595,38 @@ func GetComicsLibraryIDsByIDs(ids []string) (map[string]string, error) {
 	return result, nil
 }
 
-// UpdateComicPageCount 更新单个漫画的页数。
+// UpdateComicPageCount 更新单个漫画的页数。full-sync 的解析可并行，但这里保证落库单写。
 func UpdateComicPageCount(comicID string, pageCount int) error {
-	_, err := db.Exec(`UPDATE "Comic" SET "pageCount" = ? WHERE "id" = ?`, pageCount, comicID)
-	return err
+	return runSerializedDBWrite("scanner-update-page-count", func() error {
+		_, err := db.Exec(`UPDATE "Comic" SET "pageCount" = ? WHERE "id" = ?`, pageCount, comicID)
+		return err
+	})
 }
 
-// UpdateComicPageCountIfStale only updates pageCount when the current value is 0 or -1.
-// Used for lazy backfill from the reader/progress endpoints.
 func UpdateComicPageCountIfStale(comicID string, pageCount int) error {
 	if pageCount <= 0 {
 		return nil
 	}
-	_, err := db.Exec(`UPDATE "Comic" SET "pageCount" = ? WHERE "id" = ? AND ("pageCount" <= 0 OR "pageCount" IS NULL)`, pageCount, comicID)
-	return err
+	return runSerializedDBWrite("update-stale-page-count", func() error {
+		_, err := db.Exec(`UPDATE "Comic" SET "pageCount" = ? WHERE "id" = ? AND ("pageCount" <= 0 OR "pageCount" IS NULL)`, pageCount, comicID)
+		return err
+	})
 }
 
-// UpdateComicType 更新单个漫画的内容类型（comic/novel）。
 func UpdateComicType(comicID string, comicType string) error {
-	_, err := db.Exec(`UPDATE "Comic" SET "type" = ? WHERE "id" = ?`, comicType, comicID)
-	return err
+	return runSerializedDBWrite("scanner-update-content-type", func() error {
+		_, err := db.Exec(`UPDATE "Comic" SET "type" = ? WHERE "id" = ?`, comicType, comicID)
+		return err
+	})
 }
 
-// UpdateComicMD5Hash 更新单个漫画的 MD5 哈希值。
 func UpdateComicMD5Hash(comicID string, md5Hash string) error {
-	_, err := db.Exec(`UPDATE "Comic" SET "md5Hash" = ? WHERE "id" = ?`, md5Hash, comicID)
-	return err
+	return runSerializedDBWrite("scanner-update-md5", func() error {
+		_, err := db.Exec(`UPDATE "Comic" SET "md5Hash" = ? WHERE "id" = ?`, md5Hash, comicID)
+		return err
+	})
 }
 
-// ComicRelativePathExists 判断同一书库内指定相对路径是否已被其他漫画占用。
 func ComicRelativePathExists(libraryID, relativePath, excludeID string) (bool, error) {
 	var count int
 	err := db.QueryRow(`
@@ -645,7 +638,6 @@ func ComicRelativePathExists(libraryID, relativePath, excludeID string) (bool, e
 	return count > 0, err
 }
 
-// GetComicIDsByLibraryID 返回指定书库下所有漫画ID集合。
 func GetComicIDsByLibraryID(libraryID string) (map[string]struct{}, error) {
 	rows, err := db.Query(`SELECT "id" FROM "Comic" WHERE "libraryId" = ?`, libraryID)
 	if err != nil {
@@ -663,8 +655,6 @@ func GetComicIDsByLibraryID(libraryID string) (map[string]struct{}, error) {
 	return result, rows.Err()
 }
 
-// UpdateComicIdentityAfterMove 在物理文件移动/重命名后同步更新 Comic 主键与相对路径。
-// Comic.id 由相对路径生成；相关外键依赖 ON UPDATE CASCADE 自动级联。
 func UpdateComicIdentityAfterMove(oldID, newID, newFilename, newTitle string) error {
 	fields := []string{`"id" = ?`, `"filename" = ?`, `"relativePath" = ?`, `"updatedAt" = ?`}
 	args := []interface{}{newID, newFilename, newFilename, time.Now().UTC()}
@@ -675,11 +665,12 @@ func UpdateComicIdentityAfterMove(oldID, newID, newFilename, newTitle string) er
 		args = append(args, BuildTitleSortKey(newTitle))
 	}
 	args = append(args, oldID)
-	_, err := db.Exec(fmt.Sprintf(`UPDATE "Comic" SET %s WHERE "id" = ?`, strings.Join(fields, ", ")), args...)
-	return err
+	return runSerializedDBWrite("scanner-update-content-identity", func() error {
+		_, err := db.Exec(fmt.Sprintf(`UPDATE "Comic" SET %s WHERE "id" = ?`, strings.Join(fields, ", ")), args...)
+		return err
+	})
 }
 
-// GetComicsNeedingMD5 返回 md5Hash 为空的漫画（需要计算 MD5）。
 func GetComicsNeedingMD5(limit int) ([]struct {
 	ID       string
 	Filename string
@@ -708,8 +699,6 @@ func GetComicsNeedingMD5(limit int) ([]struct {
 	return result, nil
 }
 
-// GetNovelsNeedingTypeRedetect 获取所有 type="novel" 且文件名以 .mobi/.azw3 结尾的漫画记录。
-// 这些文件可能是图片密集型的漫画，需要通过内容检测来重新分类。
 func GetNovelsNeedingTypeRedetect() ([]struct {
 	ID       string
 	Filename string
@@ -740,9 +729,6 @@ func GetNovelsNeedingTypeRedetect() ([]struct {
 	return result, nil
 }
 
-// GetEbookComicsByType 返回所有 type 等于指定值的电子书记录（epub/mobi/azw3）。
-// 用于按文件实际目录回滚被错误识别的电子书类型（例如把放在小说目录里、
-// 但因 image-heavy 检测被标为 comic 的教材回滚为 novel）。
 func GetEbookComicsByType(comicType string) ([]struct {
 	ID       string
 	Filename string
@@ -775,8 +761,6 @@ func GetEbookComicsByType(comicType string) ([]struct {
 	return result, nil
 }
 
-// GetFolderComics 返回所有"图片文件夹漫画"记录（filename 以 "/" 结尾）。
-// 用于排查并修复被错误折叠为文件夹漫画的目录（例如全是 .txt 的小说目录混入封面图）。
 func GetFolderComics() ([]struct {
 	ID       string
 	Filename string
@@ -806,24 +790,19 @@ func GetFolderComics() ([]struct {
 	return result, nil
 }
 
-// 漫画库目录的文件强制为 "comic"，电子书目录的文件强制为 "novel"。
-// 只修正类型不匹配的记录，避免不必要的写入。
+// FixComicTypesBySource reads in parallel with the rest of the app, then funnels
+// only the mutation phase through the single SQLite writer.
 func FixComicTypesBySource(fileSourceMap map[string]string) {
 	if len(fileSourceMap) == 0 {
 		return
 	}
 
-	// 分两批：需要改为 comic 的和需要改为 novel 的
 	var toComic []string
 	var toNovel []string
-
-	// 查询所有记录的 id 和 type
 	rows, err := db.Query(`SELECT "id", "type" FROM "Comic"`)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-
 	for rows.Next() {
 		var id, comicType string
 		if rows.Scan(&id, &comicType) != nil {
@@ -833,25 +812,23 @@ func FixComicTypesBySource(fileSourceMap map[string]string) {
 		if !ok {
 			continue
 		}
-		// 严格按来源目录决定类型
 		if source == "comics" && comicType != "comic" {
 			toComic = append(toComic, id)
 		} else if source == "novels" && comicType != "novel" {
 			toNovel = append(toNovel, id)
 		}
 	}
+	rows.Close()
 
-	// 批量更新
-	if len(toComic) > 0 {
-		batchUpdateType(toComic, "comic")
-	}
-	if len(toNovel) > 0 {
-		batchUpdateType(toNovel, "novel")
-	}
+	_ = runSerializedDBWrite("scanner-fix-content-types", func() error {
+		if err := batchUpdateType(toComic, "comic"); err != nil {
+			return err
+		}
+		return batchUpdateType(toNovel, "novel")
+	})
 }
 
-// batchUpdateType 批量更新漫画的 type 字段。
-func batchUpdateType(ids []string, newType string) {
+func batchUpdateType(ids []string, newType string) error {
 	const batchSize = 500
 	for i := 0; i < len(ids); i += batchSize {
 		end := i + batchSize
@@ -867,24 +844,22 @@ func batchUpdateType(ids []string, newType string) {
 			args = append(args, id)
 		}
 		query := fmt.Sprintf(`UPDATE "Comic" SET "type" = ? WHERE "id" IN (%s)`, strings.Join(placeholders, ","))
-		db.Exec(query, args...)
+		if _, err := db.Exec(query, args...); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-// FixComicLibraryAssignments 修正已有漫画的 libraryId 和 relativePath。
-// 用于文件从一个书库移动到另一个书库后，修正数据库中的归属信息。
-// 返回值：moved = libraryId 被修正的数量，typeFixed = 类型被修正的数量。
 func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap map[string]string, fileRelPathMap map[string]string) (moved int, typeFixed int) {
 	if len(fileLibraryMap) == 0 {
 		return 0, 0
 	}
 
-	// 查询所有记录的 id、libraryId、relativePath、type
 	rows, err := db.Query(`SELECT "id", COALESCE("libraryId", ''), COALESCE("relativePath", ''), COALESCE("type", '') FROM "Comic"`)
 	if err != nil {
 		return 0, 0
 	}
-	defer rows.Close()
 
 	type comicUpdate struct {
 		ID         string
@@ -901,27 +876,21 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 		}
 		diskLibID, hasDisk := fileLibraryMap[id]
 		if !hasDisk {
-			continue // 磁盘上不存在的文件，跳过（会被后续删除逻辑处理）
+			continue
 		}
 
 		needsUpdate := false
 		newLibID := libID
 		newRelPath := relPath
 		newType := comicType
-
-		// 修正 libraryId
 		if diskLibID != "" && libID != diskLibID {
 			newLibID = diskLibID
 			needsUpdate = true
 		}
-
-		// 修正 relativePath
 		if diskRelPath, ok := fileRelPathMap[id]; ok && diskRelPath != "" && relPath != diskRelPath {
 			newRelPath = diskRelPath
 			needsUpdate = true
 		}
-
-		// 修正 type（按来源目录严格匹配）
 		if source, ok := fileSourceMap[id]; ok {
 			if source == "comics" && comicType != "comic" {
 				newType = "comic"
@@ -933,113 +902,100 @@ func FixComicLibraryAssignments(fileLibraryMap map[string]string, fileSourceMap 
 				typeFixed++
 			}
 		}
-
 		if needsUpdate {
-			toUpdate = append(toUpdate, comicUpdate{
-				ID:         id,
-				NewLibID:   newLibID,
-				NewRelPath: newRelPath,
-				NewType:    newType,
-			})
+			toUpdate = append(toUpdate, comicUpdate{ID: id, NewLibID: newLibID, NewRelPath: newRelPath, NewType: newType})
 			if newLibID != libID {
 				moved++
 			}
 		}
 	}
+	rows.Close()
 
 	if len(toUpdate) == 0 {
 		return 0, 0
 	}
 
-	// 批量更新
 	now := time.Now().UTC()
-	const batchSize = 500
-	for i := 0; i < len(toUpdate); i += batchSize {
-		end := i + batchSize
-		if end > len(toUpdate) {
-			end = len(toUpdate)
-		}
-		batch := toUpdate[i:end]
-
+	if err := runSerializedDBWrite("scanner-fix-library-assignments", func() error {
 		tx, err := db.Begin()
 		if err != nil {
-			continue
+			return err
 		}
+		defer tx.Rollback()
 		stmt, err := tx.Prepare(`UPDATE "Comic" SET "libraryId" = ?, "relativePath" = ?, "type" = ?, "updatedAt" = ? WHERE "id" = ?`)
 		if err != nil {
-			tx.Rollback()
-			continue
+			return err
 		}
-		for _, u := range batch {
-			stmt.Exec(u.NewLibID, u.NewRelPath, u.NewType, now, u.ID)
+		defer stmt.Close()
+		for _, u := range toUpdate {
+			if _, err := stmt.Exec(u.NewLibID, u.NewRelPath, u.NewType, now, u.ID); err != nil {
+				return err
+			}
 		}
-		stmt.Close()
-		tx.Commit()
+		return tx.Commit()
+	}); err != nil {
+		return 0, 0
 	}
-
 	return moved, typeFixed
 }
 
-// MarkComicsAsMissing sets missingSince to now for the given comic IDs.
-// If missingSince is already set, it is left unchanged.
 func MarkComicsAsMissing(ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	now := time.Now().UTC()
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
+	return runSerializedDBWrite("scanner-mark-missing", func() error {
+		for i := 0; i < len(ids); i += batchSize {
+			end := i + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			batch := ids[i:end]
+			placeholders := make([]string, len(batch))
+			args := []interface{}{now}
+			for j, id := range batch {
+				placeholders[j] = "?"
+				args = append(args, id)
+			}
+			if _, err := db.Exec(
+				fmt.Sprintf(`UPDATE "Comic" SET "missingSince" = ? WHERE "id" IN (%s) AND "missingSince" IS NULL`, strings.Join(placeholders, ",")),
+				args...,
+			); err != nil {
+				return err
+			}
 		}
-		batch := ids[i:end]
-		placeholders := make([]string, len(batch))
-		args := []interface{}{now}
-		for j, id := range batch {
-			placeholders[j] = "?"
-			args = append(args, id)
-		}
-		_, err := db.Exec(
-			fmt.Sprintf(`UPDATE "Comic" SET "missingSince" = ? WHERE "id" IN (%s) AND "missingSince" IS NULL`, strings.Join(placeholders, ",")),
-			args...,
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
-// UnmarkComicsAsMissing clears missingSince for the given comic IDs
-// (files reappeared on disk).
 func UnmarkComicsAsMissing(ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
+	return runSerializedDBWrite("scanner-unmark-missing", func() error {
+		for i := 0; i < len(ids); i += batchSize {
+			end := i + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			batch := ids[i:end]
+			placeholders := make([]string, len(batch))
+			args := make([]interface{}, len(batch))
+			for j, id := range batch {
+				placeholders[j] = "?"
+				args[j] = id
+			}
+			if _, err := db.Exec(
+				fmt.Sprintf(`UPDATE "Comic" SET "missingSince" = NULL WHERE "id" IN (%s)`, strings.Join(placeholders, ",")),
+				args...,
+			); err != nil {
+				return err
+			}
 		}
-		batch := ids[i:end]
-		placeholders := make([]string, len(batch))
-		args := make([]interface{}, len(batch))
-		for j, id := range batch {
-			placeholders[j] = "?"
-			args[j] = id
-		}
-		_, err := db.Exec(
-			fmt.Sprintf(`UPDATE "Comic" SET "missingSince" = NULL WHERE "id" IN (%s)`, strings.Join(placeholders, ",")),
-			args...,
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
-// GetMissingComicIDsOlderThan returns comic IDs whose missingSince is older than the given duration.
 func GetMissingComicIDsOlderThan(olderThan time.Duration) ([]string, error) {
 	cutoff := time.Now().UTC().Add(-olderThan)
 	rows, err := db.Query(`SELECT "id" FROM "Comic" WHERE "missingSince" IS NOT NULL AND "missingSince" < ?`, cutoff)
