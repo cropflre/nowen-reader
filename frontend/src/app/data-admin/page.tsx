@@ -27,6 +27,7 @@ import {
   type StorageThreshold,
 } from "@/api/admin";
 import { PageContent, PageHeader } from "@/components/PageHeader";
+import ThumbnailMaintenancePanel from "@/components/ThumbnailMaintenancePanel";
 
 // ============================================================
 // 子组件
@@ -362,6 +363,8 @@ export default function DataAdminPage() {
             }
           />
         </div>
+
+        <ThumbnailMaintenancePanel />
 
         {/* 缓存管理 */}
         <section className="mt-6 rounded-lg border border-border bg-card">

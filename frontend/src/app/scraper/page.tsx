@@ -134,6 +134,7 @@ import { FolderOpen, FolderPlus, Layers, Plus, Minus, FolderTree, Folder, List }
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { ResizeDivider } from "@/components/ResizeDivider";
 import { useGlobalSyncEvent } from "@/hooks/useSyncEvent";
+import MetadataTranslationTool from "@/components/MetadataTranslationTool";
 
 import {
   filterMetadataFolderTree,
@@ -468,6 +469,7 @@ export default function ScraperPage() {
                 <span className="font-medium text-accent">{metaPercent}%</span>
               </div>
             )}
+            <MetadataTranslationTool onComplete={loadStats} />
             <button
               onClick={loadStats}
               disabled={statsLoading}

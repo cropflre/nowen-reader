@@ -32,6 +32,7 @@ import {
   setUserLibraryAccess,
   type Library,
   type LibraryAccess,
+  type EffectiveLibraryAccess,
 } from "@/api/libraries";
 import {
   fetchUserGroups,
@@ -126,6 +127,7 @@ export function UserManagementPanel() {
   // 编辑用户
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [editLibAccess, setEditLibAccess] = useState<LibraryAccess[]>([]);
+  const [effectiveLibAccess, setEffectiveLibAccess] = useState<Array<Library & EffectiveLibraryAccess>>([]);
   const [editGroupIds, setEditGroupIds] = useState<string[]>([]);
   const [editGroupMembersMap, setEditGroupMembersMap] = useState<Record<string, string[]>>({});
   const [editLoading, setEditLoading] = useState(false);
@@ -276,6 +278,7 @@ export function UserManagementPanel() {
     setEditingUser(user);
     setEditLoading(true);
     setEditLibAccess([]);
+    setEffectiveLibAccess([]);
     setEditGroupIds([]);
     setEditGroupMembersMap({});
 
@@ -283,6 +286,7 @@ export function UserManagementPanel() {
       // 获取用户的书库权限
       if (user.role !== "admin") {
         const accessData = await fetchUserLibraryAccess(user.id);
+        setEffectiveLibAccess(accessData.libraries || []);
         const userLibAccess = (accessData.libraries || []).map(l => ({
           libraryId: l.id,
           canView: !!l.canView,
@@ -414,23 +418,6 @@ export function UserManagementPanel() {
         prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
       );
     }
-  };
-
-  // 获取用户有效权限来源
-  const getAccessSources = (user: UserItem, libId: string): string[] => {
-    if (user.role === "admin") return ["管理员"];
-    const sources: string[] = [];
-    // 直接授权
-    if (editLibAccess.some(a => a.libraryId === libId && (a.canView || a.canDownload || a.canManage))) sources.push("直接授权");
-    // 权限组继承
-    for (const groupId of editGroupIds) {
-      const groupLibs = editGroupMembersMap[groupId] || [];
-      // 这里简化处理，实际需要检查组的书库权限
-    }
-    // 公开书库
-    const lib = libraries.find((l) => l.id === libId);
-    if (lib?.defaultAccess === "public") sources.push("公开书库");
-    return sources.length > 0 ? sources : ["无权限"];
   };
 
   if (currentUser?.role !== "admin") {
@@ -898,10 +885,41 @@ export function UserManagementPanel() {
                   </div>
                 )}
 
+                {editingUser.role !== "admin" && effectiveLibAccess.length > 0 && (
+                  <div>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <label className="text-xs font-medium text-foreground">当前最终生效权限</label>
+                      <span className="text-[11px] text-muted">公开策略、直接授权与权限组合并结果</span>
+                    </div>
+                    <div className="space-y-2">
+                      {effectiveLibAccess.filter((lib) => lib.enabled).map((lib) => (
+                        <div key={lib.id} className="rounded-lg border border-border/40 bg-background/50 px-3 py-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-foreground">{lib.name}</span>
+                            <div className="flex items-center gap-1 text-[11px]">
+                              <span className={`rounded px-1.5 py-0.5 ${lib.effectiveCanView ? "bg-emerald-500/10 text-emerald-500" : "bg-muted/10 text-muted"}`}>查看</span>
+                              <span className={`rounded px-1.5 py-0.5 ${lib.effectiveCanDownload ? "bg-blue-500/10 text-blue-500" : "bg-muted/10 text-muted"}`}>下载</span>
+                              <span className={`rounded px-1.5 py-0.5 ${lib.effectiveCanManage ? "bg-amber-500/10 text-amber-500" : "bg-muted/10 text-muted"}`}>管理</span>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {(lib.permissionSources || []).length > 0 ? lib.permissionSources.map((source, index) => (
+                              <span key={`${source.type}-${source.id || index}`} className="rounded-md border border-border/50 bg-card px-2 py-1 text-[11px] text-muted">
+                                {source.name}: {[source.canView && "查看", source.canDownload && "下载", source.canManage && "管理"].filter(Boolean).join("/")}
+                              </span>
+                            )) : <span className="text-[11px] text-muted">暂无授权来源</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* 可访问的库（仅普通用户） */}
                 {editingUser.role !== "admin" && libraries.length > 0 && (
                   <div>
-                    <label className="text-xs text-muted mb-2 block">可访问的库</label>
+                    <label className="text-xs text-muted mb-2 block">用户直接授权</label>
+                    <p className="mb-2 text-[11px] text-muted">这里只编辑直接授权；权限组和公开书库带来的权限会显示在上方最终结果中。</p>
                     <div className="grid grid-cols-1 gap-2">
                       {libraries.filter((l) => l.enabled).map((lib) => {
                         const access = getLibAccess(lib.id, true);

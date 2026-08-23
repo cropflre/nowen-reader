@@ -172,10 +172,29 @@ export interface LibraryAccess {
   canManage: boolean;
 }
 
+export interface PermissionSource {
+  type: "direct" | "group" | "public" | "admin";
+  id?: string;
+  name: string;
+  canView: boolean;
+  canDownload: boolean;
+  canManage: boolean;
+}
+
+export interface EffectiveLibraryAccess {
+  canView: boolean;
+  canDownload: boolean;
+  canManage: boolean;
+  effectiveCanView: boolean;
+  effectiveCanDownload: boolean;
+  effectiveCanManage: boolean;
+  permissionSources: PermissionSource[];
+}
+
 // 获取用户的书库访问权限
 export async function fetchUserLibraryAccess(userId: string): Promise<{
   userId: string;
-  libraries: Array<Library & LibraryAccess>;
+  libraries: Array<Library & EffectiveLibraryAccess>;
 }> {
   const res = await fetch(apiPath(`/api/admin/users/${userId}/library-access`));
   return safeJson(res);

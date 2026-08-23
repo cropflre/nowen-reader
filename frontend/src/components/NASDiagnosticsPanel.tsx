@@ -370,7 +370,7 @@ export default function NASDiagnosticsPanel() {
             需要处理
           </h3>
           {issues.map((item) => (
-            <IssueCard key={item.id} item={item} onNavigateSettings={() => router.push("/settings?tab=site")} />
+            <IssueCard key={item.id} item={item} onNavigateSettings={() => router.push("/settings?tab=libraries")} />
           ))}
         </div>
       )}
@@ -506,7 +506,7 @@ function IssueCard({
             className="inline-flex items-center gap-1.5 rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
           >
             <ExternalLink className="h-3 w-3" />
-            去站点设置修改
+            去书库管理修改
           </button>
         )}
         {item.detail && (

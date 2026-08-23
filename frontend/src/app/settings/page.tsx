@@ -9,8 +9,6 @@ import {
   Brain,
   Globe,
   BookOpen,
-  BarChart3,
-  AlertTriangle,
   Sparkles,
   Github,
   Heart,
@@ -31,7 +29,7 @@ import {
   ChevronRight,
   Settings as SettingsIcon,
 } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { useLocale, useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { formatAppVersion } from "@/lib/version";
 import { useReaderOptions } from "@/hooks/useReaderOptions";
@@ -62,11 +60,6 @@ const AISettingsPanel = dynamic(
 
 const ScanRulesPanel = dynamic(
   () => import("@/components/ScanRulesPanel").then((mod) => mod.ScanRulesPanel),
-  { loading: LoadingSkeleton }
-);
-
-const FileStatsPanel = dynamic(
-  () => import("@/components/FileStatsPanel"),
   { loading: LoadingSkeleton }
 );
 
@@ -102,16 +95,10 @@ type SettingsTab =
   | "ai"
   | "scan-rules"
   | "users"
-  | "stats"
-  | "file-stats"
-  | "logs"
   | "libraries"
   | "user-groups"
   | "diagnostics"
   | "reader"
-  | "data-admin"
-  | "data-qa"
-  | "sync-backup"
   | "about";
 
 interface TabDef {
@@ -120,20 +107,12 @@ interface TabDef {
   icon: React.ReactNode;
   desc?: string;
   keywords?: string[];
-  href?: string;
 }
 
 interface TabGroup {
   title: string;
   tabs: TabDef[];
 }
-
-const standaloneSettingsRoutes: Partial<Record<SettingsTab, string>> = {
-  stats: "/stats",
-  logs: "/logs",
-  "data-admin": "/data-admin",
-  "data-qa": "/data-qa",
-};
 
 /* ── 搜索匹配 ── */
 function matchesSearch(tab: TabDef, groupTitle: string, query: string): boolean {
@@ -155,20 +134,21 @@ export default function SettingsPage() {
 
   const validTabs: SettingsTab[] = [
     "account",
+    "reader",
     ...(isAdmin
-      ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "stats" as const, "file-stats" as const, "logs" as const, "libraries" as const, "user-groups" as const, "diagnostics" as const, "reader" as const, "data-admin" as const, "data-qa" as const, "sync-backup" as const]
+      ? ["site" as const, "ai" as const, "scan-rules" as const, "users" as const, "libraries" as const, "user-groups" as const, "diagnostics" as const]
       : []),
     "about",
   ];
 
   const tabFromUrl = searchParams.get("tab") as SettingsTab | null;
   const [activeTab, setActiveTab] = useState<SettingsTab>(
-    tabFromUrl && validTabs.includes(tabFromUrl) && !standaloneSettingsRoutes[tabFromUrl]
+    tabFromUrl && validTabs.includes(tabFromUrl)
       ? tabFromUrl
       : "account"
   );
   const [mobileDetailOpen, setMobileDetailOpen] = useState(
-    Boolean(tabFromUrl && validTabs.includes(tabFromUrl) && !standaloneSettingsRoutes[tabFromUrl])
+    Boolean(tabFromUrl && validTabs.includes(tabFromUrl))
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [contentKey, setContentKey] = useState(0);
@@ -176,11 +156,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!tabFromUrl) return;
-    const route = standaloneSettingsRoutes[tabFromUrl];
-    if (route) {
-      router.replace(route);
-      return;
-    }
     if (validTabs.includes(tabFromUrl)) {
       setActiveTab(tabFromUrl);
       setMobileDetailOpen(true);
@@ -188,17 +163,20 @@ export default function SettingsPage() {
   }, [isAdmin, router, tabFromUrl]);
 
   /* ── Tab 定义 ── */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tAny = t as any;
   const groups: TabGroup[] = [
     {
-      title: t.settings?.groupGeneral || "通用",
+      title: "个人",
       tabs: [
         { id: "account", label: "我的账户", icon: <UserCog className="h-[18px] w-[18px]" />, desc: "密码、昵称", keywords: ["密码", "昵称", "password", "profile"] },
+        { id: "reader", label: "阅读与显示", icon: <Eye className="h-[18px] w-[18px]" />, desc: "模式、方向、隐私、语言", keywords: ["reader", "reading", "page", "zoom", "direction", "animation", "progress", "阅读器", "阅读", "方向", "缩放", "翻页", "模式", "进度", "隐私", "成人", "封面", "语言", "中文", "英文"] },
+      ],
+    },
+    {
+      title: "站点",
+      tabs: [
         ...(isAdmin
           ? [
-              { id: "site" as const, label: "站点设置", icon: <Globe className="h-[18px] w-[18px]" />, desc: "名称、目录、缓存", keywords: ["站点", "目录", "缓存", "site", "cache"] },
-              { id: "reader" as const, label: "阅读器偏好", icon: <Eye className="h-[18px] w-[18px]" />, desc: "方向、缩放、翻页、背景", keywords: ["reader", "reading", "page", "zoom", "direction", "animation", "progress", "阅读器", "阅读", "方向", "缩放", "翻页", "页码", "进度"] },
+              { id: "site" as const, label: "站点配置", icon: <Globe className="h-[18px] w-[18px]" />, desc: "名称、识别、元数据", keywords: ["站点", "名称", "图标", "识别", "电子书", "缩略图", "刮削", "元数据", "默认语言", "site"] },
             ]
           : []),
       ],
@@ -220,8 +198,8 @@ export default function SettingsPage() {
       tabs: [
         ...(isAdmin
           ? [
-              { id: "ai" as const, label: t.ai?.title || "AI 功能", icon: <Brain className="h-[18px] w-[18px]" />, desc: "智能识别与推荐", keywords: ["AI", "智能", "推荐", "识别", "模型"] },
-              { id: "scan-rules" as const, label: "扫描规则", icon: <Wand2 className="h-[18px] w-[18px]" />, desc: "AI 识别 + 自动归类", keywords: ["扫描", "规则", "归类", "scan", "rules"] },
+              { id: "ai" as const, label: "AI 服务", icon: <Brain className="h-[18px] w-[18px]" />, desc: "模型、连接与用量", keywords: ["AI", "模型", "服务", "连接", "云端", "本地", "llama", "用量"] },
+              { id: "scan-rules" as const, label: "扫描自动化", icon: <Wand2 className="h-[18px] w-[18px]" />, desc: "识别、归类与目录整理", keywords: ["扫描", "规则", "归类", "目录", "硬链接", "过滤", "scan", "rules"] },
             ]
           : []),
       ],
@@ -237,24 +215,11 @@ export default function SettingsPage() {
         { id: "about", label: t.settings?.about || "关于", icon: <Info className="h-[18px] w-[18px]" />, desc: t.settings?.aboutDesc || "版本与项目信息", keywords: ["关于", "版本", "about", "version"] },
       ],
     },
-    {
-      title: "管理工具",
-      tabs: isAdmin
-        ? [
-            { id: "stats" as const, label: t.stats?.title || "阅读统计", icon: <BarChart3 className="h-[18px] w-[18px]" />, desc: "时长、趋势、目标", keywords: ["统计", "时长", "趋势", "stats", "reading"], href: "/stats" },
-            { id: "file-stats" as const, label: "文件统计", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "格式、大小、分布", keywords: ["文件", "大小", "格式", "file", "storage"] },
-            { id: "logs" as const, label: tAny.errorLogs?.title || "错误日志", icon: <AlertTriangle className="h-[18px] w-[18px]" />, desc: "接口异常记录", keywords: ["日志", "错误", "异常", "logs", "error"], href: "/logs" },
-            { id: "data-admin" as const, label: "数据管理", icon: <HardDrive className="h-[18px] w-[18px]" />, desc: "存储、缓存、数据库维护", keywords: ["数据", "管理", "存储", "缓存", "数据库", "data", "admin", "storage", "cache", "database"], href: "/data-admin" },
-            { id: "data-qa" as const, label: "数据巡检", icon: <Database className="h-[18px] w-[18px]" />, desc: "一致性检查、安全修复", keywords: ["data", "qa", "health", "repair", "scan", "fix", "dry-run", "数据", "巡检", "修复", "扫描", "异常", "健康"], href: "/data-qa" },
-            { id: "sync-backup" as const, label: "同步与备份", icon: <RefreshCw className="h-[18px] w-[18px]" />, desc: "规划中的备份与同步能力", keywords: ["sync", "backup", "export", "import", "restore", "同步", "备份", "导出", "导入", "恢复"] },
-          ]
-        : [],
-    },
   ];
 
   const allTabs = groups.flatMap((g) => g.tabs);
   const currentTab = allTabs.find((tab) => tab.id === activeTab);
-  const isFullWidthTab = ["file-stats", "libraries"].includes(activeTab);
+  const isFullWidthTab = activeTab === "libraries";
 
   /* ── 搜索过滤 ── */
   const filteredGroups = useMemo(() => {
@@ -275,12 +240,8 @@ export default function SettingsPage() {
   /* ── Tab 切换动画 ── */
   const switchTab = useCallback(
     (tabId: SettingsTab, openMobileDetail = false) => {
-      const route = standaloneSettingsRoutes[tabId];
-      if (route) {
-        router.push(route);
-        return;
-      }
       router.replace(`/settings?tab=${tabId}`);
+      setSearchQuery("");
       if (openMobileDetail) setMobileDetailOpen(true);
       if (tabId === activeTab) return;
       setIsTransitioning(true);
@@ -311,11 +272,50 @@ export default function SettingsPage() {
       {activeTab === "user-groups" && <UserGroupManagementPanel />}
       {activeTab === "diagnostics" && <NASDiagnosticsPanel />}
       {activeTab === "reader" && <ReaderPreferencesPanel />}
-      {activeTab === "sync-backup" && <SyncBackupPanel />}
-      {activeTab === "file-stats" && <FileStatsPanel />}
       {activeTab === "about" && <AboutPanel />}
     </div>
   );
+
+  const searchResultTabs = filteredGroups.flatMap((group) =>
+    group.tabs.map((tab) => ({ ...tab, groupTitle: group.title }))
+  );
+
+  const displayedPanel = searchQuery.trim() ? (
+    <div className="max-w-2xl space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-foreground">搜索结果</h2>
+        <p className="mt-1 text-sm text-muted">
+          {searchResultTabs.length > 0
+            ? `找到 ${searchResultTabs.length} 个相关设置分类`
+            : `没有找到与“${searchQuery.trim()}”相关的设置`}
+        </p>
+      </div>
+      {searchResultTabs.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          {searchResultTabs.map((tab, index) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => switchTab(tab.id)}
+              className={`flex min-h-16 w-full items-center gap-3 px-4 text-left transition-colors hover:bg-card-hover ${index > 0 ? "border-t border-border" : ""}`}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background text-accent">{tab.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs text-muted">{tab.groupTitle}</span>
+                <span className="block text-sm font-medium text-foreground">{tab.label}</span>
+                {tab.desc && <span className="block text-xs text-muted">{tab.desc}</span>}
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center text-sm text-muted">
+          请尝试搜索“隐私”“缩略图”“权限”或“扫描”等具体功能。
+        </div>
+      )}
+    </div>
+  ) : activePanel;
 
   const searchField = (
     <div className="relative w-full sm:w-64">
@@ -377,11 +377,7 @@ export default function SettingsPage() {
                           <span className="block text-sm font-medium text-foreground">{tab.label}</span>
                           {tab.desc && <span className="mt-0.5 block truncate text-xs text-muted">{tab.desc}</span>}
                         </span>
-                        {tab.href ? (
-                          <ExternalLink className="h-4 w-4 shrink-0 text-muted" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                        )}
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
                       </button>
                     ))}
                 </div>
@@ -413,7 +409,7 @@ export default function SettingsPage() {
                 {currentTab?.label}
               </h2>
             </div>
-            <div className="p-4">{activePanel}</div>
+            <div className="p-4">{displayedPanel}</div>
           </div>
         )}
       </section>
@@ -470,7 +466,6 @@ export default function SettingsPage() {
                           </div>
                         )}
                       </div>
-                      {tab.href && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted/50" />}
                     </button>
                   );
                 })}
@@ -493,7 +488,7 @@ export default function SettingsPage() {
 
         <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1">
           <div className={`p-4 sm:p-8 ${isFullWidthTab ? "" : "max-w-3xl"}`}>
-            {activePanel}
+            {displayedPanel}
           </div>
         </main>
       </div>
@@ -504,16 +499,28 @@ export default function SettingsPage() {
 /* ── Reader Preferences Panel ── */
 function ReaderPreferencesPanel() {
   const { options, updateOptions, loaded } = useReaderOptions();
+  const { locale, setLocale } = useLocale();
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [privacyEnabled, setPrivacyEnabled] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("privacy:enabled") === "true"
+  );
+  const [blurNSFW, setBlurNSFW] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("privacy:blurNSFW") !== "false";
+  });
 
   // Derive UI state from real ReaderOptions
-  const directionUI = options.direction === "rtl" ? "rtl" : options.infiniteScroll ? "vertical" : "ltr";
+  const modeUI = options.infiniteScroll ? "webtoon" : options.mode;
+  const directionUI = options.direction === "rtl" ? "rtl" : "ltr";
   const zoomUI = options.fitMode === "width" ? "fit-width" : options.fitMode === "height" ? "fit-height" : "original";
 
+  const handleModeChange = (val: string) => {
+    if (val === "webtoon") updateOptions({ mode: "webtoon", direction: "ttb", infiniteScroll: true });
+    else updateOptions({ mode: val as "single" | "double", direction: options.direction === "rtl" ? "rtl" : "ltr", infiniteScroll: false });
+  };
+
   const handleDirectionChange = (val: string) => {
-    if (val === "ltr") updateOptions({ direction: "ltr", infiniteScroll: false, mode: "single" });
-    else if (val === "rtl") updateOptions({ direction: "rtl", infiniteScroll: false, mode: "single" });
-    else if (val === "vertical") updateOptions({ direction: "ttb", infiniteScroll: true, mode: "webtoon" });
+    updateOptions({ direction: val === "rtl" ? "rtl" : "ltr" });
   };
 
   const handleZoomChange = (val: string) => {
@@ -529,6 +536,18 @@ function ReaderPreferencesPanel() {
     }
     updateOptions({ ...defaultReaderOptions });
     setResetConfirm(false);
+  };
+
+  const togglePrivacy = () => {
+    const next = !privacyEnabled;
+    setPrivacyEnabled(next);
+    localStorage.setItem("privacy:enabled", String(next));
+  };
+
+  const toggleBlur = () => {
+    const next = !blurNSFW;
+    setBlurNSFW(next);
+    localStorage.setItem("privacy:blurNSFW", String(next));
   };
 
   if (!loaded) {
@@ -548,17 +567,26 @@ function ReaderPreferencesPanel() {
             <Eye className="h-4 w-4" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-foreground">阅读器偏好</h2>
-            <p className="text-xs text-muted">调整阅读方向、缩放与进度跟踪，设置会保存到当前浏览器并在阅读器中自动生效。</p>
+            <h2 className="text-base font-semibold text-foreground">阅读与显示</h2>
+            <p className="text-xs text-muted">这些个人偏好会保存到当前浏览器，并在修改后立即生效。</p>
           </div>
         </div>
-        <p className="mt-3 rounded-lg border border-border bg-background p-3 text-xs text-muted">
-          跨设备同步将在后续版本支持。
-        </p>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="divide-y divide-border/25">
+          <div id="reader-mode" className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground">默认阅读模式</div>
+              <div className="text-xs text-muted">选择单页、双页或长条滚动模式。</div>
+            </div>
+            <select value={modeUI} onChange={(e) => handleModeChange(e.target.value)} className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none focus:border-accent/40 sm:w-56">
+              <option value="single">单页模式</option>
+              <option value="double">双页模式</option>
+              <option value="webtoon">长条滚动</option>
+            </select>
+          </div>
+
           {/* Direction */}
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
@@ -567,12 +595,12 @@ function ReaderPreferencesPanel() {
             </div>
             <select
               value={directionUI}
+              disabled={modeUI === "webtoon"}
               onChange={(e) => handleDirectionChange(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none focus:border-accent/40 sm:w-56"
+              className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none focus:border-accent/40 disabled:opacity-50 sm:w-56"
             >
               <option value="ltr">从左到右</option>
               <option value="rtl">从右到左</option>
-              <option value="vertical">垂直滚动</option>
             </select>
           </div>
 
@@ -609,17 +637,6 @@ function ReaderPreferencesPanel() {
             </select>
           </div>
 
-          {/* Background — disabled, coming soon */}
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 opacity-50">
-            <div>
-              <div className="text-sm font-medium text-foreground">阅读背景 <span className="ml-1 text-[10px] text-muted">即将支持</span></div>
-              <div className="text-xs text-muted">为长时间阅读选择更舒适的背景主题。</div>
-            </div>
-            <select disabled className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none sm:w-56">
-              <option>跟随主题</option>
-            </select>
-          </div>
-
           {/* Toggle: progress tracking */}
           {[
             { label: "自动保存阅读进度", desc: "跟踪并自动记录最后阅读位置，下次打开继续阅读。", checked: options.progressTracking, onChange: (v: boolean) => updateOptions({ progressTracking: v }) },
@@ -632,6 +649,7 @@ function ReaderPreferencesPanel() {
               <button
                 type="button"
                 role="switch"
+                aria-label={item.label}
                 aria-checked={item.checked}
                 onClick={() => item.onChange(!item.checked)}
                 className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${item.checked ? "bg-accent" : "bg-muted/40"}`}
@@ -643,6 +661,39 @@ function ReaderPreferencesPanel() {
               </button>
             </div>
           ))}
+
+          <div id="display-language" className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground">界面语言</div>
+              <div className="text-xs text-muted">只影响当前浏览器中的界面文字。</div>
+            </div>
+            <select value={locale} onChange={(e) => setLocale(e.target.value as "zh-CN" | "en")} className="h-9 w-full rounded-lg border border-border/50 bg-card/60 px-3 text-sm outline-none focus:border-accent/40 sm:w-56">
+              <option value="zh-CN">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
+          <div id="privacy-mode" className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground">隐私模式</div>
+              <div className="text-xs text-muted">在书库中模糊成人内容封面。</div>
+            </div>
+            <button type="button" role="switch" aria-label="隐私模式" aria-checked={privacyEnabled} onClick={togglePrivacy} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${privacyEnabled ? "bg-accent" : "bg-muted/40"}`}>
+              <span aria-hidden className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${privacyEnabled ? "translate-x-5" : "translate-x-0"}`} />
+            </button>
+          </div>
+
+          {privacyEnabled && (
+            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div>
+                <div className="text-sm font-medium text-foreground">模糊成人封面</div>
+                <div className="text-xs text-muted">匹配 R18 或 NSFW 标签的封面会被模糊。</div>
+              </div>
+              <button type="button" role="switch" aria-label="模糊成人封面" aria-checked={blurNSFW} onClick={toggleBlur} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${blurNSFW ? "bg-accent" : "bg-muted/40"}`}>
+                <span aria-hidden className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${blurNSFW ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+          )}
 
           {/* Reset button */}
           <div className="p-4 flex items-center gap-2">
@@ -666,56 +717,6 @@ function ReaderPreferencesPanel() {
     </div>
   );
 }
-/* ── Sync & Backup Panel ── */
-function SyncBackupPanel() {
-  return (
-    <div className="max-w-2xl space-y-5">
-      <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            <HardDrive className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-foreground">同步与备份</h2>
-              <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted">
-                规划中
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-muted">
-              用于备份应用配置、阅读数据和跨设备同步进度。
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="divide-y divide-border">
-          {[
-            { title: "自动备份", description: "按计划备份应用配置和阅读数据。" },
-            { title: "配置导入与导出", description: "迁移站点设置、书库配置与权限规则。" },
-            { title: "阅读数据备份", description: "导出阅读历史、进度与统计数据。" },
-            { title: "跨设备同步", description: "同步阅读进度、书签和阅读历史。" },
-          ].map((item) => (
-            <div key={item.title} className="flex min-h-16 items-center gap-4 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-foreground">{item.title}</div>
-                <p className="mt-0.5 text-xs text-muted">{item.description}</p>
-              </div>
-              <span className="shrink-0 text-xs text-muted">暂未开放</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-start gap-2 rounded-lg border border-border bg-background p-4 text-xs text-muted">
-        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-        <p>该页面仅展示后续能力范围，相关接口就绪前不会保存任何设置。</p>
-      </div>
-    </div>
-  );
-}
-
 /* ── About Panel ── */
 /* ═══════════════════════════════════════════
    About Panel — 品牌展示卡 + 技术栈

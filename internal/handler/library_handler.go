@@ -599,22 +599,96 @@ func (h *LibraryHandler) GetUserLibraryAccess(c *gin.Context) {
 		accessMap[access.LibraryID] = access
 	}
 
+	// Collect inherited group permissions so the UI can explain the effective result.
+	type permissionSource struct {
+		Type        string `json:"type"`
+		ID          string `json:"id,omitempty"`
+		Name        string `json:"name"`
+		CanView     bool   `json:"canView"`
+		CanDownload bool   `json:"canDownload"`
+		CanManage   bool   `json:"canManage"`
+	}
+	groupSources := make(map[string][]permissionSource)
+	groups, err := store.GetUserGroups(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
+		return
+	}
+	for _, group := range groups {
+		groupAccess, accessErr := store.GetGroupLibraryAccess(group.ID)
+		if accessErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch group library access"})
+			return
+		}
+		for _, access := range groupAccess {
+			if !access.CanView && !access.CanDownload && !access.CanManage {
+				continue
+			}
+			groupSources[access.LibraryID] = append(groupSources[access.LibraryID], permissionSource{
+				Type:        "group",
+				ID:          group.ID,
+				Name:        group.Name,
+				CanView:     access.CanView,
+				CanDownload: access.CanDownload,
+				CanManage:   access.CanManage,
+			})
+		}
+	}
+
 	// Build result with all libraries
 	type libraryAccess struct {
 		model.Library
-		CanView     bool `json:"canView"`
-		CanDownload bool `json:"canDownload"`
-		CanManage   bool `json:"canManage"`
+		CanView              bool               `json:"canView"`
+		CanDownload          bool               `json:"canDownload"`
+		CanManage            bool               `json:"canManage"`
+		EffectiveCanView     bool               `json:"effectiveCanView"`
+		EffectiveCanDownload bool               `json:"effectiveCanDownload"`
+		EffectiveCanManage   bool               `json:"effectiveCanManage"`
+		PermissionSources    []permissionSource `json:"permissionSources"`
 	}
 
 	result := make([]libraryAccess, len(libraries))
 	for i, lib := range libraries {
 		access := accessMap[lib.ID]
+		sources := make([]permissionSource, 0, len(groupSources[lib.ID])+2)
+		effectiveView := access.CanView
+		effectiveDownload := access.CanDownload
+		effectiveManage := access.CanManage
+		if access.CanView || access.CanDownload || access.CanManage {
+			sources = append(sources, permissionSource{
+				Type: "direct", ID: userID, Name: "用户直接授权",
+				CanView: access.CanView, CanDownload: access.CanDownload, CanManage: access.CanManage,
+			})
+		}
+		if lib.DefaultAccess == "public" {
+			effectiveView = true
+			sources = append(sources, permissionSource{Type: "public", Name: "公开书库", CanView: true})
+		}
+		for _, source := range groupSources[lib.ID] {
+			effectiveView = effectiveView || source.CanView
+			effectiveDownload = effectiveDownload || source.CanDownload
+			effectiveManage = effectiveManage || source.CanManage
+			sources = append(sources, source)
+		}
+		if user.Role == "admin" && lib.Enabled {
+			effectiveView, effectiveDownload, effectiveManage = true, true, true
+			sources = []permissionSource{{
+				Type: "admin", ID: userID, Name: "管理员身份",
+				CanView: true, CanDownload: true, CanManage: true,
+			}}
+		}
+		if !lib.Enabled {
+			effectiveView, effectiveDownload, effectiveManage = false, false, false
+		}
 		result[i] = libraryAccess{
-			Library:     lib,
-			CanView:     access.CanView,
-			CanDownload: access.CanDownload,
-			CanManage:   access.CanManage,
+			Library:              lib,
+			CanView:              access.CanView,
+			CanDownload:          access.CanDownload,
+			CanManage:            access.CanManage,
+			EffectiveCanView:     effectiveView,
+			EffectiveCanDownload: effectiveDownload,
+			EffectiveCanManage:   effectiveManage,
+			PermissionSources:    sources,
 		}
 	}
 

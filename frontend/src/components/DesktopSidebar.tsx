@@ -15,6 +15,7 @@ import {
   Wrench,
   AlertTriangle,
   ShieldCheck,
+  HardDrive,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
@@ -43,6 +44,7 @@ export default function DesktopSidebar() {
   const adminItems = [
     { href: "/tag-manager", icon: Tag, label: "标签与分类", adminOnly: true },
     { href: "/scraper", icon: Wrench, label: "元数据抓取", adminOnly: true },
+    { href: "/file-stats", icon: HardDrive, label: "文件统计", adminOnly: true },
     { href: "/logs", icon: AlertTriangle, label: "错误日志", adminOnly: true },
     { href: "/data-admin", icon: Database, label: "数据管理", adminOnly: true },
     { href: "/data-qa", icon: ShieldCheck, label: "数据巡检", adminOnly: true },

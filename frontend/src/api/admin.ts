@@ -4,7 +4,7 @@
  *
  * 本文件分两层：
  *   1) 底层 fetch 函数（与后端契约一一对应）
- *   2) adminAPI 适配层 + 扁平化数据结构（供 DataAdminPanel 等组件使用）
+ *   2) adminAPI 适配层 + 扁平化数据结构（供数据管理页面使用）
  */
 
 import { apiPath } from "@/lib/base-path";

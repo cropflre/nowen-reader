@@ -274,6 +274,107 @@ func TestManagedLibraryScanAllowsCanManageUser(t *testing.T) {
 	}
 }
 
+func TestUserLibraryAccessIncludesEffectivePermissionsAndSources(t *testing.T) {
+	r := setupTestRouter(t)
+	adminCookie := registerAndLogin(t, r)
+
+	libraries := []*model.Library{
+		{ID: "effective-public", Name: "Public", Type: "comic", RootPath: t.TempDir(), Enabled: true, DefaultAccess: "public"},
+		{ID: "effective-direct", Name: "Direct", Type: "comic", RootPath: t.TempDir(), Enabled: true, DefaultAccess: "private"},
+		{ID: "effective-group", Name: "Group", Type: "comic", RootPath: t.TempDir(), Enabled: true, DefaultAccess: "private"},
+		{ID: "effective-disabled", Name: "Disabled", Type: "comic", RootPath: t.TempDir(), Enabled: false, DefaultAccess: "private"},
+	}
+	for _, library := range libraries {
+		if err := store.CreateLibrary(library); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	user := &model.User{ID: "effective-user", Username: "effective-user", Password: "hash", Role: "user"}
+	if err := store.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{
+		{LibraryID: "effective-direct", CanManage: true},
+		{LibraryID: "effective-disabled", CanView: true, CanDownload: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	group := &model.UserGroup{ID: "effective-group-id", Name: "Download group"}
+	if err := store.CreateUserGroup(group); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetGroupMembers(group.ID, []string{user.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetGroupLibraryAccessFull(group.ID, []store.GroupLibraryPermission{{
+		LibraryID: "effective-group", CanDownload: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	w := performAuthedRequest(r, "GET", "/api/admin/users/"+user.ID+"/library-access", nil, adminCookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get user library access: %d %s", w.Code, w.Body.String())
+	}
+	var response struct {
+		Libraries []struct {
+			ID                   string `json:"id"`
+			CanView              bool   `json:"canView"`
+			CanDownload          bool   `json:"canDownload"`
+			CanManage            bool   `json:"canManage"`
+			EffectiveCanView     bool   `json:"effectiveCanView"`
+			EffectiveCanDownload bool   `json:"effectiveCanDownload"`
+			EffectiveCanManage   bool   `json:"effectiveCanManage"`
+			PermissionSources    []struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"permissionSources"`
+		} `json:"libraries"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]struct {
+		Direct    [3]bool
+		Effective [3]bool
+		Sources   []string
+	})
+	for _, library := range response.Libraries {
+		sources := make([]string, 0, len(library.PermissionSources))
+		for _, source := range library.PermissionSources {
+			sources = append(sources, source.Type)
+		}
+		byID[library.ID] = struct {
+			Direct    [3]bool
+			Effective [3]bool
+			Sources   []string
+		}{
+			Direct:    [3]bool{library.CanView, library.CanDownload, library.CanManage},
+			Effective: [3]bool{library.EffectiveCanView, library.EffectiveCanDownload, library.EffectiveCanManage},
+			Sources:   sources,
+		}
+	}
+
+	assertAccess := func(id string, direct, effective [3]bool, source string) {
+		t.Helper()
+		got, ok := byID[id]
+		if !ok {
+			t.Fatalf("library %q missing from response", id)
+		}
+		if got.Direct != direct || got.Effective != effective {
+			t.Fatalf("library %q access = direct %v effective %v, want %v %v", id, got.Direct, got.Effective, direct, effective)
+		}
+		if source != "" && !strings.Contains(strings.Join(got.Sources, ","), source) {
+			t.Fatalf("library %q sources = %v, want %q", id, got.Sources, source)
+		}
+	}
+	assertAccess("effective-public", [3]bool{}, [3]bool{true, false, false}, "public")
+	assertAccess("effective-direct", [3]bool{true, false, true}, [3]bool{true, false, true}, "direct")
+	assertAccess("effective-group", [3]bool{}, [3]bool{true, true, false}, "group")
+	assertAccess("effective-disabled", [3]bool{true, true, false}, [3]bool{}, "direct")
+}
+
 func TestGroupDetailRejectsUserWithoutSeriesLibraryAccess(t *testing.T) {
 	r := setupTestRouter(t)
 	if err := store.RunMigrations(); err != nil {

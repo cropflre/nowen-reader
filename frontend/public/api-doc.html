@@ -3521,7 +3521,7 @@
     <span class="summary"><span data-en="Get user library access" data-zh="获取用户库访问权限">Get user library access</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Get library access permissions for a specific user. Admin users have access to all libraries." data-zh="获取特定用户的库访问权限。管理员用户可访问所有库。">Get library access permissions for a specific user. Admin users have access to all libraries.</span></p>
+    <p class="description"><span data-en="Get direct and effective library permissions for a specific user. Effective permissions merge direct grants, group grants, public-library access, and administrator identity." data-zh="获取指定用户的直接书库权限和最终生效权限。最终权限会合并用户直接授权、权限组授权、公开书库访问权和管理员身份。">Get direct and effective library permissions for a specific user. Effective permissions merge direct grants, group grants, public-library access, and administrator identity.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
 	    <pre class="code-block"><code>{
@@ -3535,10 +3535,24 @@
       "rootPaths": ["string"],
       "canView": true,
       "canDownload": false,
-      "canManage": false
+      "canManage": false,
+      "effectiveCanView": true,
+      "effectiveCanDownload": true,
+      "effectiveCanManage": false,
+      "permissionSources": [
+        {
+          "type": "group",
+          "id": "group-id",
+          "name": "Family users",
+          "canView": true,
+          "canDownload": true,
+          "canManage": false
+        }
+      ]
     }
   ]
 }</code></pre>
+    <p class="description"><span data-en="The canView/canDownload/canManage fields are editable direct grants retained for compatibility. effectiveCanView/effectiveCanDownload/effectiveCanManage are the final permissions. permissionSources entries use direct, group, public, or admin as type. Disabled libraries always have false effective permissions." data-zh="canView、canDownload、canManage 是可编辑的用户直接授权，并为兼容旧客户端保留；effectiveCanView、effectiveCanDownload、effectiveCanManage 是最终权限。permissionSources 的 type 可能为 direct、group、public 或 admin。已禁用书库的最终权限始终为 false。">The canView/canDownload/canManage fields are editable direct grants retained for compatibility. effectiveCanView/effectiveCanDownload/effectiveCanManage are the final permissions. permissionSources entries use direct, group, public, or admin as type. Disabled libraries always have false effective permissions.</span></p>
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
       <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>

@@ -39,6 +39,7 @@ const Collections = React.lazy(() => import("@/app/collections/page"));
 const TagManager = React.lazy(() => import("@/app/tag-manager/page"));
 const DataAdmin = React.lazy(() => import("@/app/data-admin/page"));
 const DataQA = React.lazy(() => import("@/app/data-qa/page"));
+const FileStats = React.lazy(() => import("@/app/file-stats/page"));
 const History = React.lazy(() => import("@/app/history/page"));
 const BookFlipDevPage = React.lazy(() => import("@/app/dev/book-flip/page"));
 
@@ -124,6 +125,7 @@ function AppRoutes() {
         <Route path="tag-manager" element={<AdminRoute><TagManager /></AdminRoute>} />
         <Route path="data-admin" element={<AdminRoute><DataAdmin /></AdminRoute>} />
         <Route path="data-qa" element={<AdminRoute><DataQA /></AdminRoute>} />
+        <Route path="file-stats" element={<AdminRoute><FileStats /></AdminRoute>} />
       </Route>
 
       <Route element={<AnimatedOutlet />}>

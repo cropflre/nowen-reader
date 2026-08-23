@@ -1203,11 +1203,29 @@ GET /api/admin/users/:id/library-access
       "rootPaths": ["string"],
       "canView": true,
       "canDownload": false,
-      "canManage": false
+      "canManage": false,
+      "effectiveCanView": true,
+      "effectiveCanDownload": true,
+      "effectiveCanManage": false,
+      "permissionSources": [
+        {
+          "type": "group",
+          "id": "group-id",
+          "name": "家庭用户",
+          "canView": true,
+          "canDownload": true,
+          "canManage": false
+        }
+      ]
     }
   ]
 }
 ```
+
+- `canView`、`canDownload`、`canManage` 表示该用户的直接授权，供管理界面编辑，保持旧客户端兼容。
+- `effectiveCanView`、`effectiveCanDownload`、`effectiveCanManage` 表示合并用户直接授权、权限组、公开书库和管理员身份后的最终权限。
+- `permissionSources` 列出产生最终权限的来源，`type` 可能为 `direct`、`group`、`public` 或 `admin`。
+- 已禁用书库的最终权限始终为 `false`。
 
 #### 设置用户书库权限
 
