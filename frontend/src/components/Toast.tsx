@@ -25,6 +25,7 @@ interface ToastContextType {
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
+const COMICS_LOAD_ERROR_EVENT = "nowen-comics-load-error";
 
 // ============================================================
 // Hook
@@ -123,6 +124,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const id = `toast-${++idCounter}-${Date.now()}`;
     setToasts((prev) => [...prev.slice(-4), { id, type, message, duration }]); // 最多保留 5 条
   }, []);
+
+  // 书库列表请求失败不能再伪装成“0 本/空书库”。useComics 在真正的网络/API
+  // 错误时派发全局事件，由现有 Toast 基础设施统一呈现，不给业务页复制提示逻辑。
+  useEffect(() => {
+    const handleComicsLoadError = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      if (message) addToast(message, "error", 6000);
+    };
+    window.addEventListener(COMICS_LOAD_ERROR_EVENT, handleComicsLoadError);
+    return () => window.removeEventListener(COMICS_LOAD_ERROR_EVENT, handleComicsLoadError);
+  }, [addToast]);
 
   const contextValue: ToastContextType = {
     toast: addToast,

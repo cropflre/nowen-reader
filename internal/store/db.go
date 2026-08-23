@@ -29,16 +29,18 @@ func InitDB(dbPath string) error {
 	}
 
 	var err error
-	// modernc.org/sqlite uses "sqlite" as driver name
-	// 在 DSN 中通过 _pragma 参数设置 foreign_keys=ON，确保连接池中的每个连接都启用外键约束
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_time_format=sqlite", dbPath)
+	// modernc.org/sqlite connection-local PRAGMAs must live in the DSN so every
+	// pooled connection gets identical foreign-key and busy-timeout behavior.
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(30000)&_time_format=sqlite", dbPath)
 	db, err = sql.Open("sqlite", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Connection pool settings for SQLite (WAL mode supports concurrent reads)
-	db.SetMaxOpenConns(8) // 万级数据量下允许更多并发读操作
+	// Connection pool settings for SQLite (WAL mode supports concurrent reads).
+	// Writes are serialized by SQLite; the per-connection busy timeout above
+	// lets short scanner/admin writes wait instead of failing immediately.
+	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(4)
 
 	// Verify connection
@@ -46,10 +48,10 @@ func InitDB(dbPath string) error {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Apply performance PRAGMAs (matching Node.js version)
+	// Apply database-wide/performance PRAGMAs to the initial connection as well.
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000", // 等待锁最多5秒，避免并发写入时查询立即失败
+		"PRAGMA busy_timeout = 30000",
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA mmap_size = 268435456", // 256MB
 		"PRAGMA cache_size = -64000",   // 64MB
@@ -554,7 +556,7 @@ func createTables() error {
 			"libraryId"   TEXT NOT NULL,
 			"canView"     BOOLEAN NOT NULL DEFAULT 1,
 			"canDownload" BOOLEAN NOT NULL DEFAULT 0,
-			"canManage"   BOOLEAN NOT NULL DEFAULT 0,
+			"canManage" BOOLEAN NOT NULL DEFAULT 0,
 			"createdAt"   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY ("groupId", "libraryId"),
 			CONSTRAINT "GLA_groupId_fkey" FOREIGN KEY ("groupId")

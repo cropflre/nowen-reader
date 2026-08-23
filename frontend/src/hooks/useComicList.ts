@@ -14,6 +14,7 @@ const comicsCache = new Map<string, { data: ComicsResponse; ts: number }>();
 const COMICS_CACHE_TTL = 30_000; // 30 秒
 const MAX_CACHE_ENTRIES = 20;
 export const LIBRARY_ACCESS_CHANGED_EVENT = "nowen-library-access-changed";
+export const COMICS_LOAD_ERROR_EVENT = "nowen-comics-load-error";
 
 /** 当前用户作用域，用于缓存 key 隔离不同用户的缓存 */
 let currentUserScope = "";
@@ -57,6 +58,22 @@ export function notifyLibraryAccessChanged() {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(LIBRARY_ACCESS_CHANGED_EVENT));
   }
+}
+
+async function comicsResponseError(res: Response): Promise<string> {
+  let detail = "";
+  try {
+    const body = await res.json();
+    if (typeof body?.error === "string") detail = body.error.trim();
+  } catch {
+    // Non-JSON gateway/proxy errors are represented by the HTTP status below.
+  }
+  return detail || `书库内容加载失败（HTTP ${res.status}）`;
+}
+
+function notifyComicsLoadError(message: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<string>(COMICS_LOAD_ERROR_EVENT, { detail: message }));
 }
 
 /**
@@ -138,7 +155,7 @@ export function useComics(options?: {
 
     try {
       const res = await fetch(apiPath(url), { signal: abortController.signal, cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch comics");
+      if (!res.ok) throw new Error(await comicsResponseError(res));
       const data: ComicsResponse = await res.json();
       // 检查请求是否被取消
       if (abortController.signal.aborted) return;
@@ -156,7 +173,9 @@ export function useComics(options?: {
       // 忽略取消的请求
       if (err instanceof Error && err.name === "AbortError") return;
       if (!cached) {
-        setError(err instanceof Error ? err.message : "Unknown error");
+        const message = err instanceof Error ? err.message : "书库内容加载失败";
+        setError(message);
+        notifyComicsLoadError(message);
       }
     } finally {
       // 只有当前请求没有被取消时才更新状态

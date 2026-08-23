@@ -3,7 +3,6 @@ package store
 import (
 	"database/sql"
 	"fmt"
-
 	"strings"
 	"time"
 )
@@ -326,6 +325,8 @@ func detectComicType(filename string) string {
 
 // BulkCreateComicsWithSource 在单个事务中批量插入漫画/电子书，根据来源目录智能识别类型。
 // fileSourceMap: map[fileID] => "comics" | "novels"
+// fileLibraryMap 必须为每一个待插入项目提供真实书库 ID；禁止再回退到历史
+// "default"，否则删除默认书库后会制造 libraryId 指向不存在书库的孤儿数据。
 func BulkCreateComicsWithSource(comics []struct {
 	ID       string
 	Filename string
@@ -365,15 +366,19 @@ func BulkCreateComicsWithSource(comics []struct {
 				comicType = "comic"
 			}
 		}
-		libID := fileLibraryMap[c.ID]
-		relPath := c.Filename
+		libID := strings.TrimSpace(fileLibraryMap[c.ID])
 		if libID == "" {
-			libID = "default"
+			return fmt.Errorf("missing library assignment for %s (%s)", c.Filename, c.ID)
 		}
+		relPath := c.Filename
 		if _, err := stmt.Exec(c.ID, c.Filename, c.Title, BuildTitleSortKey(c.Title), c.FileSize, comicType, libID, relPath, now, now); err != nil {
+			return fmt.Errorf("insert %s into library %s: %w", c.Filename, libID, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit scanned contents: %w", err)
+	}
+	return nil
 }
 
 // BulkDeleteComicsByIDs 批量删除指定ID的漫画及其关联数据。

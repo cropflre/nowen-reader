@@ -21,7 +21,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	comicsRead := api.Group("/comics")
 	comicsRead.Use(middleware.AuthRequired())
 	{
-		comicsRead.GET("", reconcileOwnershipBeforeList(), comic.ListComicsCompatible)
+		comicsRead.GET("", reconcileOwnershipBeforeList(), comic.ListComicsShelfSafe)
 		comicsRead.GET("/duplicates", comic.DetectDuplicates)
 		comicsRead.POST("/batch", recordOnlyBatchDeleteGuard(), comic.BatchOperation)
 	}

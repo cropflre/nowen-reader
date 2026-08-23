@@ -7,8 +7,8 @@ import (
 
 // GetAllComicsSortedByPageCount reuses the canonical comic filtering and
 // permission-aware query, then applies page-count ordering before pagination.
-// This keeps the Android compatibility path aligned with GetAllComics without
-// duplicating its SQL filters.
+// Series shelves use the large-library-safe path so Android/Desktop clients do
+// not reintroduce the SQLite variable-limit failure fixed for the Web shelf.
 func GetAllComicsSortedByPageCount(opts ComicListOptions) (*ComicListResult, error) {
 	requestedPage := opts.Page
 	requestedPageSize := opts.PageSize
@@ -20,7 +20,15 @@ func GetAllComicsSortedByPageCount(opts ComicListOptions) (*ComicListResult, err
 	allOpts.Page = 1
 	allOpts.PageSize = 0
 	allOpts.SortBy = "title"
-	all, err := GetAllComics(allOpts)
+	var (
+		all *ComicListResult
+		err error
+	)
+	if allOpts.SeriesView {
+		all, err = GetAllComicsShelfSafe(allOpts)
+	} else {
+		all, err = GetAllComics(allOpts)
+	}
 	if err != nil {
 		return nil, err
 	}
