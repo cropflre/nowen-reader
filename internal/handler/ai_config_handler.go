@@ -66,22 +66,17 @@ func (h *AIHandler) UpdateSettings(c *gin.Context) {
 // GET /api/ai/models?provider=...&apiUrl=...&apiKey=...
 func (h *AIHandler) Models(c *gin.Context) {
 	provider := c.Query("provider")
-	apiURL := c.Query("apiUrl")
+	apiURL := strings.TrimSpace(c.Query("apiUrl"))
 	apiKey := c.Query("apiKey")
 
+	cfg := service.LoadAIConfig()
 	if provider == "" {
-		cfg := service.LoadAIConfig()
 		provider = cfg.CloudProvider
-		if apiURL == "" {
-			apiURL = cfg.CloudAPIURL
-		}
-		if apiKey == "" {
-			apiKey = cfg.CloudAPIKey
-		}
 	}
-
+	if apiURL == "" {
+		apiURL = cfg.CloudAPIURL
+	}
 	if apiKey == "" || strings.Contains(apiKey, "****") {
-		cfg := service.LoadAIConfig()
 		apiKey = cfg.CloudAPIKey
 	}
 
@@ -90,20 +85,42 @@ func (h *AIHandler) Models(c *gin.Context) {
 		apiURL = preset.APIURL
 	}
 
-	// Return preset models
-	if ok && len(preset.Models) > 0 {
+	// Known providers keep their curated list, but normalize it to the object
+	// shape expected by the settings UI.
+	if ok && provider != "compatible" && len(preset.Models) > 0 {
+		models := make([]service.OpenAICompatibleModel, 0, len(preset.Models))
+		for _, id := range preset.Models {
+			models = append(models, service.OpenAICompatibleModel{ID: id})
+		}
 		c.JSON(200, gin.H{
-			"models":   preset.Models,
+			"models":   models,
 			"provider": provider,
 			"source":   "preset",
 		})
 		return
 	}
 
+	// Custom/OpenAI-compatible providers must be queried dynamically. The
+	// configured URL may be either a base URL (/v1) or a full chat endpoint;
+	// the service normalizes both forms before requesting /models.
+	if apiURL == "" {
+		c.JSON(400, gin.H{"error": "API URL is required for a custom OpenAI-compatible provider"})
+		return
+	}
+	if apiKey == "" {
+		c.JSON(400, gin.H{"error": "API key is required to fetch provider models"})
+		return
+	}
+
+	models, err := service.FetchOpenAICompatibleModels(apiURL, apiKey)
+	if err != nil {
+		c.JSON(502, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(200, gin.H{
-		"models":   []string{},
+		"models":   models,
 		"provider": provider,
-		"source":   "none",
+		"source":   "remote",
 	})
 }
 

@@ -87,11 +87,9 @@ func CallCloudLLM(cfg AIConfig, systemPrompt, userPrompt string, opts *LLMCallOp
 
 		lastErr = err
 
-		// 某些错误不需要重试（如认证失败、请求无效）
-		errStr := err.Error()
-		if strings.Contains(errStr, "401") || strings.Contains(errStr, "403") ||
-			strings.Contains(errStr, "invalid_api_key") || strings.Contains(errStr, "not configured") ||
-			strings.Contains(errStr, "does not support vision") {
+		// 4xx 参数/认证错误通常是确定性的，原样重试不会改变结果。
+		// 仅对网络错误、429/408/425 和 5xx 等瞬态错误继续重试。
+		if !isRetryableLLMError(err) {
 			return "", err
 		}
 	}
@@ -185,7 +183,10 @@ func callCloudLLMOnce(cfg AIConfig, systemPrompt, userPrompt string, opts *LLMCa
 // ============================================================
 
 func callOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt string, maxTokens int, temperature float64, images []ImageContent) (string, tokenUsage, error) {
-	reqURL := apiURL + "/chat/completions"
+	reqURL, err := resolveOpenAICompatibleEndpoint(apiURL, "chat/completions")
+	if err != nil {
+		return "", tokenUsage{}, err
+	}
 
 	// 构建 messages
 	messages := []interface{}{
@@ -228,15 +229,21 @@ func callOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt string,
 		})
 	}
 
-	body, _ := json.Marshal(map[string]interface{}{
+	body, err := json.Marshal(map[string]interface{}{
 		"model":       cfg.CloudModel,
 		"messages":    messages,
 		"max_tokens":  maxTokens,
 		"temperature": temperature,
 	})
+	if err != nil {
+		return "", tokenUsage{}, fmt.Errorf("encode OpenAI-compatible request: %w", err)
+	}
 
 	client := &http.Client{Timeout: 120 * time.Second}
-	req, _ := http.NewRequest("POST", reqURL, strings.NewReader(string(body)))
+	req, err := http.NewRequest("POST", reqURL, strings.NewReader(string(body)))
+	if err != nil {
+		return "", tokenUsage{}, fmt.Errorf("build OpenAI-compatible request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.CloudAPIKey)
 
@@ -248,11 +255,7 @@ func callOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt string,
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		errMsg := string(respBody)
-		if len(errMsg) > 500 {
-			errMsg = errMsg[:500]
-		}
-		return "", tokenUsage{}, fmt.Errorf("OpenAI API error %d: %s", resp.StatusCode, errMsg)
+		return "", tokenUsage{}, newLLMHTTPError("OpenAI", resp.StatusCode, string(respBody))
 	}
 
 	var data struct {

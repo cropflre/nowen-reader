@@ -82,11 +82,15 @@ func CallCloudLLMStream(cfg AIConfig, systemPrompt, userPrompt string, opts *LLM
 	return err
 }
 
-// streamOpenAICompatible OpenAI 兼容的 SSE 流式调用
+// streamOpenAICompatible OpenAI 兼容的 SSE 流式调用。
+// apiURL 同时接受 base URL（.../v1）和完整 endpoint（.../v1/chat/completions）。
 func streamOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt string, maxTokens int, temperature float64, callback StreamCallback) error {
-	reqURL := apiURL + "/chat/completions"
+	reqURL, err := resolveOpenAICompatibleEndpoint(apiURL, "chat/completions")
+	if err != nil {
+		return err
+	}
 
-	body, _ := json.Marshal(map[string]interface{}{
+	body, err := json.Marshal(map[string]interface{}{
 		"model": cfg.CloudModel,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
@@ -96,9 +100,15 @@ func streamOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt strin
 		"temperature": temperature,
 		"stream":      true,
 	})
+	if err != nil {
+		return fmt.Errorf("encode OpenAI-compatible stream request: %w", err)
+	}
 
 	client := &http.Client{Timeout: 300 * time.Second}
-	req, _ := http.NewRequest("POST", reqURL, strings.NewReader(string(body)))
+	req, err := http.NewRequest("POST", reqURL, strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("build OpenAI-compatible stream request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.CloudAPIKey)
 
@@ -110,11 +120,7 @@ func streamOpenAICompatible(cfg AIConfig, apiURL, systemPrompt, userPrompt strin
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
-		errMsg := string(respBody)
-		if len(errMsg) > 500 {
-			errMsg = errMsg[:500]
-		}
-		return fmt.Errorf("OpenAI stream API error %d: %s", resp.StatusCode, errMsg)
+		return newLLMHTTPError("OpenAI stream", resp.StatusCode, string(respBody))
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -177,11 +183,7 @@ func streamAnthropic(cfg AIConfig, apiURL, systemPrompt, userPrompt string, maxT
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
-		errMsg := string(respBody)
-		if len(errMsg) > 500 {
-			errMsg = errMsg[:500]
-		}
-		return fmt.Errorf("Anthropic stream API error %d: %s", resp.StatusCode, errMsg)
+		return newLLMHTTPError("Anthropic stream", resp.StatusCode, string(respBody))
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -250,11 +252,7 @@ func streamGemini(cfg AIConfig, apiURL, systemPrompt, userPrompt string, maxToke
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
-		errMsg := string(respBody)
-		if len(errMsg) > 500 {
-			errMsg = errMsg[:500]
-		}
-		return fmt.Errorf("Gemini stream API error %d: %s", resp.StatusCode, errMsg)
+		return newLLMHTTPError("Gemini stream", resp.StatusCode, string(respBody))
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
