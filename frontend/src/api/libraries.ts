@@ -85,6 +85,22 @@ export interface LibraryOwnershipReconcileResult {
   blocked: number;
 }
 
+export interface ScannerJob {
+  id: string;
+  kind: "quick" | "force" | "library" | "maintenance" | "redetect";
+  libraryId?: string;
+  state: "queued" | "running" | "completed" | "failed";
+  reason?: string;
+  queuedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  added: number;
+  removed: number;
+  moved: number;
+  typeFixed: number;
+  error?: string;
+}
+
 // ============================================================
 // API 函数
 // ============================================================
@@ -200,24 +216,61 @@ export async function fetchUserLibraryAccess(userId: string): Promise<{
   return safeJson(res);
 }
 
-// 扫描单个书库
+const scannerPollIntervalMs = 800;
+const scannerPollTimeoutMs = 30 * 60 * 1000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchScannerJob(jobId: string): Promise<ScannerJob> {
+  const res = await fetch(apiPath(`/api/libraries/scan-jobs/${jobId}`));
+  const data = await safeJson<{ job: ScannerJob }>(res);
+  return data.job;
+}
+
+async function waitForScannerJob(job: ScannerJob): Promise<ScannerJob> {
+  const deadline = Date.now() + scannerPollTimeoutMs;
+  let current = job;
+  while (current.state === "queued" || current.state === "running") {
+    if (Date.now() >= deadline) {
+      throw new Error("扫描仍在后台执行，请稍后在书库管理中查看结果");
+    }
+    await wait(scannerPollIntervalMs);
+    current = await fetchScannerJob(current.id);
+  }
+  if (current.state === "failed") {
+    throw new Error(current.error || "书库扫描失败");
+  }
+  return current;
+}
+
+async function queueLibraryScan(endpoint: string): Promise<ScannerJob> {
+  const res = await fetch(apiPath(endpoint), { method: "POST" });
+  const data = await safeJson<{ job: ScannerJob }>(res);
+  return waitForScannerJob(data.job);
+}
+
+// 扫描单个书库。后端统一排队，前端轮询任务状态，因此后台扫描繁忙时不再直接失败。
 export async function scanLibrary(
   id: string
 ): Promise<{ added: number; removed: number; library: Library }> {
-  const res = await fetch(apiPath(`/api/admin/libraries/${id}/scan`), {
-    method: "POST",
-  });
-  return safeJson(res);
+  const job = await queueLibraryScan(`/api/admin/libraries/${id}/scan`);
+  const libraries = await fetchLibraries();
+  const library = libraries.find((item) => item.id === id);
+  if (!library) throw new Error("扫描完成，但未能重新读取书库信息");
+  return { added: job.added, removed: job.removed, library };
 }
 
 // 扫描当前用户拥有管理权限的书库（管理员与 canManage 用户均可调用）。
 export async function scanManagedLibrary(
   id: string
 ): Promise<{ added: number; removed: number; library: Library }> {
-  const res = await fetch(apiPath(`/api/libraries/${id}/scan`), {
-    method: "POST",
-  });
-  return safeJson(res);
+  const job = await queueLibraryScan(`/api/libraries/${id}/scan`);
+  const libraries = await fetchAccessibleLibraries();
+  const library = libraries.find((item) => item.id === id);
+  if (!library) throw new Error("扫描完成，但未能重新读取书库信息");
+  return { added: job.added, removed: job.removed, library };
 }
 
 export async function previewLibraryOwnership(): Promise<LibraryOwnershipPreview> {
