@@ -88,9 +88,9 @@ func main() {
 	// ============================================================
 
 	// ============================================================
-	// Start background comic sync
+	// Start background comic sync through the unified job coordinator
 	// ============================================================
-	service.StartBackgroundSync()
+	service.StartBackgroundSyncV2()
 
 	// ============================================================
 	// Start session cleanup scheduler
