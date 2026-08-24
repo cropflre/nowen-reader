@@ -44,6 +44,20 @@ export function useComicPages(comicId: string) {
   const [isPdf, setIsPdf] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // Applying/editing a TXT chapter rule should refresh just the chapter list,
+  // not reload the whole reader page and not discard unrelated reader state.
+  useEffect(() => {
+    const handleChapterRuleApplied = (event: Event) => {
+      const detail = (event as CustomEvent<{ comicId?: string }>).detail;
+      if (!detail?.comicId || detail.comicId === comicId) {
+        setReloadToken((value) => value + 1);
+      }
+    };
+    window.addEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
+    return () => window.removeEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
+  }, [comicId]);
 
   useEffect(() => {
     if (!comicId) return;
@@ -70,11 +84,23 @@ export function useComicPages(comicId: string) {
       })
       .then((data: PagesResponse) => {
         if (cancelled) return;
+        const nextPages = data.pages || [];
         setTitle(data.title);
         setIsNovel(!!data.isNovel);
         setIsPdf(!!data.isPdf);
-        setChapters(data.pages || []);
-        setPages((data.pages || []).map((p) => p.url));
+        setChapters(nextPages);
+        setPages(nextPages.map((p) => p.url));
+
+        // Only chapter-rule-triggered reloads need position reconciliation.
+        // Keep the existing chapter index whenever possible; the toolbar will
+        // clamp it only when the new TOC is shorter and the index is invalid.
+        if (reloadToken > 0) {
+          window.dispatchEvent(
+            new CustomEvent("novel-chapter-rule-refreshed", {
+              detail: { comicId, totalChapters: nextPages.length },
+            })
+          );
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -105,7 +131,7 @@ export function useComicPages(comicId: string) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [comicId]);
+  }, [comicId, reloadToken]);
 
   return { pages, chapters, title, isNovel, isPdf, loading, error };
 }

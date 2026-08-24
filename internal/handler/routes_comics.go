@@ -10,11 +10,29 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	// ============================================================
 	comic := NewComicHandler()
 	catalog := NewCatalogHandler()
+	chapterRules := NewNovelChapterRuleHandler()
 
 	catalogRead := api.Group("/catalog")
 	catalogRead.Use(middleware.AuthRequired())
 	{
 		catalogRead.GET("/items", reconcileOwnershipBeforeList(), catalog.ListItems)
+	}
+
+	// TXT novel chapter rules — readable by authenticated users so every client
+	// can resolve the same per-book chapter structure. Global rule mutations are
+	// instance-level configuration and remain admin-only.
+	chapterRulesRead := api.Group("/novel/chapter-rules")
+	chapterRulesRead.Use(middleware.AuthRequired())
+	{
+		chapterRulesRead.GET("", chapterRules.List)
+		chapterRulesRead.POST("/preview", chapterRules.Preview)
+	}
+	chapterRulesWrite := api.Group("/novel/chapter-rules")
+	chapterRulesWrite.Use(middleware.AdminRequired())
+	{
+		chapterRulesWrite.POST("", chapterRules.Create)
+		chapterRulesWrite.PUT("/:ruleId", chapterRules.Update)
+		chapterRulesWrite.DELETE("/:ruleId", chapterRules.Delete)
 	}
 
 	// Comics read operations — require auth
@@ -46,6 +64,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	comicByID.Use(middleware.AuthRequired())
 	{
 		comicByID.GET("", comic.GetComic)
+		comicByID.GET("/chapter-rule", chapterRules.GetComicRule)
 	}
 
 	// Single comic write operations (require manage permission)
@@ -65,6 +84,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 
 		// Metadata editing
 		comicByIDWrite.PUT("/metadata", comic.UpdateMetadata)
+		comicByIDWrite.PUT("/chapter-rule", chapterRules.SetComicRule)
 
 		// Delete comic
 		comicByIDWrite.DELETE("", recordOnlySingleDeleteGuard(), comic.DeleteComic)
@@ -92,7 +112,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	// Image serving (Phase 3) — all require auth
 	img := NewImageHandler()
 
-	comicByID.GET("/pages", img.GetPages)
+	comicByID.GET("/pages", img.GetPagesConfigured)
 	comicByID.GET("/thumbnail", img.GetThumbnail)
 	comicByIDWrite.POST("/cover", img.UpdateCover)
 
@@ -103,7 +123,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		imgRead.GET("/page/:pageIndex", img.GetPageImage)
 		imgRead.GET("/pdf", img.GetPdfFile)
 		imgRead.GET("/pdf-range", img.GetPdfRangeFile)
-		imgRead.GET("/chapter/:chapterIndex", img.GetChapterContent)
+		imgRead.GET("/chapter/:chapterIndex", img.GetChapterContentConfigured)
 		imgRead.GET("/epub-resource/*resourcePath", img.GetEpubResource)
 		imgRead.GET("/embedded-images", img.GetEmbeddedImages)
 		imgRead.GET("/embedded-image/:index", img.GetEmbeddedImage)
