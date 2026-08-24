@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"regexp"
+	"testing"
+)
 
 func TestNovelChapterRuleCRUDAndSystemPresets(t *testing.T) {
 	setupTestDB(t)
@@ -14,6 +17,20 @@ func TestNovelChapterRuleCRUDAndSystemPresets(t *testing.T) {
 	}
 	if rules[0].ID != ChapterRuleAutoID || !rules[0].System {
 		t.Fatalf("expected first rule to be system auto, got %#v", rules[0])
+	}
+
+	cn, err := GetNovelChapterRuleByID("preset-cn")
+	if err != nil || cn == nil {
+		t.Fatalf("get Chinese preset failed: rule=%#v err=%v", cn, err)
+	}
+	cnRE, err := regexp.Compile(cn.Pattern)
+	if err != nil {
+		t.Fatalf("compile Chinese preset failed: %v", err)
+	}
+	for _, title := range []string{"第一章开始", "第一章 开始", "第12回再会", "章节 12 尾声"} {
+		if !cnRE.MatchString(title) {
+			t.Errorf("Chinese preset should match %q", title)
+		}
 	}
 
 	created, err := CreateNovelChapterRule("方括号章节", `^【\d+】.+$`)
