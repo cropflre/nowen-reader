@@ -153,15 +153,21 @@ func (h *NovelChapterRuleHandler) GetComicRule(c *gin.Context) {
 		return
 	}
 	canManage := true
+	canEditGlobalRules := true
 	if uid := getUserID(c); uid != "" {
 		canManage, _ = store.UserCanManageComic(uid, comicID)
+		canEditGlobalRules = false
+		if user, userErr := store.GetUserByID(uid); userErr == nil && user != nil {
+			canEditGlobalRules = user.Role == "admin"
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"comicId":   comicID,
-		"ruleId":    selection.RuleID,
-		"rule":      selection.Rule,
-		"isTxt":     isTxt,
-		"canManage": canManage,
+		"comicId":            comicID,
+		"ruleId":             selection.RuleID,
+		"rule":               selection.Rule,
+		"isTxt":              isTxt,
+		"canManage":          canManage,
+		"canEditGlobalRules": canEditGlobalRules,
 	})
 }
 
