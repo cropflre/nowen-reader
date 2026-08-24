@@ -127,8 +127,8 @@ func (h *AIHandler) ChapterSummary(c *gin.Context) {
 		return
 	}
 
-	// 获取章节内容
-	chapter, err := service.GetChapterContent(comicID, body.ChapterIndex)
+	// 获取章节内容（尊重 TXT 单书自定义分章规则）
+	chapter, err := service.GetResolvedChapterContent(comicID, body.ChapterIndex)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "Chapter not found: " + err.Error()})
 		return
@@ -205,7 +205,7 @@ func (h *AIHandler) BatchChapterSummaries(c *gin.Context) {
 	c.Writer.Flush()
 
 	for _, idx := range body.ChapterIndices {
-		chapter, err := service.GetChapterContent(comicID, idx)
+		chapter, err := service.GetResolvedChapterContent(comicID, idx)
 		if err != nil {
 			// 跳过失败的章节
 			data, _ := json.Marshal(gin.H{
