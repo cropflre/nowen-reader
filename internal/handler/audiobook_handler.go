@@ -39,8 +39,8 @@ func (h *AudiobookHandler) Prepare(c *gin.Context) {
 		req.ForceRefresh = false
 	}
 
-	// 获取章节内容
-	chapterContent, err := service.GetChapterContent(comicID, chapterIndex)
+	// 获取章节内容（尊重 TXT 单书自定义分章规则）
+	chapterContent, err := service.GetResolvedChapterContent(comicID, chapterIndex)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取章节内容失败"})
 		return
