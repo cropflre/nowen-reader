@@ -73,14 +73,19 @@ export default function NovelToolbar({
 }: NovelToolbarProps) {
   const t = useTranslation();
 
-  // A chapter rule can radically change the TOC length. Reset to the first
-  // chapter before the chapter list refetch completes so the parent never
-  // keeps an out-of-range chapter index.
+  // Keep the user's current chapter index after changing detection rules.
+  // Only clamp when the refreshed TOC is shorter and the old index is invalid.
   useEffect(() => {
-    const handleChapterRuleApplied = () => onChapterChange(0);
-    window.addEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
-    return () => window.removeEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
-  }, [onChapterChange]);
+    const handleChapterRuleRefreshed = (event: Event) => {
+      const detail = (event as CustomEvent<{ totalChapters?: number }>).detail;
+      const nextTotal = detail?.totalChapters;
+      if (typeof nextTotal === "number" && nextTotal > 0 && currentChapter >= nextTotal) {
+        onChapterChange(nextTotal - 1);
+      }
+    };
+    window.addEventListener("novel-chapter-rule-refreshed", handleChapterRuleRefreshed);
+    return () => window.removeEventListener("novel-chapter-rule-refreshed", handleChapterRuleRefreshed);
+  }, [currentChapter, onChapterChange]);
 
   return (
     <>
