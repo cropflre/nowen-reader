@@ -18,9 +18,11 @@ func registerLibraryRoutes(api *gin.RouterGroup) {
 		libraryGroup.POST("", library.CreateLibrary)
 		libraryGroup.GET("/ownership-preview", library.OwnershipPreview)
 		libraryGroup.POST("/ownership-reconcile", library.ReconcileOwnership)
+		libraryGroup.GET("/scan-jobs", library.ListScannerJobs)
+		libraryGroup.GET("/scan-jobs/:jobId", library.GetScannerJob)
 		libraryGroup.PUT("/:id", library.UpdateLibrary)
 		libraryGroup.DELETE("/:id", library.DeleteLibrary)
-		libraryGroup.POST("/:id/scan", reconcileOwnershipAfterScan(), rebuildSeriesAfterScan(), library.ScanLibrary)
+		libraryGroup.POST("/:id/scan", library.ScanLibraryQueued)
 		libraryGroup.POST("/:id/delete-preview", library.DeletePreview)
 	}
 
@@ -29,7 +31,8 @@ func registerLibraryRoutes(api *gin.RouterGroup) {
 	accessibleGroup.Use(middleware.AuthRequired())
 	{
 		accessibleGroup.GET("/accessible", reconcileOwnershipBeforeList(), library.ListAccessibleLibraries)
-		accessibleGroup.POST("/:id/scan", reconcileOwnershipAfterScan(), rebuildSeriesAfterScan(), library.ScanLibrary)
+		accessibleGroup.GET("/scan-jobs/:jobId", library.GetScannerJob)
+		accessibleGroup.POST("/:id/scan", library.ScanLibraryQueued)
 	}
 
 	// User library access management (admin only)
