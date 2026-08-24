@@ -4,8 +4,8 @@ import 'novel_settings.dart';
 
 /// 小说阅读点击区域设置。
 ///
-/// 左 / 中 / 右三个区域独立配置动作，配置保存仍由上层
-/// [NovelReaderScreen] 统一通过 NovelSettings.save() 完成。
+/// 左 / 中 / 右三个区域独立配置动作，配置保存仍由上层阅读器统一通过
+/// NovelSettings.save() 完成。
 class NovelTapZoneSettingsPanel extends StatelessWidget {
   final NovelSettings settings;
   final ValueChanged<NovelSettings> onChanged;
@@ -114,7 +114,6 @@ class NovelTapZoneSettingsPanel extends StatelessWidget {
                 label: '左侧点击',
                 value: settings.leftTapAction,
                 textColor: textColor,
-                secondary: secondary,
                 isDark: isDark,
                 onChanged: (value) => onChanged(
                   settings.copyWith(leftTapAction: value),
@@ -124,7 +123,6 @@ class NovelTapZoneSettingsPanel extends StatelessWidget {
                 label: '中间点击',
                 value: settings.centerTapAction,
                 textColor: textColor,
-                secondary: secondary,
                 isDark: isDark,
                 onChanged: (value) => onChanged(
                   settings.copyWith(centerTapAction: value),
@@ -134,7 +132,6 @@ class NovelTapZoneSettingsPanel extends StatelessWidget {
                 label: '右侧点击',
                 value: settings.rightTapAction,
                 textColor: textColor,
-                secondary: secondary,
                 isDark: isDark,
                 onChanged: (value) => onChanged(
                   settings.copyWith(rightTapAction: value),
@@ -215,7 +212,6 @@ class _ActionRow extends StatelessWidget {
   final String label;
   final NovelTapAction value;
   final Color textColor;
-  final Color secondary;
   final bool isDark;
   final ValueChanged<NovelTapAction> onChanged;
 
@@ -223,7 +219,6 @@ class _ActionRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.textColor,
-    required this.secondary,
     required this.isDark,
     required this.onChanged,
   });
