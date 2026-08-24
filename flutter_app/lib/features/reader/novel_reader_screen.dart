@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -11,6 +11,7 @@ import '../../data/services/cache_service.dart';
 import '../../data/services/reading_activity_tracker.dart';
 import 'novel_settings.dart';
 import 'novel_panels.dart';
+import 'novel_tap_zone_settings.dart';
 
 /// 小说阅读器
 class NovelReaderScreen extends ConsumerStatefulWidget {
@@ -39,6 +40,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   bool _showOverlay = false;
   bool _showTOC = false;
   bool _showSettings = false;
+  bool _showTapSettings = false;
   bool _showSearch = false;
   final ScrollController _scrollController = ScrollController();
 
@@ -619,6 +621,110 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     }
   }
 
+  // ============================================================
+  // 点击区域翻页
+  // ============================================================
+
+  void _handleContentTap(TapUpDetails details) {
+    // 旧用户在上下滚动模式下保持原行为：点击任意位置切换菜单。
+    if (_settings.pageMode == NovelPageMode.scroll &&
+        !_settings.tapZonesInScrollMode) {
+      _toggleOverlay();
+      return;
+    }
+
+    final width = MediaQuery.of(context).size.width;
+    if (width <= 0) return;
+    final zone = resolveNovelTapZone(details.localPosition.dx / width);
+    switch (zone) {
+      case NovelTapZone.left:
+        _executeTapAction(_settings.leftTapAction);
+        break;
+      case NovelTapZone.center:
+        _executeTapAction(_settings.centerTapAction);
+        break;
+      case NovelTapZone.right:
+        _executeTapAction(_settings.rightTapAction);
+        break;
+    }
+  }
+
+  void _executeTapAction(NovelTapAction action) {
+    switch (action) {
+      case NovelTapAction.previousPage:
+        _previousReadingPage();
+        break;
+      case NovelTapAction.menu:
+        _toggleOverlay();
+        break;
+      case NovelTapAction.nextPage:
+        _nextReadingPage();
+        break;
+      case NovelTapAction.none:
+        break;
+    }
+  }
+
+  void _previousReadingPage() {
+    if (_settings.pageMode == NovelPageMode.swipe) {
+      _swipePrevPage();
+    } else {
+      _scrollReadingPage(forward: false);
+    }
+  }
+
+  void _nextReadingPage() {
+    if (_settings.pageMode == NovelPageMode.swipe) {
+      _swipeNextPage();
+    } else {
+      _scrollReadingPage(forward: true);
+    }
+  }
+
+  void _scrollReadingPage({required bool forward}) {
+    if (!_scrollController.hasClients) {
+      if (forward) {
+        _nextChapter();
+      } else {
+        _prevChapter();
+      }
+      return;
+    }
+
+    final position = _scrollController.position;
+    final step = position.viewportDimension * 0.85;
+    if (forward) {
+      if (position.pixels < position.maxScrollExtent - 2) {
+        _scrollController.animateTo(
+          min(position.maxScrollExtent, position.pixels + step),
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _nextChapter();
+      }
+      return;
+    }
+
+    if (position.pixels > position.minScrollExtent + 2) {
+      _scrollController.animateTo(
+        max(position.minScrollExtent, position.pixels - step),
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+
+    if (_currentChapter > 0) {
+      _loadChapter(_currentChapter - 1).then((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollController.hasClients) return;
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        });
+      });
+    }
+  }
+
   /// 搜索用：获取章节纯文本内容
   Future<String> _getChapterText(int index) async {
     if (_chapterCache.containsKey(index)) return _chapterCache[index]!;
@@ -650,6 +756,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       if (!_showOverlay) {
         _showTOC = false;
         _showSettings = false;
+        _showTapSettings = false;
         _showSearch = false;
       }
     });
@@ -659,6 +766,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     setState(() {
       _showTOC = false;
       _showSearch = false;
+      _showSettings = false;
+      _showTapSettings = false;
       _showOverlay = false;
     });
     // 章节切换时停止 TTS
@@ -802,7 +911,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                 // 文本内容
                 Expanded(
                   child: GestureDetector(
-                    onTap: _toggleOverlay,
+                    behavior: HitTestBehavior.translucent,
+                    onTapUp: _handleContentTap,
                     child: _buildContentView(),
                   ),
                 ),
@@ -866,7 +976,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               ),
             ],
 
-            // 设置面板（底部弹出）
+            // 排版设置面板（底部弹出）
             if (_showSettings) ...[
               GestureDetector(
                 onTap: () => setState(() => _showSettings = false),
@@ -880,6 +990,24 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                   settings: _settings,
                   onChanged: _updateSettings,
                   onClose: () => setState(() => _showSettings = false),
+                ),
+              ),
+            ],
+
+            // 点击区域设置面板（底部弹出）
+            if (_showTapSettings) ...[
+              GestureDetector(
+                onTap: () => setState(() => _showTapSettings = false),
+                child: Container(color: Colors.transparent),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: NovelTapZoneSettingsPanel(
+                  settings: _settings,
+                  onChanged: _updateSettings,
+                  onClose: () => setState(() => _showTapSettings = false),
                 ),
               ),
             ],
@@ -1061,7 +1189,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   /// 底部状态栏（沉浸式微弱显示）
   Widget _buildStatusBar() {
-    if (_showTOC || _showSettings || _showSearch) return const SizedBox.shrink();
+    if (_showTOC || _showSettings || _showTapSettings || _showSearch) {
+      return const SizedBox.shrink();
+    }
     final progress = _totalChapters > 0
         ? ((_currentChapter + 1) / _totalChapters * 100).round()
         : 0;
@@ -1218,48 +1348,18 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
             itemCount: _swipeTotalPages,
             onPageChanged: (page) {
               setState(() => _swipePage = page);
-              // 最后一页再右滑 → 下一章（通过 PageView 自带边界判断）
             },
             itemBuilder: (context, pageIndex) {
-              // 构建每页独立的内容
-              return GestureDetector(
-                onTap: _toggleOverlay,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    _settings.horizontalPadding,
-                    16,
-                    _settings.horizontalPadding,
-                    40,
-                  ),
-                  child: _buildSwipePageContent(pageIndex, paragraphs),
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  _settings.horizontalPadding,
+                  16,
+                  _settings.horizontalPadding,
+                  40,
                 ),
+                child: _buildSwipePageContent(pageIndex, paragraphs),
               );
             },
-          ),
-          // 左右边缘翻页手势检测区（覆盖 PageView 的点击）
-          // 左侧 → 上一页/上一章
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 40,
-            width: 60,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _swipePrevPage,
-              child: const SizedBox.expand(),
-            ),
-          ),
-          // 右侧 → 下一页/下一章
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 40,
-            width: 60,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _swipeNextPage,
-              child: const SizedBox.expand(),
-            ),
           ),
           // swipe 页码指示器
           if (_swipeTotalPages > 1)
@@ -1420,6 +1520,14 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                               label: '排版',
                               onTap: () => setState(() {
                                 _showSettings = true;
+                                _showOverlay = false;
+                              }),
+                            ),
+                            _ToolButton(
+                              icon: Icons.touch_app_outlined,
+                              label: '点击',
+                              onTap: () => setState(() {
+                                _showTapSettings = true;
                                 _showOverlay = false;
                               }),
                             ),
