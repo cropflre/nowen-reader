@@ -84,11 +84,23 @@ export function useComicPages(comicId: string) {
       })
       .then((data: PagesResponse) => {
         if (cancelled) return;
+        const nextPages = data.pages || [];
         setTitle(data.title);
         setIsNovel(!!data.isNovel);
         setIsPdf(!!data.isPdf);
-        setChapters(data.pages || []);
-        setPages((data.pages || []).map((p) => p.url));
+        setChapters(nextPages);
+        setPages(nextPages.map((p) => p.url));
+
+        // Only chapter-rule-triggered reloads need position reconciliation.
+        // Keep the existing chapter index whenever possible; the toolbar will
+        // clamp it only when the new TOC is shorter and the index is invalid.
+        if (reloadToken > 0) {
+          window.dispatchEvent(
+            new CustomEvent("novel-chapter-rule-refreshed", {
+              detail: { comicId, totalChapters: nextPages.length },
+            })
+          );
+        }
       })
       .catch((err) => {
         if (cancelled) return;
