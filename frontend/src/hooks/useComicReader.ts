@@ -44,6 +44,20 @@ export function useComicPages(comicId: string) {
   const [isPdf, setIsPdf] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // Applying/editing a TXT chapter rule should refresh just the chapter list,
+  // not reload the whole reader page and not discard unrelated reader state.
+  useEffect(() => {
+    const handleChapterRuleApplied = (event: Event) => {
+      const detail = (event as CustomEvent<{ comicId?: string }>).detail;
+      if (!detail?.comicId || detail.comicId === comicId) {
+        setReloadToken((value) => value + 1);
+      }
+    };
+    window.addEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
+    return () => window.removeEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
+  }, [comicId]);
 
   useEffect(() => {
     if (!comicId) return;
@@ -105,7 +119,7 @@ export function useComicPages(comicId: string) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [comicId]);
+  }, [comicId, reloadToken]);
 
   return { pages, chapters, title, isNovel, isPdf, loading, error };
 }

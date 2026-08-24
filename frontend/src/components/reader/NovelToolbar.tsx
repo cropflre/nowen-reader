@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
+import NovelChapterRuleSettings from "./NovelChapterRuleSettings";
 
 // 主题图标和标签映射
 const themeOptions: { value: ReaderTheme; label: string; color: string }[] = [
@@ -70,6 +72,15 @@ export default function NovelToolbar({
   isAutoScrolling,
 }: NovelToolbarProps) {
   const t = useTranslation();
+
+  // A chapter rule can radically change the TOC length. Reset to the first
+  // chapter before the chapter list refetch completes so the parent never
+  // keeps an out-of-range chapter index.
+  useEffect(() => {
+    const handleChapterRuleApplied = () => onChapterChange(0);
+    window.addEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
+    return () => window.removeEventListener("novel-chapter-rule-applied", handleChapterRuleApplied);
+  }, [onChapterChange]);
 
   return (
     <>
@@ -162,7 +173,6 @@ export default function NovelToolbar({
             </span>
           </div>
 
-          {/* Theme toggle */}
           {/* 功能按钮区 + 主题色卡 - 移动端自适应布局 */}
           <div className="flex items-center justify-between border-t border-white/10 py-2 sm:py-3">
             {/* 左侧功能按钮：移动端只显示核心按钮 */}
@@ -188,6 +198,9 @@ export default function NovelToolbar({
                   <span className="hidden sm:inline">{t.reader?.typesetting || "排版"}</span>
                 </button>
               )}
+
+              {/* TXT 分章设置：组件内部仅对有管理权限的 TXT 小说显示 */}
+              <NovelChapterRuleSettings />
 
               {/* 书签按钮 */}
               {onShowBookmarks && (
