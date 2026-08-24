@@ -18,6 +18,20 @@ enum NovelPageMode { scroll, swipe }
 /// 自动滚动速度
 enum AutoScrollSpeed { slow, medium, fast }
 
+/// 点击区域动作
+enum NovelTapAction { previousPage, menu, nextPage, none }
+
+/// 点击区域
+enum NovelTapZone { left, center, right }
+
+/// 将阅读区域的横向点击位置映射为左 / 中 / 右三个等宽区域。
+NovelTapZone resolveNovelTapZone(double fraction) {
+  final normalized = fraction.clamp(0.0, 1.0);
+  if (normalized < 1 / 3) return NovelTapZone.left;
+  if (normalized < 2 / 3) return NovelTapZone.center;
+  return NovelTapZone.right;
+}
+
 /// 书签
 class NovelBookmark {
   final int chapterIndex;
@@ -52,6 +66,13 @@ class NovelSettings {
   final NovelPadding padding;
   final NovelPageMode pageMode;
   final int autoScrollSpeed; // 1=慢 2=中 3=快
+  final NovelTapAction leftTapAction;
+  final NovelTapAction centerTapAction;
+  final NovelTapAction rightTapAction;
+
+  /// 默认关闭，保持原有“上下滚动模式点击任意位置呼出菜单”的行为。
+  /// 开启后，滚动模式也按左 / 中 / 右点击区域执行配置动作。
+  final bool tapZonesInScrollMode;
 
   const NovelSettings({
     this.fontSize = 18,
@@ -61,6 +82,10 @@ class NovelSettings {
     this.padding = NovelPadding.standard,
     this.pageMode = NovelPageMode.scroll,
     this.autoScrollSpeed = 2,
+    this.leftTapAction = NovelTapAction.previousPage,
+    this.centerTapAction = NovelTapAction.menu,
+    this.rightTapAction = NovelTapAction.nextPage,
+    this.tapZonesInScrollMode = false,
   });
 
   NovelSettings copyWith({
@@ -71,6 +96,10 @@ class NovelSettings {
     NovelPadding? padding,
     NovelPageMode? pageMode,
     int? autoScrollSpeed,
+    NovelTapAction? leftTapAction,
+    NovelTapAction? centerTapAction,
+    NovelTapAction? rightTapAction,
+    bool? tapZonesInScrollMode,
   }) {
     return NovelSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -80,6 +109,10 @@ class NovelSettings {
       padding: padding ?? this.padding,
       pageMode: pageMode ?? this.pageMode,
       autoScrollSpeed: autoScrollSpeed ?? this.autoScrollSpeed,
+      leftTapAction: leftTapAction ?? this.leftTapAction,
+      centerTapAction: centerTapAction ?? this.centerTapAction,
+      rightTapAction: rightTapAction ?? this.rightTapAction,
+      tapZonesInScrollMode: tapZonesInScrollMode ?? this.tapZonesInScrollMode,
     );
   }
 
@@ -97,6 +130,19 @@ class NovelSettings {
       pageMode: NovelPageMode.values[
           (prefs.getInt('novel_pageMode') ?? 0).clamp(0, NovelPageMode.values.length - 1)],
       autoScrollSpeed: (prefs.getInt('novel_autoScrollSpeed') ?? 2).clamp(1, 3),
+      leftTapAction: _loadTapAction(
+        prefs.getInt('novel_leftTapAction'),
+        NovelTapAction.previousPage,
+      ),
+      centerTapAction: _loadTapAction(
+        prefs.getInt('novel_centerTapAction'),
+        NovelTapAction.menu,
+      ),
+      rightTapAction: _loadTapAction(
+        prefs.getInt('novel_rightTapAction'),
+        NovelTapAction.nextPage,
+      ),
+      tapZonesInScrollMode: prefs.getBool('novel_tapZonesInScrollMode') ?? false,
     );
   }
 
@@ -109,6 +155,10 @@ class NovelSettings {
     await prefs.setInt('novel_padding', padding.index);
     await prefs.setInt('novel_pageMode', pageMode.index);
     await prefs.setInt('novel_autoScrollSpeed', autoScrollSpeed);
+    await prefs.setInt('novel_leftTapAction', leftTapAction.index);
+    await prefs.setInt('novel_centerTapAction', centerTapAction.index);
+    await prefs.setInt('novel_rightTapAction', rightTapAction.index);
+    await prefs.setBool('novel_tapZonesInScrollMode', tapZonesInScrollMode);
   }
 
   /// 水平内边距
@@ -185,6 +235,13 @@ class NovelSettings {
   }
 
   bool get isDark => theme == NovelTheme.night;
+}
+
+NovelTapAction _loadTapAction(int? raw, NovelTapAction fallback) {
+  if (raw == null || raw < 0 || raw >= NovelTapAction.values.length) {
+    return fallback;
+  }
+  return NovelTapAction.values[raw];
 }
 
 /// 搜索结果
