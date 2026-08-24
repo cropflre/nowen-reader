@@ -67,8 +67,8 @@ func (h *AIHandler) ChapterRecap(c *gin.Context) {
 			continue
 		}
 
-		// 如果没有缓存，尝试即时生成
-		chapter, err := service.GetChapterContent(comicID, i)
+		// 如果没有缓存，尝试即时生成（尊重 TXT 单书自定义分章规则）
+		chapter, err := service.GetResolvedChapterContent(comicID, i)
 		if err != nil {
 			previousSummaries = append(previousSummaries, "")
 			continue
@@ -89,7 +89,7 @@ func (h *AIHandler) ChapterRecap(c *gin.Context) {
 
 	// 获取当前章节标题
 	currentChapterTitle := fmt.Sprintf("Chapter %d", body.ChapterIndex+1)
-	currentChapter, err := service.GetChapterContent(comicID, body.ChapterIndex)
+	currentChapter, err := service.GetResolvedChapterContent(comicID, body.ChapterIndex)
 	if err == nil && currentChapter.Title != "" {
 		currentChapterTitle = currentChapter.Title
 	}
