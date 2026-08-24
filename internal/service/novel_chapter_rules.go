@@ -111,6 +111,20 @@ func GetConfiguredTxtChapter(comicID string, chapterIndex int) (*ChapterContent,
 	return &ChapterContent{Content: string(data), Title: title, MimeType: "text/plain; charset=utf-8"}, true, nil
 }
 
+// GetResolvedChapterContent is the single chapter-content entry point for
+// features that need to respect a book's selected TXT chapter rule. EPUB/MOBI
+// and TXT books in automatic mode continue through the existing parser.
+func GetResolvedChapterContent(comicID string, chapterIndex int) (*ChapterContent, error) {
+	chapter, configured, err := GetConfiguredTxtChapter(comicID, chapterIndex)
+	if err != nil {
+		return nil, err
+	}
+	if configured {
+		return chapter, nil
+	}
+	return GetChapterContent(comicID, chapterIndex)
+}
+
 func PreviewTxtChapterRule(comicID, pattern string) (int, []string, error) {
 	fp, _, err := FindComicFilePath(comicID)
 	if err != nil {
@@ -123,8 +137,11 @@ func PreviewTxtChapterRule(comicID, pattern string) (int, []string, error) {
 }
 
 // InvalidateConfiguredTxtCache only clears the affected book. It deliberately
-// does not touch EPUB/MOBI readers or unrelated TXT books.
+// does not touch EPUB/MOBI readers or unrelated TXT books. Chapter-indexed AI
+// summaries are also cleared because a rule change can redefine every index.
 func InvalidateConfiguredTxtCache(comicID string) {
+	ClearChapterSummaryCache(comicID)
+
 	configuredTxtReaderMu.Lock()
 	defer configuredTxtReaderMu.Unlock()
 	if entry, ok := configuredTxtReaderCache[comicID]; ok {
