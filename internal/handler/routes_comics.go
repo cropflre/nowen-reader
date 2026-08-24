@@ -56,7 +56,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	comicsAdmin.Use(middleware.AdminRequired())
 	{
 		comicsAdmin.POST("/cleanup", comic.CleanupInvalid)
-		comicsAdmin.POST("/redetect-types", comic.RedetectTypes)
+		comicsAdmin.POST("/redetect-types", comic.RedetectTypesQueued)
 	}
 
 	// Single comic read — require auth
@@ -102,11 +102,12 @@ func registerComicRoutes(api *gin.RouterGroup) {
 
 	// ============================================================
 
-	// Sync trigger — requires admin
+	// Sync trigger — requires admin. Work is queued; callers can inspect the
+	// returned job instead of receiving a false success while another scan runs.
 	syncTrigger := api.Group("")
 	syncTrigger.Use(middleware.AdminRequired())
 	{
-		syncTrigger.POST("/sync", reconcileOwnershipAfterScan(), rebuildSeriesAfterScan(), comic.TriggerSync)
+		syncTrigger.POST("/sync", comic.TriggerSyncQueued)
 	}
 
 	// Image serving (Phase 3) — all require auth
