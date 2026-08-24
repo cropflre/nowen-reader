@@ -19,6 +19,7 @@ type BookRuleInfo = {
   rule: ChapterRule | null;
   isTxt: boolean;
   canManage: boolean;
+  canEditGlobalRules: boolean;
 };
 
 type PreviewResult = {
@@ -160,6 +161,7 @@ export default function NovelChapterRuleSettings() {
   };
 
   const startEdit = (rule: ChapterRule) => {
+    if (!info?.canEditGlobalRules) return;
     setEditingRuleId(rule.id);
     setRuleName(rule.name);
     setRulePattern(rule.pattern);
@@ -168,6 +170,7 @@ export default function NovelChapterRuleSettings() {
   };
 
   const saveCustomRule = async () => {
+    if (!info?.canEditGlobalRules) return;
     setSaving(true);
     setError("");
     try {
@@ -194,6 +197,7 @@ export default function NovelChapterRuleSettings() {
   };
 
   const deleteRule = async (rule: ChapterRule) => {
+    if (!info?.canEditGlobalRules) return;
     if (!window.confirm(zh ? `删除规则“${rule.name}”？使用它的书籍会恢复自动识别。` : `Delete “${rule.name}”? Books using it will return to automatic detection.`)) {
       return;
     }
@@ -302,93 +306,102 @@ export default function NovelChapterRuleSettings() {
               )}
             </section>
 
-            <section className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-medium">{zh ? "自定义规则" : "Custom rules"}</h4>
-                  <p className="mt-0.5 text-[11px] text-white/40">{zh ? "使用 Go/RE2 正则语法，保存前建议先预览。" : "Uses Go/RE2 regex syntax. Preview before saving."}</p>
+            {info.canEditGlobalRules ? (
+              <section className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium">{zh ? "自定义规则" : "Custom rules"}</h4>
+                    <p className="mt-0.5 text-[11px] text-white/40">{zh ? "使用 Go/RE2 正则语法，保存前建议先预览。" : "Uses Go/RE2 regex syntax. Preview before saving."}</p>
+                  </div>
+                  {editingRuleId === null && (
+                    <button
+                      onClick={() => {
+                        setEditingRuleId("");
+                        setRuleName("");
+                        setRulePattern("");
+                        setPreview(null);
+                      }}
+                      className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/15"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> {zh ? "新增" : "Add"}
+                    </button>
+                  )}
                 </div>
-                {!editingRuleId && (
-                  <button
-                    onClick={() => {
-                      setEditingRuleId("");
-                      setRuleName("");
-                      setRulePattern("");
-                      setPreview(null);
-                    }}
-                    className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/15"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> {zh ? "新增" : "Add"}
-                  </button>
-                )}
-              </div>
 
-              {customRules.length > 0 && editingRuleId === null && (
-                <div className="space-y-2">
-                  {customRules.map((rule) => (
-                    <div key={rule.id} className="flex items-start gap-2 rounded-lg border border-white/[0.06] bg-black/20 p-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-white/80">{rule.name}</div>
-                        <code className="mt-1 block truncate text-[10px] text-white/40">{rule.pattern}</code>
+                {customRules.length > 0 && editingRuleId === null && (
+                  <div className="space-y-2">
+                    {customRules.map((rule) => (
+                      <div key={rule.id} className="flex items-start gap-2 rounded-lg border border-white/[0.06] bg-black/20 p-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-white/80">{rule.name}</div>
+                          <code className="mt-1 block truncate text-[10px] text-white/40">{rule.pattern}</code>
+                        </div>
+                        <button onClick={() => startEdit(rule)} className="rounded-md p-1.5 text-white/45 hover:bg-white/10 hover:text-white" title={zh ? "编辑" : "Edit"}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => deleteRule(rule)} className="rounded-md p-1.5 text-white/45 hover:bg-red-500/10 hover:text-red-400" title={zh ? "删除" : "Delete"}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <button onClick={() => startEdit(rule)} className="rounded-md p-1.5 text-white/45 hover:bg-white/10 hover:text-white" title={zh ? "编辑" : "Edit"}>
-                        <Pencil className="h-3.5 w-3.5" />
+                    ))}
+                  </div>
+                )}
+
+                {customRules.length === 0 && editingRuleId === null && (
+                  <p className="rounded-lg border border-dashed border-white/10 px-3 py-5 text-center text-xs text-white/35">
+                    {zh ? "还没有自定义规则" : "No custom rules yet"}
+                  </p>
+                )}
+
+                {editingRuleId !== null && (
+                  <div className="space-y-3">
+                    <input
+                      value={ruleName}
+                      onChange={(e) => setRuleName(e.target.value)}
+                      placeholder={zh ? "规则名称，例如：方括号章节" : "Rule name"}
+                      className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent/60"
+                    />
+                    <textarea
+                      value={rulePattern}
+                      onChange={(e) => {
+                        setRulePattern(e.target.value);
+                        setPreview(null);
+                      }}
+                      rows={4}
+                      placeholder="^【\\d+】.+$"
+                      className="w-full resize-y rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-accent/60"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => previewPattern(rulePattern)}
+                        disabled={previewLoading}
+                        className="rounded-lg bg-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/15 disabled:opacity-50"
+                      >
+                        {previewLoading ? (zh ? "检测中..." : "Checking...") : (zh ? "测试正则" : "Test regex")}
                       </button>
-                      <button onClick={() => deleteRule(rule)} className="rounded-md p-1.5 text-white/45 hover:bg-red-500/10 hover:text-red-400" title={zh ? "删除" : "Delete"}>
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <button
+                        onClick={saveCustomRule}
+                        disabled={saving || !ruleName.trim() || !rulePattern.trim()}
+                        className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        {editingRuleId ? (zh ? "保存修改" : "Save changes") : (zh ? "保存规则" : "Save rule")}
+                      </button>
+                      <button onClick={resetEditor} className="rounded-lg px-3 py-2 text-xs text-white/50 hover:bg-white/10">
+                        {zh ? "取消" : "Cancel"}
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {customRules.length === 0 && editingRuleId === null && (
-                <p className="rounded-lg border border-dashed border-white/10 px-3 py-5 text-center text-xs text-white/35">
-                  {zh ? "还没有自定义规则" : "No custom rules yet"}
-                </p>
-              )}
-
-              {editingRuleId !== null && (
-                <div className="space-y-3">
-                  <input
-                    value={ruleName}
-                    onChange={(e) => setRuleName(e.target.value)}
-                    placeholder={zh ? "规则名称，例如：方括号章节" : "Rule name"}
-                    className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent/60"
-                  />
-                  <textarea
-                    value={rulePattern}
-                    onChange={(e) => {
-                      setRulePattern(e.target.value);
-                      setPreview(null);
-                    }}
-                    rows={4}
-                    placeholder="^【\\d+】.+$"
-                    className="w-full resize-y rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-accent/60"
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => previewPattern(rulePattern)}
-                      disabled={previewLoading}
-                      className="rounded-lg bg-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/15 disabled:opacity-50"
-                    >
-                      {previewLoading ? (zh ? "检测中..." : "Checking...") : (zh ? "测试正则" : "Test regex")}
-                    </button>
-                    <button
-                      onClick={saveCustomRule}
-                      disabled={saving || !ruleName.trim() || !rulePattern.trim()}
-                      className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
-                    >
-                      {editingRuleId ? (zh ? "保存修改" : "Save changes") : (zh ? "保存规则" : "Save rule")}
-                    </button>
-                    <button onClick={resetEditor} className="rounded-lg px-3 py-2 text-xs text-white/50 hover:bg-white/10">
-                      {zh ? "取消" : "Cancel"}
-                    </button>
+                    {preview && <PreviewBlock preview={preview} zh={zh} />}
                   </div>
-                  {preview && <PreviewBlock preview={preview} zh={zh} />}
-                </div>
-              )}
-            </section>
+                )}
+              </section>
+            ) : (
+              <section className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <h4 className="text-sm font-medium">{zh ? "自定义规则" : "Custom rules"}</h4>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/40">
+                  {zh ? "你可以为本书选择已有规则；新增、编辑或删除全局自定义规则仅限管理员。" : "You can select an existing rule for this book. Creating, editing, or deleting global custom rules is admin-only."}
+                </p>
+              </section>
+            )}
           </div>
         </div>
       )}
