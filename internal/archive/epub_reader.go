@@ -1023,20 +1023,34 @@ func (r *epubReader) SetComicID(id string) {
 
 // rewriteImageURLs replaces relative image paths in HTML with API URLs.
 func (r *epubReader) rewriteImageURLs(html string) string {
-	imgSrcRegex := regexp.MustCompile(`(<img[^>]*\s+src\s*=\s*")([^"]+)(")`)
-	return imgSrcRegex.ReplaceAllStringFunc(html, func(match string) string {
-		parts := imgSrcRegex.FindStringSubmatch(match)
-		if len(parts) < 4 {
-			return match
+	return rewriteEpubImageAttributes(html, func(src string) string {
+		if !isLocalEpubResource(src) {
+			return src
 		}
-		src := parts[2]
-		// Skip external URLs and data URIs
-		if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "data:") {
-			return match
-		}
-		// Convert to API URL: /api/comics/{comicID}/epub-resource/{resourcePath}
-		return parts[1] + config.JoinBasePath("/api/comics/"+r.comicID+"/epub-resource/"+src) + parts[3]
+		resourcePath := strings.TrimPrefix(src, "/")
+		return config.JoinBasePath("/api/comics/" + r.comicID + "/epub-resource/" + resourcePath)
 	})
+}
+
+var epubImageAttrRegex = regexp.MustCompile(`(?i)(<(?:img|image)\b[^>]*?\s(?:src|(?:xlink:)?href)\s*=\s*)(["'])([^"']+)(["'])`)
+
+func rewriteEpubImageAttributes(fragment string, rewrite func(string) string) string {
+	return epubImageAttrRegex.ReplaceAllStringFunc(fragment, func(match string) string {
+		parts := epubImageAttrRegex.FindStringSubmatch(match)
+		if len(parts) < 5 {
+			return match
+		}
+		return parts[1] + parts[2] + rewrite(parts[3]) + parts[4]
+	})
+}
+
+func isLocalEpubResource(resourceURL string) bool {
+	resourceURL = strings.TrimSpace(resourceURL)
+	if resourceURL == "" || strings.HasPrefix(resourceURL, "//") || strings.HasPrefix(resourceURL, "#") {
+		return false
+	}
+	parsed, err := url.Parse(resourceURL)
+	return err == nil && !parsed.IsAbs()
 }
 
 // GetResourceData extracts a raw resource from the EPUB by its internal path.
@@ -1153,24 +1167,21 @@ func sanitizeEpubHTML(rawHTML string, chapterDir string) string {
 	xmlDeclRegex := regexp.MustCompile(`<\?[^?]*\?>`)
 	html = xmlDeclRegex.ReplaceAllString(html, "")
 
-	// Resolve relative image src paths to full EPUB-internal paths
-	if chapterDir != "" && chapterDir != "." {
-		imgResolveRegex := regexp.MustCompile(`(<img[^>]*\s+src\s*=\s*")([^"]+)(")`)
-		html = imgResolveRegex.ReplaceAllStringFunc(html, func(match string) string {
-			parts := imgResolveRegex.FindStringSubmatch(match)
-			if len(parts) < 4 {
-				return match
-			}
-			src := parts[2]
-			// Skip absolute/external URLs
-			if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "data:") || strings.HasPrefix(src, "/") {
-				return match
-			}
-			// Resolve relative path: ../images/foo.png -> OEBPS/images/foo.png
-			resolved := path.Join(chapterDir, src)
-			return parts[1] + resolved + parts[3]
-		})
-	}
+	// Resolve local image references to full EPUB-internal paths. EPUB 2 cover
+	// pages commonly use SVG <image xlink:href="..."> instead of <img src>.
+	html = rewriteEpubImageAttributes(html, func(src string) string {
+		if !isLocalEpubResource(src) {
+			return src
+		}
+		if strings.HasPrefix(src, "/") {
+			return strings.TrimPrefix(src, "/")
+		}
+		resolved, fragment := resolveEpubHref(chapterDir, src)
+		if fragment != "" {
+			resolved += "#" + fragment
+		}
+		return resolved
+	})
 
 	// Decode common HTML entities
 	html = decodeHTMLEntities(html)

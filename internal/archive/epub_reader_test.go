@@ -274,6 +274,37 @@ func TestEpubReaderExtractsEPUB2GuideSVGCover(t *testing.T) {
 	if string(got) != cover {
 		t.Fatalf("GetEpubCoverImage() = %q, want %q", got, cover)
 	}
+
+	SetEpubComicID(reader, "book-1")
+	chapter, err := reader.ExtractEntry("chapter-0001.html")
+	if err != nil {
+		t.Fatalf("ExtractEntry(cover) error = %v", err)
+	}
+	chapterHTML := string(chapter)
+	wantURL := `/api/comics/book-1/epub-resource/OEBPS/Images/image42.jpg`
+	if !strings.Contains(chapterHTML, `xlink:href="`+wantURL+`"`) {
+		t.Fatalf("cover SVG URL was not rewritten: %s", chapterHTML)
+	}
+	if strings.Contains(chapterHTML, "../Images/image42.jpg") {
+		t.Fatalf("cover SVG kept its relative image URL: %s", chapterHTML)
+	}
+}
+
+func TestEpubReaderRewritesHTMLAndSVGImageURLs(t *testing.T) {
+	rawHTML := `<body><img src="../Images/chapter.webp"><svg><image href='../Images/cover.jpg'/></svg><img src="https://example.com/external.jpg"></body>`
+	sanitized := sanitizeEpubHTML(rawHTML, "OEBPS/Text")
+	r := &epubReader{comicID: "book-2"}
+	got := r.rewriteImageURLs(sanitized)
+
+	for _, want := range []string{
+		`src="/api/comics/book-2/epub-resource/OEBPS/Images/chapter.webp"`,
+		`href='/api/comics/book-2/epub-resource/OEBPS/Images/cover.jpg'`,
+		`src="https://example.com/external.jpg"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("rewritten HTML missing %q: %s", want, got)
+		}
+	}
 }
 
 const testContainerXML = `<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`

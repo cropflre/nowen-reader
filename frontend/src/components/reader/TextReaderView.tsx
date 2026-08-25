@@ -1220,6 +1220,10 @@ export default function TextReaderView({
       max-width: 100%; height: auto; display: block;
       margin: 1em auto; border-radius: 4px;
     }
+    .epub-content svg {
+      width: 100%; max-width: 100%; height: auto; display: block;
+      margin: 1em auto;
+    }
     .epub-content a { color: inherit; text-decoration: underline; opacity: 0.8; }
     .epub-content hr {
       border: none; border-top: 1px solid currentColor;
