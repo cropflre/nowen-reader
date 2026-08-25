@@ -207,6 +207,75 @@ func TestEpubReaderSpineFallbackKeepsDocumentsSeparate(t *testing.T) {
 	}
 }
 
+func TestEpubReaderExtractsEPUB2MetadataCover(t *testing.T) {
+	cover := "jpeg-cover-data"
+	fp := writeTestEpub(t, "epub2-meta-cover.epub", map[string]string{
+		"mimetype":               "application/epub+zip",
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf": `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata><meta name="cover" content="mid4221"/></metadata>
+  <manifest>
+    <item id="mid4221" href="Images/mid4221.jpg" media-type="image/jpeg"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="chapter"/></spine>
+</package>`,
+		"OEBPS/Images/mid4221.jpg": cover,
+		"OEBPS/Text/chapter.xhtml": testXHTML("Chapter", "body"),
+	})
+
+	reader, err := NewReader(fp)
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	defer reader.Close()
+
+	got, err := GetEpubCoverImage(reader)
+	if err != nil {
+		t.Fatalf("GetEpubCoverImage() error = %v", err)
+	}
+	if string(got) != cover {
+		t.Fatalf("GetEpubCoverImage() = %q, want %q", got, cover)
+	}
+}
+
+func TestEpubReaderExtractsEPUB2GuideSVGCover(t *testing.T) {
+	cover := "guide-cover-data"
+	fp := writeTestEpub(t, "epub2-guide-cover.epub", map[string]string{
+		"mimetype":               "application/epub+zip",
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf": `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata><title>Guide cover</title></metadata>
+  <manifest>
+    <item id="image42" href="Images/image42.jpg" media-type="image/jpeg"/>
+    <item id="coverpage" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="coverpage"/><itemref idref="chapter"/></spine>
+  <guide><reference type="cover" href="Text/cover.xhtml"/></guide>
+</package>`,
+		"OEBPS/Images/image42.jpg": cover,
+		"OEBPS/Text/cover.xhtml":   `<html xmlns="http://www.w3.org/1999/xhtml"><body><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="../Images/image42.jpg"/></svg></body></html>`,
+		"OEBPS/Text/chapter.xhtml": testXHTML("Chapter", "body"),
+	})
+
+	reader, err := NewReader(fp)
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	defer reader.Close()
+
+	got, err := GetEpubCoverImage(reader)
+	if err != nil {
+		t.Fatalf("GetEpubCoverImage() error = %v", err)
+	}
+	if string(got) != cover {
+		t.Fatalf("GetEpubCoverImage() = %q, want %q", got, cover)
+	}
+}
+
 const testContainerXML = `<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`
 
 func testOPF(chapters []string, withNCX bool) string {

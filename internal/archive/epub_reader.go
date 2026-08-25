@@ -76,6 +76,7 @@ type opfPackage struct {
 	Metadata opfMetadata `xml:"metadata"`
 	Manifest opfManifest `xml:"manifest"`
 	Spine    opfSpine    `xml:"spine"`
+	Guide    opfGuide    `xml:"guide"`
 }
 
 type opfMetadata struct {
@@ -90,6 +91,12 @@ type opfMetadata struct {
 		Value  string `xml:",chardata"`
 		Scheme string `xml:"scheme,attr"`
 	} `xml:"identifier"`
+	Meta []opfMeta `xml:"meta"`
+}
+
+type opfMeta struct {
+	Name    string `xml:"name,attr"`
+	Content string `xml:"content,attr"`
 }
 
 type opfManifest struct {
@@ -111,6 +118,15 @@ type opfSpine struct {
 type opfItemRef struct {
 	IDRef  string `xml:"idref,attr"`
 	Linear string `xml:"linear,attr"`
+}
+
+type opfGuide struct {
+	References []opfGuideReference `xml:"reference"`
+}
+
+type opfGuideReference struct {
+	Type string `xml:"type,attr"`
+	Href string `xml:"href,attr"`
 }
 
 type ncxDocument struct {
@@ -198,16 +214,8 @@ func (r *epubReader) parseEpub() error {
 		// Track all resources
 		href, _ := resolveEpubHref(opfDir, item.Href)
 		r.resources[href] = true
-
-		// Find cover image
-		if item.Props == "cover-image" ||
-			strings.Contains(strings.ToLower(item.ID), "cover") &&
-				strings.HasPrefix(item.MediaType, "image/") {
-			if r.coverPath == "" {
-				r.coverPath = href
-			}
-		}
 	}
+	r.coverPath = r.findPackageCover(pkg, opfDir, manifestMap)
 
 	// Step 3: Build spine order. It remains the content index and fallback order,
 	// but EPUB nav/NCX is preferred for the visible chapter list.
@@ -401,6 +409,112 @@ func resolveEpubHref(baseDir, href string) (string, string) {
 		filePart = ""
 	}
 	return filePart, fragment
+}
+
+func (r *epubReader) findPackageCover(pkg opfPackage, opfDir string, manifestMap map[string]opfItem) string {
+	for _, item := range pkg.Manifest.Items {
+		if hasSpaceSeparatedToken(item.Props, "cover-image") && strings.HasPrefix(item.MediaType, "image/") {
+			href, _ := resolveEpubHref(opfDir, item.Href)
+			return href
+		}
+	}
+
+	for _, meta := range pkg.Metadata.Meta {
+		if !strings.EqualFold(strings.TrimSpace(meta.Name), "cover") {
+			continue
+		}
+		id := strings.TrimPrefix(strings.TrimSpace(meta.Content), "#")
+		if item, ok := manifestMap[id]; ok {
+			if coverPath := r.coverPathFromManifestItem(item, opfDir); coverPath != "" {
+				return coverPath
+			}
+		}
+	}
+
+	for _, ref := range pkg.Guide.References {
+		if !strings.EqualFold(strings.TrimSpace(ref.Type), "cover") {
+			continue
+		}
+		guidePath, _ := resolveEpubHref(opfDir, ref.Href)
+		if guidePath == "" {
+			continue
+		}
+		for _, item := range pkg.Manifest.Items {
+			itemPath, _ := resolveEpubHref(opfDir, item.Href)
+			if itemPath == guidePath && strings.HasPrefix(item.MediaType, "image/") {
+				return guidePath
+			}
+		}
+		if coverPath := r.coverPathFromDocument(guidePath); coverPath != "" {
+			return coverPath
+		}
+	}
+
+	for _, item := range pkg.Manifest.Items {
+		if strings.Contains(strings.ToLower(item.ID), "cover") && strings.HasPrefix(item.MediaType, "image/") {
+			href, _ := resolveEpubHref(opfDir, item.Href)
+			return href
+		}
+	}
+	return ""
+}
+
+func (r *epubReader) coverPathFromManifestItem(item opfItem, opfDir string) string {
+	itemPath, _ := resolveEpubHref(opfDir, item.Href)
+	if itemPath == "" {
+		return ""
+	}
+	if strings.HasPrefix(item.MediaType, "image/") {
+		return itemPath
+	}
+	if strings.HasPrefix(item.MediaType, "application/xhtml") || strings.HasPrefix(item.MediaType, "text/html") {
+		return r.coverPathFromDocument(itemPath)
+	}
+	return ""
+}
+
+func (r *epubReader) coverPathFromDocument(documentPath string) string {
+	data, err := r.readZipFile(documentPath)
+	if err != nil {
+		return ""
+	}
+
+	tokenizer := html.NewTokenizer(strings.NewReader(string(data)))
+	for {
+		tokenType := tokenizer.Next()
+		if tokenType == html.ErrorToken {
+			return ""
+		}
+		if tokenType != html.StartTagToken && tokenType != html.SelfClosingTagToken {
+			continue
+		}
+		token := tokenizer.Token()
+		if !strings.EqualFold(token.Data, "img") && !strings.EqualFold(token.Data, "image") {
+			continue
+		}
+		for _, attr := range token.Attr {
+			key := strings.ToLower(attr.Key)
+			if key != "src" && key != "href" && key != "xlink:href" &&
+				!(strings.EqualFold(attr.Namespace, "xlink") && key == "href") {
+				continue
+			}
+			imageHref := strings.TrimSpace(attr.Val)
+			if imageHref == "" || strings.HasPrefix(imageHref, "data:") || strings.HasPrefix(imageHref, "//") {
+				continue
+			}
+			if parsed, err := url.Parse(imageHref); err == nil && parsed.IsAbs() {
+				continue
+			}
+			baseDir := path.Dir(documentPath)
+			if baseDir == "." {
+				baseDir = ""
+			}
+			imagePath, _ := resolveEpubHref(baseDir, imageHref)
+			if imagePath != "" && r.epubFileExists(imagePath) {
+				return imagePath
+			}
+		}
+	}
 }
 
 func chapterParts(chapterRefs, spineRefs []epubChapterRef, chapterIndex int) []epubChapterPart {
