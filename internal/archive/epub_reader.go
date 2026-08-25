@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/xml"
 	"fmt"
+	stdhtml "html"
 	"io"
 	"log"
 	"net/url"
@@ -58,15 +59,21 @@ type epubChapterPart struct {
 }
 
 type epubReader struct {
-	filepath      string
-	comicID       string // populated later for image URL rewriting
-	rc            *zip.ReadCloser
-	chapters      []epubChapter
-	entries       []Entry
-	coverPath     string // path to cover image inside the EPUB
-	resources     map[string]bool
-	spineImages   []string // image paths extracted from XHTML pages in spine order (for comic mode)
-	spineImageSet map[string]bool
+	filepath                  string
+	comicID                   string // populated later for image URL rewriting
+	rc                        *zip.ReadCloser
+	chapters                  []epubChapter
+	entries                   []Entry
+	coverPath                 string // path to cover image inside the EPUB
+	resources                 map[string]bool
+	spineImages               []string // image paths extracted from XHTML pages in spine order (for comic mode)
+	spineImageSet             map[string]bool
+	stylesheetBodyBackgrounds map[string][]epubBodyBackgroundRule
+}
+
+type epubBodyBackgroundRule struct {
+	requiredClasses []string
+	imagePath       string
 }
 
 // OPF package document structures
@@ -171,9 +178,10 @@ func newEpubReader(fp string) (*epubReader, error) {
 	}
 
 	r := &epubReader{
-		filepath:  fp,
-		rc:        rc,
-		resources: make(map[string]bool),
+		filepath:                  fp,
+		rc:                        rc,
+		resources:                 make(map[string]bool),
+		stylesheetBodyBackgrounds: make(map[string][]epubBodyBackgroundRule),
 	}
 
 	if err := r.parseEpub(); err != nil {
@@ -281,7 +289,16 @@ func (r *epubReader) parseEpub() error {
 				textParts = append(textParts, textContent)
 			}
 			chapterDir := path.Dir(part.href)
-			if htmlContent := sanitizeEpubHTML(chapterHTML, chapterDir); htmlContent != "" {
+			htmlContent := sanitizeEpubHTML(chapterHTML, chapterDir)
+			if backgroundPath := r.findBodyBackgroundImage(chapterHTML, part.href); backgroundPath != "" {
+				backgroundHTML := `<img src="` + stdhtml.EscapeString(backgroundPath) + `" alt="">`
+				if htmlContent == "" {
+					htmlContent = backgroundHTML
+				} else {
+					htmlContent = backgroundHTML + "\n" + htmlContent
+				}
+			}
+			if htmlContent != "" {
 				htmlParts = append(htmlParts, htmlContent)
 			}
 		}
@@ -342,6 +359,10 @@ func (r *epubReader) parseEpub() error {
 		}
 		html := string(data)
 		chapterDir := path.Dir(ref.href)
+		if backgroundPath := r.findBodyBackgroundImage(html, ref.href); backgroundPath != "" && !r.spineImageSet[backgroundPath] {
+			r.spineImageSet[backgroundPath] = true
+			r.spineImages = append(r.spineImages, backgroundPath)
+		}
 
 		// Extract <img src="...">
 		for _, m := range imgSrcRegex.FindAllStringSubmatch(html, -1) {
@@ -1051,6 +1072,189 @@ func isLocalEpubResource(resourceURL string) bool {
 	}
 	parsed, err := url.Parse(resourceURL)
 	return err == nil && !parsed.IsAbs()
+}
+
+func resolveLocalEpubResource(baseDir, resourceURL string) string {
+	if !isLocalEpubResource(resourceURL) {
+		return ""
+	}
+	if strings.HasPrefix(resourceURL, "/") {
+		baseDir = ""
+		resourceURL = strings.TrimPrefix(resourceURL, "/")
+	}
+	resolved, _ := resolveEpubHref(baseDir, resourceURL)
+	return resolved
+}
+
+func (r *epubReader) findBodyBackgroundImage(rawHTML, documentPath string) string {
+	bodyClasses, inlineStyle, stylesheetHrefs := epubDocumentPresentation(rawHTML)
+	if len(bodyClasses) == 0 && inlineStyle == "" && len(stylesheetHrefs) == 0 {
+		return ""
+	}
+	if r.stylesheetBodyBackgrounds == nil {
+		r.stylesheetBodyBackgrounds = make(map[string][]epubBodyBackgroundRule)
+	}
+
+	documentDir := path.Dir(documentPath)
+	if documentDir == "." {
+		documentDir = ""
+	}
+	classSet := make(map[string]bool, len(bodyClasses))
+	for _, className := range bodyClasses {
+		classSet[className] = true
+	}
+
+	backgroundPath := ""
+	for _, stylesheetHref := range stylesheetHrefs {
+		stylesheetPath := resolveLocalEpubResource(documentDir, stylesheetHref)
+		if stylesheetPath == "" {
+			continue
+		}
+		rules, ok := r.stylesheetBodyBackgrounds[stylesheetPath]
+		if !ok {
+			rules = r.readStylesheetBodyBackgrounds(stylesheetPath)
+			r.stylesheetBodyBackgrounds[stylesheetPath] = rules
+		}
+		for _, rule := range rules {
+			if bodyBackgroundRuleMatches(rule, classSet) {
+				backgroundPath = rule.imagePath
+			}
+		}
+	}
+
+	if inlineURL := cssBackgroundImageURL(inlineStyle); inlineURL != "" {
+		if resolved := resolveLocalEpubResource(documentDir, inlineURL); resolved != "" {
+			backgroundPath = resolved
+		}
+	}
+	return backgroundPath
+}
+
+func epubDocumentPresentation(rawHTML string) ([]string, string, []string) {
+	tokenizer := html.NewTokenizer(strings.NewReader(rawHTML))
+	var stylesheets []string
+	for {
+		tokenType := tokenizer.Next()
+		if tokenType == html.ErrorToken {
+			return nil, "", stylesheets
+		}
+		if tokenType != html.StartTagToken && tokenType != html.SelfClosingTagToken {
+			continue
+		}
+		token := tokenizer.Token()
+		switch strings.ToLower(token.Data) {
+		case "link":
+			var rel, href string
+			for _, attr := range token.Attr {
+				switch strings.ToLower(attr.Key) {
+				case "rel":
+					rel = attr.Val
+				case "href":
+					href = attr.Val
+				}
+			}
+			for _, relPart := range strings.Fields(rel) {
+				if strings.EqualFold(relPart, "stylesheet") && href != "" {
+					stylesheets = append(stylesheets, href)
+					break
+				}
+			}
+		case "body":
+			var classes []string
+			var inlineStyle string
+			for _, attr := range token.Attr {
+				switch strings.ToLower(attr.Key) {
+				case "class":
+					classes = strings.Fields(attr.Val)
+				case "style":
+					inlineStyle = attr.Val
+				}
+			}
+			return classes, inlineStyle, stylesheets
+		}
+	}
+}
+
+var (
+	cssCommentRegex       = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	cssRuleRegex          = regexp.MustCompile(`(?s)([^{}]+)\{([^{}]*)\}`)
+	cssBackgroundURLRegex = regexp.MustCompile(`(?is)(?:background-image|background)\s*:\s*[^;{}]*?url\(\s*["']?([^"')]+)["']?\s*\)`)
+)
+
+func (r *epubReader) readStylesheetBodyBackgrounds(stylesheetPath string) []epubBodyBackgroundRule {
+	data, err := r.readZipFile(stylesheetPath)
+	if err != nil {
+		return nil
+	}
+	stylesheetDir := path.Dir(stylesheetPath)
+	if stylesheetDir == "." {
+		stylesheetDir = ""
+	}
+
+	css := cssCommentRegex.ReplaceAllString(string(data), "")
+	var rules []epubBodyBackgroundRule
+	for _, match := range cssRuleRegex.FindAllStringSubmatch(css, -1) {
+		if len(match) < 3 {
+			continue
+		}
+		imageURL := cssBackgroundImageURL(match[2])
+		imagePath := resolveLocalEpubResource(stylesheetDir, imageURL)
+		if imagePath == "" {
+			continue
+		}
+		for _, selector := range strings.Split(match[1], ",") {
+			requiredClasses, ok := bodySelectorClasses(selector)
+			if !ok {
+				continue
+			}
+			rules = append(rules, epubBodyBackgroundRule{
+				requiredClasses: requiredClasses,
+				imagePath:       imagePath,
+			})
+		}
+	}
+	return rules
+}
+
+func cssBackgroundImageURL(declarations string) string {
+	matches := cssBackgroundURLRegex.FindAllStringSubmatch(declarations, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	last := matches[len(matches)-1]
+	if len(last) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(last[1])
+}
+
+func bodySelectorClasses(selector string) ([]string, bool) {
+	selector = strings.TrimSpace(selector)
+	if strings.EqualFold(selector, "body") {
+		return nil, true
+	}
+	if len(selector) <= len("body.") || !strings.EqualFold(selector[:len("body.")], "body.") {
+		return nil, false
+	}
+	if strings.ContainsAny(selector, " >+~:#[") {
+		return nil, false
+	}
+	classes := strings.Split(selector[len("body."):], ".")
+	for _, className := range classes {
+		if className == "" {
+			return nil, false
+		}
+	}
+	return classes, true
+}
+
+func bodyBackgroundRuleMatches(rule epubBodyBackgroundRule, classSet map[string]bool) bool {
+	for _, className := range rule.requiredClasses {
+		if !classSet[className] {
+			return false
+		}
+	}
+	return true
 }
 
 // GetResourceData extracts a raw resource from the EPUB by its internal path.

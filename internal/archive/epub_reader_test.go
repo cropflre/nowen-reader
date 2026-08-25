@@ -307,6 +307,69 @@ func TestEpubReaderRewritesHTMLAndSVGImageURLs(t *testing.T) {
 	}
 }
 
+func TestEpubReaderMaterializesCSSBodyBackgroundImages(t *testing.T) {
+	fp := writeTestEpub(t, "css-background-pages.epub", map[string]string{
+		"mimetype":               "application/epub+zip",
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf": `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata><title>CSS pages</title></metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="Styles/book.css" media-type="text/css"/>
+    <item id="secondImage" href="Images/second.jpg" media-type="image/jpeg"/>
+    <item id="thirdImage" href="Images/third.jpg" media-type="image/jpeg"/>
+    <item id="second" href="Text/second.xhtml" media-type="application/xhtml+xml"/>
+    <item id="third" href="Text/third.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx"><itemref idref="second"/><itemref idref="third"/><itemref idref="chapter"/></spine>
+</package>`,
+		"OEBPS/toc.ncx": testNCX(
+			`<navPoint id="second" playOrder="1"><navLabel><text>制作说明</text></navLabel><content src="Text/second.xhtml"/></navPoint>`,
+			`<navPoint id="third" playOrder="2"><navLabel><text>内容介绍</text></navLabel><content src="Text/third.xhtml"/></navPoint>`,
+			`<navPoint id="chapter" playOrder="3"><navLabel><text>第一章</text></navLabel><content src="Text/chapter.xhtml"/></navPoint>`,
+		),
+		"OEBPS/Styles/book.css": `body.qmp000 { background-image: url('../Images/second.jpg'); }
+body.qmp00 { background: #fff url("../Images/third.jpg") no-repeat center; }`,
+		"OEBPS/Images/second.jpg":  "second-image",
+		"OEBPS/Images/third.jpg":   "third-image",
+		"OEBPS/Text/second.xhtml":  `<html><head><link href="../Styles/book.css" rel="stylesheet"/></head><body class="qmp000"><p>&#160;</p></body></html>`,
+		"OEBPS/Text/third.xhtml":   `<html><head><link rel="stylesheet" href="../Styles/book.css"/></head><body class="qmp00"><p>&#160;</p></body></html>`,
+		"OEBPS/Text/chapter.xhtml": testXHTML("First", "body"),
+	})
+
+	reader, err := NewReader(fp)
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	defer reader.Close()
+	SetEpubComicID(reader, "book-3")
+
+	chapters := []struct {
+		entryName string
+		imageName string
+	}{
+		{entryName: "chapter-0001.html", imageName: "second.jpg"},
+		{entryName: "chapter-0002.html", imageName: "third.jpg"},
+	}
+	for index, expected := range chapters {
+		chapter, err := reader.ExtractEntry(expected.entryName)
+		if err != nil {
+			t.Fatalf("ExtractEntry(%d) error = %v", index, err)
+		}
+		wantURL := "/api/comics/book-3/epub-resource/OEBPS/Images/" + expected.imageName
+		if !strings.Contains(string(chapter), `src="`+wantURL+`"`) {
+			t.Fatalf("chapter %d missing CSS background image %q: %s", index, wantURL, chapter)
+		}
+	}
+
+	images := ListEpubEmbeddedImages(reader)
+	if len(images) < 2 || images[0] != "OEBPS/Images/second.jpg" || images[1] != "OEBPS/Images/third.jpg" {
+		t.Fatalf("spine image order = %v, want CSS backgrounds first", images)
+	}
+}
+
 const testContainerXML = `<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`
 
 func testOPF(chapters []string, withNCX bool) string {
