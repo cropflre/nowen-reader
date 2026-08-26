@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/middleware"
-	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
@@ -18,6 +17,7 @@ func NewCatalogHandler() *CatalogHandler { return &CatalogHandler{} }
 
 // ListItems returns logical publications for collection pickers. Directory
 // series and standalone comics are paginated together without synthetic IDs.
+// Series projection maintenance is asynchronous; this read never rebuilds it.
 func (h *CatalogHandler) ListItems(c *gin.Context) {
 	contentType := strings.TrimSpace(c.DefaultQuery("contentType", "comic"))
 	if contentType != "comic" && contentType != "novel" {
@@ -56,14 +56,6 @@ func (h *CatalogHandler) ListItems(c *gin.Context) {
 		return
 	}
 	filterLibraryIDs := user.Role != "admin" || strings.TrimSpace(c.Query("libraryIds")) != ""
-
-	if contentType == "comic" && !(filterLibraryIDs && len(libraryIDs) == 0) {
-		if err := service.EnsureComicSeriesFresh(); err != nil {
-			log.Printf("[catalog] refresh before item list failed: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh comic series"})
-			return
-		}
-	}
 
 	result, err := store.GetCatalogItems(store.CatalogItemQueryOptions{
 		Search:           c.Query("search"),
