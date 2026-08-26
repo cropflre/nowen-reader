@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,8 +8,8 @@ import (
 )
 
 // rebuildSeriesAfterScan keeps the logical Series/Section projection in sync
-// with successful manual, upload-triggered and per-library scans. Background
-// scans are additionally covered by the lazy shelf refresh.
+// without extending the scan request with another full-library maintenance
+// pass. The background worker coalesces duplicate notifications per library.
 func rebuildSeriesAfterScan() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
@@ -18,16 +17,6 @@ func rebuildSeriesAfterScan() gin.HandlerFunc {
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			return
 		}
-
-		libraryID := c.Param("id")
-		var err error
-		if libraryID != "" {
-			err = service.RebuildComicSeriesForLibrary(libraryID)
-		} else {
-			err = service.RebuildAllComicSeries()
-		}
-		if err != nil {
-			log.Printf("[series] rebuild after scan failed: %v", err)
-		}
+		service.ScheduleComicSeriesRebuild(c.Param("id"))
 	}
 }
