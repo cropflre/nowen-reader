@@ -56,10 +56,6 @@ func splitQueryIDs(value string) []string {
 }
 
 func (h *SeriesHandler) List(c *gin.Context) {
-	if err := service.EnsureComicSeriesFresh(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh comic series"})
-		return
-	}
 	libraryIDs, err := requestedAccessibleLibraries(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve library access"})
@@ -82,10 +78,6 @@ func (h *SeriesHandler) List(c *gin.Context) {
 }
 
 func (h *SeriesHandler) Get(c *gin.Context) {
-	if err := service.EnsureComicSeriesFresh(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh comic series"})
-		return
-	}
 	detail, err := store.GetSeriesDetail(c.Param("id"), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load comic series"})
@@ -116,6 +108,18 @@ func (h *SeriesHandler) Preview(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "No permission to manage this library"})
 		return
 	}
+	itemCount, tooLarge, err := service.ComicSeriesLibrarySize(libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to inspect library size"})
+		return
+	}
+	if tooLarge {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+			"error":     "Library is too large for synchronous series preview; use background rebuild instead",
+			"itemCount": itemCount,
+		})
+		return
+	}
 	items, err := store.GetSeriesSourceItems(libraryID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to inspect library"})
@@ -137,22 +141,16 @@ func (h *SeriesHandler) Rebuild(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "No permission to manage this library"})
 			return
 		}
-		if err := service.RebuildComicSeriesForLibrary(libraryID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to rebuild comic series"})
-			return
-		}
+		service.ScheduleComicSeriesRebuild(libraryID)
 	} else {
 		user := middleware.GetCurrentUser(c)
 		if user == nil || user.Role != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin permission required"})
 			return
 		}
-		if err := service.RebuildAllComicSeries(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to rebuild comic series"})
-			return
-		}
+		service.ScheduleComicSeriesRebuild("")
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "queued": true})
 }
 
 func (h *SeriesHandler) Update(c *gin.Context) {
@@ -245,11 +243,8 @@ func (h *SeriesHandler) Redetect(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unlock comic series"})
 		return
 	}
-	if err := service.RebuildComicSeriesForLibrary(detail.Series.LibraryID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to re-detect comic series"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	service.ScheduleComicSeriesRebuild(detail.Series.LibraryID)
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "queued": true})
 }
 
 func (h *SeriesHandler) Delete(c *gin.Context) {
