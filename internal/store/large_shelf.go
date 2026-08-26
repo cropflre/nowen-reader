@@ -2,15 +2,14 @@ package store
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
 const seriesMembershipBatchSize = 500
 
 // GetAllComicsShelfSafe returns the logical shelf without exceeding SQLite's
-// variable limit on large libraries. Novel-only shelves and shelves without
-// directory series keep the normal SQL pagination path instead of loading the
-// entire library into memory.
+// variable limit or materialising a large library in Go memory.
 func GetAllComicsShelfSafe(opts ComicListOptions) (*ComicListResult, error) {
 	if !opts.SeriesView {
 		return GetAllComics(opts)
@@ -23,6 +22,41 @@ func GetAllComicsShelfSafe(opts ComicListOptions) (*ComicListResult, error) {
 	if bypass {
 		plain := opts
 		plain.SeriesView = false
+		return GetAllComics(plain)
+	}
+
+	rawTotal, err := countLogicalShelfFilteredRows(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// The common/default shelf can be paged exactly in SQLite: only logical
+	// IDs for the requested page are materialised, then those <= pageSize items
+	// are hydrated. This keeps a 55k shelf close to the memory cost of 24 items.
+	if opts.SortBy == "" || opts.SortBy == "title" {
+		hasCustomShelfOrder, err := hasShelfSeriesGroups()
+		if err != nil {
+			return nil, fmt.Errorf("inspect shelf-series groups: %w", err)
+		}
+		if !hasCustomShelfOrder {
+			return getAllComicsSeriesViewSQL(opts)
+		}
+	}
+
+	// Rich custom shelf ordering still uses application-side sorting. Keep it
+	// only for bounded datasets. On low-memory NAS devices availability is more
+	// important than preserving a visual grouping mode that would require tens
+	// of thousands of full ComicListItem values in RAM.
+	if rawTotal > largeShelfMaterializeLimit {
+		log.Printf("[shelf] filtered rows=%d exceed safe materialize limit=%d; using flat SQL pagination for sort=%q", rawTotal, largeShelfMaterializeLimit, opts.SortBy)
+		plain := opts
+		plain.SeriesView = false
+		if plain.PageSize <= 0 {
+			plain.PageSize = largeShelfDefaultPageSize
+		}
+		if plain.PageSize > largeShelfMaxPageSize {
+			plain.PageSize = largeShelfMaxPageSize
+		}
 		return GetAllComics(plain)
 	}
 
@@ -266,30 +300,7 @@ func collapseComicListIntoSeriesBatched(items []ComicListItem, userID string) ([
 		if summary == nil || summary.ItemCount < 2 {
 			continue
 		}
-		tags := []ComicTagInfo{{Name: fmt.Sprintf("%d 项", summary.ItemCount), Color: ""}}
-		if summary.SectionCount > 0 {
-			tags = append(tags, ComicTagInfo{Name: fmt.Sprintf("%d 季/篇", summary.SectionCount), Color: ""})
-		}
-		collapsed = append(collapsed, ComicListItem{
-			ID:            SeriesShelfIDPrefix + summary.ID,
-			Filename:      "__series__.cbz",
-			Title:         summary.Title,
-			TitleSortKey:  BuildTitleSortKey(summary.Title),
-			PageCount:     summary.ItemCount,
-			FileSize:      summary.FileSize,
-			AddedAt:       summary.CreatedAt,
-			UpdatedAt:     summary.UpdatedAt,
-			LastReadPage:  summary.CompletedItemCount,
-			LastReadAt:    summary.LastReadAt,
-			IsFavorite:    summary.IsFavorite,
-			TotalReadTime: summary.TotalReadTime,
-			CoverURL:      summary.CoverURL,
-			ComicType:     "comic",
-			LibraryID:     summary.LibraryID,
-			ComicCount:    summary.ItemCount,
-			Tags:          tags,
-			Categories:    []ComicCategoryInfo{},
-		})
+		collapsed = append(collapsed, seriesSummaryToShelfItem(summary))
 	}
 	return collapsed, nil
 }
