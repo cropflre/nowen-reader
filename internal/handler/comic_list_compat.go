@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/middleware"
-	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
@@ -35,11 +34,6 @@ func (h *ComicHandler) ListComicsCompatible(c *gin.Context) {
 	category := c.Query("category")
 	contentType := c.Query("contentType")
 	seriesView := c.Query("seriesView") == "true"
-	if seriesView {
-		if err := service.EnsureComicSeriesFresh(); err != nil {
-			log.Printf("[series] refresh before shelf failed: %v", err)
-		}
-	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "0"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "0"))
