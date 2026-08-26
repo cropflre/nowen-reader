@@ -92,6 +92,10 @@ func main() {
 	// ============================================================
 	service.StartBackgroundSync()
 
+	// Series projection maintenance is deliberately independent from shelf GET
+	// requests. Rebuilds are coalesced and executed serially in the background.
+	service.StartSeriesMaintenance()
+
 	// ============================================================
 	// Start session cleanup scheduler
 	// ============================================================
