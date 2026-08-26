@@ -8,13 +8,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/middleware"
-	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
 // ListComicsShelfSafe handles the logical series shelf through a large-library
-// safe store path. Non-series requests keep using the existing compatibility
-// handler so Android/pageCount behavior is unchanged.
+// safe store path. Series maintenance is deliberately not performed here: a
+// read request must never trigger a full-library rebuild on low-memory devices.
 func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 	if c.Query("seriesView") != "true" || c.Query("sortBy") == "pageCount" {
 		h.ListComicsCompatible(c)
@@ -30,10 +29,6 @@ func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 				tags = append(tags, tag)
 			}
 		}
-	}
-
-	if err := service.EnsureComicSeriesFresh(); err != nil {
-		log.Printf("[series] refresh before shelf failed: %v", err)
 	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "0"))
