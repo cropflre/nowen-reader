@@ -29,28 +29,29 @@ var (
 	specialPattern  = regexp.MustCompile(`(?i)^(?:前传|正传|后传|番外|番外篇|特别篇|特別篇|special|extras?)$`)
 )
 
-// EnsureComicSeriesFresh lazily rebuilds directory-derived series. It is used
-// by the shelf endpoint so existing installations receive the hierarchy after
-// upgrading even before the next background scan. A cheap source fingerprint
-// prevents repeated full writes when the scanned content has not changed.
+// EnsureComicSeriesFresh is kept for compatibility with older call sites, but
+// it is intentionally non-blocking: it performs only a compact fingerprint
+// check and schedules background maintenance when content changed. A read
+// request must never rebuild an entire library in its own goroutine.
 func EnsureComicSeriesFresh() error {
 	seriesRefreshMu.Lock()
-	defer seriesRefreshMu.Unlock()
 	if time.Since(seriesRefreshedAt) < 15*time.Second {
+		seriesRefreshMu.Unlock()
 		return nil
 	}
 	fingerprint, err := store.GetComicSeriesSourceFingerprint()
 	if err != nil {
+		seriesRefreshMu.Unlock()
 		return err
 	}
-	seriesRefreshedAt = time.Now()
-	if fingerprint == seriesSourceFingerprint {
-		return nil
-	}
-	if err := rebuildAllComicSeriesLocked(); err != nil {
-		return err
-	}
+	changed := fingerprint != seriesSourceFingerprint
 	seriesSourceFingerprint = fingerprint
+	seriesRefreshedAt = time.Now()
+	seriesRefreshMu.Unlock()
+
+	if changed {
+		ScheduleComicSeriesRebuild("")
+	}
 	return nil
 }
 
@@ -74,6 +75,13 @@ func rebuildAllComicSeriesLocked() error {
 		if !library.Enabled || library.Type != "comic" {
 			continue
 		}
+		itemCount, tooLarge, sizeErr := ComicSeriesLibrarySize(library.ID)
+		if sizeErr != nil {
+			return sizeErr
+		}
+		if tooLarge {
+			return fmt.Errorf("series rebuild for library %s requires %d items, above safe in-memory limit %d", library.ID, itemCount, seriesAutoRebuildItemLimit)
+		}
 		if err := rebuildComicSeriesForLibraryLocked(library.ID); err != nil {
 			return fmt.Errorf("rebuild series for library %s: %w", library.ID, err)
 		}
@@ -82,6 +90,13 @@ func rebuildAllComicSeriesLocked() error {
 }
 
 func RebuildComicSeriesForLibrary(libraryID string) error {
+	itemCount, tooLarge, err := ComicSeriesLibrarySize(libraryID)
+	if err != nil {
+		return err
+	}
+	if tooLarge {
+		return fmt.Errorf("series rebuild requires %d items, above safe in-memory limit %d", itemCount, seriesAutoRebuildItemLimit)
+	}
 	seriesRefreshMu.Lock()
 	defer seriesRefreshMu.Unlock()
 	if err := rebuildComicSeriesForLibraryLocked(libraryID); err != nil {
