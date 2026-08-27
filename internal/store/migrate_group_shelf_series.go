@@ -7,6 +7,12 @@ func init() {
 		Version:     41,
 		Description: "Add shelf series sorting settings to comic groups",
 		SQL: strings.Join([]string{
+			// Migration 40 rewrites large title-sort indexes. On databases that were
+			// interrupted during a previous upgrade, SQLite may surface extended
+			// error 779 (SQLITE_CORRUPT_INDEX) only when the next indexed table is
+			// updated. Rebuilding indexes here is safe/idempotent and lets partially
+			// applied migration 41 resume without deleting user data.
+			`REINDEX;`,
 			`ALTER TABLE "ComicGroup" ADD COLUMN "shelfSeries" BOOLEAN NOT NULL DEFAULT 0;`,
 			`ALTER TABLE "ComicGroup" ADD COLUMN "shelfSortMode" TEXT NOT NULL DEFAULT 'custom';`,
 			`ALTER TABLE "ComicGroup" ADD COLUMN "shelfSortTitle" TEXT NOT NULL DEFAULT '';`,
