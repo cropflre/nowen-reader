@@ -122,7 +122,6 @@ func UpdateUserAiEnabled(userID string, aiEnabled bool) error {
 	return err
 }
 
-
 // GetUserRole 获取用户角色并写入 role 指针。用于轻量级权限检查。
 func GetUserRole(userID string, role *string) error {
 	return db.QueryRow(`SELECT "role" FROM "User" WHERE "id" = ?`, userID).Scan(role)
@@ -189,9 +188,14 @@ func RenewSession(token string, newExpiry time.Time) error {
 
 // CleanExpiredSessions 删除所有已过期的 Session，返回删除的数量。
 func CleanExpiredSessions() (int64, error) {
-	result, err := db.Exec(`DELETE FROM "UserSession" WHERE "expiresAt" < ?`, time.Now())
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	var rowsAffected int64
+	err := runSerializedDBWrite("session-cleanup", func() error {
+		result, err := db.Exec(`DELETE FROM "UserSession" WHERE "expiresAt" < ?`, time.Now())
+		if err != nil {
+			return err
+		}
+		rowsAffected, err = result.RowsAffected()
+		return err
+	})
+	return rowsAffected, err
 }
