@@ -497,7 +497,6 @@ export default function SettingsPage() {
     </>
   );
 }
-
 /* ── Reader Preferences Panel ── */
 function ReaderPreferencesPanel() {
   const { options, updateOptions, loaded } = useReaderOptions();
@@ -729,7 +728,7 @@ function AboutPanel() {
   const feedbackQqGroupNumber = "1093473044";
   const feedbackMailto = `mailto:${feedbackEmail}?subject=${encodeURIComponent("[NowenReader 反馈]")}`;
   const releaseUrl = "https://github.com/cropflre/nowen-reader/releases";
-  const noteAssetRevision = "9b18e950cff87fde86f2812759277931c313b125";
+  const noteAssetRevision = "884f5bc7654fe5f5dced8c5207e36cbce11d1872";
   const noteAssetBase = `https://raw.githubusercontent.com/cropflre/nowen-note/${noteAssetRevision}/frontend/src/assets`;
   const communityQr = `${noteAssetBase}/community/nowen-lab-wechat.jpg`;
   const qqGroupQr = `${noteAssetBase}/feedback/qq-group.jpg`;
