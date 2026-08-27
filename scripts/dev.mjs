@@ -23,6 +23,16 @@ function commandAvailable(command, args) {
   return !result.error && result.status === 0;
 }
 
+function gitValue(args) {
+  const result = spawnSync("git", args, {
+    cwd: rootDir,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) return "";
+  return String(result.stdout || "").trim();
+}
+
 function npmInvocation(args) {
   if (isWindows) {
     // npm on Windows is a .cmd shim. Spawning npm.cmd directly can throw
@@ -103,7 +113,20 @@ if (!existsSync(viteBin)) {
   }
 }
 
+const devVersion =
+  String(process.env.NOWEN_VERSION || "").trim() ||
+  gitValue(["describe", "--tags", "--abbrev=0"]) ||
+  "dev";
+const devCommit = gitValue(["rev-parse", "--short", "HEAD"]) || "unknown";
+const devBuildTime = new Date().toISOString();
+const backendLdflags = [
+  `-X main.Version=${devVersion}`,
+  `-X main.BuildTime=${devBuildTime}`,
+  `-X main.GitCommit=${devCommit}`,
+].join(" ");
+
 console.log("\n[dev] NowenReader 本地开发环境");
+console.log(`[dev] 版本: ${devVersion} (${devCommit})`);
 console.log(`[dev] 后端: http://localhost:${backendPort}`);
 console.log(`[dev] 前端: http://localhost:${frontendPort}`);
 console.log("[dev] 按 Ctrl+C 同时停止前后端。\n");
@@ -166,7 +189,7 @@ process.on("SIGTERM", () => stopAll(0));
 start(
   "后端",
   goCommand,
-  ["run", "./cmd/server"],
+  ["run", "-ldflags", backendLdflags, "./cmd/server"],
   rootDir,
   { ...process.env, PORT: String(backendPort) },
 );
