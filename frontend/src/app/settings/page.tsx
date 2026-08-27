@@ -27,6 +27,8 @@ import {
   RefreshCw,
   Eye,
   ChevronRight,
+  ChevronDown,
+  Mail,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useLocale, useTranslation } from "@/lib/i18n";
@@ -719,17 +721,33 @@ function ReaderPreferencesPanel() {
 }
 /* ── About Panel ── */
 /* ═══════════════════════════════════════════
-   About Panel — 品牌展示卡 + 技术栈
+   About Panel — 品牌展示卡 + 技术栈 + 社区与支持
    ═══════════════════════════════════════════ */
 function AboutPanel() {
   const t = useTranslation();
+  const feedbackEmail = "nowenlab@qq.com";
+  const feedbackQqGroupNumber = "1093473044";
+  const feedbackMailto = `mailto:${feedbackEmail}?subject=${encodeURIComponent("[NowenReader 反馈]")}`;
+  const releaseUrl = "https://github.com/cropflre/nowen-reader/releases";
+  const noteAssetRevision = "9b18e950cff87fde86f2812759277931c313b125";
+  const noteAssetBase = `https://raw.githubusercontent.com/cropflre/nowen-note/${noteAssetRevision}/frontend/src/assets`;
+  const communityQr = `${noteAssetBase}/community/nowen-lab-wechat.jpg`;
+  const qqGroupQr = `${noteAssetBase}/feedback/qq-group.jpg`;
+  const wechatSponsorQr = `${noteAssetBase}/sponsor/weixin.jpg`;
+  const alipaySponsorQr = `${noteAssetBase}/sponsor/zhifubao.png`;
+  const [showSponsor, setShowSponsor] = useState(false);
   const [versionInfo, setVersionInfo] = useState<{ version: string; uptime: string; runtime?: { go: string; os: string; arch: string; cpus: number; goroutines: number; memoryMB: number } } | null>(null);
 
   useEffect(() => {
     fetch(apiPath("/api/health"))
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`health request failed: ${res.status}`);
+        return res.json();
+      })
       .then((data) => setVersionInfo(data))
-      .catch(() => {});
+      .catch((error) => {
+        console.error("[AboutPanel] Failed to load version info:", error);
+      });
   }, []);
 
   const techStack = [
@@ -747,7 +765,6 @@ function AboutPanel() {
       {/* Brand Card */}
       <div className="overflow-hidden rounded-lg border border-border bg-card p-6 sm:p-8">
         <div className="flex flex-col items-center gap-4 text-center">
-          {/* Logo */}
           <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-accent">
             <BookOpen className="h-8 w-8 text-white" />
           </div>
@@ -758,7 +775,7 @@ function AboutPanel() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-center">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent" title="当前版本">
               <Sparkles className="h-3 w-3" />
               {formatAppVersion(versionInfo?.version)}
             </span>
@@ -805,8 +822,138 @@ function AboutPanel() {
         </div>
       </div>
 
+      {/* Nowen 开源实验室 */}
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <Globe className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-foreground">Nowen 开源实验室</div>
+            <div className="mt-0.5 text-xs leading-relaxed text-muted">扫码关注公众号，获取 Nowen 最新动态。</div>
+          </div>
+        </div>
+        <img
+          src={communityQr}
+          alt="Nowen 开源实验室公众号二维码"
+          className="h-28 w-28 self-center rounded-lg bg-white object-contain p-1 sm:self-auto"
+          loading="lazy"
+          draggable={false}
+        />
+      </div>
+
+      {/* 更新日志 */}
+      <a
+        href={releaseUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex min-h-20 items-center justify-between gap-4 rounded-lg border border-border bg-card p-5 text-left transition-colors hover:border-accent/30 hover:bg-card-hover/50"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-foreground">更新日志</div>
+            <div className="mt-0.5 text-xs text-muted">查看本版新功能与历次修复</div>
+          </div>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted transition-colors group-hover:text-accent">
+          查看更新
+          <ExternalLink className="h-3 w-3" />
+        </span>
+      </a>
+
+      {/* 意见与 Bug 反馈 */}
+      <a
+        href={feedbackMailto}
+        className="flex min-h-20 items-center justify-between gap-4 rounded-lg border border-border bg-card p-5 text-left transition-colors hover:border-accent/30 hover:bg-card-hover/50"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500">
+            <Mail className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-foreground">意见与 Bug 反馈</div>
+            <div className="mt-0.5 text-xs leading-relaxed text-muted">遇到问题或有功能建议，欢迎通过邮件联系我们。</div>
+            <div className="mt-1 text-[11px] text-muted/70">{feedbackEmail}</div>
+          </div>
+        </div>
+        <span className="shrink-0 text-xs text-muted">发送邮件</span>
+      </a>
+
+      {/* 加入 QQ 群反馈 */}
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500">
+            <Users className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-foreground">加入 QQ 群反馈</div>
+            <div className="mt-0.5 text-xs leading-relaxed text-muted">扫码加入 nowen 开发群，也可搜索群号加入。</div>
+            <div className="mt-1 text-xs font-medium text-foreground">QQ群：{feedbackQqGroupNumber}</div>
+          </div>
+        </div>
+        <img
+          src={qqGroupQr}
+          alt={`Nowen 开发群 QQ 群 ${feedbackQqGroupNumber} 二维码`}
+          className="h-28 w-28 self-center rounded-lg bg-white object-contain p-1 sm:self-auto"
+          loading="lazy"
+          draggable={false}
+        />
+      </div>
+
+      {/* 支持作者 */}
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <button
+          type="button"
+          onClick={() => setShowSponsor((current) => !current)}
+          aria-expanded={showSponsor}
+          aria-controls="about-sponsor-codes"
+          className="flex min-h-20 w-full items-center justify-between gap-4 p-5 text-left transition-colors hover:bg-card-hover/50"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500">
+              <Heart className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">支持作者</div>
+              <div className="mt-0.5 text-xs leading-relaxed text-muted">如果这个项目对你有帮助，欢迎请作者喝杯咖啡 ☕</div>
+            </div>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
+            {showSponsor ? "收起赞赏码" : "展开赞赏码"}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showSponsor ? "rotate-180" : ""}`} />
+          </span>
+        </button>
+        {showSponsor && (
+          <div id="about-sponsor-codes" className="grid gap-4 border-t border-border/30 bg-background/30 p-5 sm:grid-cols-2">
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-border/50 bg-card p-3">
+              <img
+                src={wechatSponsorQr}
+                alt="微信赞赏码"
+                className="h-40 w-40 rounded-lg bg-white object-contain p-1"
+                loading="lazy"
+                draggable={false}
+              />
+              <span className="text-xs font-medium text-foreground">微信赞赏</span>
+            </div>
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-border/50 bg-card p-3">
+              <img
+                src={alipaySponsorQr}
+                alt="支付宝赞赏码"
+                className="h-40 w-40 rounded-lg bg-white object-contain p-1"
+                loading="lazy"
+                draggable={false}
+              />
+              <span className="text-xs font-medium text-foreground">支付宝赞赏</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Links */}
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex flex-wrap items-center justify-center gap-4">
         <a
           href="https://github.com/cropflre/nowen-reader"
           target="_blank"
