@@ -40,13 +40,24 @@ type OPDSComic struct {
 	Tags         []string
 	Filename     string
 	ComicType    string
-	SeriesID     string
-	SeriesTitle  string
+	Collections  []OPDSCollectionLink
 	LastReadPage int
 	LastReadAt   string
 }
 
+type OPDSCollectionLink struct {
+	Path  string
+	Title string
+}
+
 type OPDSSeries struct {
+	ID        string
+	Title     string
+	ItemCount int
+	UpdatedAt string
+}
+
+type OPDSCollection struct {
 	ID        string
 	Title     string
 	ItemCount int
@@ -78,6 +89,14 @@ type OPDSSeriesFeedOptions struct {
 	FeedID     string
 	Series     []OPDSSeries
 	Pagination OPDSPagination
+}
+
+type OPDSCollectionFeedOptions struct {
+	BaseURL     string
+	Title       string
+	FeedID      string
+	Collections []OPDSCollection
+	Pagination  OPDSPagination
 }
 
 type atomFeed struct {
@@ -172,7 +191,8 @@ func GenerateRootCatalog(baseURL string) string {
 		},
 		Entries: []atomEntry{
 			newNavigationEntry(baseURL, now, "All Comics", "/api/opds/all", "Browse all downloadable comics", "subsection", OPDSAcquisitionMIME),
-			newNavigationEntry(baseURL, now, "Series", "/api/opds/series", "Browse comics grouped by series", "subsection", OPDSNavigationMIME),
+			newNavigationEntry(baseURL, now, "Collections", "/api/opds/collections", "Browse administrator-curated collections", "subsection", OPDSNavigationMIME),
+			newNavigationEntry(baseURL, now, "Directory Works", "/api/opds/series", "Browse comics grouped by directory structure", "subsection", OPDSNavigationMIME),
 			newNavigationEntry(baseURL, now, "Recently Added", "/api/opds/recent", "Recently added comics", "http://opds-spec.org/sort/new", OPDSAcquisitionMIME),
 			newNavigationEntry(baseURL, now, "Favorites", "/api/opds/favorites", "Your favorite comics", "http://opds-spec.org/shelf", OPDSAcquisitionMIME),
 		},
@@ -194,22 +214,86 @@ func newNavigationEntry(baseURL, updated, title, href, description, rel, feedTyp
 
 // GenerateSeriesNavigationFeed creates the series branch of the catalog.
 func GenerateSeriesNavigationFeed(opts OPDSSeriesFeedOptions) string {
-	now := time.Now().UTC().Format(time.RFC3339)
-	entries := make([]atomEntry, 0, len(opts.Series))
+	groups := make([]opdsNavigationGroup, 0, len(opts.Series))
 	for _, series := range opts.Series {
-		title := strings.TrimSpace(series.Title)
+		groups = append(groups, opdsNavigationGroup{
+			ID:        series.ID,
+			Title:     series.Title,
+			ItemCount: series.ItemCount,
+			UpdatedAt: series.UpdatedAt,
+		})
+	}
+	return generateGroupNavigationFeed(opdsGroupNavigationFeedOptions{
+		BaseURL:      opts.BaseURL,
+		Title:        opts.Title,
+		FeedID:       opts.FeedID,
+		Groups:       groups,
+		Pagination:   opts.Pagination,
+		PathPrefix:   "/api/opds/series",
+		URNPrefix:    "urn:nowen:series:",
+		UntitledName: "Untitled Directory Work",
+	})
+}
+
+// GenerateCollectionNavigationFeed creates the curated collection branch.
+func GenerateCollectionNavigationFeed(opts OPDSCollectionFeedOptions) string {
+	groups := make([]opdsNavigationGroup, 0, len(opts.Collections))
+	for _, collection := range opts.Collections {
+		groups = append(groups, opdsNavigationGroup{
+			ID:        collection.ID,
+			Title:     collection.Title,
+			ItemCount: collection.ItemCount,
+			UpdatedAt: collection.UpdatedAt,
+		})
+	}
+	return generateGroupNavigationFeed(opdsGroupNavigationFeedOptions{
+		BaseURL:      opts.BaseURL,
+		Title:        opts.Title,
+		FeedID:       opts.FeedID,
+		Groups:       groups,
+		Pagination:   opts.Pagination,
+		PathPrefix:   "/api/opds/collections",
+		URNPrefix:    "urn:nowen:collection:",
+		UntitledName: "Untitled Collection",
+	})
+}
+
+type opdsNavigationGroup struct {
+	ID        string
+	Title     string
+	ItemCount int
+	UpdatedAt string
+}
+
+type opdsGroupNavigationFeedOptions struct {
+	BaseURL      string
+	Title        string
+	FeedID       string
+	Groups       []opdsNavigationGroup
+	Pagination   OPDSPagination
+	PathPrefix   string
+	URNPrefix    string
+	UntitledName string
+}
+
+func generateGroupNavigationFeed(opts opdsGroupNavigationFeedOptions) string {
+	now := time.Now().UTC().Format(time.RFC3339)
+	entries := make([]atomEntry, 0, len(opts.Groups))
+	for _, group := range opts.Groups {
+		title := strings.TrimSpace(group.Title)
 		if title == "" {
-			title = "Untitled Series"
+			title = opts.UntitledName
 		}
-		href := absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+series.ID)
+		hrefPath := strings.TrimRight(opts.PathPrefix, "/") + "/" + url.PathEscape(group.ID)
+		href := absoluteOPDSURL(opts.BaseURL, hrefPath)
 		entry := atomEntry{
 			Title:   title,
-			ID:      "urn:nowen:series:" + series.ID,
-			Updated: validAtomDate(series.UpdatedAt, now),
-			Summary: &atomContent{Type: "text", Text: fmt.Sprintf("%d comics", series.ItemCount)},
+			ID:      opts.URNPrefix + group.ID,
+			Updated: validAtomDate(group.UpdatedAt, now),
+			Summary: &atomContent{Type: "text", Text: fmt.Sprintf("%d comics", group.ItemCount)},
 			Links: []atomLink{
-				{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+series.ID+"/cover")},
-				{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+series.ID+"/cover")},
+				{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, hrefPath+"/cover")},
+				{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, hrefPath+"/cover")},
 				{Rel: "subsection", Href: href, Type: OPDSAcquisitionMIME},
 			},
 		}
@@ -313,12 +397,15 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 			}
 			entry.Links = append(entry.Links, streamLink)
 		}
-		if comic.SeriesID != "" {
+		for _, collection := range comic.Collections {
+			if strings.TrimSpace(collection.Path) == "" {
+				continue
+			}
 			entry.Links = append(entry.Links, atomLink{
 				Rel:   "collection",
-				Href:  absoluteOPDSURL(opts.BaseURL, "/api/opds/series/"+comic.SeriesID),
+				Href:  absoluteOPDSURL(opts.BaseURL, collection.Path),
 				Type:  OPDSAcquisitionMIME,
-				Title: strings.TrimSpace(comic.SeriesTitle),
+				Title: strings.TrimSpace(collection.Title),
 			})
 		}
 		if description != "" {

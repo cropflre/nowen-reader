@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/archive"
+	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -384,6 +386,129 @@ func TestOPDSSeriesFeedsAreDownloadScopedAndFlattenSections(t *testing.T) {
 	denied := performOPDSBasicRequest(router, "/api/opds/series/opds-series-private", user.Username, token)
 	if denied.Code != http.StatusNotFound {
 		t.Fatalf("view-only series returned %d, want 404: %s", denied.Code, denied.Body.String())
+	}
+}
+
+func TestOPDSCollectionsAreSeparateDownloadScopedFeeds(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	router := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	user, token := createOPDSTestUserAndKey(t, "opds-collection-user", "opds-collection-user")
+	createOPDSHandlerLibrary(t, "opds-collection-download", "comic", true)
+	createOPDSHandlerLibrary(t, "opds-collection-view", "comic", true)
+	createOPDSHandlerComic(t, "opds-collection-v1", "Work/Work 01.cbz", "comic", "opds-collection-download")
+	createOPDSHandlerComic(t, "opds-collection-v2", "Work/Work 02.pdf", "comic", "opds-collection-download")
+	createOPDSHandlerComic(t, "opds-collection-direct", "Direct.cbz", "comic", "opds-collection-download")
+	createOPDSHandlerComic(t, "opds-collection-private", "Private.cbz", "comic", "opds-collection-view")
+
+	if err := store.SetUserLibraryAccess(user.ID, []store.LibraryAccessReq{
+		{LibraryID: "opds-collection-download", CanDownload: true},
+		{LibraryID: "opds-collection-view", CanView: true},
+	}); err != nil {
+		t.Fatalf("SetUserLibraryAccess failed: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := store.DB().Exec(`
+		INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "manualLocked") VALUES
+		('opds-collection-series', 'opds-collection-download', 'Work', 'Directory Work', 'directory work', 'opds-collection-v1', 1);
+		INSERT INTO "ComicSeriesItem" ("seriesId", "comicId", "sortIndex", "displayLabel") VALUES
+		('opds-collection-series', 'opds-collection-v1', 0, '01'),
+		('opds-collection-series', 'opds-collection-v2', 1, '02');
+		INSERT INTO "ComicGroup" ("id", "name", "coverUrl", "sortOrder", "createdAt", "updatedAt") VALUES
+		(21, 'Visible Collection', 'https://example.test/collection.jpg', 0, ?, ?),
+		(22, 'Private Collection', '', 1, ?, ?);
+		INSERT INTO "ComicGroupSeries" ("groupId", "seriesId", "sortIndex") VALUES
+		(21, 'opds-collection-series', 0);
+		INSERT INTO "ComicGroupItem" ("groupId", "comicId", "sortIndex") VALUES
+		(21, 'opds-collection-v1', 0),
+		(21, 'opds-collection-direct', 1),
+		(21, 'opds-collection-private', 2),
+		(22, 'opds-collection-private', 0)
+	`, now, now, now, now); err != nil {
+		t.Fatalf("insert OPDS collections failed: %v", err)
+	}
+
+	root := performOPDSBasicRequest(router, "/api/opds", user.Username, token)
+	if !strings.Contains(root.Body.String(), ">Collections<") || !strings.Contains(root.Body.String(), ">Directory Works<") {
+		t.Fatalf("OPDS root did not separate collections and directory works: %s", root.Body.String())
+	}
+
+	list := performOPDSBasicRequest(router, "/api/opds/collections", user.Username, token)
+	if list.Code != http.StatusOK || !strings.HasPrefix(list.Header().Get("Content-Type"), service.OPDSNavigationMIME) {
+		t.Fatalf("OPDS collections returned %d (%s): %s", list.Code, list.Header().Get("Content-Type"), list.Body.String())
+	}
+	if !strings.Contains(list.Body.String(), "Visible Collection") || strings.Contains(list.Body.String(), "Private Collection") {
+		t.Fatalf("collection list did not enforce download access: %s", list.Body.String())
+	}
+
+	detail := performOPDSBasicRequest(router, "/api/opds/collections/21", user.Username, token)
+	if detail.Code != http.StatusOK || !strings.HasPrefix(detail.Header().Get("Content-Type"), service.OPDSAcquisitionMIME) {
+		t.Fatalf("OPDS collection detail returned %d (%s): %s", detail.Code, detail.Header().Get("Content-Type"), detail.Body.String())
+	}
+	body := detail.Body.String()
+	first := strings.Index(body, "<title>Directory Work - 01</title>")
+	second := strings.Index(body, "<title>Directory Work - 02</title>")
+	direct := strings.Index(body, "<title>opds-collection-direct</title>")
+	if first < 0 || second < 0 || direct < 0 || first >= second || second >= direct {
+		t.Fatalf("collection members were not flattened in collection order: %s", body)
+	}
+	if strings.Count(body, "<id>urn:nowen:comic:opds-collection-v1</id>") != 1 {
+		t.Fatalf("duplicate direct and directory membership was not deduplicated: %s", body)
+	}
+	if strings.Contains(body, "opds-collection-private") {
+		t.Fatalf("view-only collection member leaked into detail: %s", body)
+	}
+	if !strings.Contains(body, `rel="collection" href="http://example.com/api/opds/series/opds-collection-series"`) ||
+		!strings.Contains(body, `rel="collection" href="http://example.com/api/opds/collections/21"`) {
+		t.Fatalf("collection detail entries are missing directory and curated collection relations: %s", body)
+	}
+
+	all := performOPDSBasicRequest(router, "/api/opds/all", user.Username, token)
+	if !strings.Contains(all.Body.String(), `rel="collection" href="http://example.com/api/opds/collections/21"`) {
+		t.Fatalf("flat feed entries are missing curated collection relations: %s", all.Body.String())
+	}
+	coverData := []byte("cached-collection-cover")
+	if err := os.MkdirAll(config.GetThumbnailsDir(), 0o755); err != nil {
+		t.Fatalf("create thumbnail directory failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(config.GetThumbnailsDir(), archive.GroupCoverCacheName(21)), coverData, 0o644); err != nil {
+		t.Fatalf("write collection cover failed: %v", err)
+	}
+	cover := performOPDSBasicRequest(router, "/api/opds/collections/21/cover", user.Username, token)
+	if cover.Code != http.StatusOK || !bytes.Equal(cover.Body.Bytes(), coverData) || !strings.HasPrefix(cover.Header().Get("Cache-Control"), "private") {
+		t.Fatalf("collection cover returned %d with headers %v and body %q", cover.Code, cover.Header(), cover.Body.Bytes())
+	}
+	denied := performOPDSBasicRequest(router, "/api/opds/collections/22", user.Username, token)
+	if denied.Code != http.StatusNotFound {
+		t.Fatalf("view-only collection returned %d, want 404: %s", denied.Code, denied.Body.String())
+	}
+}
+
+func TestOPDSCollectionTitlesDistinguishDirectoryAndDirectMembership(t *testing.T) {
+	rows := []store.OPDSComicRow{
+		{
+			ID:                    "directory-member",
+			Title:                 "Full Directory Member Title",
+			Filename:              "Work 01.cbz",
+			DisplayLabel:          "01",
+			SectionTitle:          "Season 1",
+			CollectionSeriesTitle: "Directory Work",
+		},
+		{
+			ID:           "direct-member",
+			Title:        "Full Direct Member Title",
+			Filename:     "Direct 01.cbz",
+			DisplayLabel: "01",
+		},
+	}
+	comics := toOPDSCollectionComics(rows)
+	if comics[0].Title != "Directory Work - Season 1 - 01" {
+		t.Fatalf("directory member title = %q", comics[0].Title)
+	}
+	if comics[1].Title != "Full Direct Member Title" {
+		t.Fatalf("direct member title = %q; want full comic title", comics[1].Title)
 	}
 }
 

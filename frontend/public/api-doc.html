@@ -6391,8 +6391,8 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-opds" class="endpoint-group">
-    <h2 class="group-title"><span data-en="24. OPDS" data-zh="24. OPDS">24. OPDS</span> <span class="group-badge"><span data-en="12 endpoints" data-zh="12 个接口">12 endpoints</span></span></h2>
-    <p class="description"><span data-en="Comic-library OPDS 1.2 catalog with OPDS-PSE 1.2 page streaming. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole. Page-based comics additionally expose authenticated JPEG page streams, while original acquisition links remain available." data-zh="以漫画书库为边界、支持 OPDS-PSE 1.2 逐页读取的 OPDS 1.2 目录。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth；在不可信局域网或公网使用时必须通过 HTTPS。仅公开 Library.type 为 comic、已启用且当前用户拥有 canDownload 权限的书库中的受支持文件，Library.type 为 novel 的小说书库整体排除。可按页解析的漫画会额外提供受认证保护的 JPEG 页面流，原始 acquisition 下载链接继续保留。">Comic-library OPDS 1.2 catalog with OPDS-PSE 1.2 page streaming. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. Use HTTPS outside a trusted LAN. The catalog exposes supported files from enabled libraries whose Library.type is comic when the current user has canDownload permission. Novel libraries are excluded as a whole. Page-based comics additionally expose authenticated JPEG page streams, while original acquisition links remain available.</span></p>
+    <h2 class="group-title"><span data-en="24. OPDS" data-zh="24. OPDS">24. OPDS</span> <span class="group-badge"><span data-en="15 endpoints" data-zh="15 个接口">15 endpoints</span></span></h2>
+    <p class="description"><span data-en="Comic-library OPDS 1.2 catalog with separate curated Collections and directory-detected Directory Works, plus OPDS-PSE 1.2 page streaming. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. The catalog exposes supported files only from enabled comic libraries for which the current user has canDownload permission; novel libraries are excluded as a whole." data-zh="以漫画书库为边界的 OPDS 1.2 目录，分别提供管理员维护的合集 Collections、按目录识别的目录作品 Directory Works，并支持 OPDS-PSE 1.2 逐页读取。支持浏览器会话、Bearer API Key，或使用 NowenReader 用户名和完整 API Key 的 HTTP Basic Auth。仅公开已启用且当前用户拥有 canDownload 权限的漫画书库内容，小说书库整体排除。">Comic-library OPDS 1.2 catalog with separate curated Collections and directory-detected Directory Works, plus OPDS-PSE 1.2 page streaming. Authenticate with a browser session, a Bearer API key, or HTTP Basic Auth using the NowenReader username and complete API key. The catalog exposes supported files only from enabled comic libraries for which the current user has canDownload permission; novel libraries are excluded as a whole.</span></p>
 <div class="endpoint auth-required" data-search="GET /api/opds OPDS catalog root" id="get-api-opds">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -6400,7 +6400,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <span class="summary"><span data-en="OPDS catalog root" data-zh="OPDS目录根">OPDS catalog root</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns the OPDS 1.2 navigation root and links to all comics, series, recently added comics, favorites, and the OpenSearch description." data-zh="返回 OPDS 1.2 导航根目录，并链接到全部漫画、合集、最近添加、收藏和 OpenSearch 搜索描述。">Returns the OPDS 1.2 navigation root and links to all comics, series, recently added comics, favorites, and the OpenSearch description.</span></p>
+    <p class="description"><span data-en="Returns the OPDS 1.2 navigation root and links to all comics, curated collections, directory works, recently added comics, favorites, and the OpenSearch description." data-zh="返回 OPDS 1.2 导航根目录，并链接到全部漫画、合集、目录作品、最近添加、收藏和 OpenSearch 搜索描述。">Returns the OPDS 1.2 navigation root and links to all comics, curated collections, directory works, recently added comics, favorites, and the OpenSearch description.</span></p>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=navigation
@@ -6522,14 +6522,71 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="GET /api/opds/series OPDS series navigation feed 合集" id="get-api-opds-series">
+<div class="endpoint auth-required" data-search="GET /api/opds/collections OPDS curated collections navigation feed 合集导航" id="get-api-opds-collections">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/opds/collections</span>
+    <span class="summary"><span data-en="OPDS curated collection navigation feed" data-zh="OPDS 合集导航">OPDS curated collection navigation feed</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns administrator-curated collections that retain at least one downloadable supported publication after comic-library, permission, and format filtering. Cross-library collections expose only members available to the current user; single-member curated collections remain visible." data-zh="返回管理员维护的合集。经过漫画书库、下载权限和格式过滤后至少保留一个受支持内容的合集才会显示；跨书库合集只公开当前用户可下载的成员，人工创建的单成员合集仍会保留。">Returns administrator-curated collections that retain at least one downloadable supported publication after comic-library, permission, and format filtering. Cross-library collections expose only members available to the current user; single-member curated collections remain visible.</span></p>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table"><tbody>
+      <tr><td>page</td><td>int</td><td>No</td><td>Page number (default 1)</td></tr>
+      <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (max 500, default 100)</td></tr>
+    </tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=navigation</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/opds/collections/:id OPDS curated collection acquisition feed 合集详情" id="get-api-opds-collections-id">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/opds/collections/:id</span>
+    <span class="summary"><span data-en="OPDS curated collection acquisition feed" data-zh="OPDS 合集漫画列表">OPDS curated collection acquisition feed</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns a flattened acquisition feed for a curated collection. Directory works are expanded in collection order before direct comics, and duplicate publications are emitted once. Directory-member titles include the directory-work and section context. Inaccessible or empty-after-filtering collections return 404." data-zh="返回合集的扁平化获取 Feed。先按合集顺序展开目录作品及其成员，再返回直属散本；重复加入的漫画只返回一次。目录作品成员标题会包含目录作品和篇章上下文。无权限或过滤后为空的合集返回 404。">Returns a flattened acquisition feed for a curated collection. Directory works are expanded in collection order before direct comics, and duplicate publications are emitted once. Directory-member titles include the directory-work and section context. Inaccessible or empty-after-filtering collections return 404.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><tbody><tr><td>id</td><td>int</td><td>Yes</td><td>Collection ID</td></tr></tbody></table>
+    <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
+    <table class="params-table"><tbody>
+      <tr><td>page</td><td>int</td><td>No</td><td>Page number (default 1)</td></tr>
+      <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (max 500, default 100)</td></tr>
+    </tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>Content-Type: application/atom+xml;profile=opds-catalog;kind=acquisition</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/opds/collections/:id/cover OPDS curated collection cover 合集封面" id="get-api-opds-collections-id-cover">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/opds/collections/:id/cover</span>
+    <span class="summary"><span data-en="OPDS curated collection cover" data-zh="OPDS 合集封面">OPDS curated collection cover</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns the collection's cached custom cover when available, otherwise the first downloadable member cover. Collection visibility and member download access are checked before any image is returned." data-zh="优先返回合集缓存的自定义封面，否则回退到当前用户可下载的第一个成员封面。返回图片前会重新检查合集可见性和成员下载权限。">Returns the collection's cached custom cover when available, otherwise the first downloadable member cover. Collection visibility and member download access are checked before any image is returned.</span></p>
+    <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
+    <table class="params-table"><tbody><tr><td>id</td><td>int</td><td>Yes</td><td>Collection ID</td></tr></tbody></table>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>Binary image response
+Content-Type: actual thumbnail media type</code></pre>
+    <div class="badges"><span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/opds/series OPDS directory works navigation feed 目录作品" id="get-api-opds-series">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/opds/series</span>
-    <span class="summary"><span data-en="OPDS series navigation feed" data-zh="OPDS 合集导航">OPDS series navigation feed</span></span>
+    <span class="summary"><span data-en="OPDS directory-work navigation feed" data-zh="OPDS 目录作品导航">OPDS directory-work navigation feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns a paginated navigation feed of series containing at least two downloadable supported publications from comic libraries after permission and format filtering. EPUB, MOBI, and AZW3 members in comic libraries count toward the series. Each entry links to the series acquisition feed and cover." data-zh="返回分页的合集导航 Feed。合集经过下载权限和格式过滤后，必须仍包含至少两本来自漫画书库的受支持内容；漫画书库中的 EPUB、MOBI 和 AZW3 成员会计入合集。每个条目链接到合集获取 Feed 和合集封面。">Returns a paginated navigation feed of series containing at least two downloadable supported publications from comic libraries after permission and format filtering. EPUB, MOBI, and AZW3 members in comic libraries count toward the series. Each entry links to the series acquisition feed and cover.</span></p>
+    <p class="description"><span data-en="Returns directory-detected works containing at least two downloadable supported publications after permission and format filtering. The existing /series path is retained for compatibility, but its catalog meaning is Directory Works. Each entry links to the directory-work acquisition feed and cover." data-zh="返回按目录结构识别的目录作品。经过下载权限和格式过滤后，目录作品必须仍包含至少两个受支持内容；保留既有 /series 路径用于兼容，但其目录语义始终是“目录作品”。每个条目链接到目录作品获取 Feed 和封面。">Returns directory-detected works containing at least two downloadable supported publications after permission and format filtering. The existing /series path is retained for compatibility, but its catalog meaning is Directory Works. Each entry links to the directory-work acquisition feed and cover.</span></p>
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
@@ -6544,14 +6601,14 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="GET /api/opds/series/:id OPDS series acquisition feed 合集详情" id="get-api-opds-series-id">
+<div class="endpoint auth-required" data-search="GET /api/opds/series/:id OPDS directory work acquisition feed 目录作品详情" id="get-api-opds-series-id">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/opds/series/:id</span>
-    <span class="summary"><span data-en="OPDS series acquisition feed" data-zh="OPDS 合集漫画列表">OPDS series acquisition feed</span></span>
+    <span class="summary"><span data-en="OPDS directory-work acquisition feed" data-zh="OPDS 目录作品漫画列表">OPDS directory-work acquisition feed</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns downloadable supported publications from a comic-library series in series order. Sections are flattened and their names prefix item titles. Every entry includes a standard collection relation back to this feed. Inaccessible, missing, or filtered-to-single-item series return 404." data-zh="按合集顺序返回漫画书库合集中的可下载受支持内容。篇章会被扁平化，并作为条目标题前缀；每个条目都包含指回该 Feed 的标准 collection 关系。无权限、不存在或过滤后不足两本的合集返回 404。">Returns downloadable supported publications from a comic-library series in series order. Sections are flattened and their names prefix item titles. Every entry includes a standard collection relation back to this feed. Inaccessible, missing, or filtered-to-single-item series return 404.</span></p>
+    <p class="description"><span data-en="Returns downloadable publications from a directory work in its stored section and member order. Sections are flattened and prefix item titles. Every entry links back to this directory-work feed and may also link to one or more curated collections. Inaccessible, missing, or filtered-to-single-item directory works return 404." data-zh="按保存的篇章和成员顺序返回目录作品中的可下载内容。篇章会被扁平化并作为条目标题前缀；每个条目都指回当前目录作品 Feed，也可以同时指向一个或多个合集。无权限、不存在或过滤后不足两个成员的目录作品返回 404。">Returns downloadable publications from a directory work in its stored section and member order. Sections are flattened and prefix item titles. Every entry links back to this directory-work feed and may also link to one or more curated collections. Inaccessible, missing, or filtered-to-single-item directory works return 404.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><tbody><tr><td>id</td><td>string</td><td>Yes</td><td>Series ID</td></tr></tbody></table>
     <h4><span data-en="Query Parameters" data-zh="查询参数">Query Parameters</span></h4>
@@ -6565,14 +6622,14 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="GET /api/opds/series/:id/cover OPDS series cover 合集封面" id="get-api-opds-series-id-cover">
+<div class="endpoint auth-required" data-search="GET /api/opds/series/:id/cover OPDS directory work cover 目录作品封面" id="get-api-opds-series-id-cover">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/opds/series/:id/cover</span>
-    <span class="summary"><span data-en="OPDS series cover" data-zh="OPDS 合集封面">OPDS series cover</span></span>
+    <span class="summary"><span data-en="OPDS directory-work cover" data-zh="OPDS 目录作品封面">OPDS directory-work cover</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns the configured cover comic thumbnail, falling back to an eligible series member. The series and cover member must both remain downloadable to the current user; otherwise the endpoint returns 404." data-zh="返回配置的合集封面漫画缩略图；若该成员不再符合发布条件，则回退到可用成员。合集和封面成员都必须仍可由当前用户下载，否则返回 404。">Returns the configured cover comic thumbnail, falling back to an eligible series member. The series and cover member must both remain downloadable to the current user; otherwise the endpoint returns 404.</span></p>
+    <p class="description"><span data-en="Returns the directory work's cached custom cover when available, otherwise an eligible member cover. The directory work and fallback member must remain downloadable to the current user." data-zh="优先返回目录作品缓存的自定义封面，否则回退到可用成员封面。目录作品和回退成员都必须仍可由当前用户下载。">Returns the directory work's cached custom cover when available, otherwise an eligible member cover. The directory work and fallback member must remain downloadable to the current user.</span></p>
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table"><tbody><tr><td>id</td><td>string</td><td>Yes</td><td>Series ID</td></tr></tbody></table>
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>

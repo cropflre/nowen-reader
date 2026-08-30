@@ -16,6 +16,7 @@ func TestRootCatalogIsNavigationFeedWithOpenSearch(t *testing.T) {
 		`href="http://example.test/api/opds/search.xml"`,
 		`type="` + OpenSearchMIME + `"`,
 		`href="http://example.test/api/opds/all"`,
+		`href="http://example.test/api/opds/collections" type="` + OPDSNavigationMIME + `"`,
 		`href="http://example.test/api/opds/series" type="` + OPDSNavigationMIME + `"`,
 		`href="http://example.test/api/opds/recent"`,
 		`href="http://example.test/api/opds/favorites"`,
@@ -47,23 +48,25 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		Title:   "Library",
 		FeedID:  "http://example.test/api/opds/search?q=%E4%B9%A6",
 		Comics: []OPDSComic{{
-			ID:           "comic-1",
-			Title:        "Comic",
-			Author:       "Author",
-			Description:  "Description",
-			Language:     "zh-CN",
-			Genre:        "Action, Drama",
-			Publisher:    "Publisher",
-			Year:         2025,
-			PageCount:    42,
-			FileSize:     123456,
-			AddedAt:      "2025-01-02T03:04:05Z",
-			UpdatedAt:    "2025-02-03T04:05:06Z",
-			Tags:         []string{"Drama", "Complete"},
-			Filename:     "comic.cbz",
-			ComicType:    "comic",
-			SeriesID:     "series-1",
-			SeriesTitle:  "Series One",
+			ID:          "comic-1",
+			Title:       "Comic",
+			Author:      "Author",
+			Description: "Description",
+			Language:    "zh-CN",
+			Genre:       "Action, Drama",
+			Publisher:   "Publisher",
+			Year:        2025,
+			PageCount:   42,
+			FileSize:    123456,
+			AddedAt:     "2025-01-02T03:04:05Z",
+			UpdatedAt:   "2025-02-03T04:05:06Z",
+			Tags:        []string{"Drama", "Complete"},
+			Filename:    "comic.cbz",
+			ComicType:   "comic",
+			Collections: []OPDSCollectionLink{
+				{Path: "/api/opds/series/series-1", Title: "Series One"},
+				{Path: "/api/opds/collections/12", Title: "Collection One"},
+			},
 			LastReadPage: 9,
 			LastReadAt:   "2025-02-03T04:05:06Z",
 		}},
@@ -93,6 +96,7 @@ func TestAcquisitionFeedMetadataPaginationAndLinks(t *testing.T) {
 		`href="http://example.test/api/opds/download/comic-1/comic.cbz" type="application/vnd.comicbook+zip" length="123456"`,
 		`rel="` + opdsPSEStream + `" href="http://example.test/api/opds/stream/comic-1?page={pageNumber}&amp;width={maxWidth}" type="image/jpeg" pse:count="42" pse:lastRead="10" pse:lastReadDate="2025-02-03T04:05:06Z"`,
 		`rel="collection" href="http://example.test/api/opds/series/series-1" type="` + OPDSAcquisitionMIME + `" title="Series One"`,
+		`rel="collection" href="http://example.test/api/opds/collections/12" type="` + OPDSAcquisitionMIME + `" title="Collection One"`,
 		`<dcterms:language>zh-CN</dcterms:language>`,
 		`<dcterms:publisher>Publisher</dcterms:publisher>`,
 		`<dcterms:issued>2025</dcterms:issued>`,
@@ -171,6 +175,40 @@ func TestSeriesNavigationFeedLinksToSeriesAndCover(t *testing.T) {
 	} {
 		if !strings.Contains(feed, expected) {
 			t.Fatalf("series feed missing %q: %s", expected, feed)
+		}
+	}
+}
+
+func TestCollectionNavigationFeedLinksToCollectionAndCover(t *testing.T) {
+	feed := GenerateCollectionNavigationFeed(OPDSCollectionFeedOptions{
+		BaseURL: "http://example.test",
+		Title:   "Collections",
+		FeedID:  "http://example.test/api/opds/collections",
+		Collections: []OPDSCollection{{
+			ID:        "12",
+			Title:     "Collection One",
+			ItemCount: 4,
+			UpdatedAt: "2025-02-03T04:05:06Z",
+		}},
+		Pagination: OPDSPagination{
+			SelfHref:     "/api/opds/collections?page=1&pageSize=100",
+			FirstHref:    "/api/opds/collections?page=1&pageSize=100",
+			LastHref:     "/api/opds/collections?page=1&pageSize=100",
+			TotalResults: 1,
+			ItemsPerPage: 100,
+			StartIndex:   1,
+		},
+	})
+	assertValidXML(t, feed)
+
+	for _, expected := range []string{
+		`<id>urn:nowen:collection:12</id>`,
+		`<summary type="text">4 comics</summary>`,
+		`href="http://example.test/api/opds/collections/12/cover"`,
+		`rel="subsection" href="http://example.test/api/opds/collections/12" type="` + OPDSAcquisitionMIME + `"`,
+	} {
+		if !strings.Contains(feed, expected) {
+			t.Fatalf("collection feed missing %q: %s", expected, feed)
 		}
 	}
 }

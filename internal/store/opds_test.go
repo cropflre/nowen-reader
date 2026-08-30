@@ -261,6 +261,104 @@ func TestGetOPDSSeriesFiltersAccessFormatsAndPreservesOrder(t *testing.T) {
 	}
 }
 
+func TestGetOPDSCollectionsFiltersMembersDeduplicatesAndPreservesOrder(t *testing.T) {
+	setupTestDB(t)
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	createOPDSTestLibrary(t, "collection-download", "comic", true)
+	createOPDSTestLibrary(t, "collection-hidden", "comic", true)
+	createOPDSTestLibrary(t, "collection-novel", "novel", true)
+	createOPDSTestLibrary(t, "collection-disabled", "comic", false)
+
+	createOPDSTestComic(t, "collection-series-1", "Work/Work 01.cbz", "comic", "collection-download")
+	createOPDSTestComic(t, "collection-series-2", "Work/Work 02.pdf", "comic", "collection-download")
+	createOPDSTestComic(t, "collection-direct", "Direct.cbz", "comic", "collection-download")
+	createOPDSTestComic(t, "collection-single", "Single.cbz", "comic", "collection-download")
+	createOPDSTestComic(t, "collection-hidden-item", "Hidden.cbz", "comic", "collection-hidden")
+	createOPDSTestComic(t, "collection-novel-item", "Novel.cbz", "comic", "collection-novel")
+	createOPDSTestComic(t, "collection-disabled-item", "Disabled.cbz", "comic", "collection-disabled")
+	createOPDSTestComic(t, "collection-unsupported", "Unsupported.docx", "comic", "collection-download")
+
+	if err := ReplaceDetectedSeries("collection-download", []DetectedSeries{{
+		ID:               "collection-directory-work",
+		LibraryID:        "collection-download",
+		RootRelativePath: "Work",
+		Title:            "Directory Work",
+		SortTitle:        "directory work",
+		Items: []DetectedSeriesItem{
+			{ComicID: "collection-series-1", SortIndex: 0, DisplayLabel: "01"},
+			{ComicID: "collection-series-2", SortIndex: 1, DisplayLabel: "02"},
+		},
+	}}); err != nil {
+		t.Fatalf("ReplaceDetectedSeries failed: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := db.Exec(`
+		INSERT INTO "ComicGroup" ("id", "name", "coverUrl", "sortOrder", "createdAt", "updatedAt") VALUES
+		(10, 'Visible Collection', 'https://example.test/cover.jpg', 0, ?, ?),
+		(11, 'Hidden Collection', '', 1, ?, ?),
+		(12, 'Single Collection', '', 2, ?, ?);
+		INSERT INTO "ComicGroupSeries" ("groupId", "seriesId", "sortIndex") VALUES
+		(10, 'collection-directory-work', 0);
+		INSERT INTO "ComicGroupItem" ("groupId", "comicId", "sortIndex") VALUES
+		(10, 'collection-series-1', 0),
+		(10, 'collection-direct', 1),
+		(10, 'collection-hidden-item', 2),
+		(10, 'collection-novel-item', 3),
+		(10, 'collection-disabled-item', 4),
+		(10, 'collection-unsupported', 5),
+		(11, 'collection-hidden-item', 0),
+		(12, 'collection-single', 0)
+	`, now, now, now, now, now, now); err != nil {
+		t.Fatalf("insert OPDS collections failed: %v", err)
+	}
+
+	collections, total, err := GetOPDSCollections(OPDSCollectionQueryOptions{
+		LibraryIDs: []string{"collection-download"},
+	})
+	if err != nil {
+		t.Fatalf("GetOPDSCollections failed: %v", err)
+	}
+	if total != 2 || len(collections) != 2 || collections[0].ID != 10 || collections[1].ID != 12 {
+		t.Fatalf("collections = %#v, total=%d; want visible and single collections", collections, total)
+	}
+	if collections[0].ItemCount != 3 || collections[0].CoverComicID != "collection-series-1" || collections[0].CoverURL == "" {
+		t.Fatalf("visible collection summary = %#v; want three deduplicated members and directory cover", collections[0])
+	}
+	if collections[1].ItemCount != 1 {
+		t.Fatalf("single-member curated collection should remain visible: %#v", collections[1])
+	}
+
+	items, itemTotal, err := GetOPDSComics(OPDSQueryOptions{
+		LibraryIDs:   []string{"collection-download"},
+		CollectionID: 10,
+	})
+	if err != nil {
+		t.Fatalf("GetOPDSComics(collection) failed: %v", err)
+	}
+	if itemTotal != 3 || len(items) != 3 ||
+		items[0].ID != "collection-series-1" || items[1].ID != "collection-series-2" || items[2].ID != "collection-direct" {
+		t.Fatalf("collection items = %#v, total=%d; want directory members then direct comic", items, itemTotal)
+	}
+	if items[0].CollectionSeriesTitle != "Directory Work" || items[1].CollectionSeriesTitle != "Directory Work" || items[2].CollectionSeriesTitle != "" {
+		t.Fatalf("collection directory titles = %#v", items)
+	}
+	for _, item := range items {
+		if len(item.CollectionRefs) == 0 || item.CollectionRefs[0].ID != 10 {
+			t.Fatalf("collection relation missing from %#v", item)
+		}
+	}
+
+	hidden, hiddenTotal, err := GetOPDSCollections(OPDSCollectionQueryOptions{
+		LibraryIDs:   []string{"collection-download"},
+		CollectionID: 11,
+	})
+	if err != nil || hiddenTotal != 0 || len(hidden) != 0 {
+		t.Fatalf("inaccessible collection = %#v, total=%d, err=%v", hidden, hiddenTotal, err)
+	}
+}
+
 func createOPDSTestLibrary(t *testing.T, id, libraryType string, enabled bool) {
 	t.Helper()
 	library := &model.Library{

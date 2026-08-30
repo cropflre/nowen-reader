@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-reader/nowen-reader/internal/archive"
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/service"
@@ -101,6 +102,105 @@ func (h *OPDSHandler) Favorites(c *gin.Context) {
 	})
 }
 
+// GET /api/opds/collections
+func (h *OPDSHandler) Collections(c *gin.Context) {
+	if err := service.EnsureComicSeriesFresh(); err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to refresh comic series"))
+		return
+	}
+	libraryIDs, err := store.GetUserDownloadableLibraryIDs(getOPDSUserID(c))
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to resolve library access"))
+		return
+	}
+	page, pageSize := parseOPDSPagination(c)
+	rows, total, err := store.GetOPDSCollections(store.OPDSCollectionQueryOptions{
+		LibraryIDs: libraryIDs,
+		Limit:      pageSize,
+		Offset:     (page - 1) * pageSize,
+	})
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to get comic collections"))
+		return
+	}
+
+	baseURL := getBaseURL(c)
+	xml := service.GenerateCollectionNavigationFeed(service.OPDSCollectionFeedOptions{
+		BaseURL:     baseURL,
+		Title:       "Collections",
+		FeedID:      opdsFeedID(baseURL, c),
+		Collections: toOPDSCollections(rows),
+		Pagination:  buildOPDSPagination(c, page, pageSize, total),
+	})
+	setOPDSPrivateResponseHeaders(c)
+	c.Data(http.StatusOK, service.OPDSNavigationMIME, []byte(xml))
+}
+
+// GET /api/opds/collections/:id
+func (h *OPDSHandler) CollectionDetail(c *gin.Context) {
+	collectionID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || collectionID <= 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic collection not found"})
+		return
+	}
+	collection, libraryIDs, ok := getAccessibleOPDSCollection(c, collectionID)
+	if !ok {
+		return
+	}
+	page, pageSize := parseOPDSPagination(c)
+	rows, total, err := store.GetOPDSComics(store.OPDSQueryOptions{
+		LibraryIDs:   libraryIDs,
+		UserID:       getOPDSUserID(c),
+		CollectionID: collection.ID,
+		Limit:        pageSize,
+		Offset:       (page - 1) * pageSize,
+	})
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to get collection comics"))
+		return
+	}
+
+	baseURL := getBaseURL(c)
+	xml := service.GenerateAcquisitionFeed(service.OPDSAcquisitionFeedOptions{
+		BaseURL:    baseURL,
+		Title:      collection.Title,
+		FeedID:     opdsFeedID(baseURL, c),
+		Comics:     toOPDSCollectionComics(rows),
+		Pagination: buildOPDSPagination(c, page, pageSize, total),
+	})
+	setOPDSPrivateResponseHeaders(c)
+	c.Data(http.StatusOK, service.OPDSAcquisitionMIME, []byte(xml))
+}
+
+// GET /api/opds/collections/:id/cover
+func (h *OPDSHandler) CollectionCover(c *gin.Context) {
+	collectionID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || collectionID <= 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic collection not found"})
+		return
+	}
+	collection, _, ok := getAccessibleOPDSCollection(c, collectionID)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(collection.CoverURL) != "" {
+		cachePath := filepath.Join(config.GetThumbnailsDir(), archive.GroupCoverCacheName(collection.ID))
+		if renderCachedOPDSCover(c, cachePath) {
+			return
+		}
+		rawCoverURL := strings.TrimSpace(collection.CoverURL)
+		switch {
+		case strings.HasPrefix(rawCoverURL, "data:image/"):
+			if service.CacheGroupCoverDataURL(collection.ID, rawCoverURL) == nil && renderCachedOPDSCover(c, cachePath) {
+				return
+			}
+		case strings.HasPrefix(rawCoverURL, "http://") || strings.HasPrefix(rawCoverURL, "https://"):
+			go service.DownloadGroupCover(collection.ID, rawCoverURL)
+		}
+	}
+	h.renderCover(c, collection.CoverComicID)
+}
+
 // GET /api/opds/series
 func (h *OPDSHandler) Series(c *gin.Context) {
 	if err := service.EnsureComicSeriesFresh(); err != nil {
@@ -126,7 +226,7 @@ func (h *OPDSHandler) Series(c *gin.Context) {
 	baseURL := getBaseURL(c)
 	xml := service.GenerateSeriesNavigationFeed(service.OPDSSeriesFeedOptions{
 		BaseURL:    baseURL,
-		Title:      "Series",
+		Title:      "Directory Works",
 		FeedID:     opdsFeedID(baseURL, c),
 		Series:     toOPDSSeries(rows),
 		Pagination: buildOPDSPagination(c, page, pageSize, total),
@@ -171,6 +271,16 @@ func (h *OPDSHandler) SeriesCover(c *gin.Context) {
 	series, _, ok := getAccessibleOPDSSeries(c, c.Param("id"))
 	if !ok {
 		return
+	}
+	if strings.TrimSpace(series.CoverURL) != "" {
+		cachePath := filepath.Join(config.GetThumbnailsDir(), archive.SeriesCoverCacheName(series.ID))
+		if renderCachedOPDSCover(c, cachePath) {
+			return
+		}
+		if rawCoverURL, err := store.GetSeriesStoredCoverURL(series.ID); err == nil &&
+			(strings.HasPrefix(rawCoverURL, "http://") || strings.HasPrefix(rawCoverURL, "https://")) {
+			go service.DownloadSeriesCover(series.ID, rawCoverURL)
+		}
 	}
 	h.renderCover(c, series.CoverComicID)
 }
@@ -312,6 +422,24 @@ func (h *OPDSHandler) renderCover(c *gin.Context, comicID string) {
 		return
 	}
 	c.Data(http.StatusOK, mimeType, thumbnail)
+}
+
+func renderCachedOPDSCover(c *gin.Context, cachePath string) bool {
+	data, err := os.ReadFile(cachePath)
+	if err != nil || len(data) == 0 {
+		return false
+	}
+	sum := sha256.Sum256(data)
+	etag := fmt.Sprintf(`"%x"`, sum[:12])
+	c.Header("Cache-Control", "private, max-age=300, must-revalidate")
+	c.Header("Vary", "Authorization, Cookie")
+	c.Header("ETag", etag)
+	if c.GetHeader("If-None-Match") == etag {
+		c.Status(http.StatusNotModified)
+		return true
+	}
+	c.Data(http.StatusOK, http.DetectContentType(data), data)
+	return true
 }
 
 // GET/HEAD /api/opds/download/:id
@@ -464,6 +592,32 @@ func getAccessibleOPDSSeries(c *gin.Context, seriesID string) (*store.OPDSSeries
 	return &rows[0], libraryIDs, true
 }
 
+func getAccessibleOPDSCollection(c *gin.Context, collectionID int) (*store.OPDSCollectionRow, []string, bool) {
+	if err := service.EnsureComicSeriesFresh(); err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to refresh comic series"))
+		return nil, nil, false
+	}
+	libraryIDs, err := store.GetUserDownloadableLibraryIDs(getOPDSUserID(c))
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to resolve library access"))
+		return nil, nil, false
+	}
+	rows, _, err := store.GetOPDSCollections(store.OPDSCollectionQueryOptions{
+		LibraryIDs:   libraryIDs,
+		CollectionID: collectionID,
+		Limit:        1,
+	})
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8", []byte("Failed to get comic collection"))
+		return nil, nil, false
+	}
+	if len(rows) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comic collection not found"})
+		return nil, nil, false
+	}
+	return &rows[0], libraryIDs, true
+}
+
 func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 	comics := make([]service.OPDSComic, 0, len(rows))
 	for _, row := range rows {
@@ -483,13 +637,31 @@ func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 			Tags:         row.Tags,
 			Filename:     row.Filename,
 			ComicType:    row.ComicType,
-			SeriesID:     row.SeriesID,
-			SeriesTitle:  row.SeriesTitle,
+			Collections:  toOPDSCollectionLinks(row),
 			LastReadPage: row.LastReadPage,
 			LastReadAt:   row.LastReadAt,
 		})
 	}
 	return comics
+}
+
+func toOPDSCollectionLinks(row store.OPDSComicRow) []service.OPDSCollectionLink {
+	links := make([]service.OPDSCollectionLink, 0, len(row.CollectionRefs)+1)
+	seen := make(map[string]struct{}, len(row.CollectionRefs)+1)
+	if row.SeriesID != "" {
+		path := "/api/opds/series/" + url.PathEscape(row.SeriesID)
+		seen[path] = struct{}{}
+		links = append(links, service.OPDSCollectionLink{Path: path, Title: row.SeriesTitle})
+	}
+	for _, ref := range row.CollectionRefs {
+		path := "/api/opds/collections/" + strconv.Itoa(ref.ID)
+		if _, exists := seen[path]; exists {
+			continue
+		}
+		seen[path] = struct{}{}
+		links = append(links, service.OPDSCollectionLink{Path: path, Title: ref.Title})
+	}
+	return links
 }
 
 func toOPDSSeriesComics(rows []store.OPDSComicRow) []service.OPDSComic {
@@ -510,6 +682,28 @@ func toOPDSSeriesComics(rows []store.OPDSComicRow) []service.OPDSComic {
 	return comics
 }
 
+func toOPDSCollectionComics(rows []store.OPDSComicRow) []service.OPDSComic {
+	comics := toOPDSComics(rows)
+	for index, row := range rows {
+		seriesTitle := strings.TrimSpace(row.CollectionSeriesTitle)
+		if seriesTitle == "" {
+			continue
+		}
+		title := strings.TrimSpace(row.DisplayLabel)
+		if title == "" {
+			title = strings.TrimSpace(row.Title)
+		}
+		if title == "" {
+			title = strings.TrimSuffix(filepath.Base(row.Filename), filepath.Ext(row.Filename))
+		}
+		if section := strings.TrimSpace(row.SectionTitle); section != "" {
+			title = section + " - " + title
+		}
+		comics[index].Title = seriesTitle + " - " + title
+	}
+	return comics
+}
+
 func toOPDSSeries(rows []store.OPDSSeriesRow) []service.OPDSSeries {
 	series := make([]service.OPDSSeries, 0, len(rows))
 	for _, row := range rows {
@@ -521,4 +715,17 @@ func toOPDSSeries(rows []store.OPDSSeriesRow) []service.OPDSSeries {
 		})
 	}
 	return series
+}
+
+func toOPDSCollections(rows []store.OPDSCollectionRow) []service.OPDSCollection {
+	collections := make([]service.OPDSCollection, 0, len(rows))
+	for _, row := range rows {
+		collections = append(collections, service.OPDSCollection{
+			ID:        strconv.Itoa(row.ID),
+			Title:     row.Title,
+			ItemCount: row.ItemCount,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return collections
 }

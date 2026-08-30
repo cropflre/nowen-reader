@@ -969,33 +969,53 @@ func GetAllComicsForRecommendation(filterLibraryIDs bool, libraryIDs ...string) 
 
 // OPDSComicRow 用于 OPDS 查询。
 type OPDSComicRow struct {
-	ID           string
-	Title        string
-	Author       string
-	Description  string
-	Language     string
-	Genre        string
-	Publisher    string
-	Year         int
-	PageCount    int
-	FileSize     int64
-	AddedAt      string
-	UpdatedAt    string
-	Tags         []string
-	Filename     string
-	ComicType    string
-	SeriesID     string
-	SeriesTitle  string
-	SectionTitle string
-	DisplayLabel string
-	LastReadPage int
-	LastReadAt   string
+	ID                    string
+	Title                 string
+	Author                string
+	Description           string
+	Language              string
+	Genre                 string
+	Publisher             string
+	Year                  int
+	PageCount             int
+	FileSize              int64
+	AddedAt               string
+	UpdatedAt             string
+	Tags                  []string
+	Filename              string
+	ComicType             string
+	SeriesID              string
+	SeriesTitle           string
+	SectionTitle          string
+	DisplayLabel          string
+	CollectionSeriesTitle string
+	CollectionRefs        []OPDSCollectionRef
+	LastReadPage          int
+	LastReadAt            string
+}
+
+// OPDSCollectionRef identifies a curated collection containing a publication.
+type OPDSCollectionRef struct {
+	ID    int
+	Title string
 }
 
 // OPDSSeriesRow is a series from a comic library exposed by the OPDS catalog.
 type OPDSSeriesRow struct {
 	ID           string
 	Title        string
+	CoverComicID string
+	CoverURL     string
+	ItemCount    int
+	UpdatedAt    string
+}
+
+// OPDSCollectionRow is an administrator-curated comic collection exposed by
+// the OPDS catalog after member-level download filtering.
+type OPDSCollectionRow struct {
+	ID           int
+	Title        string
+	CoverURL     string
 	CoverComicID string
 	ItemCount    int
 	UpdatedAt    string
@@ -1016,6 +1036,7 @@ type OPDSQueryOptions struct {
 	UserID        string
 	Search        string
 	SeriesID      string
+	CollectionID  int
 	FavoritesOnly bool
 	Sort          OPDSSort
 	Limit         int
@@ -1027,6 +1048,13 @@ type OPDSSeriesQueryOptions struct {
 	SeriesID   string
 	Limit      int
 	Offset     int
+}
+
+type OPDSCollectionQueryOptions struct {
+	LibraryIDs   []string
+	CollectionID int
+	Limit        int
+	Offset       int
 }
 
 func opdsPublicationFormatCondition(alias string) string {
@@ -1048,6 +1076,29 @@ func opdsPublicationFormatCondition(alias string) string {
 	)`, filename)
 }
 
+const opdsCollectionMembersCTE = `WITH "OPDSCollectionExpanded" AS (
+	SELECT gi."groupId", gi."comicId", 1 AS "sourceOrder", gi."sortIndex" AS "outerSort",
+	       -1 AS "sectionSort", 0 AS "innerSort", '' AS "seriesTitle"
+	FROM "ComicGroupItem" gi
+	UNION ALL
+	SELECT cgs."groupId", csi."comicId", 0 AS "sourceOrder", cgs."sortIndex" AS "outerSort",
+	       COALESCE(css."sortIndex", -1) AS "sectionSort", csi."sortIndex" AS "innerSort",
+	       cs."title" AS "seriesTitle"
+	FROM "ComicGroupSeries" cgs
+	JOIN "ComicSeries" cs ON cs."id" = cgs."seriesId"
+	JOIN "ComicSeriesItem" csi ON csi."seriesId" = cs."id"
+	JOIN "Comic" c_series ON c_series."id" = csi."comicId" AND c_series."libraryId" = cs."libraryId"
+	LEFT JOIN "ComicSeriesSection" css ON css."id" = csi."sectionId" AND css."seriesId" = cs."id"
+), "OPDSCollectionMember" AS (
+	SELECT expanded.*,
+	       ROW_NUMBER() OVER (
+	           PARTITION BY expanded."groupId", expanded."comicId"
+	           ORDER BY expanded."sourceOrder", expanded."outerSort", expanded."sectionSort",
+	                    expanded."innerSort", expanded."comicId"
+	       ) AS "membershipRank"
+	FROM "OPDSCollectionExpanded" expanded
+) `
+
 // GetOPDSComics returns supported publications from enabled comic libraries.
 // Library type is the content boundary; novel libraries are excluded even when
 // they contain a file format also used by comic libraries.
@@ -1057,8 +1108,21 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 		`l."enabled" = 1`,
 		opdsPublicationFormatCondition("c"),
 	}
-	args := make([]interface{}, 0, len(opts.LibraryIDs)+4)
+	args := make([]interface{}, 0, len(opts.LibraryIDs)+5)
 	args = append(args, opts.UserID)
+	queryPrefix := ""
+	collectionJoin := ""
+	collectionSeriesTitle := `''`
+	if opts.CollectionID > 0 {
+		queryPrefix = opdsCollectionMembersCTE
+		collectionJoin = `
+		JOIN "OPDSCollectionMember" opds_collection_member
+			ON opds_collection_member."comicId" = c."id"
+			AND opds_collection_member."groupId" = ?
+			AND opds_collection_member."membershipRank" = 1`
+		collectionSeriesTitle = `opds_collection_member."seriesTitle"`
+		args = append(args, opts.CollectionID)
+	}
 
 	if len(opts.LibraryIDs) == 0 {
 		conditions = append(conditions, `1 = 0`)
@@ -1093,6 +1157,7 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 		JOIN "Library" l ON l."id" = c."libraryId"
 		LEFT JOIN "UserComicState" opds_ucs
 			ON opds_ucs."comicId" = c."id" AND opds_ucs."userId" = ?
+		` + collectionJoin + `
 		LEFT JOIN "ComicSeriesItem" csi ON csi."comicId" = c."id"
 		LEFT JOIN (
 			SELECT csi2."seriesId"
@@ -1107,25 +1172,29 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 		LEFT JOIN "ComicSeriesSection" css ON css."id" = csi."sectionId" AND css."seriesId" = cs."id"
 		WHERE ` + strings.Join(conditions, " AND ")
 	var total int
-	if err := db.QueryRow(`SELECT COUNT(*) `+fromWhere, args...).Scan(&total); err != nil {
+	if err := db.QueryRow(queryPrefix+`SELECT COUNT(*) `+fromWhere, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	orderBy := TitleSortOrderSQL("c", "ASC")
-	if opts.Sort == OPDSSortRecent {
+	if opts.CollectionID > 0 {
+		orderBy = `ORDER BY opds_collection_member."sourceOrder", opds_collection_member."outerSort",
+			opds_collection_member."sectionSort", opds_collection_member."innerSort", c."id"`
+	} else if opts.Sort == OPDSSortRecent {
 		orderBy = `ORDER BY c."addedAt" DESC, c."id" ASC`
 	} else if opts.SeriesID != "" {
 		orderBy = `ORDER BY COALESCE(css."sortIndex", -1), csi."sortIndex", c."id"`
 	}
-	query := fmt.Sprintf(`
+	query := queryPrefix + fmt.Sprintf(`
 		SELECT c."id", c."title", c."author", c."description", c."language",
 		       c."genre", c."publisher", c."year", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt", c."filename", c."type",
 		       COALESCE(cs."id", ''), COALESCE(cs."title", ''),
 		       COALESCE(css."title", ''), COALESCE(csi."displayLabel", ''),
+		       COALESCE(%s, ''),
 		       COALESCE(opds_ucs."lastReadPage", 0), opds_ucs."lastReadAt"
 		%s %s
-	`, fromWhere, orderBy)
+	`, collectionSeriesTitle, fromWhere, orderBy)
 	if opts.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
 		if opts.Offset > 0 {
@@ -1150,7 +1219,7 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 			&c.ID, &c.Title, &c.Author, &c.Description, &c.Language,
 			&c.Genre, &c.Publisher, &year, &c.PageCount, &c.FileSize,
 			&addedAt, &updatedAt, &c.Filename, &c.ComicType, &c.SeriesID, &c.SeriesTitle,
-			&c.SectionTitle, &c.DisplayLabel, &c.LastReadPage, &lastReadAt,
+			&c.SectionTitle, &c.DisplayLabel, &c.CollectionSeriesTitle, &c.LastReadPage, &lastReadAt,
 		); err != nil {
 			continue
 		}
@@ -1205,8 +1274,68 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 			}
 		}
 	}
+	if err := loadOPDSCollectionRefs(comics); err != nil {
+		return nil, 0, err
+	}
 
 	return comics, total, nil
+}
+
+func loadOPDSCollectionRefs(comics []OPDSComicRow) error {
+	if len(comics) == 0 {
+		return nil
+	}
+	indices := make(map[string][]int, len(comics))
+	ids := make([]string, 0, len(comics))
+	for index := range comics {
+		if _, exists := indices[comics[index].ID]; !exists {
+			ids = append(ids, comics[index].ID)
+		}
+		indices[comics[index].ID] = append(indices[comics[index].ID], index)
+		comics[index].CollectionRefs = []OPDSCollectionRef{}
+	}
+
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		queryArgs := make([]interface{}, len(batch))
+		queryPlaceholders := make([]string, len(batch))
+		for index, id := range batch {
+			queryArgs[index] = id
+			queryPlaceholders[index] = "?"
+		}
+		rows, err := db.Query(opdsCollectionMembersCTE+`
+			SELECT member."comicId", g."id", g."name"
+			FROM "OPDSCollectionMember" member
+			JOIN "ComicGroup" g ON g."id" = member."groupId"
+			WHERE member."membershipRank" = 1
+			  AND member."comicId" IN (`+strings.Join(queryPlaceholders, ",")+`)
+			ORDER BY member."comicId", g."sortOrder", g."shelfSortTitle", g."name", g."id"
+		`, queryArgs...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var comicID string
+			var ref OPDSCollectionRef
+			if err := rows.Scan(&comicID, &ref.ID, &ref.Title); err != nil {
+				rows.Close()
+				return err
+			}
+			for _, index := range indices[comicID] {
+				comics[index].CollectionRefs = append(comics[index].CollectionRefs, ref)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+	}
+	return nil
 }
 
 // GetOPDSSeries returns series from comic libraries that still contain at least
@@ -1248,7 +1377,7 @@ func GetOPDSSeries(opts OPDSSeriesQueryOptions) ([]OPDSSeriesRow, int, error) {
 	}
 
 	query := `
-		SELECT s."id", s."title",
+		SELECT s."id", s."title", s."coverUrl",
 		       COALESCE(NULLIF(MAX(CASE WHEN c."id" = s."coverComicId" THEN c."id" ELSE '' END), ''), MIN(c."id")),
 		       COUNT(DISTINCT c."id"), s."updatedAt"
 		` + fromWhere + groupHaving + ` ORDER BY s."sortTitle", s."title", s."id"`
@@ -1269,13 +1398,90 @@ func GetOPDSSeries(opts OPDSSeriesQueryOptions) ([]OPDSSeriesRow, int, error) {
 	for rows.Next() {
 		var item OPDSSeriesRow
 		var updatedAt time.Time
-		if err := rows.Scan(&item.ID, &item.Title, &item.CoverComicID, &item.ItemCount, &updatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.CoverURL, &item.CoverComicID, &item.ItemCount, &updatedAt); err != nil {
 			return nil, 0, err
 		}
 		item.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
 		series = append(series, item)
 	}
 	return series, total, rows.Err()
+}
+
+// GetOPDSCollections returns curated collections containing at least one
+// downloadable publication after applying the current user's library scope.
+func GetOPDSCollections(opts OPDSCollectionQueryOptions) ([]OPDSCollectionRow, int, error) {
+	if len(opts.LibraryIDs) == 0 {
+		return []OPDSCollectionRow{}, 0, nil
+	}
+
+	libraryPlaceholders := make([]string, len(opts.LibraryIDs))
+	args := make([]interface{}, 0, len(opts.LibraryIDs)+1)
+	for index, libraryID := range opts.LibraryIDs {
+		libraryPlaceholders[index] = "?"
+		args = append(args, libraryID)
+	}
+	queryPrefix := opdsCollectionMembersCTE + `, "OPDSVisibleCollectionMember" AS (
+		SELECT member.*,
+		       ROW_NUMBER() OVER (
+		           PARTITION BY member."groupId"
+		           ORDER BY member."sourceOrder", member."outerSort", member."sectionSort",
+		                    member."innerSort", member."comicId"
+		       ) AS "visibleRank"
+		FROM "OPDSCollectionMember" member
+		JOIN "Comic" c ON c."id" = member."comicId"
+		JOIN "Library" l ON l."id" = c."libraryId"
+		WHERE member."membershipRank" = 1
+		  AND c."libraryId" IN (` + strings.Join(libraryPlaceholders, ",") + `)
+		  AND l."type" = 'comic'
+		  AND l."enabled" = 1
+		  AND ` + opdsPublicationFormatCondition("c") + `
+	) `
+	whereClause := ""
+	if opts.CollectionID > 0 {
+		whereClause = ` WHERE g."id" = ?`
+		args = append(args, opts.CollectionID)
+	}
+	fromWhere := `
+		FROM "ComicGroup" g
+		JOIN "OPDSVisibleCollectionMember" member ON member."groupId" = g."id"
+	` + whereClause
+
+	var total int
+	if err := db.QueryRow(queryPrefix+`SELECT COUNT(DISTINCT g."id") `+fromWhere, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	query := queryPrefix + `
+		SELECT g."id", g."name", g."coverUrl",
+		       COALESCE(MAX(CASE WHEN member."visibleRank" = 1 THEN member."comicId" ELSE '' END), ''),
+		       COUNT(DISTINCT member."comicId"), g."updatedAt"
+		` + fromWhere + `
+		GROUP BY g."id"
+		ORDER BY g."sortOrder", g."shelfSortTitle", g."name", g."id"`
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+		if opts.Offset > 0 {
+			query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+		}
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	collections := make([]OPDSCollectionRow, 0)
+	for rows.Next() {
+		var item OPDSCollectionRow
+		var updatedAt time.Time
+		if err := rows.Scan(
+			&item.ID, &item.Title, &item.CoverURL, &item.CoverComicID, &item.ItemCount, &updatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		item.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+		collections = append(collections, item)
+	}
+	return collections, total, rows.Err()
 }
 
 // ============================================================

@@ -852,9 +852,12 @@ Content-Type: application/json
 | GET | `/api/opds/all` | 全部漫画 |
 | GET | `/api/opds/recent` | 最近更新 |
 | GET | `/api/opds/favorites` | 收藏列表 |
-| GET | `/api/opds/series` | 合集导航列表 |
-| GET | `/api/opds/series/:id` | 合集内漫画列表 |
-| GET | `/api/opds/series/:id/cover` | 合集封面 |
+| GET | `/api/opds/collections` | 合集导航列表 |
+| GET | `/api/opds/collections/:id` | 合集内漫画列表 |
+| GET | `/api/opds/collections/:id/cover` | 合集封面 |
+| GET | `/api/opds/series` | 目录作品导航列表（兼容既有路径） |
+| GET | `/api/opds/series/:id` | 目录作品内漫画列表 |
+| GET | `/api/opds/series/:id/cover` | 目录作品封面 |
 | GET | `/api/opds/search.xml` | OpenSearch 搜索描述 |
 | GET | `/api/opds/search` | OPDS 搜索 |
 | GET | `/api/opds/cover/:id` | OPDS 漫画封面 |
@@ -877,18 +880,21 @@ Content-Type: application/json
 - **下载发现**：Feed 中的 acquisition URL 以经过转义的真实文件名结尾，并通过 Atom `length` 属性提供文件字节数。旧版不带文件名的下载地址继续可用。
 - **媒体类型**：CBZ/ZIP、CBR/RAR、CB7/7Z 和 PDF 分别使用 `application/vnd.comicbook+zip`、`application/x-cbr`、`application/x-cb7` 和 `application/pdf`；EPUB、MOBI、AZW3、TXT 和 HTML/HTM 分别使用 `application/epub+zip`、`application/x-mobipocket-ebook`、`application/vnd.amazon.mobi8-ebook`、`text/plain` 和 `text/html`。
 - **权限**：OPDS 是获取目录，只返回当前用户拥有 `canDownload` 权限的书库内容。公开书库或仅有 `canView` 权限不会自动获得 OPDS 下载权限。
-- **合集导航**：根目录包含 `/api/opds/series` 入口。该接口返回 `kind=navigation`，每个合集链接到 `/api/opds/series/:id` 获取 Feed；合集内按现有篇章和成员顺序扁平排列，篇章名会作为条目标题前缀。
-- **合集过滤**：合集及成员使用与普通 OPDS 条目相同的 `canDownload`、漫画书库和文件格式过滤。漫画书库中的 EPUB、MOBI、AZW3 等受支持成员会计入合集；过滤后少于两本的合集不会显示，无权访问或不存在的合集 ID 返回 `404`。
-- **合集关系**：属于合集的普通漫画条目带有标准 `rel=collection` 链接，指向对应合集 Feed。客户端是否据此自动分组取决于客户端实现。
-- **直链保护**：封面与下载接口都会重新校验身份、下载权限、文件格式和书库状态。小说书库中的条目或不支持格式的 ID 返回 `404`，无下载权限返回 `403`；合集封面同样只会解析为当前用户可下载的成员封面。
+- **两种作品集**：根目录分别提供 `Collections`（`/api/opds/collections`，管理员维护的合集）和 `Directory Works`（`/api/opds/series`，按目录结构识别的目录作品）。保留 `/series` 路径以兼容已有客户端，但其语义始终是目录作品。
+- **目录作品导航**：`/api/opds/series` 返回 `kind=navigation`，每个目录作品链接到 `/api/opds/series/:id` 的 Acquisition Feed。详情按篇章及阅读单元顺序扁平排列，篇章名作为条目标题前缀；过滤后少于两个有效成员的目录作品不显示。
+- **合集导航**：`/api/opds/collections` 返回 `kind=navigation`，每个合集链接到 `/api/opds/collections/:id` 的 Acquisition Feed。详情先按合集中的目录作品顺序展开其成员，再列出直属散本；同一漫画同时以两种方式加入时只返回一次。目录作品成员标题使用“目录作品名称 - 篇章 - 阅读单元”形式。
+- **作品集过滤**：两种作品集及成员都使用与普通 OPDS 条目相同的 `canDownload`、漫画书库状态和文件格式过滤。跨书库合集只返回当前用户可下载的成员；过滤后没有成员的合集不显示，人工创建的单成员合集仍会保留。无权访问或不存在的作品集 ID 返回 `404`。
+- **作品集关系**：漫画条目可以带多个标准 `rel=collection` 链接，同时指向所属目录作品及一个或多个合集 Feed。客户端是否据此自动分组取决于客户端实现。
+- **作品集封面**：合集和目录作品优先返回各自缓存的自定义封面；没有可用自定义封面时，回退到当前用户可下载的第一个成员封面。封面接口会重新执行作品集和下载权限检查。
+- **直链保护**：封面与下载接口都会重新校验身份、下载权限、文件格式和书库状态。小说书库中的条目或不支持格式的 ID 返回 `404`，无下载权限返回 `403`。
 - **OPDS-PSE 1.2**：可逐页阅读的漫画条目额外提供 `rel=http://vaemendis.net/opds-pse/stream` 链接和 `pse:count` 页数。原始 acquisition 下载链接继续保留，旧客户端行为不变。
 - **逐页范围**：PSE 链接只提供给 `Comic.type=comic`、`pageCount>0` 且可按图片页面解析的 CBZ/ZIP、CBR/RAR、CB7/7Z、PDF，以及已识别为图片漫画的 EPUB、MOBI、AZW3。文本小说、TXT 和 HTML 仍可通过原始 acquisition 链接下载，但不会发布 PSE 链接。
 - **逐页图片**：`/api/opds/stream/:id` 固定返回 `image/jpeg`。JPEG 原页在无需缩小时直接返回；其他图片格式和 PDF 渲染结果会保持宽高比转换为 JPEG，不放大、不裁剪。
 - **逐页缓存**：转换结果按作品、源文件版本、页码和宽度缓存在页面缓存目录中，支持 `ETag` 和私有缓存。源文件大小或修改时间变化后不会继续命中旧版本缓存。
 - **阅读位置**：PSE 链接可包含当前用户独立的 `pse:lastRead` 和 `pse:lastReadDate`。`lastRead` 从 1 开始；未开始阅读时省略。OPDS-PSE 没有标准进度回写接口，页面请求本身不会更新阅读进度，以免把客户端预加载误记为已阅读。
-- **Feed 类型**：`/api/opds` 和 `/api/opds/series` 返回 `kind=navigation`；合集详情、列表与搜索返回 `kind=acquisition`。
+- **Feed 类型**：`/api/opds`、`/api/opds/collections` 和 `/api/opds/series` 返回 `kind=navigation`；作品集详情、普通列表与搜索返回 `kind=acquisition`。
 - **搜索发现**：根目录通过 `rel=search` 指向 `/api/opds/search.xml`，搜索模板使用 `/api/opds/search?q={searchTerms}`。
-- **分页**：`all`、`recent`、`favorites`、`series`、合集详情和 `search` 支持 `page`、`pageSize`。默认每页 100 条，`pageSize` 最大 500；响应包含 OpenSearch 统计及 `first`、`last`、`previous`、`next` 链接。
+- **分页**：`all`、`recent`、`favorites`、`collections`、`series`、两种作品集详情和 `search` 支持 `page`、`pageSize`。默认每页 100 条，`pageSize` 最大 500；响应包含 OpenSearch 统计及 `first`、`last`、`previous`、`next` 链接。
 - **收藏隔离**：`favorites` 读取当前用户的 `UserComicState`，不会混用其他用户或旧的全局收藏字段。
 - **获取方式**：条目提供受认证保护的标准 acquisition 文件链接，不声明 `open-access`；符合逐页条件的漫画会同时提供 OPDS-PSE 1.2 链接。
 
