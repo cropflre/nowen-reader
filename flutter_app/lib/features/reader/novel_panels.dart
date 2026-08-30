@@ -13,10 +13,11 @@ class TOCBookmarkPanel extends StatefulWidget {
   final int currentChapter;
   final List<NovelBookmark> bookmarks;
   final ValueChanged<int> onGoToChapter;
+  final ValueChanged<NovelBookmark> onGoToBookmark;
   final VoidCallback onClose;
-  final VoidCallback onToggleBookmark;
-  final ValueChanged<int> onRemoveBookmark;
-  final bool isCurrentBookmarked;
+  final VoidCallback onAddBookmark;
+  final ValueChanged<NovelBookmark> onEditBookmark;
+  final ValueChanged<String> onRemoveBookmark;
   final int initialTabIndex;
 
   const TOCBookmarkPanel({
@@ -26,10 +27,11 @@ class TOCBookmarkPanel extends StatefulWidget {
     required this.currentChapter,
     required this.bookmarks,
     required this.onGoToChapter,
+    required this.onGoToBookmark,
     required this.onClose,
-    required this.onToggleBookmark,
+    required this.onAddBookmark,
+    required this.onEditBookmark,
     required this.onRemoveBookmark,
-    required this.isCurrentBookmarked,
     this.initialTabIndex = 0,
   });
 
@@ -90,19 +92,12 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
                         ],
                       ),
                     ),
-                    // 书签切换按钮
+                    // 添加当前阅读位置书签
                     IconButton(
-                      icon: Icon(
-                        widget.isCurrentBookmarked
-                            ? Icons.bookmark
-                            : Icons.bookmark_add_outlined,
-                        color: widget.isCurrentBookmarked
-                            ? Colors.amber
-                            : s.secondaryTextColor,
-                        size: 20,
-                      ),
-                      onPressed: widget.onToggleBookmark,
-                      tooltip: widget.isCurrentBookmarked ? '移除书签' : '添加书签',
+                      icon: Icon(Icons.bookmark_add_outlined,
+                          color: s.secondaryTextColor, size: 20),
+                      onPressed: widget.onAddBookmark,
+                      tooltip: '添加书签',
                     ),
                     IconButton(
                       icon: Icon(Icons.close, color: s.secondaryTextColor, size: 20),
@@ -195,7 +190,13 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
     }
 
     final sorted = List<NovelBookmark>.from(widget.bookmarks)
-      ..sort((a, b) => a.chapterIndex.compareTo(b.chapterIndex));
+      ..sort((a, b) {
+        final chapterOrder = a.chapterIndex.compareTo(b.chapterIndex);
+        if (chapterOrder != 0) return chapterOrder;
+        final positionOrder = a.positionRatio.compareTo(b.positionRatio);
+        if (positionOrder != 0) return positionOrder;
+        return a.timestamp.compareTo(b.timestamp);
+      });
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -204,7 +205,7 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
         final bm = sorted[index];
         final isActive = bm.chapterIndex == widget.currentChapter;
         return Dismissible(
-          key: ValueKey(bm.chapterIndex),
+          key: ValueKey(bm.id),
           direction: DismissDirection.endToStart,
           background: Container(
             alignment: Alignment.centerRight,
@@ -212,14 +213,14 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
             color: Colors.red.withAlpha(40),
             child: const Icon(Icons.delete, color: Colors.red, size: 20),
           ),
-          onDismissed: (_) => widget.onRemoveBookmark(bm.chapterIndex),
+          onDismissed: (_) => widget.onRemoveBookmark(bm.id),
           child: ListTile(
             dense: true,
             selected: isActive,
             selectedTileColor: primary.withAlpha(20),
             leading: const Icon(Icons.bookmark, color: Colors.amber, size: 18),
             title: Text(
-              bm.chapterTitle,
+              bm.displayTitle,
               style: TextStyle(
                 color: isActive ? primary : s.textColor,
                 fontSize: 13,
@@ -228,11 +229,31 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Text(
-              '第${bm.chapterIndex + 1}章 · ${_formatDate(bm.timestamp)}',
-              style: TextStyle(color: s.secondaryTextColor, fontSize: 10),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (bm.note.trim().isNotEmpty)
+                  Text(
+                    bm.note.trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: s.secondaryTextColor, fontSize: 11),
+                  ),
+                Text(
+                  '${bm.chapterTitle} · 章内 ${(bm.positionRatio * 100).round()}% · ${_formatDate(bm.timestamp)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: s.secondaryTextColor, fontSize: 10),
+                ),
+              ],
             ),
-            onTap: () => widget.onGoToChapter(bm.chapterIndex),
+            trailing: IconButton(
+              icon: Icon(Icons.edit_outlined,
+                  size: 17, color: s.secondaryTextColor),
+              tooltip: '编辑书签',
+              onPressed: () => widget.onEditBookmark(bm),
+            ),
+            onTap: () => widget.onGoToBookmark(bm),
           ),
         );
       },

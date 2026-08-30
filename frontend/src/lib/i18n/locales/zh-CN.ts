@@ -301,7 +301,14 @@ const zhCN = {
     bookmarkLabel: "书签",
     noBookmarks: "暂无书签",
     addBookmarkHint: "点击标题栏的书签图标添加",
+    addBookmark: "添加书签",
+    editBookmark: "编辑书签",
     removeBookmark: "删除书签",
+    bookmarkName: "名称",
+    bookmarkNamePlaceholder: "例如：战斗场面",
+    bookmarkNote: "备注",
+    bookmarkNotePlaceholder: "记录此处的重要内容",
+    bookmarkProgress: "章内 {n}%",
     copy: "复制",
     highlight: "划线",
     note: "笔记",
@@ -1620,7 +1627,14 @@ export interface Translations {
     bookmarkLabel: string;
     noBookmarks: string;
     addBookmarkHint: string;
+    addBookmark: string;
+    editBookmark: string;
     removeBookmark: string;
+    bookmarkName: string;
+    bookmarkNamePlaceholder: string;
+    bookmarkNote: string;
+    bookmarkNotePlaceholder: string;
+    bookmarkProgress: string;
     copy: string;
     highlight: string;
     note: string;

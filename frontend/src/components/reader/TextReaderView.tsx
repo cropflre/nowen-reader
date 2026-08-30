@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, BookOpenCheck, Bookmark, BookmarkPlus, Trash2, Search, X, Copy, MessageSquare, Highlighter, Volume2, Pause, Play, Timer, Square } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, BookOpenCheck, Bookmark, BookmarkPlus, Trash2, Search, X, Copy, MessageSquare, Highlighter, Volume2, Pause, Play, Timer, Square, Pencil } from "lucide-react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import { useLocale, useTranslation } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
@@ -11,6 +11,8 @@ import { calculateReadingProgress } from "@/lib/progress";
 import { themeColorMap, themePreviewColorKeys, paddingOptions, pageModeOptions } from "./text-reader-themes";
 import type { ThemeColors, PageMode } from "./text-reader-themes";
 import type { NovelBookmark, TextHighlight, SearchResult, ChapterInfo, TextReaderViewProps } from "./text-reader-types";
+import NovelBookmarkEditor from "./NovelBookmarkEditor";
+import { createNovelBookmark, normalizeNovelBookmarks, sortNovelBookmarks } from "./novel-bookmarks";
 
 export default function TextReaderView({
   chapters,
@@ -147,23 +149,42 @@ export default function TextReaderView({
     return "standard";
   });
   // 书签
-  const [bookmarks, setBookmarks] = useState<NovelBookmark[]>(() => {
-    if (typeof window !== "undefined" && comicId) {
-      try {
-        const stored = localStorage.getItem(`novel-bookmarks-${comicId}`);
-        if (stored) return JSON.parse(stored);
-      } catch { /* fallback below */ }
-    }
-    return [];
-  });
+  const [bookmarks, setBookmarks] = useState<NovelBookmark[]>([]);
+  const [bookmarksHydratedFor, setBookmarksHydratedFor] = useState<string | null>(null);
+  const [bookmarkEditor, setBookmarkEditor] = useState<{ bookmark: NovelBookmark; isNew: boolean } | null>(null);
+  const [pendingBookmark, setPendingBookmark] = useState<NovelBookmark | null>(null);
 
-  // 从 IndexedDB 恢复书签（localStorage 为空时的降级方案）
+  // 优先从 localStorage 恢复，缺失时读取 IndexedDB 备份。
   useEffect(() => {
-    if (!comicId || bookmarks.length > 0) return;
-    idbLoad<NovelBookmark[]>(`novel-bookmarks-${comicId}`, []).then((data) => {
-      if (data.length > 0) setBookmarks(data);
+    let cancelled = false;
+    setBookmarksHydratedFor(null);
+    setBookmarks([]);
+    setBookmarkEditor(null);
+    setPendingBookmark(null);
+    if (!comicId) {
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(`novel-bookmarks-${comicId}`);
+      if (stored !== null) {
+        setBookmarks(normalizeNovelBookmarks(JSON.parse(stored)));
+        setBookmarksHydratedFor(comicId);
+        return;
+      }
+    } catch {
+      // Fall through to the IndexedDB backup.
+    }
+
+    idbLoad<unknown>(`novel-bookmarks-${comicId}`, []).then((data) => {
+      if (cancelled) return;
+      setBookmarks(normalizeNovelBookmarks(data));
+      setBookmarksHydratedFor(comicId);
     });
-  }, [comicId]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+  }, [comicId]);
   // 目录面板的当前Tab: 'toc' | 'bookmark'
   const [tocTab, setTocTab] = useState<'toc' | 'bookmark'>('toc');
   // 当前时间（用于底部状态条）
@@ -358,6 +379,21 @@ export default function TextReaderView({
     }
   }, [swipePage, swipeTotalPages]);
 
+  useEffect(() => {
+    if (!pendingBookmark || pendingBookmark.chapterIndex !== currentPage || loading) return;
+    const timer = window.setTimeout(() => {
+      const ratio = Math.min(1, Math.max(0, pendingBookmark.positionRatio));
+      if (pageMode === "swipe") {
+        setSwipePage(Math.round(ratio * Math.max(0, swipeTotalPages - 1)));
+      } else if (contentRef.current) {
+        const maxScroll = Math.max(0, contentRef.current.scrollHeight - contentRef.current.clientHeight);
+        contentRef.current.scrollTop = maxScroll * ratio;
+      }
+      setPendingBookmark(null);
+    }, pageMode === "swipe" ? 180 : 50);
+    return () => window.clearTimeout(timer);
+  }, [pendingBookmark, currentPage, loading, content, pageMode, swipeTotalPages]);
+
   // Persist font settings
   useEffect(() => {
     localStorage.setItem("textReaderFontSize", String(fontSize));
@@ -378,11 +414,11 @@ export default function TextReaderView({
 
   // 保存书签（localStorage + IndexedDB 双写）
   useEffect(() => {
-    if (comicId) {
+    if (comicId && bookmarksHydratedFor === comicId) {
       localStorage.setItem(`novel-bookmarks-${comicId}`, JSON.stringify(bookmarks));
       idbSave(`novel-bookmarks-${comicId}`, bookmarks);
     }
-  }, [bookmarks, comicId]);
+  }, [bookmarks, comicId, bookmarksHydratedFor]);
 
   // 保存翻页模式
   useEffect(() => {
@@ -541,24 +577,66 @@ export default function TextReaderView({
     return () => clearInterval(timer);
   }, []);
 
-  // 添加书签
+  const getCurrentBookmarkPosition = useCallback(() => {
+    if (pageMode === "swipe") {
+      return swipeTotalPages > 1 ? swipePage / (swipeTotalPages - 1) : 0;
+    }
+    const container = contentRef.current;
+    if (!container) return 0;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    return maxScroll > 0 ? container.scrollTop / maxScroll : 0;
+  }, [pageMode, swipePage, swipeTotalPages]);
+
+  // 同一章节可以保存多个书签；相同位置再次添加时直接打开已有书签。
   const addBookmark = useCallback(() => {
-    const exists = bookmarks.some(b => b.chapterIndex === currentPage);
-    if (exists) return;
-    setBookmarks(prev => [...prev, {
-      chapterIndex: currentPage,
-      chapterTitle: chapterTitle || `第 ${currentPage + 1} 章`,
-      timestamp: Date.now(),
-    }]);
-  }, [bookmarks, currentPage, chapterTitle]);
+    const positionRatio = getCurrentBookmarkPosition();
+    const existing = bookmarks.find((bookmark) =>
+      bookmark.chapterIndex === currentPage &&
+      Math.abs(bookmark.positionRatio - positionRatio) <= 0.001,
+    );
+    if (existing) {
+      setBookmarkEditor({ bookmark: existing, isNew: false });
+      return;
+    }
+    setBookmarkEditor({
+      bookmark: createNovelBookmark(
+        currentPage,
+        chapterTitle || t.reader.chapterN.replace("{n}", String(currentPage + 1)),
+        positionRatio,
+      ),
+      isNew: true,
+    });
+  }, [bookmarks, currentPage, chapterTitle, getCurrentBookmarkPosition, t.reader.chapterN]);
+
+  const saveBookmark = useCallback((name: string, note: string) => {
+    if (!bookmarkEditor) return;
+    const updated = {
+      ...bookmarkEditor.bookmark,
+      name,
+      note,
+      updatedAt: Date.now(),
+    };
+    setBookmarks((previous) => bookmarkEditor.isNew
+      ? [...previous, updated]
+      : previous.map((bookmark) => bookmark.id === updated.id ? updated : bookmark));
+    setBookmarkEditor(null);
+  }, [bookmarkEditor]);
 
   // 删除书签
-  const removeBookmark = useCallback((chapterIndex: number) => {
-    setBookmarks(prev => prev.filter(b => b.chapterIndex !== chapterIndex));
+  const removeBookmark = useCallback((bookmarkID: string) => {
+    setBookmarks(prev => prev.filter(b => b.id !== bookmarkID));
+    setBookmarkEditor((current) => current?.bookmark.id === bookmarkID ? null : current);
   }, []);
 
-  // 判断当前章节是否有书签
-  const isCurrentBookmarked = bookmarks.some(b => b.chapterIndex === currentPage);
+  const goToBookmark = useCallback((bookmark: NovelBookmark) => {
+    setPendingBookmark(bookmark);
+    setShowTOC(false);
+    if (bookmark.chapterIndex !== currentPage) {
+      onPageChange(bookmark.chapterIndex);
+    }
+  }, [currentPage, onPageChange]);
+
+  const hasCurrentChapterBookmarks = bookmarks.some(b => b.chapterIndex === currentPage);
 
   // 监听来自父组件的书签显示事件
   useEffect(() => {
@@ -1120,7 +1198,7 @@ export default function TextReaderView({
   // Keyboard shortcuts for chapter navigation
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (showTOC || showSettings || showSearch) return;
+      if (showTOC || showSettings || showSearch || bookmarkEditor) return;
 
       if (e.key === "ArrowLeft" || e.key === "a") {
         e.preventDefault();
@@ -1150,11 +1228,7 @@ export default function TextReaderView({
         setShowSearch(true);
       } else if (e.key === "b" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        if (isCurrentBookmarked) {
-          removeBookmark(currentPage);
-        } else {
-          addBookmark();
-        }
+        addBookmark();
       } else if (e.key === "t" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         if (ttsPlaying) {
@@ -1168,7 +1242,7 @@ export default function TextReaderView({
         toggleAutoScroll();
       }
     },
-    [currentPage, chapters.length, onPageChange, showTOC, showSettings, showSearch, isCurrentBookmarked, removeBookmark, addBookmark, ttsPlaying, stopTTS, startTTS, toggleAutoScroll, pageMode, swipePage, swipeTotalPages]
+    [currentPage, chapters.length, onPageChange, showTOC, showSettings, showSearch, bookmarkEditor, addBookmark, ttsPlaying, stopTTS, startTTS, toggleAutoScroll, pageMode, swipePage, swipeTotalPages]
   );
 
   useEffect(() => {
@@ -1287,15 +1361,15 @@ export default function TextReaderView({
           </button>
           {/* 书签按钮 */}
           <button
-            onClick={() => isCurrentBookmarked ? removeBookmark(currentPage) : addBookmark()}
+            onClick={addBookmark}
             className={`flex items-center rounded-lg p-1.5 sm:px-2 sm:py-1 text-xs transition-colors ${
-              isCurrentBookmarked
+              hasCurrentChapterBookmarks
                 ? "text-amber-500"
                 : `${theme.headerText} ${theme.hoverBg}`
             }`}
-            title={isCurrentBookmarked ? t.reader.removeBookmark : t.reader.bookmarkLabel}
+            title={t.reader.addBookmark}
           >
-            <Bookmark className={`h-3.5 w-3.5 ${isCurrentBookmarked ? "fill-amber-500" : ""}`} />
+            <BookmarkPlus className="h-3.5 w-3.5" />
           </button>
           {/* 排版设置按钮 */}
           <button
@@ -1962,13 +2036,9 @@ export default function TextReaderView({
                   )}
                   {tocTab === 'bookmark' && (
                     <button
-                      onClick={() => isCurrentBookmarked ? removeBookmark(currentPage) : addBookmark()}
-                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] transition-colors ${
-                        isCurrentBookmarked
-                          ? "text-amber-500"
-                          : `${theme.tocText}`
-                      }`}
-                      title={isCurrentBookmarked ? t.reader.removeBookmark : t.reader.addBookmarkHint}
+                      onClick={addBookmark}
+                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] transition-colors ${theme.tocText}`}
+                      title={t.reader.addBookmark}
                     >
                       <BookmarkPlus className="h-3 w-3" />
                     </button>
@@ -2099,11 +2169,10 @@ export default function TextReaderView({
                     <p className="text-[10px] opacity-30 mt-1">{t.reader.addBookmarkHint}</p>
                   </div>
                 ) : (
-                  bookmarks
-                    .sort((a, b) => a.chapterIndex - b.chapterIndex)
+                  sortNovelBookmarks(bookmarks)
                     .map((bm) => (
                       <div
-                        key={bm.chapterIndex}
+                        key={bm.id}
                         className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                           bm.chapterIndex === currentPage
                             ? `${theme.tocActiveBg} ${theme.tocActiveText}`
@@ -2112,22 +2181,31 @@ export default function TextReaderView({
                       >
                         <button
                           onClick={() => {
-                            onPageChange(bm.chapterIndex);
-                            setShowTOC(false);
+                            goToBookmark(bm);
                           }}
-                          className="flex-1 text-left"
+                          className="min-w-0 flex-1 text-left"
                         >
                           <div className="flex items-center gap-1.5">
                             <Bookmark className="h-3 w-3 shrink-0 text-amber-500 fill-amber-500" />
-                            <span className="truncate">{bm.chapterTitle}</span>
+                            <span className="truncate">{bm.name || bm.chapterTitle}</span>
                           </div>
+                          {bm.note && (
+                            <span className="mt-0.5 block line-clamp-2 text-[11px] opacity-65">{bm.note}</span>
+                          )}
                           <span className="mt-0.5 block text-[10px] opacity-40">
-                            {t.reader.chapterN.replace('{n}', String(bm.chapterIndex + 1))} · {new Date(bm.timestamp).toLocaleDateString()}
+                            {bm.chapterTitle} · {t.reader.bookmarkProgress.replace('{n}', String(Math.round(bm.positionRatio * 100)))} · {new Date(bm.timestamp).toLocaleDateString()}
                           </span>
                         </button>
                         <button
-                          onClick={() => removeBookmark(bm.chapterIndex)}
-                          className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10 text-red-400"
+                          onClick={() => setBookmarkEditor({ bookmark: bm, isNew: false })}
+                          className="shrink-0 rounded p-1 opacity-60 transition-opacity hover:bg-amber-500/10 hover:opacity-100"
+                          title={t.reader.editBookmark}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => removeBookmark(bm.id)}
+                          className="shrink-0 rounded p-1 opacity-60 transition-opacity hover:bg-red-500/10 hover:opacity-100 text-red-400"
                           title={t.reader.removeBookmark}
                         >
                           <Trash2 className="h-3 w-3" />
@@ -2139,6 +2217,16 @@ export default function TextReaderView({
             )}
           </div>
         </>
+      )}
+
+      {bookmarkEditor && (
+        <NovelBookmarkEditor
+          bookmark={bookmarkEditor.bookmark}
+          isNew={bookmarkEditor.isNew}
+          isDark={isDark}
+          onSave={saveBookmark}
+          onClose={() => setBookmarkEditor(null)}
+        />
       )}
 
       {/* 选词弹出菜单 */}

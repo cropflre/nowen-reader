@@ -126,13 +126,6 @@ export const pageModeOptions = [
   { value: "swipe" as PageMode, labelKey: "pageModeSwipe" as const },
 ];
 
-// 书签类型
-interface NovelBookmark {
-  chapterIndex: number;
-  chapterTitle: string;
-  timestamp: number;
-}
-
 // 划线标注类型
 interface TextHighlight {
   id: string;

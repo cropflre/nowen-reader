@@ -332,41 +332,147 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     if (mounted) setState(() => _bookmarks = bms);
   }
 
-  bool get _isCurrentBookmarked =>
-      _bookmarks.any((b) => b.chapterIndex == _currentChapter);
-
-  void _toggleBookmark() {
-    if (_isCurrentBookmarked) {
-      _removeBookmark(_currentChapter);
-    } else {
-      _addBookmark();
+  double _currentBookmarkPositionRatio() {
+    if (_settings.pageMode == NovelPageMode.swipe) {
+      return _swipeTotalPages > 1 ? _swipePage / (_swipeTotalPages - 1) : 0;
     }
+    if (!_scrollController.hasClients) return 0;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    return maxScroll > 0
+        ? (_scrollController.offset / maxScroll).clamp(0.0, 1.0).toDouble()
+        : 0;
   }
 
-  void _addBookmark() {
-    if (_isCurrentBookmarked) return;
-    final bm = NovelBookmark(
+  Future<void> _addBookmark() async {
+    final positionRatio = _currentBookmarkPositionRatio();
+    NovelBookmark? existing;
+    for (final bookmark in _bookmarks) {
+      if (bookmark.chapterIndex == _currentChapter &&
+          (bookmark.positionRatio - positionRatio).abs() <= 0.001) {
+        existing = bookmark;
+        break;
+      }
+    }
+    if (existing != null) {
+      await _editBookmark(existing);
+      return;
+    }
+
+    final now = DateTime.now();
+    final bookmark = NovelBookmark(
+      id: 'bookmark-${now.microsecondsSinceEpoch}',
       chapterIndex: _currentChapter,
       chapterTitle: _chapterTitle.isNotEmpty
           ? _chapterTitle
           : '第${_currentChapter + 1}章',
-      timestamp: DateTime.now().millisecondsSinceEpoch,
+      positionRatio: positionRatio,
+      timestamp: now.millisecondsSinceEpoch,
+      updatedAt: now.millisecondsSinceEpoch,
     );
-    setState(() => _bookmarks.add(bm));
-    BookmarkManager.save(widget.comicId, _bookmarks);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('📑 已添加书签'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 1),
-        backgroundColor: _settings.isDark ? Colors.white12 : Colors.black87,
+    final draft = await _showBookmarkEditor(bookmark, isNew: true);
+    if (draft == null || !mounted) return;
+    final saved = bookmark.copyWith(
+      name: draft.name,
+      note: draft.note,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    setState(() => _bookmarks.add(saved));
+    await BookmarkManager.save(widget.comicId, _bookmarks);
+  }
+
+  Future<void> _editBookmark(NovelBookmark bookmark) async {
+    final draft = await _showBookmarkEditor(bookmark, isNew: false);
+    if (draft == null || !mounted) return;
+    final updated = bookmark.copyWith(
+      name: draft.name,
+      note: draft.note,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    setState(() {
+      _bookmarks = _bookmarks
+          .map((item) => item.id == updated.id ? updated : item)
+          .toList();
+    });
+    await BookmarkManager.save(widget.comicId, _bookmarks);
+  }
+
+  Future<({String name, String note})?> _showBookmarkEditor(
+    NovelBookmark bookmark, {
+    required bool isNew,
+  }) async {
+    var name = bookmark.name;
+    var note = bookmark.note;
+    return showDialog<({String name, String note})>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.bookmark, color: Colors.amber, size: 20),
+            const SizedBox(width: 8),
+            Text(isNew ? '添加书签' : '编辑书签'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  bookmark.chapterTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(dialogContext).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  initialValue: name,
+                  autofocus: true,
+                  maxLength: 80,
+                  onChanged: (value) => name = value,
+                  decoration: const InputDecoration(
+                    labelText: '名称',
+                    hintText: '例如：战斗场面',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  initialValue: note,
+                  maxLength: 500,
+                  maxLines: 4,
+                  onChanged: (value) => note = value,
+                  decoration: const InputDecoration(
+                    labelText: '备注',
+                    hintText: '记录此处的重要内容',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop((
+              name: name.trim(),
+              note: note.trim(),
+            )),
+            child: const Text('保存'),
+          ),
+        ],
       ),
     );
   }
 
-  void _removeBookmark(int chapterIndex) {
+  void _removeBookmark(String bookmarkID) {
     setState(() {
-      _bookmarks.removeWhere((b) => b.chapterIndex == chapterIndex);
+      _bookmarks.removeWhere((b) => b.id == bookmarkID);
     });
     BookmarkManager.save(widget.comicId, _bookmarks);
   }
@@ -775,6 +881,41 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     _loadChapter(index);
   }
 
+  Future<void> _goToBookmark(NovelBookmark bookmark) async {
+    setState(() {
+      _showTOC = false;
+      _showSearch = false;
+      _showSettings = false;
+      _showTapSettings = false;
+      _showOverlay = false;
+    });
+    if (_ttsPlaying) _stopTTS();
+    await _loadChapter(bookmark.chapterIndex);
+    _restoreBookmarkPosition(bookmark.positionRatio);
+  }
+
+  void _restoreBookmarkPosition(double rawRatio) {
+    final ratio = rawRatio.clamp(0.0, 1.0).toDouble();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_settings.pageMode == NovelPageMode.swipe) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final target = (ratio * max(0, _swipeTotalPages - 1)).round();
+          setState(() => _swipePage = target);
+          if (_swipePageController.hasClients) {
+            _swipePageController.jumpToPage(target);
+          }
+        });
+        return;
+      }
+      if (_scrollController.hasClients) {
+        final target = ratio * _scrollController.position.maxScrollExtent;
+        _scrollController.jumpTo(target);
+      }
+    });
+  }
+
   void _prevChapter() {
     if (_currentChapter > 0) _loadChapter(_currentChapter - 1);
   }
@@ -943,10 +1084,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                   chapters: _chapters,
                   currentChapter: _currentChapter,
                   bookmarks: _bookmarks,
-                  isCurrentBookmarked: _isCurrentBookmarked,
                   onGoToChapter: _goToChapter,
+                  onGoToBookmark: _goToBookmark,
                   onClose: () => setState(() => _showTOC = false),
-                  onToggleBookmark: _toggleBookmark,
+                  onAddBookmark: _addBookmark,
+                  onEditBookmark: _editBookmark,
                   onRemoveBookmark: _removeBookmark,
                   initialTabIndex: _tocInitialTab,
                 ),
@@ -1166,12 +1308,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           const SizedBox(width: 8),
           // 书签按钮
           GestureDetector(
-            onTap: _toggleBookmark,
-            child: Icon(
-              _isCurrentBookmarked ? Icons.bookmark : Icons.bookmark_border,
-              size: 16,
-              color: _isCurrentBookmarked ? Colors.amber : _settings.secondaryTextColor,
-            ),
+            onTap: _addBookmark,
+            child: Icon(Icons.bookmark_add_outlined,
+                size: 16, color: _settings.secondaryTextColor),
           ),
           const SizedBox(width: 8),
           // 排版设置

@@ -4,9 +4,14 @@
 
 // 书签类型
 export interface NovelBookmark {
+  id: string;
   chapterIndex: number;
   chapterTitle: string;
+  name: string;
+  note: string;
+  positionRatio: number;
   timestamp: number;
+  updatedAt: number;
 }
 
 // 划线标注类型

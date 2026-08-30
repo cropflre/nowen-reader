@@ -34,27 +34,79 @@ NovelTapZone resolveNovelTapZone(double fraction) {
 
 /// 书签
 class NovelBookmark {
+  final String id;
   final int chapterIndex;
   final String chapterTitle;
+  final String name;
+  final String note;
+  final double positionRatio;
   final int timestamp;
+  final int updatedAt;
 
   const NovelBookmark({
+    required this.id,
     required this.chapterIndex,
     required this.chapterTitle,
+    this.name = '',
+    this.note = '',
+    this.positionRatio = 0,
     required this.timestamp,
+    required this.updatedAt,
   });
 
+  String get displayTitle => name.trim().isNotEmpty ? name.trim() : chapterTitle;
+
+  NovelBookmark copyWith({
+    String? name,
+    String? note,
+    double? positionRatio,
+    int? updatedAt,
+  }) {
+    return NovelBookmark(
+      id: id,
+      chapterIndex: chapterIndex,
+      chapterTitle: chapterTitle,
+      name: name ?? this.name,
+      note: note ?? this.note,
+      positionRatio:
+          (positionRatio ?? this.positionRatio).clamp(0.0, 1.0).toDouble(),
+      timestamp: timestamp,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
+        'id': id,
         'chapterIndex': chapterIndex,
         'chapterTitle': chapterTitle,
+        'name': name,
+        'note': note,
+        'positionRatio': positionRatio,
         'timestamp': timestamp,
+        'updatedAt': updatedAt,
       };
 
-  factory NovelBookmark.fromJson(Map<String, dynamic> json) => NovelBookmark(
-        chapterIndex: json['chapterIndex'] as int,
-        chapterTitle: json['chapterTitle'] as String,
-        timestamp: json['timestamp'] as int,
-      );
+  factory NovelBookmark.fromJson(Map<String, dynamic> json) {
+    final chapterIndex = (json['chapterIndex'] as num).toInt();
+    final timestamp = (json['timestamp'] as num?)?.toInt() ??
+        DateTime.now().millisecondsSinceEpoch;
+    final rawPosition = (json['positionRatio'] as num?)?.toDouble() ?? 0;
+    final legacyID = 'legacy-$chapterIndex-$timestamp';
+    return NovelBookmark(
+      id: (json['id'] as String?)?.trim().isNotEmpty == true
+          ? (json['id'] as String).trim()
+          : legacyID,
+      chapterIndex: chapterIndex,
+      chapterTitle: (json['chapterTitle'] as String?)?.trim().isNotEmpty == true
+          ? (json['chapterTitle'] as String).trim()
+          : '第${chapterIndex + 1}章',
+      name: (json['name'] as String?)?.trim() ?? '',
+      note: (json['note'] as String?)?.trim() ?? '',
+      positionRatio: rawPosition.clamp(0.0, 1.0).toDouble(),
+      timestamp: timestamp,
+      updatedAt: (json['updatedAt'] as num?)?.toInt() ?? timestamp,
+    );
+  }
 }
 
 /// 小说阅读设置
@@ -269,7 +321,19 @@ class BookmarkManager {
     if (json == null) return [];
     try {
       final list = jsonDecode(json) as List;
-      return list.map((e) => NovelBookmark.fromJson(e)).toList();
+      final bookmarks = list
+          .map((e) => NovelBookmark.fromJson(
+              Map<String, dynamic>.from(e as Map)))
+          .toList();
+      final needsMigration = list.any((e) =>
+          e is Map &&
+          (!e.containsKey('id') ||
+              !e.containsKey('name') ||
+              !e.containsKey('note') ||
+              !e.containsKey('positionRatio') ||
+              !e.containsKey('updatedAt')));
+      if (needsMigration) await save(comicId, bookmarks);
+      return bookmarks;
     } catch (_) {
       return [];
     }
