@@ -112,6 +112,15 @@ func registerContentRoutes(api *gin.RouterGroup) {
 		scanRulesGroup.GET("/logs", scanRules.Logs)
 		scanRulesGroup.GET("/progress", scanRules.Progress)
 	}
+	scanExclusions := NewScanExclusionsHandler()
+	scanExclusionsGroup := api.Group("/scan-exclusions")
+	scanExclusionsGroup.Use(middleware.AdminRequired())
+	{
+		scanExclusionsGroup.GET("", scanExclusions.Get)
+		scanExclusionsGroup.PUT("", scanExclusions.Update)
+		scanExclusionsGroup.POST("/preview", scanExclusions.Preview)
+		scanExclusionsGroup.POST("/cleanup", scanExclusions.Cleanup)
+	}
 
 	// ============================================================
 	// Directory Browser — requires admin

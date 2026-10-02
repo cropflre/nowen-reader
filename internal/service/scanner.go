@@ -136,6 +136,11 @@ func getAllLibraryRootPaths() []string {
 // 这解决了在子目录中添加文件时，父目录 mtime 不变导致无法检测到变更的问题。
 // 特别适用于 NAS/NFS/CIFS 等文件系统，这些系统上 fsnotify 可能不工作。
 func directoriesChanged() bool {
+	matcher, err := currentScanExclusion()
+	if err != nil {
+		log.Printf("[scan] Invalid exclusion rule: %v", err)
+		return true
+	}
 	lastDirMtimesMu.RLock()
 	defer lastDirMtimesMu.RUnlock()
 
@@ -147,6 +152,9 @@ func directoriesChanged() bool {
 			}
 			if !d.IsDir() {
 				return nil // 只检查目录
+			}
+			if matcher.matchesAbsolute(dir, path) {
+				return filepath.SkipDir
 			}
 			info, err := d.Info()
 			if err != nil {
@@ -169,6 +177,11 @@ func directoriesChanged() bool {
 
 // updateDirMtimes 递归记录所有扫描目录及其子目录的 mtime。
 func updateDirMtimes() {
+	matcher, err := currentScanExclusion()
+	if err != nil {
+		log.Printf("[scan] Invalid exclusion rule: %v", err)
+		return
+	}
 	lastDirMtimesMu.Lock()
 	defer lastDirMtimesMu.Unlock()
 
@@ -181,6 +194,9 @@ func updateDirMtimes() {
 			if !d.IsDir() {
 				return nil
 			}
+			if matcher.matchesAbsolute(dir, path) {
+				return filepath.SkipDir
+			}
 			info, err := d.Info()
 			if err != nil {
 				return nil
@@ -190,6 +206,17 @@ func updateDirMtimes() {
 		})
 	}
 	lastDirMtimes = newMap
+}
+
+// ResetScannerDirectorySnapshot makes the next periodic scan inspect the new
+// exclusion configuration even when no directory modification time changed.
+func ResetScannerDirectorySnapshot() {
+	lastDirMtimesMu.Lock()
+	lastDirMtimes = make(map[string]time.Time)
+	lastDirMtimesMu.Unlock()
+	syncMu.Lock()
+	lastSyncTime = time.Time{}
+	syncMu.Unlock()
 }
 
 // ============================================================
@@ -224,7 +251,7 @@ func fileBelongsToRootPaths(filename string, rootPaths []string, rootPathSet map
 // 当 enableImageFolder=true 时，会识别"图片文件夹漫画"：如果某个子目录直接包含
 // 多张图片，则将整个目录作为一个漫画入库。novels 目录应当传入 false，避免把
 // "全是 .txt 但混入封面图"的小说目录折叠成单条漫画。
-func walkDirRecursive(libraryID string, root string, enableImageFolder bool, ownership *LibraryOwnership) ([]diskFile, bool) {
+func walkDirRecursive(libraryID string, root string, enableImageFolder bool, ownership *LibraryOwnership, matcher *ScanExclusionMatcher) ([]diskFile, bool) {
 	var files []diskFile
 	scanComplete := true
 	canonicalRoot := canonicalPath(root)
@@ -261,6 +288,9 @@ func walkDirRecursive(libraryID string, root string, enableImageFolder bool, own
 			// 跳过根目录本身
 			if path == root {
 				return nil
+			}
+			if matcher.matchesAbsolute(root, path) {
+				return filepath.SkipDir
 			}
 			// 子书库拥有更深的根目录；父书库扫描到这里时直接跳过整棵子树。
 			if !isOwnedPath(path, d) {
@@ -302,6 +332,9 @@ func walkDirRecursive(libraryID string, root string, enableImageFolder bool, own
 		}
 
 		name := d.Name()
+		if matcher.matchesAbsolute(root, path) {
+			return nil
+		}
 		if !config.IsSupportedFile(name) {
 			return nil
 		}
@@ -401,6 +434,11 @@ func calcDirSize(dirPath string) int64 {
 // ============================================================
 
 func quickSync() (added, removed int) {
+	matcher, err := currentScanExclusion()
+	if err != nil {
+		log.Printf("[quick-sync] Invalid exclusion rule: %v", err)
+		return 0, 0
+	}
 	libraries, err := store.GetScannableLibraries()
 	if err != nil {
 		log.Printf("[quick-sync] Failed to get libraries: %v", err)
@@ -443,7 +481,7 @@ func quickSync() (added, removed int) {
 				complete = false
 				continue
 			}
-			files, walkComplete := walkDirRecursive(lib.ID, rootPath, useFolderComics, ownership)
+			files, walkComplete := walkDirRecursive(lib.ID, rootPath, useFolderComics, ownership, matcher)
 			if !walkComplete {
 				complete = false
 			}
@@ -547,6 +585,9 @@ func quickSync() (added, removed int) {
 	for rows2.Next() {
 		var id, libraryID, relativePath string
 		if rows2.Scan(&id, &libraryID, &relativePath) == nil {
+			if matcher.Matches(relativePath) {
+				continue
+			}
 			// A historical parent-library record may still point at a real file
 			// now delegated to a child library. Keep it until the administrator
 			// runs ownership reconciliation so reading state can be merged safely.
@@ -888,6 +929,11 @@ func shouldAutoDetectEbookType(absPath string) bool {
 // 删除的只是数据库条目，不会触碰磁盘文件。删除后下次 quickSync 会把目录里的
 // 小说文件重新加回来（每个 .txt 一条记录）。
 func repairMisclassifiedFolderComics() {
+	matcher, err := currentScanExclusion()
+	if err != nil {
+		log.Printf("[repair-folder] Invalid exclusion rule: %v", err)
+		return
+	}
 	folders, err := store.GetFolderComics()
 	if err != nil {
 		log.Printf("[repair-folder] 查询文件夹漫画失败: %v", err)
@@ -900,6 +946,9 @@ func repairMisclassifiedFolderComics() {
 	deleted := 0
 
 	for _, c := range folders {
+		if matcher.Matches(c.Filename) {
+			continue
+		}
 		// 还原磁盘路径：filename 形如 "TXT格式/1/"，需要拼接到某个根目录下
 		var foundPath string
 		if resolved, err := GlobalFileResolver.ResolveContentPath(c.ID); err == nil {
@@ -1256,12 +1305,15 @@ func triggerDebouncedSync() {
 }
 
 // watchDirectoriesRecursive 递归添加目录到 watcher。
-func watchDirectoriesRecursive(watcher *fsnotify.Watcher, root string) {
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+func watchDirectoriesRecursive(watcher *fsnotify.Watcher, root, start string, matcher *ScanExclusionMatcher) {
+	filepath.WalkDir(start, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
+			if matcher.matchesAbsolute(root, path) {
+				return filepath.SkipDir
+			}
 			if err := watcher.Add(path); err != nil {
 				log.Printf("[fsnotify] Failed to watch %s: %v", path, err)
 			}
@@ -1285,11 +1337,19 @@ func startFSWatcher() {
 		return
 	}
 	fsWatcher = watcher
+	matcher, err := currentScanExclusion()
+	if err != nil {
+		log.Printf("[fsnotify] Invalid exclusion rule: %v", err)
+		_ = watcher.Close()
+		fsWatcher = nil
+		return
+	}
 
 	// 递归添加所有目录（漫画 + 电子书）
-	for _, dir := range getAllLibraryRootPaths() {
+	roots := getAllLibraryRootPaths()
+	for _, dir := range roots {
 		if _, err := os.Stat(dir); err == nil {
-			watchDirectoriesRecursive(watcher, dir)
+			watchDirectoriesRecursive(watcher, dir, dir, matcher)
 			log.Printf("[fsnotify] Watching directory: %s (recursive)", dir)
 		}
 	}
@@ -1306,11 +1366,15 @@ func startFSWatcher() {
 				// 只关注文件创建、删除和重命名事件
 				if event.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
 					name := filepath.Base(event.Name)
+					root := scannerPathRoot(event.Name, roots)
+					if root == "" || matcher.matchesAbsolute(root, event.Name) {
+						continue
+					}
 
 					// 新建子目录时也需要监控
 					if event.Op&fsnotify.Create != 0 {
 						if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-							watchDirectoriesRecursive(watcher, event.Name)
+							watchDirectoriesRecursive(watcher, root, event.Name, matcher)
 							log.Printf("[fsnotify] New subdirectory detected, watching: %s", event.Name)
 						}
 					}
@@ -1331,6 +1395,18 @@ func startFSWatcher() {
 	}()
 
 	log.Println("[fsnotify] File system watcher started ✅")
+}
+
+func RefreshScanWatcher() {
+	fsWatcherMu.Lock()
+	if fsWatcher == nil {
+		fsWatcherMu.Unlock()
+		return
+	}
+	_ = fsWatcher.Close()
+	fsWatcher = nil
+	fsWatcherMu.Unlock()
+	startFSWatcher()
 }
 
 // ============================================================
@@ -1451,6 +1527,10 @@ func SyncLibraryByID(libraryID string) (added, removed int, err error) {
 		syncInProgress = false
 		syncMu.Unlock()
 	}()
+	matcher, err := currentScanExclusion()
+	if err != nil {
+		return 0, 0, err
+	}
 
 	lib, err := store.GetLibraryByID(libraryID)
 	if err != nil {
@@ -1495,7 +1575,7 @@ func SyncLibraryByID(libraryID string) (added, removed int, err error) {
 			scanComplete = false
 			continue
 		}
-		files, walkComplete := walkDirRecursive(libraryID, rootPath, useFolderComics, ownership)
+		files, walkComplete := walkDirRecursive(libraryID, rootPath, useFolderComics, ownership, matcher)
 		if !walkComplete {
 			scanComplete = false
 		}
@@ -1540,6 +1620,9 @@ func SyncLibraryByID(libraryID string) (added, removed int, err error) {
 			return 0, 0, fmt.Errorf("failed to inspect stale library records: %w", identityErr)
 		}
 		for _, identity := range identities {
+			if matcher.Matches(identity.RelativePath) {
+				continue
+			}
 			if recordDelegatedToAnotherLibrary(*lib, identity.RelativePath, ownership) {
 				continue
 			}

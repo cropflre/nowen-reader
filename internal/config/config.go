@@ -156,12 +156,13 @@ func (c *SiteConfig) ResolvedScanRules() *ScanRulesConfig {
 
 // ScannerConfig 保存可配置化的扫描参数。
 type ScannerConfig struct {
-	SyncCooldownSec      int `json:"syncCooldownSec,omitempty"`
-	FSDebounceMs         int `json:"fsDebounceMs,omitempty"`
-	FullSyncBatchSize    int `json:"fullSyncBatchSize,omitempty"`
-	QuickSyncIntervalSec int `json:"quickSyncIntervalSec,omitempty"`
-	FullSyncIntervalSec  int `json:"fullSyncIntervalSec,omitempty"`
-	MD5Workers           int `json:"md5Workers,omitempty"` // MD5 计算并发数，网盘场景建议设为 1-2
+	SyncCooldownSec      int    `json:"syncCooldownSec,omitempty"`
+	FSDebounceMs         int    `json:"fsDebounceMs,omitempty"`
+	FullSyncBatchSize    int    `json:"fullSyncBatchSize,omitempty"`
+	QuickSyncIntervalSec int    `json:"quickSyncIntervalSec,omitempty"`
+	FullSyncIntervalSec  int    `json:"fullSyncIntervalSec,omitempty"`
+	MD5Workers           int    `json:"md5Workers,omitempty"`       // MD5 计算并发数，网盘场景建议设为 1-2
+	ExcludePathRegex     string `json:"excludePathRegex,omitempty"` // 相对书库根目录的路径；仅控制扫描入库
 
 	// EbookTypeAutoDetect 控制电子书（EPUB/MOBI/AZW3）的内容类型自动识别策略：
 	//   "off"       完全关闭，文件类型严格按所在目录决定（漫画目录=comic，小说目录=novel）

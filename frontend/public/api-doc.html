@@ -506,7 +506,7 @@
         <a href="#endpoints-export" class="nav-group" data-group="export" data-en="Export" data-zh="导出">Export</a>
         <a href="#endpoints-logs" class="nav-group" data-group="logs" data-en="Logs" data-zh="日志">Logs</a>
         <a href="#endpoints-sync" class="nav-group" data-group="sync" data-en="Sync" data-zh="同步">Sync</a>
-        <a href="#endpoints-scan-rules" class="nav-group" data-group="scan-rules" data-en="Scan Rules" data-zh="扫描规则">Scan Rules</a>
+        <a href="#endpoints-scan-rules" class="nav-group" data-group="scan-rules" data-en="Scan Rules &amp; Exclusions" data-zh="扫描规则与排除">Scan Rules &amp; Exclusions</a>
         <a href="#endpoints-thumbnails" class="nav-group" data-group="thumbnails" data-en="Thumbnails" data-zh="缩略图">Thumbnails</a>
         <a href="#endpoints-groups" class="nav-group" data-group="groups" data-en="Groups" data-zh="分组">Groups</a>
         <a href="#endpoints-metadata" class="nav-group" data-group="metadata" data-en="Metadata" data-zh="元数据">Metadata</a>
@@ -4079,7 +4079,7 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     </div>
 
     <div id="endpoints-scan-rules" class="endpoint-group">
-    <h2 class="group-title"><span data-en="19. Scan Rules" data-zh="19. 扫描规则">19. Scan Rules</span> <span class="group-badge"><span data-en="7 endpoints" data-zh="7 个接口">7 endpoints</span></span></h2>
+    <h2 class="group-title"><span data-en="19. Scan Rules &amp; Exclusions" data-zh="19. 扫描规则与排除">19. Scan Rules &amp; Exclusions</span> <span class="group-badge"><span data-en="11 endpoints" data-zh="11 个接口">11 endpoints</span></span></h2>
 <div class="endpoint admin-only" data-search="GET /api/scan-rules List all scan rules configuration and running status" id="get-api-scan-rules">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -4257,6 +4257,76 @@ id,title,author,filename,fileSize,pageCount,tags,categories,favorite,rating
     <div class="badges">
       <span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span>
     </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="GET /api/scan-exclusions Get scanner exclusion pattern" id="get-api-scan-exclusions">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/scan-exclusions</span>
+    <span class="summary"><span data-en="Get scanner exclusion pattern" data-zh="获取扫描入库排除规则">Get scanner exclusion pattern</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Returns the regex applied to library-relative paths before files enter the catalog. Independent from post-import scan rules." data-zh="返回入库前用于匹配书库相对路径的正则；独立于入库后的自动化规则。">Returns the regex applied to library-relative paths before files enter the catalog. Independent from post-import scan rules.</span></p>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ "excludePathRegex": "..." }</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="PUT /api/scan-exclusions Save scanner exclusion pattern" id="put-api-scan-exclusions">
+  <div class="endpoint-header">
+    <span class="method method-PUT">PUT</span>
+    <span class="path">/api/scan-exclusions</span>
+    <span class="summary"><span data-en="Save scanner exclusion pattern" data-zh="保存扫描入库排除规则">Save scanner exclusion pattern</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Validates and saves a Go regular expression. A matching directory and its descendants are skipped by periodic, forced and single-library scans. Existing catalog records are retained. Empty pattern disables exclusion. Invalid regex returns 400." data-zh="校验并保存 Go 正则表达式。定时、立即和单书库扫描会跳过匹配目录及其子内容；已有书库记录保留。空字符串表示关闭排除。无效正则返回 400。">Validates and saves a Go regular expression. A matching directory and its descendants are skipped by periodic, forced and single-library scans. Existing catalog records are retained. Empty pattern disables exclusion. Invalid regex returns 400.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{ "excludePathRegex": "(?i)(^|/)(\\.[^/]*|thumbs?)(/|$)" }</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ "excludePathRegex": "..." }</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/scan-exclusions/preview Preview scanner exclusion matches" id="post-api-scan-exclusions-preview">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/scan-exclusions/preview</span>
+    <span class="summary"><span data-en="Preview scanner exclusion matches" data-zh="预览扫描排除匹配项">Preview scanner exclusion matches</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Previews an unsaved or saved regex. Counts existing catalog records and matching disk entries; a matching directory counts once. Sample arrays contain up to 50 entries. Unavailable roots are reported separately." data-zh="预览已保存或未保存的正则，分别统计已入库记录和磁盘匹配路径；匹配目录按一项计算。样例各最多 50 项，不可访问的根目录单独列出。">Previews an unsaved or saved regex. Counts existing catalog records and matching disk entries; a matching directory counts once. Sample arrays contain up to 50 entries. Unavailable roots are reported separately.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{ "excludePathRegex": "(?i)thumbs?" }</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "pattern": "(?i)thumbs?",
+  "existingCount": 1,
+  "existingSamples": [{ "libraryId": "lib_1", "libraryName": "漫画", "relativePath": "thumbs/a.cbz", "title": "a" }],
+  "diskMatchCount": 1,
+  "diskSamples": [{ "libraryId": "lib_1", "libraryName": "漫画", "relativePath": "thumbs", "kind": "directory" }],
+  "unavailableRoots": [],
+  "matchHash": "sha256-hex"
+}</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/scan-exclusions/cleanup Remove already-indexed exclusion matches" id="post-api-scan-exclusions-cleanup">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/scan-exclusions/cleanup</span>
+    <span class="summary"><span data-en="Remove already-indexed exclusion matches" data-zh="移出已入库的匹配作品">Remove already-indexed exclusion matches</span></span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description"><span data-en="Requires the matchHash from a preview of the currently saved regex and explicit confirmation. Removes matching catalog records, metadata relations and reading history, but leaves disk files untouched. Returns 409 if the match set changed or a scan is running." data-zh="须提供当前已保存规则的预览 matchHash 并明确确认。会删除匹配作品的书库记录、元数据关联及阅读记录，但保留磁盘文件。匹配集变化或扫描进行中返回 409。">Requires the matchHash from a preview of the currently saved regex and explicit confirmation. Removes matching catalog records, metadata relations and reading history, but leaves disk files untouched. Returns 409 if the match set changed or a scan is running.</span></p>
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <pre class="code-block"><code>{ "matchHash": "sha256-hex", "confirm": true }</code></pre>
+    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{ "removed": 1 }</code></pre>
+    <div class="badges"><span class="badge badge-admin"><span data-en="Admin Only" data-zh="仅管理员">Admin Only</span></span></div>
   </div>
 </div>
     </div>

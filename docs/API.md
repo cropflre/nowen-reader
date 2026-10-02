@@ -1012,6 +1012,8 @@ Content-Type: application/json
 
 ## 📋 扫描规则 🔒管理员
 
+`/api/scan-rules` 的 `filters.excludePathRegex` 只过滤已入库作品的 AI 识别与自动整理，不阻止文件扫描入库。入库排除请使用下方独立的 `/api/scan-exclusions`。
+
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
 | GET | `/api/scan-rules` | 获取扫描规则 |
@@ -1021,6 +1023,19 @@ Content-Type: application/json
 | POST | `/api/scan-rules/restore-titles` | 恢复原标题 |
 | GET | `/api/scan-rules/logs` | 规则应用日志 |
 | GET | `/api/scan-rules/progress` | 应用进度 |
+
+### 扫描入库排除 🔒管理员
+
+扫描排除规则使用书库根目录下的相对路径，路径分隔符统一为 `/`。匹配目录时跳过整个目录；规则同时用于定时扫描、立即扫描、单书库扫描和文件监听。规则留空表示不排除。保存规则不会自动删除已入库作品。
+
+| 方法 | 路径 | 说明 |
+|:---|:---|:---|
+| GET | `/api/scan-exclusions` | 获取当前入库排除正则，响应为 `{ "excludePathRegex": "..." }` |
+| PUT | `/api/scan-exclusions` | 保存规则，请求体为 `{ "excludePathRegex": "(?i)(^|/)(\\.[^/]*|thumbs?)(/|$)" }`；无效正则返回 400 |
+| POST | `/api/scan-exclusions/preview` | 预览指定正则，请求体同 PUT；返回磁盘匹配路径与已入库匹配项的数量、最多 50 条样例、不可访问根目录及 `matchHash`。匹配目录按一项统计，不展开子文件 |
+| POST | `/api/scan-exclusions/cleanup` | 清理已入库匹配项，请求体为 `{ "matchHash": "预览返回值", "confirm": true }`；仅允许清理**当前已保存规则**匹配的记录，结果变化或扫描进行中返回 409 |
+
+清理只删除数据库中的作品及其关联元数据、合集关联、阅读记录；**不会删除磁盘文件**。移除规则后文件可重新入库，但被清理的阅读记录不会恢复。建议先保存规则，再重新预览并确认清理。
 
 ## 💾 存储管理 🔒管理员
 
