@@ -1,19 +1,17 @@
 "use client";
 
 import { apiPath } from "@/lib/base-path";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   ChevronRight,
-  Upload,
   Layers,
   ArrowRight,
   Shuffle,
-  BookOpen,
 } from "lucide-react";
 import DashboardTopBar from "@/components/DashboardTopBar";
-import { ContinueReading } from "@/components/ContinueReading";
+import DashboardMain from "@/components/home/DashboardMain";
+import { useAmbientFocus } from "@/lib/ambient-context";
 import ServerActivityPanel from "@/components/ServerActivityPanel";
 import UploadDialog from "@/components/UploadDialog";
 import NSFWCoverGuard from "@/components/NSFWCoverGuard";
@@ -21,8 +19,7 @@ import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import { isNSFW } from "@/lib/nsfw";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
-import { useComics, ApiComic } from "@/hooks/useComics";
-import { calculateStoredReadingProgress } from "@/lib/progress";
+import { invalidateComicsCache, ApiComic } from "@/hooks/useComics";
 
 /**
  * Dashboard 首页 — 私人漫画库 NAS 媒体库仪表盘
@@ -36,31 +33,27 @@ export default function Home() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [scanningLibrary, setScanningLibrary] = useState(false);
+  const publishFocus = useAmbientFocus();
 
-  // 获取最近添加（精选 6 本）
-  const { comics: recentComics, refetch } = useComics({
-    page: 1,
-    pageSize: 6,
-    sortBy: "addedAt",
-    sortOrder: "desc",
-  });
+  const [dashboardRevision, setDashboardRevision] = useState(0);
+  const refreshDashboard = useCallback(() => {
+    invalidateComicsCache();
+    setDashboardRevision((revision) => revision + 1);
+  }, []);
 
   const handleScanLibrary = useCallback(async () => {
     setScanningLibrary(true);
     try {
       await fetch(apiPath("/api/sync"), { method: "POST" });
       await new Promise((r) => setTimeout(r, 2000));
-      await refetch();
+      refreshDashboard();
     } catch { /* */ } finally {
       setScanningLibrary(false);
     }
-  }, [refetch]);
+  }, [refreshDashboard]);
 
   return (
     <>
-      {/* 背景氛围渐变 — 蓝紫光晕 */}
-      <div className="dashboard-ambient-bg fixed inset-0 pointer-events-none z-0" />
-
       <div className="relative z-10">
         <DashboardTopBar
           onUpload={() => setUploadDialogOpen(true)}
@@ -71,114 +64,10 @@ export default function Home() {
 
         <div className="flex min-h-[calc(100vh-4rem)]">
           {/* ═══ 主内容区 ═══ */}
-          <main className="flex-1 min-w-0">
-
-            {/* ── Continue Reading Hero ── */}
-            <section className="px-5 sm:px-8 lg:px-10 pt-6 sm:pt-8 pb-2">
-              <div className="flex items-end justify-between mb-4">
-                <div>
-                  <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-extrabold text-foreground tracking-tight leading-tight">
-                    {t.dashboard.continueReading}
-                  </h2>
-                  <p className="text-sm text-muted mt-1.5">
-                    {t.dashboard.continueSubtitle}
-                  </p>
-                </div>
-                <Link
-                  href="/books"
-                  className="hidden sm:flex items-center gap-1.5 text-sm text-accent hover:text-accent-hover transition-colors group"
-                >
-                  {t.dashboard.allLibrary}
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </div>
-              <ContinueReading showTitle={false} />
-            </section>
-
-            {/* ── Recently Added 精选 ── */}
-            <section className="px-5 sm:px-8 lg:px-10 py-6">
-              <div className="flex items-end justify-between mb-3">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">
-                    {t.dashboard.recentlyAdded}
-                  </h2>
-                </div>
-                <Link
-                  href="/books?sortBy=addedAt&sortOrder=desc"
-                  className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors group"
-                >
-                  {t.dashboard.viewAll}
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </div>
-
-              {recentComics.length > 0 ? (
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                  {recentComics.map((comic) => {
-                    const href = comic.type === "novel" ? `/novel/${comic.id}` : `/reader/${comic.id}`;
-                    const progress = comic.pageCount > 0
-                      ? calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus)
-                      : 0;
-
-                    return (
-                      <Link key={comic.id} href={href} className="group block">
-                        <div className="relative aspect-[5/7] w-full overflow-hidden rounded-xl bg-card/50 backdrop-blur-sm border border-border/30 cover-glow">
-                          <NSFWCoverGuard
-                            src={comic.coverUrl}
-                            alt={comic.title}
-                            isNSFW={isNSFW(comic)}
-                            blurEnabled={privacyEnabled && blurNSFW}
-                            fill
-                            unoptimized
-                            className="object-cover transition-transform duration-500 group-hover:scale-110"
-                            sizes="(max-width: 640px) 33vw, 16vw"
-                          />
-                          {progress > 0 && (
-                            <div className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm border border-white/10">
-                              <span className="text-[8px] font-bold text-white tabular-nums">{progress}%</span>
-                            </div>
-                          )}
-                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-2 pt-8">
-                            <p className="text-[11px] font-medium text-white/90 line-clamp-1 drop-shadow">
-                              {comic.title}
-                            </p>
-                          </div>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="dashboard-glass rounded-lg p-8 text-center">
-                  <p className="text-muted text-sm">{t.dashboard.emptyRecentlyAdded}</p>
-                  {isAdmin && (
-                    <button
-                      onClick={() => setUploadDialogOpen(true)}
-                      className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-                    >
-                      <Upload className="h-4 w-4" />
-                      {t.dashboard.uploadFile}
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* 移动端：进入全部书库 */}
-            <div className="px-5 pb-20 sm:pb-8 sm:hidden">
-              <Link
-                href="/books"
-                className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-4 py-3 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
-              >
-                <Layers className="h-4 w-4" />
-                {t.dashboard.enterLibrary}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </main>
+          <DashboardMain refreshKey={dashboardRevision} onUpload={() => setUploadDialogOpen(true)} isAdmin={isAdmin} onFocusChange={publishFocus} />
 
           {/* ═══ 右侧面板 — 桌面端 ═══ */}
-          <aside className="hidden xl:block w-[300px] 2xl:w-[340px] shrink-0 border-l border-border/30 bg-surface/40">
+          <aside className="home-ambient-sidebar hidden xl:block w-[300px] 2xl:w-[340px] shrink-0 border-l border-border/30">
             <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-6 px-4 space-y-4 scrollbar-hide" style={{ scrollbarWidth: "none" }}>
               <ServerActivityPanel />
               <LibraryOverviewCard t={t} />
@@ -191,7 +80,7 @@ export default function Home() {
       <UploadDialog
         open={uploadDialogOpen}
         onClose={() => setUploadDialogOpen(false)}
-        onUploaded={async () => { await refetch(); }}
+        onUploaded={async () => { refreshDashboard(); }}
       />
     </>
   );

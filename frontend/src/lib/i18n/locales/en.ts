@@ -119,6 +119,11 @@ const en: Translations = {
   // Comic Card
   comicCard: {
     detail: "Details",
+    series: "Series",
+    itemUnit: "items",
+    gridView: "Grid view",
+    listView: "List view",
+    select: "Select book",
   },
 
   // Context Menu (Right-click)
@@ -460,6 +465,7 @@ const en: Translations = {
 
   // Auth
   auth: {
+    userMenu: "User menu",
     setupTitle: "Create Admin Account",
     setupDesc: "Set up the first administrator account to get started",
     loginTitle: "Sign In",
@@ -775,11 +781,15 @@ const en: Translations = {
 
   // Dashboard
   dashboard: {
+    readingOverview: "Reading Overview",
     title: "Dashboard",
     continueReading: "Continue Reading",
     continueSubtitle: "Pick up where you left off",
     recentlyAdded: "Recently Added",
     continueAction: "Continue",
+    previousBook: "Previous Book",
+    nextBook: "Next Book",
+    selectBook: "Select Cover",
     allLibrary: "Library",
     viewAll: "View All",
     libraryOverview: "Library Overview",

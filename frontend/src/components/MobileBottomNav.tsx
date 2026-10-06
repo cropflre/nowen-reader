@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useLocation } from "react-router-dom";
-import { LayoutDashboard, BookMarked, Settings, Layers, Tag } from "lucide-react";
+import { LayoutDashboard, BookMarked, Settings, Layers, Tag, Heart } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 
@@ -50,6 +50,12 @@ export default function MobileBottomNav() {
       icon: BookMarked,
       label: "书库",
       active: pathname === "/books",
+    },
+    {
+      href: "/favorites",
+      icon: Heart,
+      label: t.home.favorites,
+      active: pathname === "/favorites",
     },
     // 合集——仅管理员可见
     ...(isAdmin ? [{

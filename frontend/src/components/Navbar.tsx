@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import {
-  Search,
   Upload,
   BookMarked,
   Loader2,
   Sun,
   Moon,
-  Brain,
   Database,
   Layers,
   RefreshCw,
   Tag,
-  MoreVertical,
   Settings,
   LogOut,
   Globe,
@@ -25,6 +22,8 @@ import { useTranslation } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useAuth } from "@/lib/auth-context";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import UserMenuButton from "@/components/UserMenuButton";
+import SearchIconButton from "@/components/SearchIconButton";
 import { useScraperStore } from "@/hooks/useScraperStore";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { apiPath } from "@/lib/base-path";
@@ -39,6 +38,7 @@ interface NavbarProps {
   onScanLibrary?: () => void;
   scanning?: boolean;
   withinShell?: boolean;
+  secondaryNavigation?: ReactNode;
 }
 
 export default function Navbar({
@@ -51,8 +51,8 @@ export default function Navbar({
   onScanLibrary,
   scanning,
   withinShell = false,
+  secondaryNavigation,
 }: NavbarProps) {
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const t = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
@@ -63,88 +63,50 @@ export default function Navbar({
   const { siteName, siteIcon, scraperEnabled } = useSiteSettings();
 
   return (
-    <nav className={`fixed top-0 right-0 z-50 border-b border-border/50 bg-surface/90 backdrop-blur-xl ${
-      withinShell ? "left-0 lg:left-[220px] xl:left-[240px]" : "left-0"
+    <nav className={`ambient-topbar fixed top-0 right-0 z-50 border-b border-border/50 ${secondaryNavigation ? "pb-11 lg:pb-0" : ""} ${
+      withinShell ? "app-shell-navbar left-0" : "left-0"
     }`}>
-      <div className="mx-auto flex h-14 sm:h-16 max-w-[1760px] items-center justify-between px-6 sm:px-8 lg:px-12">
+      <div className={`mx-auto flex h-14 sm:h-16 max-w-[1760px] items-center justify-between px-6 sm:px-8 ${secondaryNavigation ? "lg:gap-4 lg:px-6" : "lg:px-12"}`}>
         {/* Logo — 点击返回仪表盘 */}
         <Link
           href="/"
-          className={`items-center gap-2 sm:gap-2.5 shrink-0 rounded-lg transition-opacity hover:opacity-80 ${
-            withinShell ? "flex lg:hidden" : "flex"
-          }`}
+          className={`flex min-w-0 items-center gap-2 sm:gap-2.5 shrink-0 rounded-lg transition-opacity hover:opacity-80 ${withinShell ? "lg:hidden" : ""}`}
           title={t.navbar?.backToDashboard || "返回仪表盘"}
         >
           {siteIcon ? (
-            <img src={apiPath(`/api/site-settings/icon?t=${Date.now()}`)} alt="Site Icon" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg object-contain" />
+            <img src={apiPath(`/api/site-settings/icon?t=${Date.now()}`)} alt="Site Icon" className={`h-7 w-7 sm:h-8 sm:w-8 rounded-lg object-contain ${withinShell ? "lg:hidden" : ""}`} />
           ) : (
-            <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-accent shadow-lg shadow-accent/20">
+            <div className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-accent shadow-lg shadow-accent/20 ${withinShell ? "lg:hidden" : ""}`}>
               <BookMarked className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" />
             </div>
           )}
-          <span className="hidden sm:inline text-xs font-bold tracking-tight text-foreground text-balance">
+          <span className="hidden sm:inline min-w-0 truncate text-xs lg:text-sm font-bold text-foreground">
             {siteName}
           </span>
         </Link>
 
-        {/* Search Bar */}
-        <div className="flex flex-1 items-center justify-center px-2 sm:px-8">
-          <div
-            className={`relative flex w-full max-w-xl lg:max-w-2xl xl:max-w-3xl items-center transition-all duration-300 ${
-              isSearchFocused ? "max-w-2xl lg:max-w-3xl xl:max-w-4xl" : ""
-            }`}
-          >
-            {/* AI Search Toggle */}
-            {onAiSearchModeChange && (
-              <button
-                type="button"
-                onClick={() => onAiSearchModeChange(!aiSearchMode)}
-                className={`absolute left-2 z-10 flex h-6 items-center gap-1 rounded-md px-1.5 text-[10px] font-medium transition-all ${
-                  aiSearchMode
-                    ? "bg-purple-500/20 text-purple-400"
-                    : "text-muted hover:text-foreground"
-                }`}
-                title={aiSearchMode ? "AI 语义搜索" : "普通搜索"}
-              >
-                <Brain className="h-3 w-3" />
-              </button>
-            )}
-            <Search className={`absolute ${onAiSearchModeChange ? "left-10" : "left-3"} h-4 w-4 text-muted`} />
-            <input
-              type="text"
-              aria-label={aiSearchMode ? "AI 搜索书库" : "搜索书库"}
-              placeholder={aiSearchMode
-                ? (t.navbar?.aiSearchPlaceholder || "用自然语言搜索，如「关于巨人的漫画」")
-                : t.navbar.searchPlaceholder
-              }
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-              className={`h-10 sm:h-11 w-full rounded-xl border bg-card/50 ${onAiSearchModeChange ? "pl-16" : "pl-10"} pr-4 text-sm text-foreground placeholder:text-muted/60 outline-none transition-all duration-300 focus:bg-card focus:ring-2 ${
-                aiSearchMode
-                  ? "border-purple-500/40 focus:border-purple-500/60 focus:ring-purple-500/20"
-                  : "border-border/60 focus:border-accent/50 focus:ring-accent/20"
-              }`}
-            />
-          </div>
-        </div>
+        {secondaryNavigation && <div className="absolute left-0 right-0 top-14 sm:top-16 lg:static lg:w-auto min-w-0 border-t border-border/30 px-6 sm:px-8 lg:border-0 lg:px-0">{secondaryNavigation}</div>}
+
+        <div className="min-w-0 flex-1" />
 
         {/* Right Actions */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Upload — 仅管理员可见（桌面端保留主按钮，移动端收入菜单） */}
-          {isAdmin && (
+          <SearchIconButton query={searchQuery} onChange={onSearchChange}
+            aiSearchMode={aiSearchMode} onAiSearchModeChange={onAiSearchModeChange} />
+          {/* Upload */}
+          {isAdmin && onUpload && (
           <button
             onClick={onUpload}
             disabled={uploading}
-            className="hidden sm:flex h-8 sm:h-9 items-center gap-1.5 sm:gap-2 rounded-xl bg-accent px-2.5 sm:px-4 text-sm font-medium text-white transition-all duration-200 hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/30 disabled:opacity-50"
+            aria-label={uploading ? t.navbar.uploading : t.navbar.upload}
+            title={uploading ? t.navbar.uploading : t.navbar.upload}
+            className="shell-icon-button"
           >
             {uploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Upload className="h-4 w-4" />
             )}
-            <span className="hidden sm:inline">{uploading ? t.navbar.uploading : t.navbar.upload}</span>
           </button>
           )}
 
@@ -236,16 +198,7 @@ function MoreMenu({
 
   return (
     <div className="relative" ref={menuRef}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/60 text-muted transition-colors duration-200 hover:border-border hover:text-foreground"
-        title="更多操作"
-        aria-label="更多操作"
-        aria-expanded={open}
-        aria-haspopup="true"
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
+      <UserMenuButton user={user} open={open} onClick={() => setOpen(!open)} />
 
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-56 bg-card border border-border rounded-xl shadow-xl shadow-black/20 z-50 overflow-hidden backdrop-blur-xl" role="menu">

@@ -16,8 +16,6 @@ import {
   BookOpen,
   FolderPlus,
   RefreshCw,
-  ChevronDown,
-  X,
   Check,
   Loader2,
   CheckSquare,
@@ -43,6 +41,7 @@ import AutoDetectPanel from "@/components/AutoDetectPanel";
 import { fetchCatalogItems } from "@/api/catalog";
 import type { CatalogItem } from "@/api/catalog";
 import { PageContent, PageHeader } from "@/components/PageHeader";
+import SearchIconButton from "@/components/SearchIconButton";
 
 // ============================================================
 // 类型与工具函数
@@ -444,11 +443,62 @@ export default function CollectionsPage() {
         title={tCollections.title || "合集"}
         description={`管理自动识别和手动创建的合集 · ${filteredAndSorted.length} 个`}
         icon={Layers}
+        controls={
+          <div className="collections-header-controls">
+            <div role="group" aria-label="合集类型">
+              {(["comic", "novel"] as ContentFilter[]).map((filter) => (
+                <button key={filter} type="button" aria-pressed={contentFilter === filter}
+                  onClick={() => setContentFilter(filter)}>
+                  {filter === "comic" ? (tCollections.filterComic || "漫画") : (tCollections.filterNovel || "小说")}
+                </button>
+              ))}
+            </div>
+            <SearchIconButton query={searchQuery} onChange={setSearchQuery}
+              label="搜索合集" inputLabel="合集搜索关键词" placeholder={tGroup.searchGroupHint || "搜索合集..."} />
+            <div className="relative" ref={sortDropdownRef}>
+              <button type="button" onClick={() => setShowSortDropdown(!showSortDropdown)}
+                className="shell-icon-button" aria-label="合集排序" aria-expanded={showSortDropdown}
+                title={`${sortOptions.find((option) => option.field === sortField)?.label} · ${sortOrder === "asc" ? "升序" : "降序"}`}
+                onKeyDown={(event) => { if (event.key === "Escape") setShowSortDropdown(false); }}>
+                {sortOrder === "asc" ? <SortAsc /> : <SortDesc />}
+              </button>
+              {showSortDropdown && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-border/50 bg-elevated py-1 shadow-xl"
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    setShowSortDropdown(false);
+                    sortDropdownRef.current?.querySelector("button")?.focus();
+                  }}>
+                  {sortOptions.map((option) => (
+                    <button key={option.field} type="button"
+                      aria-pressed={sortField === option.field}
+                      onClick={() => {
+                        if (sortField === option.field) setSortOrder((previous) => previous === "asc" ? "desc" : "asc");
+                        else { setSortField(option.field); setSortOrder("asc"); }
+                        setShowSortDropdown(false);
+                      }}
+                      className={`flex w-full items-center justify-between px-3 py-2 text-xs transition-colors ${sortField === option.field ? "text-accent bg-accent/5" : "text-foreground/80 hover:bg-card-hover"}`}>
+                      {option.label}
+                      {sortField === option.field && <span className="text-[10px] text-accent">{sortOrder === "asc" ? "↑" : "↓"}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="collections-view-switch" role="group" aria-label="合集视图">
+              <button type="button" onClick={() => setViewMode("grid")}
+                aria-label="卡片视图" title="卡片视图" aria-pressed={viewMode === "grid"}><LayoutGrid /></button>
+              <button type="button" onClick={() => setViewMode("list")}
+                aria-label="列表视图" title="列表视图" aria-pressed={viewMode === "list"}><LayoutList /></button>
+            </div>
+          </div>
+        }
         actions={
           <>
             <button
               onClick={() => loadGroups(true)}
               disabled={refreshing}
+              aria-label={tCollections.refresh || "刷新"}
               className="flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card hover:text-foreground disabled:opacity-50"
               title={tCollections.refresh || "刷新"}
             >
@@ -468,15 +518,19 @@ export default function CollectionsPage() {
             {!batchMode && (
               <button
                 onClick={() => setShowAutoDetect(true)}
-                className="hidden h-10 items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/20 sm:flex"
+                aria-label={tGroup.autoDetect || "智能合集"}
+                title={tGroup.autoDetect || "智能合集"}
+                className="flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-amber-500/10 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/20 sm:w-auto sm:px-3"
               >
                 <Wand2 className="h-4 w-4" />
-                {tGroup.autoDetect || "智能合集"}
+                <span className="hidden sm:inline">{tGroup.autoDetect || "智能合集"}</span>
               </button>
             )}
             {!batchMode && (
               <button
                 onClick={() => setShowCreateDialog(true)}
+                aria-label={tGroup.createGroup || "新建合集"}
+                title={tGroup.createGroup || "新建合集"}
                 className="flex h-10 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
               >
                 <Plus className="h-4 w-4" />
@@ -486,11 +540,10 @@ export default function CollectionsPage() {
           </>
         }
       />
-      <div className="border-b border-border/30 bg-background/80">
+      {batchMode && <div className="ambient-topbar border-b border-border/30">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
           {/* 批量操作工具栏 */}
-          {batchMode && (
-            <div className="flex items-center gap-2 pb-2 border-b border-accent/20 mb-2 animate-card-in">
+            <div className="flex flex-wrap items-center gap-2 py-2 animate-card-in">
               <button
                 onClick={toggleSelectAll}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-foreground hover:bg-card transition-colors"
@@ -552,123 +605,8 @@ export default function CollectionsPage() {
                 {tCollections.batchDelete || "批量删除"}
               </button>
             </div>
-          )}
-
-          {/* 第二行：搜索 + 筛选 + 排序 + 视图切换 */}
-          <div className="flex items-center gap-2 pb-3">
-            {/* 搜索框 */}
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={tGroup.searchGroupHint || "搜索合集..."}
-                className="h-9 w-full rounded-lg border border-border/50 bg-card/50 pl-9 pr-8 text-sm text-foreground placeholder:text-muted/50 outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* 内容类型筛选 */}
-            <div className="hidden sm:flex items-center rounded-lg border border-border/50 bg-card/50 p-0.5">
-              {(["comic", "novel"] as ContentFilter[]).map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setContentFilter(filter)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                    contentFilter === filter
-                      ? "bg-accent text-white"
-                      : "text-muted hover:text-foreground"
-                  }`}
-                >
-                  {filter === "comic"
-                    ? (tCollections.filterComic || "漫画")
-                    : (tCollections.filterNovel || "小说")}
-                </button>
-              ))}
-            </div>
-
-            {/* 排序下拉 */}
-            <div className="relative" ref={sortDropdownRef}>
-              <button
-                onClick={() => setShowSortDropdown(!showSortDropdown)}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border/50 bg-card/50 px-3 text-xs font-medium text-muted transition-colors hover:text-foreground"
-              >
-                {sortOrder === "asc" ? (
-                  <SortAsc className="h-3.5 w-3.5" />
-                ) : (
-                  <SortDesc className="h-3.5 w-3.5" />
-                )}
-                <span className="hidden sm:inline">
-                  {sortOptions.find((o) => o.field === sortField)?.label}
-                </span>
-                <ChevronDown className="h-3 w-3" />
-              </button>
-              {showSortDropdown && (
-                <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-border/50 bg-card py-1 shadow-xl z-50">
-                  {sortOptions.map((opt) => (
-                    <button
-                      key={opt.field}
-                      onClick={() => {
-                        if (sortField === opt.field) {
-                          setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-                        } else {
-                          setSortField(opt.field);
-                          setSortOrder("asc");
-                        }
-                        setShowSortDropdown(false);
-                      }}
-                      className={`flex w-full items-center justify-between px-3 py-2 text-xs transition-colors ${
-                        sortField === opt.field
-                          ? "text-accent bg-accent/5"
-                          : "text-foreground/80 hover:bg-card-hover"
-                      }`}
-                    >
-                      {opt.label}
-                      {sortField === opt.field && (
-                        <span className="text-[10px] text-accent">
-                          {sortOrder === "asc" ? "↑" : "↓"}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 视图切换 */}
-            <div className="flex items-center rounded-lg border border-border/50 bg-card/50 p-0.5">
-              <button
-                onClick={() => setViewMode("grid")}
-                className={`rounded-md p-1.5 transition-colors ${
-                  viewMode === "grid"
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={`rounded-md p-1.5 transition-colors ${
-                  viewMode === "list"
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                <LayoutList className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── 主体内容 ── */}
       <PageContent width="management">
@@ -720,32 +658,6 @@ export default function CollectionsPage() {
             )}
           </div>
         )}
-
-        {/* 移动端内容筛选 */}
-        <div className="flex sm:hidden items-center gap-2 mb-4">
-          {(["comic", "novel"] as ContentFilter[]).map((filter) => (
-            <button
-              key={filter}
-              onClick={() => setContentFilter(filter)}
-              className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors ${
-                contentFilter === filter
-                  ? "bg-accent text-white"
-                  : "bg-card text-muted"
-              }`}
-            >
-              {filter === "comic"
-                ? (tCollections.filterComic || "漫画")
-                : (tCollections.filterNovel || "小说")}
-            </button>
-          ))}
-          {/* 移动端智能合集按钮 */}
-          <button
-            onClick={() => setShowAutoDetect(true)}
-            className="flex items-center justify-center rounded-lg bg-amber-500/10 p-2 text-amber-400"
-          >
-            <Wand2 className="h-4 w-4" />
-          </button>
-        </div>
 
         {/* 加载状态 */}
         {loading ? (

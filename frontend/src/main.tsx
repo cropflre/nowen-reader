@@ -115,6 +115,7 @@ function AppRoutes() {
       <Route element={<ShellRouteLayout />}>
         <Route index element={<Home />} />
         <Route path="books" element={<BooksPage />} />
+        <Route path="favorites" element={<BooksPage favoritesView />} />
         <Route path="recommendations" element={<Recommendations />} />
         <Route path="stats" element={<Stats />} />
         <Route path="logs" element={<AdminRoute><Logs /></AdminRoute>} />

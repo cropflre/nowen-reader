@@ -1,0 +1,13 @@
+:root {
+  --book-card-width: 200px;
+  --book-card-height: 310px;
+}
+
+@media (min-width: 1536px) {
+  :root { --book-card-width: 220px; --book-card-height: 340px; }
+}
+
+@media (max-width: 639px) {
+  /* Match the library's two columns, 48px gutter, 12px gap and 6px scrollbar. */
+  :root { --book-card-width: calc((100vw - 66px) / 2); --book-card-height: 280px; }
+}

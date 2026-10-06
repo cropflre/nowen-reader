@@ -16,6 +16,7 @@ import {
   batchOperation,
   updateSortOrders,
   useCategories,
+  invalidateComicsCache,
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation, useLocale } from "@/lib/i18n";
@@ -24,6 +25,7 @@ import DuplicateDetector from "@/components/DuplicateDetector";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
 import UploadDialog from "@/components/UploadDialog";
 import { LibraryTabsBar } from "@/components/home/LibraryTabsBar";
+import LibraryContentTabs, { type LibraryContentType } from "@/components/LibraryContentTabs";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -77,6 +79,10 @@ function apiToComic(api: ApiComic): Comic {
     categories: api.categories || [],
     filename: api.filename,
     author: api.author || undefined,
+    type: api.type,
+    externalRating: api.externalRating,
+    externalRatingMax: api.externalRatingMax,
+    externalRatingSource: api.externalRatingSource,
   };
 }
 
@@ -93,7 +99,7 @@ function readStringArrayFromLocalStorage(key: string): string[] {
   }
 }
 
-export default function BooksPage() {
+export default function BooksPage({ favoritesView = false }: { favoritesView?: boolean }) {
   const t = useTranslation();
   const router = useRouter();
   const { locale: rawLocale } = useLocale();
@@ -105,6 +111,8 @@ export default function BooksPage() {
   // 会话筛选条件保持（sessionStorage）
   const [searchQuery, setSearchQuery] = useState(() => {
     if (typeof window !== "undefined") {
+      const search = new URLSearchParams(window.location.search).get("search");
+      if (search !== null) return search;
       return sessionStorage.getItem("homeFilter:search") || "";
     }
     return "";
@@ -211,11 +219,10 @@ export default function BooksPage() {
   const visibleLibraries = accessibleLibraries.filter((lib) => !hiddenLibraryIds.includes(lib.id));
 
   const [scanningLibrary, setScanningLibrary] = useState(false);
-  const [favoritesOnly, setFavoritesOnly] = useState(() => {
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem("homeFilter:favorites") === "true";
-    }
-    return false;
+  const favoritesOnly = favoritesView;
+  const [contentType, setContentType] = useState<LibraryContentType>(() => {
+    const saved = sessionStorage.getItem("homeFilter:contentType");
+    return saved === "novel" || saved === "comic" ? saved : "all";
   });
   const [sortBy, setSortBy] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -287,13 +294,18 @@ export default function BooksPage() {
   // 筛选条件变更时同步到 sessionStorage
   useEffect(() => {
     sessionStorage.setItem("homeFilter:search", searchQuery);
+    const params = new URLSearchParams(window.location.search);
+    if (searchQuery) params.set("search", searchQuery);
+    else params.delete("search");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
   }, [searchQuery]);
   useEffect(() => {
     sessionStorage.setItem("homeFilter:tags", JSON.stringify(selectedTags));
   }, [selectedTags]);
   useEffect(() => {
-    sessionStorage.setItem("homeFilter:favorites", String(favoritesOnly));
-  }, [favoritesOnly]);
+    sessionStorage.setItem("homeFilter:contentType", contentType);
+  }, [contentType]);
   useEffect(() => {
     sessionStorage.setItem("homeFilter:sortBy", sortBy);
   }, [sortBy]);
@@ -360,17 +372,22 @@ export default function BooksPage() {
   // 删除动画状态
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
 
-  // Pagination — 优先从 sessionStorage 恢复（最可靠），其次从 URL 恢复
+  // Explicit search URLs should not inherit an unrelated saved page.
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("search")) {
+        const page = Number(params.get("page") || 1);
+        return Number.isInteger(page) && page > 0 ? page : 1;
+      }
       // 优先从 sessionStorage 恢复
-      const saved = sessionStorage.getItem("homePage");
+      const saved = sessionStorage.getItem(favoritesView ? "favoritesPage" : "homePage");
       if (saved) {
         const n = parseInt(saved, 10);
         if (n > 0) return n;
       }
       // 其次从 URL 查询参数读取
-      const p = new URLSearchParams(window.location.search).get("page");
+      const p = params.get("page");
       if (p) {
         const n = parseInt(p, 10);
         if (n > 0) return n;
@@ -400,17 +417,17 @@ export default function BooksPage() {
     const params = new URLSearchParams(window.location.search);
     if (currentPage > 1) {
       params.set("page", String(currentPage));
-      sessionStorage.setItem("homePage", String(currentPage));
+      sessionStorage.setItem(favoritesView ? "favoritesPage" : "homePage", String(currentPage));
     } else {
       params.delete("page");
       // 挂载保护期内不清除 sessionStorage（防止首次挂载时误清除已保存的页码）
       if (!pageResetGuardRef.current) {
-        sessionStorage.removeItem("homePage");
+        sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
       }
     }
     const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
     window.history.replaceState(null, "", newUrl);
-  }, [currentPage]);
+  }, [currentPage, favoritesView]);
 
   // Load pageSize from site settings
   useEffect(() => {
@@ -423,13 +440,14 @@ export default function BooksPage() {
   }, []);
 
   // 书库展示逻辑作品：目录作品折叠为一项，散本保持独立，并由服务端排序分页。
-  const { comics: apiComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
+  const { comics: apiComics, setComics, loading, fetching, total: apiTotal, totalPages, refetch } = useComics({
     seriesView: true,
     page: currentPage,
     pageSize,
     search: debouncedSearch || undefined,
     tags: selectedTags.length > 0 ? selectedTags : undefined,
     favoritesOnly: favoritesOnly || undefined,
+    contentType: contentType === "all" ? undefined : contentType,
     sortBy: sortBy || undefined,
     sortOrder: sortOrder || undefined,
     category: selectedCategory || undefined,
@@ -439,6 +457,26 @@ export default function BooksPage() {
     libraryIds: selectedLibraryIds.length > 0 ? selectedLibraryIds : undefined,
   });
 
+  const favoriteRequests = useRef(new Set<string>());
+  const [favoritePendingIds, setFavoritePendingIds] = useState(new Set<string>());
+  const handleToggleFavorite = useCallback(async (id: string) => {
+    if (seriesIdFromShelfId(id) || favoriteRequests.current.has(id)) return;
+    favoriteRequests.current.add(id);
+    setFavoritePendingIds(new Set(favoriteRequests.current));
+    try {
+      const result = await toggleComicFavorite(id);
+      if (result === null) throw new Error("Favorite update failed");
+      setComics((previous) => previous.map((comic) => comic.id === id ? { ...comic, isFavorite: result } : comic));
+      invalidateComicsCache();
+      if (favoritesOnly) await refetch();
+    } catch {
+      toast.error(t.contextMenu?.favoriteFailed || "操作失败，请重试");
+    } finally {
+      favoriteRequests.current.delete(id);
+      setFavoritePendingIds(new Set(favoriteRequests.current));
+    }
+  }, [setComics, favoritesOnly, refetch, toast, t.contextMenu?.favoriteFailed]);
+
   // 只显示有内容的分类（count > 0）
   const effectiveCategories = categories.filter(c => c.count > 0);
 
@@ -447,14 +485,14 @@ export default function BooksPage() {
 
   // Reset to page 1 when filters change（使用受保护的 setter，在挂载保护期内不会重置页码）
   const filterKeyRef = useRef(
-    JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds])
+    JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, contentType, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds])
   );
   useEffect(() => {
-    const newKey = JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds]);
+    const newKey = JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, contentType, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds]);
     if (filterKeyRef.current === newKey) return; // 值没变，不重置
     filterKeyRef.current = newKey;
     safeSetCurrentPage(1);
-  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, safeSetCurrentPage]);
+  }, [debouncedSearch, selectedTags, favoritesOnly, contentType, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, safeSetCurrentPage]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -890,6 +928,9 @@ export default function BooksPage() {
     () => sortedComics.some((comic) => seriesIdFromShelfId(comic.id) !== null),
     [sortedComics]
   );
+  const hasActiveFilters = !!searchQuery || contentType !== "all" || !!readingStatusFilter
+    || uncategorized || untagged || !!selectedCategory || selectedTags.length > 0 || selectedLibraryIds.length > 0;
+  const libraryIsEmpty = apiTotal === 0 && !favoritesOnly && !hasActiveFilters;
 
   return (
     <>
@@ -904,13 +945,19 @@ export default function BooksPage() {
         onScanLibrary={handleScanLibrary}
         scanning={scanningLibrary}
         withinShell
+        secondaryNavigation={<LibraryContentTabs value={contentType} onChange={(type) => {
+          setContentType(type);
+          setCurrentPage(1);
+          sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
+        }} />}
       />
 
       {/* Main Content */}
-      <div className={`mx-auto w-full max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-14 pt-14 sm:pt-16 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
+      <div id="library-content-panel" role="tabpanel" aria-labelledby={`library-content-tab-${contentType}`} className={`mx-auto w-full max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-14 pt-[100px] sm:pt-[108px] lg:pt-16 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
       <main className="min-w-0 space-y-4 pt-6 sm:pt-8">
+        <h1 className="sr-only">{favoritesOnly ? t.home.favorites : "书库"}</h1>
         {/* Data Source Indicator — 空库提示 */}
-        {!loading && displayComics.length === 0 && apiTotal === 0 && !debouncedSearch && selectedTags.length === 0 && !favoritesOnly && !selectedCategory && selectedLibraryIds.length === 0 && (
+        {!loading && displayComics.length === 0 && libraryIsEmpty && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
             <span className="text-sm text-amber-400">
               {t.home.mockDataNotice}{" "}
@@ -950,10 +997,10 @@ export default function BooksPage() {
               ))}
             </div>
             {/* 骨架：漫画网格 */}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+            <div className="library-card-grid">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="overflow-hidden rounded-xl bg-card">
-                  <div className="skeleton-shimmer aspect-[5/7] w-full" />
+                <div key={i} className="library-book-card">
+                  <div className="library-book-cover skeleton-shimmer" />
                   <div className="space-y-2 p-3">
                     <div className="skeleton-shimmer h-4 w-3/4 rounded" />
                     <div className="flex gap-1.5">
@@ -990,6 +1037,9 @@ export default function BooksPage() {
               <div className="flex shrink-0 items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
                 <button
                   onClick={() => setViewMode("grid")}
+                  aria-label={t.comicCard.gridView}
+                  aria-pressed={viewMode === "grid"}
+                  title={t.comicCard.gridView}
                   className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
                     viewMode === "grid"
                       ? "bg-accent text-white shadow-sm"
@@ -1000,6 +1050,9 @@ export default function BooksPage() {
                 </button>
                 <button
                   onClick={() => setViewMode("list")}
+                  aria-label={t.comicCard.listView}
+                  aria-pressed={viewMode === "list"}
+                  title={t.comicCard.listView}
                   className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
                     viewMode === "list"
                       ? "bg-accent text-white shadow-sm"
@@ -1073,7 +1126,8 @@ export default function BooksPage() {
 
                 {/* Favorites toggle */}
                 <button
-                  onClick={() => setFavoritesOnly(!favoritesOnly)}
+                  onClick={() => router.push(favoritesOnly ? "/books" : "/favorites")}
+                  aria-pressed={favoritesOnly}
                   className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
                     favoritesOnly
                       ? "bg-rose-500/20 text-rose-400"
@@ -1174,11 +1228,14 @@ export default function BooksPage() {
             </div>
 
               {/* Clear filters — visible when any filter is active */}
-              {(favoritesOnly || readingStatusFilter || uncategorized || untagged || selectedCategory || selectedTags.length > 0 || selectedLibraryIds.length > 0) && (
+              {hasActiveFilters && (
                 <div className="flex items-center">
                   <button
                     onClick={() => {
-                      setFavoritesOnly(false);
+                      setSearchQuery("");
+                      setContentType("all");
+                      setCurrentPage(1);
+                      sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
                       setReadingStatusFilter("");
                       setUncategorized(false);
                       setUntagged(false);
@@ -1245,7 +1302,7 @@ export default function BooksPage() {
             <div className="mt-6 mb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-1">
               <div>
                 <h2 className="text-base font-semibold text-foreground text-balance">
-                  全部作品
+                  {favoritesOnly ? "我的收藏" : contentType === "all" ? "全部作品" : t.contentTab[contentType]}
                 </h2>
                 <p className="text-[11px] text-muted mt-0.5">
                   {`${apiTotal} 项作品`}
@@ -1259,7 +1316,7 @@ export default function BooksPage() {
               <div
                 className={
                   viewMode === "grid"
-                    ? "grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
+                    ? "library-card-grid"
                     : "grid grid-cols-1 gap-2 sm:gap-3"
                 }
               >
@@ -1269,6 +1326,9 @@ export default function BooksPage() {
                       comic={comic}
                       isReal={useRealData}
                       viewMode={viewMode}
+                      appearance="shelf"
+                      onToggleFavorite={hasManageableLibrary ? handleToggleFavorite : undefined}
+                      favoritePending={favoritePendingIds.has(comic.id)}
                       batchMode={batchMode}
                       isSelected={selectedIds.has(comic.id)}
                       onSelect={toggleSelect}
@@ -1291,28 +1351,24 @@ export default function BooksPage() {
             ) : (
               <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center">
                 <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-card">
-                  <span className="text-4xl">{favoritesOnly ? "❤️" : apiTotal === 0 ? "📚" : "🔍"}</span>
+                  <span className="text-4xl">{favoritesOnly ? "❤️" : libraryIsEmpty ? "📚" : "🔍"}</span>
                 </div>
                 <h3 className="mb-2 text-lg font-medium text-foreground/80">
-                  {apiTotal === 0 ? t.home.emptyLibrary : t.home.noMatchingComics}
+                  {favoritesOnly ? "暂无匹配的收藏" : libraryIsEmpty ? t.home.emptyLibrary : t.home.noMatchingComics}
                 </h3>
                 <p className="max-w-sm text-sm text-muted mb-5">
-                  {apiTotal === 0
-                    ? selectedLibraryIds.length > 0
-                      ? "当前书库还没有内容，你可以切换到全部，或去书库管理中扫描/导入内容。"
-                      : t.home.emptyLibraryHint
-                    : t.home.noMatchingHint}
+                  {hasActiveFilters ? t.home.noMatchingHint : favoritesOnly ? "收藏的作品会显示在这里。" : t.home.emptyLibraryHint}
                 </p>
                 {/* 引导性操作按钮 */}
                 <div className="flex flex-wrap items-center justify-center gap-3">
-                  {favoritesOnly ? (
+                  {favoritesOnly && !hasActiveFilters ? (
                     <button
-                      onClick={() => setFavoritesOnly(false)}
+                      onClick={() => router.push("/books")}
                       className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                     >
-                      ✖ {t.dataExport?.clearFilters || "清除筛选条件"}
+                      <BookOpen className="h-4 w-4" /> {t.dashboard.browseLibrary}
                     </button>
-                  ) : apiTotal === 0 ? (
+                  ) : libraryIsEmpty ? (
                     <>
                       <button
                         onClick={handleUpload}
@@ -1335,7 +1391,9 @@ export default function BooksPage() {
                       onClick={() => {
                         setSearchQuery("");
                         setSelectedTags([]);
-                        setFavoritesOnly(false);
+                        setContentType("all");
+                        setCurrentPage(1);
+                        sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
                         setReadingStatusFilter("");
                         setUncategorized(false);
                         setUntagged(false);
@@ -1568,14 +1626,7 @@ export default function BooksPage() {
             }
           }}
           onDetail={(id) => router.push(`/comic/${id}`)}
-          onToggleFavorite={async (id) => {
-            const result = await toggleComicFavorite(id);
-            if (result !== null) {
-              await refetch();
-            } else {
-              toast.error(t.contextMenu?.favoriteFailed || "操作失败，请重试");
-            }
-          }}
+          onToggleFavorite={handleToggleFavorite}
           onAddToGroup={(id) => {
             setContextAddToGroupIds([id]);
           }}

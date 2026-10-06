@@ -1,0 +1,45 @@
+.app-shell { --desktop-dock-offset: 104px; --desktop-brand-width: 220px; }
+.desktop-dock, .desktop-brand { display: none; }
+@media (min-width: 1024px) {
+  .app-shell-content { margin-left: var(--desktop-dock-offset); }
+  .app-shell-navbar { left: var(--desktop-brand-width); }
+  .app-shell .module-page-header { margin-left: calc(var(--desktop-brand-width) - var(--desktop-dock-offset)); }
+  .app-shell .dashboard-topbar { padding-left: calc(var(--desktop-brand-width) - var(--desktop-dock-offset) + 24px); }
+  .desktop-brand { position: fixed; z-index: 50; top: 0; left: 0; display: flex; align-items: center; gap: 10px; width: var(--desktop-brand-width); height: 64px; padding: 16px 24px; border-bottom: 1px solid #ffffff0f; background: #0d0f141a; -webkit-backdrop-filter: blur(24px) saturate(1.08); backdrop-filter: blur(24px) saturate(1.08); color: #edf1f7; letter-spacing: 0; }
+  .desktop-dock { position: fixed; z-index: 40; left: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 12px; width: 72px; height: min(560px, calc(100dvh - 160px)); padding: 8px; border: 1px solid #ffffff16; border-radius: 8px; background: #10131933; -webkit-backdrop-filter: blur(24px) saturate(1.08); backdrop-filter: blur(24px) saturate(1.08); box-shadow: 0 12px 36px #00000026, inset 0 1px 0 #ffffff08; letter-spacing: 0; }
+}
+.desktop-brand-icon { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 6px; color: #fff; background: #3b82f6; box-shadow: 0 3px 10px #3b82f626; }
+.desktop-brand-icon.has-custom-icon { background: transparent; box-shadow: none; }
+.desktop-brand-icon img { width: 28px; height: 28px; object-fit: contain; }
+.desktop-brand-icon svg { width: 17px; height: 17px; }
+.desktop-brand-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 20px; }
+.desktop-brand:focus-visible { outline: 2px solid #94baff; outline-offset: -4px; }
+.desktop-dock .dock-control { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; flex-shrink: 0; width: 52px; height: 52px; padding: 5px 2px; border: 1px solid transparent; border-radius: 7px; }
+.desktop-dock .dock-label { display: block; max-width: 100%; font-size: 11px; font-weight: 500; line-height: 14px; white-space: nowrap; }
+.desktop-dock .dock-control { color: #adb5c3; transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease; cursor: pointer; }
+.desktop-dock .dock-control svg { width: 21px; height: 21px; }
+.desktop-dock .dock-control:hover { color: #f0f3f8; background: #ffffff0b; }
+.desktop-dock .dock-control[aria-current="page"], .desktop-dock .dock-control[data-active="true"], .desktop-dock .dock-control[aria-expanded="true"] { color: #90b8ff; border-color: #8ab5ff30; background: #5485e42b; box-shadow: 0 0 16px #6d9df51f, inset 0 1px 0 #b6d1ff0d; }
+.desktop-dock :is(a, button):focus-visible { outline: 2px solid #94baff; outline-offset: 3px; }
+.desktop-dock .dock-divider { width: 32px; height: 1px; flex-shrink: 0; background: #ffffff14; }
+.desktop-dock .dock-primary { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 4px; min-height: 0; width: calc(100% + 12px); padding: 6px; overflow-y: auto; scrollbar-width: none; }
+.desktop-dock .dock-primary::-webkit-scrollbar { display: none; }
+.desktop-dock .dock-footer { display: flex; flex-shrink: 0; flex-direction: column; align-items: center; gap: 4px; }
+.desktop-dock .dock-footer .dock-divider { margin-bottom: 8px; }
+.desktop-dock .dock-tooltip { position: absolute; z-index: 60; left: calc(100% + 12px); transform: translateY(-50%); max-width: 240px; padding: 6px 10px; border: 1px solid #ffffff1f; border-radius: 5px; background: #171b23f5; color: #edf1f7; font: 500 12px/20px system-ui, sans-serif; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 16px #0003; }
+html.light .desktop-dock { background: #ffffff4d; border-color: #242a331c; box-shadow: 0 12px 36px #242a3312, inset 0 1px 0 #ffffff99; }
+html.light .desktop-brand { color: #293342; background: #ffffff26; border-color: #242a3314; }
+html.light .desktop-dock .dock-control { color: #596577; }
+html.light .desktop-dock .dock-control:hover { color: #242a33; background: #242a330a; }
+html.light .desktop-dock .dock-control[aria-current="page"], html.light .desktop-dock .dock-control[data-active="true"], html.light .desktop-dock .dock-control[aria-expanded="true"] { color: #285eaf; border-color: #4d7fc72b; background: #5485e41c; box-shadow: 0 0 16px #6d9df512; }
+html.light .desktop-dock .dock-divider { background: #242a331c; }
+html.light .desktop-dock .dock-tooltip { background: #fffffff5; border-color: #242a3326; color: #293342; box-shadow: 0 12px 36px #242a3326; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .desktop-dock, .desktop-brand { background: #101319f2; }
+  html.light .desktop-dock, html.light .desktop-brand { background: #fffffff2; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .desktop-dock, .desktop-brand { -webkit-backdrop-filter: none; backdrop-filter: none; background: #101319f2; }
+  html.light .desktop-dock, html.light .desktop-brand { background: #fffffff2; }
+}
+@media (prefers-reduced-motion: reduce) { .desktop-dock .dock-control { transition: none; } }

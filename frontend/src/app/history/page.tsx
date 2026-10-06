@@ -169,13 +169,16 @@ export default function HistoryPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-lg bg-card/60" />
-          ))}
-        </div>
-      </div>
+      <>
+        <PageHeader title="阅读历史" description="正在加载阅读记录" icon={Clock} />
+        <PageContent width="wide">
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-28 animate-pulse rounded-lg bg-card/60" />
+            ))}
+          </div>
+        </PageContent>
+      </>
     );
   }
 
@@ -187,7 +190,6 @@ export default function HistoryPage() {
           ? `共 ${summary.total} 部作品，累计阅读 ${formatDuration(summary.totalTime)}`
           : "开始阅读一本作品后，它会出现在这里"}
         icon={Clock}
-        width="wide"
       />
       <PageContent width="wide">
       {comics.length === 0 ? (

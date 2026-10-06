@@ -150,7 +150,6 @@ export default function RecommendationsPage() {
         title={t.recommend?.title || "为你推荐"}
         description="根据阅读记录与内容偏好生成推荐"
         icon={Sparkles}
-        width="wide"
         actions={
           <>
           {aiConfigured && (

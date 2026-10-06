@@ -2,14 +2,17 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { memo, useState } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import { Comic } from "@/types/comic";
-import { BookOpen, Heart, Star, Info, GripVertical, Globe } from "lucide-react";
+import { BookOpen, Heart, Star, Info, GripVertical, Globe, Check, Layers, Loader2 } from "lucide-react";
 import NSFWCoverGuard from "@/components/NSFWCoverGuard";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import { isNSFW } from "@/lib/nsfw";
 import { useTranslation } from "@/lib/i18n";
 import type { ApiComicTag } from "@/hooks/useComicTypes";
+import { libraryCardState } from "@/lib/library-card";
+import "./book-card-size.css";
+import "./library-book-card.css";
 
 // Check if file is a novel type: prioritize DB type field, fallback to filename extension
 function isNovelFile(filename?: string): boolean {
@@ -96,6 +99,9 @@ interface ComicCardProps {
   showProgress?: boolean;
   /** Hide metadata (tags, badges) */
   hideMeta?: boolean;
+  appearance?: "default" | "shelf";
+  onToggleFavorite?: (id: string) => void;
+  favoritePending?: boolean;
 }
 
 /** 渲染标签chip */
@@ -137,6 +143,9 @@ const ComicCard = memo(function ComicCard({
   showRating = false,
   showProgress = false,
   hideMeta = false,
+  appearance = "default",
+  onToggleFavorite,
+  favoritePending = false,
 }: ComicCardProps) {
 
   // 构建 tag name → ApiComicTag 的映射
@@ -343,6 +352,54 @@ const ComicCard = memo(function ComicCard({
     );
   }
 
+  if (appearance === "shelf") {
+    const state = libraryCardState(comic);
+    const unit = state.unit === "item" ? t.comicCard.itemUnit : state.unit === "chapter" ? (t.continueReading.chapterUnit || t.continueReading.chapter) : t.continueReading.pageUnit;
+    const progressLabel = state.finished ? t.home.statusFinished : !state.started ? t.dashboard.unread : `${state.progress}%`;
+    const metadata = [comic.author, state.total > 0 ? `${state.total} ${unit}` : ""].filter(Boolean).join(" · ");
+    const favoriteLabel = comic.isFavorite ? (t.contextMenu?.unfavorite || t.batch.unfavorite) : (t.contextMenu?.favorite || t.batch.favorite);
+    const cover = <>
+      {!coverLoaded && <div className="absolute inset-0 skeleton-shimmer" aria-hidden="true" />}
+      <NSFWCoverGuard src={comic.coverUrl} alt={comic.title} isNSFW={isNSFW(comic)} blurEnabled={privacyEnabled && blurNSFW}
+        fill unoptimized={isReal} className={`object-cover ${coverLoaded ? "opacity-100" : "opacity-0"}`}
+        sizes="(max-width: 639px) 45vw, (min-width: 1536px) 220px, 200px"
+        onLoad={() => setCoverLoaded(true)} onError={() => setCoverLoaded(true)} />
+      {state.showProgress && <span className="library-book-progress" title={progressLabel} aria-label={progressLabel}
+        style={{ "--library-progress": `${state.progress}%`, "--library-progress-color": state.progressColor } as CSSProperties}>
+        <span>{state.finished ? <Check size={16} /> : progressLabel}</span>
+      </span>}
+      <span className="library-book-format">{state.seriesId ? <><Layers size={11} />{t.comicCard.series}</> : state.format}</span>
+      {draggable && !batchMode && <span className="library-book-drag" aria-hidden="true"><GripVertical size={16} /></span>}
+    </>;
+    return <article
+      className={`group library-book-card${isSelected && batchMode ? " library-selected" : ""} ${isDragOver ? "drag-over-target" : ""} ${isDragging ? "drag-active" : ""} ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
+      style={animationIndex !== undefined ? { animationDelay: `${animationIndex * 40}ms` } : undefined}
+      draggable={draggable}
+      onContextMenu={handleContextMenu}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart?.(comic.id); }}
+      onDragOver={(e) => { e.preventDefault(); onDragOver?.(comic.id); }}
+      onDrop={(e) => { e.preventDefault(); onDragEnd?.(); }}
+    >
+      {batchMode ? <div className="library-book-cover">{cover}</div> : <Link href={state.readerUrl} className="library-book-cover"
+        aria-label={`${t.contextMenu?.read || t.dashboard.continueAction} ${comic.title}`} onClick={() => onClick?.(comic)}>{cover}</Link>}
+      <h3 className="library-book-title" title={comic.title}>
+        {isReal && !batchMode ? <Link href={state.detailUrl} aria-label={`${t.comicCard.detail} ${comic.title}`}>{comic.title}</Link> : <span>{comic.title}</span>}
+      </h3>
+      <p className="library-book-meta" title={metadata}>{metadata}</p>
+      {!hideMeta && !compact && ((comic.tags?.length ?? 0) > 0 || (comic.rating ?? 0) > 0 || comic.externalRating != null) && <div className="library-book-extra">
+        {(comic.rating ?? 0) > 0 && <span className="library-book-rating text-amber-400" title={`${t.comicDetail.rating}: ${comic.rating}`}><Star size={11} fill="currentColor" />{comic.rating}</span>}
+        {comic.externalRating != null && <span className="library-book-rating text-blue-400" title={`${t.comicDetail.externalRating}: ${comic.externalRating}${comic.externalRatingMax ? `/${comic.externalRatingMax}` : ""} · ${comic.externalRatingSource || ""}`}><Globe size={11} />{comic.externalRating}</span>}
+        {(comic.tags || []).slice(0, 2).map((tag) => <TagChip key={tag} tag={tag} tagObj={tagMap.get(tag)} />)}
+      </div>}
+      {batchMode ? <button type="button" className="library-select-target" aria-label={`${t.comicCard.select} ${comic.title}`} aria-pressed={Boolean(isSelected)} onClick={handleClick}>
+        <span className="library-select-check" aria-hidden="true">{isSelected && <Check size={16} />}</span>
+      </button> : !state.seriesId && onToggleFavorite ? <button type="button" className={`library-book-favorite${comic.isFavorite ? " library-saved" : ""}`}
+        onClick={() => onToggleFavorite(comic.id)} disabled={favoritePending} aria-pressed={Boolean(comic.isFavorite)} aria-label={`${favoriteLabel} ${comic.title}`} title={favoriteLabel}>
+        {favoritePending ? <Loader2 size={16} className="animate-spin" /> : <Heart size={16} fill={comic.isFavorite ? "currentColor" : "none"} />}
+      </button> : comic.isFavorite && <span className="library-book-favorite library-saved" title={t.contextMenu?.favorite || t.batch.favorite}><Heart size={16} fill="currentColor" /></span>}
+    </article>;
+  }
+
   // Grid view
   return (
     <div
@@ -514,4 +571,3 @@ const ComicCard = memo(function ComicCard({
 });
 
 export default ComicCard;
-

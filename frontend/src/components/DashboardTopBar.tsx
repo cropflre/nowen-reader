@@ -2,8 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  Search,
-  Bell,
   Upload,
   Loader2,
   Sun,
@@ -12,13 +10,14 @@ import {
   LogOut,
   RefreshCw,
   BookMarked,
-  MoreVertical,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useAuth } from "@/lib/auth-context";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
+import UserMenuButton from "@/components/UserMenuButton";
+import SearchIconButton from "@/components/SearchIconButton";
 
 interface DashboardTopBarProps {
   onUpload?: () => void;
@@ -44,6 +43,7 @@ export default function DashboardTopBar({
   const router = useRouter();
   const { siteName } = useSiteSettings();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭菜单
@@ -53,29 +53,38 @@ export default function DashboardTopBar({
         setMenuOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 h-16 flex items-center justify-between px-6 lg:px-8 border-b border-border/50 bg-surface/60 backdrop-blur-xl">
+    <header className="dashboard-topbar ambient-topbar sticky top-0 z-30 h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 border-b">
       {/* 左侧：标题 */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3 pr-2">
         {/* 移动端 Logo */}
-        <div className="flex lg:hidden items-center gap-2">
+        <div className="flex min-w-0 lg:hidden items-center gap-2">
           {siteName ? (
-            <span className="text-sm font-bold text-foreground">{siteName}</span>
+            <span className="truncate text-sm font-bold text-foreground">{siteName}</span>
           ) : (
             <BookMarked className="h-5 w-5 text-accent" />
           )}
         </div>
-        <h1 className="hidden lg:block text-lg font-semibold text-foreground">
-          {t.dashboard?.title || "首页"}
+        <h1 className="hidden lg:block text-sm font-medium text-muted">
+          {t.dashboard.readingOverview}
         </h1>
       </div>
 
       {/* 右侧：操作按钮 */}
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <SearchIconButton query={searchQuery} onChange={setSearchQuery}
+          onSubmit={() => router.push(`/books?search=${encodeURIComponent(searchQuery.trim())}`)} />
         {/* 扫描 */}
         {isAdmin && onScanLibrary && (
           <button
@@ -94,23 +103,17 @@ export default function DashboardTopBar({
           <button
             onClick={onUpload}
             disabled={uploading}
-            className="hidden h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50 sm:flex"
+            aria-label={uploading ? "上传中" : "上传"}
+            title={uploading ? "上传中" : "上传"}
+            className="shell-icon-button"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            <span className="hidden md:inline">{uploading ? "上传中..." : "上传"}</span>
           </button>
         )}
 
-        {/* 更多菜单 */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="打开更多操作"
-            aria-expanded={menuOpen}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-card-hover hover:text-foreground"
-          >
-            <MoreVertical className="h-4 w-4" />
-          </button>
+        {/* 用户菜单 */}
+        <div className="dashboard-user-menu relative" ref={menuRef}>
+          <UserMenuButton user={user} open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
 
           {menuOpen && (
             <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-border bg-elevated/95 py-1.5 shadow-xl backdrop-blur-xl animate-modal-in">

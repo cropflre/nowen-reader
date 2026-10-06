@@ -388,7 +388,8 @@ export default function ScraperPage() {
   if (scraperEnabled === null) {
     return (
       <>
-        <div className="flex min-h-screen items-center justify-center">
+        <PageHeader title={scraperT.title || "元数据抓取"} icon={Database} />
+        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted" />
         </div>
       </>
@@ -403,7 +404,6 @@ export default function ScraperPage() {
           title={scraperT.title || "元数据抓取"}
           description={scraperT.subtitle || "自动获取封面、简介与标签信息"}
           icon={Database}
-          width="full"
         />
         <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center">
           <div className="flex max-w-md flex-col items-center gap-4 px-6 text-center">
@@ -436,12 +436,11 @@ export default function ScraperPage() {
 
   return (
     <>
-      <div className="flex h-screen flex-col bg-background">
+      <div className="flex h-screen flex-col bg-transparent">
         <PageHeader
           title={scraperT.title || "元数据抓取"}
           description={scraperT.subtitle || "自动获取封面、简介与标签信息"}
           icon={Database}
-          width="full"
           actions={
             <>
             {stats && (

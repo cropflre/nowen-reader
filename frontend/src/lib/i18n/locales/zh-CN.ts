@@ -115,6 +115,11 @@ const zhCN = {
   // Comic Card
   comicCard: {
     detail: "详情",
+    series: "系列",
+    itemUnit: "项",
+    gridView: "网格视图",
+    listView: "列表视图",
+    select: "选择作品",
   },
 
   // Context Menu (右键菜单)
@@ -457,6 +462,7 @@ const zhCN = {
 
   // Auth
   auth: {
+    userMenu: "用户菜单",
     setupTitle: "创建管理员账户",
     setupDesc: "设置第一个管理员账户以开始使用",
     loginTitle: "登录",
@@ -773,10 +779,14 @@ const zhCN = {
   // Dashboard 首页
   dashboard: {
     title: "首页",
+    readingOverview: "阅读概览",
     continueReading: "继续阅读",
     continueSubtitle: "继续上次的阅读",
     recentlyAdded: "最近添加",
     continueAction: "继续阅读",
+    previousBook: "上一本",
+    nextBook: "下一本",
+    selectBook: "选择封面",
     allLibrary: "全部书库",
     viewAll: "查看全部",
     libraryOverview: "书库概览",
@@ -1449,6 +1459,11 @@ export interface Translations {
   };
   comicCard: {
     detail: string;
+    series: string;
+    itemUnit: string;
+    gridView: string;
+    listView: string;
+    select: string;
   };
   contextMenu?: {
     read: string;
@@ -1772,6 +1787,7 @@ export interface Translations {
     shortHours: string;
   };
   auth: {
+    userMenu: string;
     setupTitle: string;
     setupDesc: string;
     loginTitle: string;
@@ -2069,10 +2085,14 @@ export interface Translations {
   };
   dashboard: {
     title: string;
+    readingOverview: string;
     continueReading: string;
     continueSubtitle: string;
     recentlyAdded: string;
     continueAction: string;
+    previousBook: string;
+    nextBook: string;
+    selectBook: string;
     allLibrary: string;
     viewAll: string;
     libraryOverview: string;

@@ -39,6 +39,7 @@ import { defaultReaderOptions } from "@/types/reader";
 import dynamic from "next/dynamic";
 import { appPath } from "@/lib/base-path";
 import { PageHeader } from "@/components/PageHeader";
+import SearchIconButton from "@/components/SearchIconButton";
 
 /* ── 懒加载面板 ── */
 const LoadingSkeleton = () => (
@@ -319,44 +320,19 @@ export default function SettingsPage() {
     </div>
   ) : activePanel;
 
-  const searchField = (
-    <div className="relative w-full sm:w-64">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-      <input
-        type="search"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="搜索设置"
-        aria-label="搜索设置"
-        className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted/60 focus:border-accent"
-      />
-      {searchQuery && (
-        <button
-          type="button"
-          onClick={() => setSearchQuery("")}
-          aria-label="清除搜索"
-          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-card-hover hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      )}
-    </div>
-  );
-
   return (
     <>
       <PageHeader
         title={t.settings?.title || "设置"}
         description="管理账户、书库与系统偏好"
         icon={SettingsIcon}
-        width="wide"
-        actions={<div className="hidden sm:block">{searchField}</div>}
+        actions={<SearchIconButton query={searchQuery} onChange={setSearchQuery}
+          label="搜索设置" inputLabel="设置搜索关键词" placeholder="搜索设置" />}
       />
 
       <section className="sm:hidden">
         {!mobileDetailOpen ? (
           <div className="space-y-5 px-4 py-4">
-            {searchField}
             {filteredGroups.map((group) => (
               <section key={group.title}>
                 <h2 className="mb-2 px-1 text-xs font-semibold text-muted">{group.title}</h2>
@@ -391,7 +367,7 @@ export default function SettingsPage() {
           </div>
         ) : (
           <div>
-            <div className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-border bg-background/95 px-3 backdrop-blur">
+            <div className="ambient-topbar sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-border px-3">
               <button
                 type="button"
                 onClick={() => {
