@@ -16,6 +16,7 @@ import '../features/reader/pdf_reader_screen.dart';
 import '../features/reader/reader_dispatch_screen.dart';
 import '../features/scan_rules/scan_rules_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/series/series_detail_screen.dart';
 import '../features/server/server_config_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/site_settings_screen.dart';
@@ -157,6 +158,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/group/:id',
         builder: (_, state) => GroupDetailV2Screen(
           groupId: int.parse(state.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: '/series/:id',
+        builder: (_, state) => SeriesDetailScreen(
+          seriesId: state.pathParameters['id']!,
         ),
       ),
       GoRoute(

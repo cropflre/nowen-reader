@@ -20,6 +20,7 @@ class ComicApi {
     String? type,
     String? readingStatus,
     bool? favoritesOnly,
+    bool seriesView = false,
   }) async {
     final params = <String, dynamic>{
       'page': page,
@@ -35,6 +36,7 @@ class ComicApi {
       params['readingStatus'] = readingStatus;
     }
     if (favoritesOnly == true) params['favorites'] = 'true';
+    if (seriesView) params['seriesView'] = 'true';
 
     final res = await _dio.get('/comics', queryParameters: params);
     return res.data;
@@ -160,6 +162,12 @@ class ComicApi {
     }
     final res = await _dio.get('/groups', queryParameters: params);
     return res.data['groups'] ?? [];
+  }
+
+  /// 获取目录作品详情
+  Future<Map<String, dynamic>> getSeriesDetail(String seriesId) async {
+    final res = await _dio.get('/series/${Uri.encodeComponent(seriesId)}');
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   /// 获取分组详情

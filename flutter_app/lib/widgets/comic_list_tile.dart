@@ -22,7 +22,14 @@ class ComicListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final thumbUrl = getImageUrl(serverUrl, comic.id, thumbnail: true);
+    final rawCover = comic.coverImageUrl?.trim() ?? '';
+    final cleanServerUrl =
+        serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final thumbUrl = rawCover.isNotEmpty
+        ? (rawCover.startsWith('http://') || rawCover.startsWith('https://')
+            ? rawCover
+            : '$cleanServerUrl${rawCover.startsWith('/') ? rawCover : '/$rawCover'}')
+        : getImageUrl(serverUrl, comic.id, thumbnail: true);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
@@ -102,7 +109,25 @@ class ComicListTile extends StatelessWidget {
                       // 标题行
                       Row(
                         children: [
-                          if (comic.isNovel)
+                          if (comic.isSeriesShelfItem)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer.withOpacity(0.65),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                '系列',
+                                style: TextStyle(
+                                  color: cs.onPrimaryContainer,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          else if (comic.isNovel)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 6, vertical: 2),
@@ -174,9 +199,11 @@ class ComicListTile extends StatelessWidget {
                           ],
                           if (comic.pageCount > 0)
                             Text(
-                              comic.isNovel
-                                  ? '${comic.pageCount}章'
-                                  : '${comic.pageCount}页',
+                              comic.isSeriesShelfItem
+                                  ? '${comic.seriesItemCount}册'
+                                  : comic.isNovel
+                                      ? '${comic.pageCount}章'
+                                      : '${comic.pageCount}页',
                               style: TextStyle(
                                 color: cs.onSurfaceVariant.withOpacity(0.5),
                                 fontSize: 11,
@@ -203,7 +230,7 @@ class ComicListTile extends StatelessWidget {
                   ),
                 ),
                 // 收藏按钮
-                if (onFavoriteToggle != null)
+                if (onFavoriteToggle != null && !comic.isSeriesShelfItem)
                   GestureDetector(
                     onTap: onFavoriteToggle,
                     child: Padding(

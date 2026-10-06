@@ -15,6 +15,7 @@ class ComicListParams {
   final String? type;
   final String? readingStatus;
   final bool? favoritesOnly;
+  final bool seriesView;
 
   const ComicListParams({
     this.page = 1,
@@ -27,6 +28,7 @@ class ComicListParams {
     this.type,
     this.readingStatus,
     this.favoritesOnly,
+    this.seriesView = true,
   });
 
   ComicListParams copyWith({
@@ -39,6 +41,7 @@ class ComicListParams {
     String? type,
     String? readingStatus,
     bool? favoritesOnly,
+    bool? seriesView,
     bool clearSearch = false,
     bool clearTag = false,
     bool clearCategory = false,
@@ -55,6 +58,7 @@ class ComicListParams {
       type: clearType ? null : (type ?? this.type),
       readingStatus: readingStatus ?? this.readingStatus,
       favoritesOnly: favoritesOnly ?? this.favoritesOnly,
+      seriesView: seriesView ?? this.seriesView,
     );
   }
 }
@@ -120,6 +124,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         type: p.type,
         readingStatus: p.readingStatus,
         favoritesOnly: p.favoritesOnly,
+        seriesView: p.seriesView,
       );
       final list = (data['comics'] as List<dynamic>?)
               ?.map((e) => Comic.fromJson(e))
@@ -156,6 +161,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         type: state.params.type,
         readingStatus: state.params.readingStatus,
         favoritesOnly: state.params.favoritesOnly,
+        seriesView: state.params.seriesView,
       );
       final newList = (data['comics'] as List<dynamic>?)
               ?.map((e) => Comic.fromJson(e))

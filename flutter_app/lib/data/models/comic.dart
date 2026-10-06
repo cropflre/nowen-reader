@@ -9,6 +9,8 @@ double? _asDouble(dynamic value) {
   return double.tryParse(value?.toString() ?? '');
 }
 
+const String seriesShelfIdPrefix = 'series-';
+
 /// 漫画/小说数据模型
 class Comic {
   final String id;
@@ -45,6 +47,19 @@ class Comic {
   final int comicCount;
   final List<Tag> tags;
   final List<Category> categories;
+
+  /// 服务端 seriesView=true 返回的目录作品是虚拟书架项，不是真实漫画。
+  bool get isSeriesShelfItem =>
+      id.startsWith(seriesShelfIdPrefix) && filename == '__series__.cbz';
+
+  /// 从虚拟书架 ID 中取得真实 ComicSeries ID。
+  String? get seriesId => isSeriesShelfItem
+      ? id.substring(seriesShelfIdPrefix.length)
+      : null;
+
+  /// 系列卡片展示的单册数量。
+  int get seriesItemCount =>
+      comicCount > 0 ? comicCount : (pageCount > 0 ? pageCount : 0);
 
   /// 阅读进度百分比 (0-100)，与 Web 的持久化进度规则一致。
   int get progress {
