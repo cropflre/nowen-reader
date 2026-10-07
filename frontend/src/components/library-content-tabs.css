@@ -1,8 +1,0 @@
-.library-content-tabs { display: flex; flex-shrink: 0; align-items: stretch; gap: 4px; height: 44px; overflow-x: auto; scrollbar-width: none; }
-.library-content-tabs::-webkit-scrollbar { display: none; }
-.library-content-tabs button { position: relative; flex-shrink: 0; min-width: 52px; padding: 0 10px; border-bottom: 2px solid transparent; color: var(--color-muted); font-size: 13px; font-weight: 500; line-height: 20px; letter-spacing: 0; cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
-.library-content-tabs button:hover { color: var(--color-foreground); }
-.library-content-tabs button[aria-selected="true"] { color: var(--color-accent); border-bottom-color: var(--color-accent); }
-.library-content-tabs button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -4px; border-radius: 4px; }
-@media (min-width: 1024px) { .library-content-tabs { height: 64px; } }
-@media (prefers-reduced-motion: reduce) { .library-content-tabs button { transition: none; } }

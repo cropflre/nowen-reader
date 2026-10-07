@@ -17,6 +17,7 @@ import {
   updateSortOrders,
   useCategories,
   invalidateComicsCache,
+  LIBRARY_ACCESS_CHANGED_EVENT,
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation, useLocale } from "@/lib/i18n";
@@ -25,7 +26,6 @@ import DuplicateDetector from "@/components/DuplicateDetector";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
 import UploadDialog from "@/components/UploadDialog";
 import { LibraryTabsBar } from "@/components/home/LibraryTabsBar";
-import LibraryContentTabs, { type LibraryContentType } from "@/components/LibraryContentTabs";
 
 import AddToGroupDialog from "@/components/AddToGroupDialog";
 import ComicContextMenu from "@/components/ComicContextMenu";
@@ -137,9 +137,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() =>
     readStringArrayFromLocalStorage("home:selectedLibraryIds")
   );
-  const [hiddenLibraryIds, setHiddenLibraryIds] = useState<string[]>(() =>
-    readStringArrayFromLocalStorage("home:hiddenLibraryIds")
-  );
   const [uploading, setUploading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
@@ -161,31 +158,48 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   }, [hasManageableLibrary]);
 
   useEffect(() => {
-    fetchAccessibleLibraries()
-      .then((libs) => {
-        setAccessibleLibraries(libs);
-        const validIds = new Set(libs.map((l) => l.id));
-        // 清理 selectedLibraryIds 中失效的 ID
-        setSelectedLibraryIds((prev) => {
-          if (prev.length === 0) return prev;
-          const cleaned = prev.filter((id) => validIds.has(id));
-          if (cleaned.length !== prev.length) {
-            localStorage.setItem("home:selectedLibraryIds", JSON.stringify(cleaned));
-          }
-          return cleaned.length !== prev.length ? cleaned : prev;
-        });
-        // 清理 hiddenLibraryIds 中失效的 ID
-        setHiddenLibraryIds((prev) => {
-          if (prev.length === 0) return prev;
-          const cleaned = prev.filter((id) => validIds.has(id));
-          if (cleaned.length !== prev.length) {
-            localStorage.setItem("home:hiddenLibraryIds", JSON.stringify(cleaned));
-          }
-          return cleaned.length !== prev.length ? cleaned : prev;
-        });
-      })
-      .catch(() => {});
-  }, []);
+    let disposed = false;
+    let requestVersion = 0;
+    const loadLibraries = () => {
+      const version = ++requestVersion;
+      fetchAccessibleLibraries()
+        .then((libs) => {
+          if (disposed || version !== requestVersion) return;
+          setAccessibleLibraries(libs);
+          const validIds = new Set(libs.map((l) => l.id));
+          // 清理 selectedLibraryIds 中失效的 ID
+          setSelectedLibraryIds((prev) => {
+            if (prev.length === 0) return prev;
+            const cleaned = prev.filter((id) => validIds.has(id));
+            if (cleaned.length !== prev.length) {
+              localStorage.setItem("home:selectedLibraryIds", JSON.stringify(cleaned));
+            }
+            return cleaned.length !== prev.length ? cleaned : prev;
+          });
+        })
+        .catch(() => {});
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") loadLibraries();
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === LIBRARY_ACCESS_CHANGED_EVENT) {
+        window.dispatchEvent(new Event(LIBRARY_ACCESS_CHANGED_EVENT));
+      }
+    };
+    loadLibraries();
+    window.addEventListener("focus", loadLibraries);
+    window.addEventListener(LIBRARY_ACCESS_CHANGED_EVENT, loadLibraries);
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      disposed = true;
+      window.removeEventListener("focus", loadLibraries);
+      window.removeEventListener(LIBRARY_ACCESS_CHANGED_EVENT, loadLibraries);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [user?.id]);
 
   const handleLibraryTabsChange = useCallback((ids: string[]) => {
     setSelectedLibraryIds(ids);
@@ -193,37 +207,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     setCurrentPage(1);
   }, []);
 
-  const handleToggleLibraryVisible = useCallback((id: string) => {
-    setHiddenLibraryIds((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : [...prev, id];
-      localStorage.setItem("home:hiddenLibraryIds", JSON.stringify(next));
-      // 如果隐藏了当前选中的书库，自动移除选择
-      if (next.includes(id)) {
-        setSelectedLibraryIds((prevSel) => {
-          const nextSel = prevSel.filter((x) => x !== id);
-          localStorage.setItem("home:selectedLibraryIds", JSON.stringify(nextSel));
-          return nextSel;
-        });
-      }
-      return next;
-    });
-  }, []);
-
-  const handleShowAllLibraries = useCallback(() => {
-    setHiddenLibraryIds([]);
-    localStorage.setItem("home:hiddenLibraryIds", "[]");
-  }, []);
-
-  const visibleLibraries = accessibleLibraries.filter((lib) => !hiddenLibraryIds.includes(lib.id));
-
   const [scanningLibrary, setScanningLibrary] = useState(false);
   const favoritesOnly = favoritesView;
-  const [contentType, setContentType] = useState<LibraryContentType>(() => {
-    const saved = sessionStorage.getItem("homeFilter:contentType");
-    return saved === "novel" || saved === "comic" ? saved : "all";
-  });
   const [sortBy, setSortBy] = useState<string>(() => {
     if (typeof window !== "undefined") {
       return sessionStorage.getItem("homeFilter:sortBy") || "title";
@@ -304,9 +289,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     sessionStorage.setItem("homeFilter:tags", JSON.stringify(selectedTags));
   }, [selectedTags]);
   useEffect(() => {
-    sessionStorage.setItem("homeFilter:contentType", contentType);
-  }, [contentType]);
-  useEffect(() => {
     sessionStorage.setItem("homeFilter:sortBy", sortBy);
   }, [sortBy]);
   useEffect(() => {
@@ -330,9 +312,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   useEffect(() => {
     localStorage.setItem("home:selectedLibraryIds", JSON.stringify(selectedLibraryIds));
   }, [selectedLibraryIds]);
-  useEffect(() => {
-    localStorage.setItem("home:hiddenLibraryIds", JSON.stringify(hiddenLibraryIds));
-  }, [hiddenLibraryIds]);
 
   // AI 语义搜索 handler
   const handleAiSearch = useCallback(async (query: string) => {
@@ -439,7 +418,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     search: debouncedSearch || undefined,
     tags: selectedTags.length > 0 ? selectedTags : undefined,
     favoritesOnly: favoritesOnly || undefined,
-    contentType: contentType === "all" ? undefined : contentType,
     sortBy: sortBy || undefined,
     sortOrder: sortOrder || undefined,
     category: selectedCategory || undefined,
@@ -477,14 +455,14 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
   // Reset to page 1 when filters change（使用受保护的 setter，在挂载保护期内不会重置页码）
   const filterKeyRef = useRef(
-    JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, contentType, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds])
+    JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds])
   );
   useEffect(() => {
-    const newKey = JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, contentType, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds]);
+    const newKey = JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds]);
     if (filterKeyRef.current === newKey) return; // 值没变，不重置
     filterKeyRef.current = newKey;
     safeSetCurrentPage(1);
-  }, [debouncedSearch, selectedTags, favoritesOnly, contentType, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, safeSetCurrentPage]);
+  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, safeSetCurrentPage]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -920,7 +898,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     () => sortedComics.some((comic) => seriesIdFromShelfId(comic.id) !== null),
     [sortedComics]
   );
-  const hasActiveFilters = !!searchQuery || contentType !== "all" || !!readingStatusFilter
+  const hasActiveFilters = !!searchQuery || !!readingStatusFilter
     || uncategorized || untagged || !!selectedCategory || selectedTags.length > 0 || selectedLibraryIds.length > 0;
   const libraryIsEmpty = apiTotal === 0 && !favoritesOnly && !hasActiveFilters;
 
@@ -937,15 +915,17 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
         onScanLibrary={handleScanLibrary}
         scanning={scanningLibrary}
         withinShell
-        secondaryNavigation={<LibraryContentTabs value={contentType} onChange={(type) => {
-          setContentType(type);
-          setCurrentPage(1);
-          sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
-        }} />}
+        secondaryNavigation={accessibleLibraries.length > 0 ? (
+          <LibraryTabsBar
+            libraries={accessibleLibraries}
+            selectedIds={selectedLibraryIds}
+            onChange={handleLibraryTabsChange}
+          />
+        ) : undefined}
       />
 
       {/* Main Content */}
-      <div id="library-content-panel" role="tabpanel" aria-labelledby={`library-content-tab-${contentType}`} className={`mx-auto w-full max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-14 pt-[100px] sm:pt-[108px] lg:pt-16 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
+      <div id="library-content-panel" role={accessibleLibraries.length > 0 ? "tabpanel" : undefined} aria-labelledby={accessibleLibraries.length > 0 ? (selectedLibraryIds.length ? selectedLibraryIds.map((id) => `library-tab-library-${id}`).join(" ") : "library-tab-all") : undefined} className={`mx-auto w-full max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-14 ${accessibleLibraries.length > 0 ? "pt-[100px] sm:pt-[108px] lg:pt-16" : "pt-14 sm:pt-16"} xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
       <main className="min-w-0 space-y-4 pt-6 sm:pt-8">
         <h1 className="sr-only">{favoritesOnly ? t.home.favorites : "书库"}</h1>
         {/* Data Source Indicator — 空库提示 */}
@@ -1008,23 +988,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
         {!loading && (
           <>
-            {/* 书库筛选 + 视图切换 */}
-            <div className="flex min-w-0 items-center justify-between gap-1 sm:gap-1.5 mb-4">
-              <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-1.5">
-                {/* Library Tabs — accessible library filter */}
-                {visibleLibraries.length > 0 && (
-                  <LibraryTabsBar
-                    libraries={visibleLibraries}
-                    selectedIds={selectedLibraryIds}
-                    onChange={handleLibraryTabsChange}
-                    hiddenIds={hiddenLibraryIds}
-                    onToggleVisible={handleToggleLibraryVisible}
-                    onShowAll={handleShowAllLibraries}
-                    allLibraries={accessibleLibraries}
-                  />
-                )}
-              </div>
-
+            {/* 视图切换 */}
+            <div className="flex justify-end mb-4">
               {/* View Toggle — 在此处始终可见 */}
               <div className="flex shrink-0 items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
                 <button
@@ -1225,7 +1190,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                   <button
                     onClick={() => {
                       setSearchQuery("");
-                      setContentType("all");
                       setCurrentPage(1);
                       sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
                       setReadingStatusFilter("");
@@ -1294,7 +1258,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
             <div className="mt-6 mb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-1">
               <div>
                 <h2 className="text-base font-semibold text-foreground text-balance">
-                  {favoritesOnly ? "我的收藏" : contentType === "all" ? "全部作品" : t.contentTab[contentType]}
+                  {favoritesOnly ? "我的收藏" : "全部作品"}
                 </h2>
                 <p className="text-[11px] text-muted mt-0.5">
                   {`${apiTotal} 项作品`}
@@ -1383,7 +1347,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                       onClick={() => {
                         setSearchQuery("");
                         setSelectedTags([]);
-                        setContentType("all");
                         setCurrentPage(1);
                         sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
                         setReadingStatusFilter("");

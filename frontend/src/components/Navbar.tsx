@@ -85,9 +85,9 @@ export default function Navbar({
           </span>
         </Link>
 
-        {secondaryNavigation && <div className="absolute left-0 right-0 top-14 sm:top-16 lg:static lg:w-auto min-w-0 border-t border-border/30 px-6 sm:px-8 lg:border-0 lg:px-0">{secondaryNavigation}</div>}
+        {secondaryNavigation && <div className="absolute left-0 right-0 top-14 sm:top-16 lg:static lg:flex-1 min-w-0 border-t border-border/30 px-6 sm:px-8 lg:border-0 lg:px-0">{secondaryNavigation}</div>}
 
-        <div className="min-w-0 flex-1" />
+        <div className={`min-w-0 flex-1 ${secondaryNavigation ? "lg:hidden" : ""}`} />
 
         {/* Right Actions */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">

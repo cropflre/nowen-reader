@@ -1,4 +1,5 @@
 import { apiPath } from "@/lib/base-path";
+import { notifyLibraryAccessChanged } from "@/hooks/useComicList";
 /**
  * 书库管理 API
  * 对应后端 /api/admin/libraries/*
@@ -127,6 +128,7 @@ export async function createLibrary(library: {
     body: JSON.stringify(library),
   });
   const data = await safeJson<{ library: Library }>(res);
+  notifyLibraryAccessChanged();
   return data.library;
 }
 
@@ -150,6 +152,7 @@ export async function updateLibrary(
     body: JSON.stringify(updates),
   });
   const data = await safeJson<{ library: Library }>(res);
+  notifyLibraryAccessChanged();
   return data.library;
 }
 
@@ -162,7 +165,9 @@ export async function deleteLibrary(id: string): Promise<LibraryDeleteResult> {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `HTTP ${res.status}`);
   }
-  return res.json() as Promise<LibraryDeleteResult>;
+  const data = await res.json() as LibraryDeleteResult;
+  notifyLibraryAccessChanged();
+  return data;
 }
 
 export interface LibraryAccess {

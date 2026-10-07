@@ -57,6 +57,11 @@ export function notifyLibraryAccessChanged() {
   invalidateComicsCache();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(LIBRARY_ACCESS_CHANGED_EVENT));
+    try {
+      window.localStorage.setItem(LIBRARY_ACCESS_CHANGED_EVENT, `${Date.now()}:${Math.random()}`);
+    } catch {
+      // 存储不可用时仍保留当前页面的即时刷新。
+    }
   }
 }
 
