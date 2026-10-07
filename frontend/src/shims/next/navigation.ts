@@ -10,7 +10,15 @@ export function useRouter() {
   return {
     push: (path: string) => navigate(path),
     replace: (path: string) => navigate(path, { replace: true }),
-    back: () => navigate(-1),
+    back: (fallback?: string) => {
+      // React Router's index counts in-app entries, unlike history.length,
+      // which may include a different site or a directly opened reader tab.
+      if (fallback && !(window.history.state?.idx > 0)) {
+        navigate(fallback, { replace: true });
+      } else {
+        navigate(-1);
+      }
+    },
     forward: () => navigate(1),
     refresh: () => window.location.reload(),
     prefetch: () => {},

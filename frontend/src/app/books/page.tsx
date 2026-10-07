@@ -298,7 +298,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     if (searchQuery) params.set("search", searchQuery);
     else params.delete("search");
     const query = params.toString();
-    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
   }, [searchQuery]);
   useEffect(() => {
     sessionStorage.setItem("homeFilter:tags", JSON.stringify(selectedTags));
@@ -372,11 +372,11 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   // 删除动画状态
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
 
-  // Explicit search URLs should not inherit an unrelated saved page.
+  // Explicit page/search URLs take precedence over the saved list page.
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.has("search")) {
+      if (params.has("page") || params.has("search")) {
         const page = Number(params.get("page") || 1);
         return Number.isInteger(page) && page > 0 ? page : 1;
       }
@@ -384,12 +384,6 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       const saved = sessionStorage.getItem(favoritesView ? "favoritesPage" : "homePage");
       if (saved) {
         const n = parseInt(saved, 10);
-        if (n > 0) return n;
-      }
-      // 其次从 URL 查询参数读取
-      const p = params.get("page");
-      if (p) {
-        const n = parseInt(p, 10);
         if (n > 0) return n;
       }
     }
@@ -420,13 +414,11 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       sessionStorage.setItem(favoritesView ? "favoritesPage" : "homePage", String(currentPage));
     } else {
       params.delete("page");
-      // 挂载保护期内不清除 sessionStorage（防止首次挂载时误清除已保存的页码）
-      if (!pageResetGuardRef.current) {
-        sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
-      }
+      sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
     }
-    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
-    window.history.replaceState(null, "", newUrl);
+    const query = params.toString();
+    const newUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", newUrl);
   }, [currentPage, favoritesView]);
 
   // Load pageSize from site settings

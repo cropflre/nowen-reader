@@ -113,7 +113,7 @@ export default function NovelReaderPage() {
   });
   const handleBack = useCallback(async () => {
     await finishReadingActivity();
-    router.back();
+    router.back("/books");
   }, [finishReadingActivity, router]);
 
   // Restore reading progress when comic detail loads
@@ -322,7 +322,7 @@ export default function NovelReaderPage() {
               {t.reader.retry || "重试"}
             </button>
             <button
-              onClick={() => router.push("/")}
+              onClick={() => { void handleBack(); }}
               className="rounded-xl bg-white/[0.06] border border-white/[0.08] px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/[0.10] transition-all duration-150 motion-button active:scale-[0.96]"
             >
               {t.reader.backToShelf}
@@ -342,7 +342,7 @@ export default function NovelReaderPage() {
           <div className="text-4xl mb-4">📖</div>
           <p className="text-lg font-medium">{t.reader.comicNotFound}</p>
           <button
-            onClick={() => router.push("/")}
+            onClick={() => { void handleBack(); }}
             className="mt-6 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/25 transition-all duration-150 motion-button active:scale-[0.96]"
           >
             {t.reader.backToShelf}

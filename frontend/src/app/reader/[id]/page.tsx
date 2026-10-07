@@ -193,6 +193,11 @@ export default function ReaderPage() {
     return () => { finishSessionRef.current = null; };
   }, [finishReadingActivity]);
 
+  const handleBack = useCallback(async () => {
+    await finishSessionRef.current?.();
+    router.back("/books");
+  }, [router]);
+
   // Restore reading progress when comic detail loads
   useEffect(() => {
     if (comicDetail && useRealData) {
@@ -326,12 +331,7 @@ export default function ReaderPage() {
         } else if (isFullscreen) {
           document.exitFullscreen?.();
         } else {
-          finishSessionRef.current?.();
-          if (seriesGroupId) {
-            router.replace(`/group/${seriesGroupId}`);
-          } else {
-            router.back();
-          }
+          void handleBack();
         }
       } else if (e.key === "f") {
         toggleFullscreen();
@@ -343,7 +343,7 @@ export default function ReaderPage() {
         setShowShortcutsHelp((v) => !v);
       }
     },
-    [direction, mode, effectiveMode, pages.length, isFullscreen, router, showInfoPanel, showOptionsPanel, currentPage, handleBoundaryReached, seriesGroupId, immersiveMode, showThumbnails, showShortcutsHelp]
+    [direction, mode, effectiveMode, pages.length, isFullscreen, showInfoPanel, showOptionsPanel, currentPage, handleBoundaryReached, handleBack, immersiveMode, showThumbnails, showShortcutsHelp]
   );
 
   useEffect(() => {
@@ -622,7 +622,7 @@ export default function ReaderPage() {
               {t.reader.retry || "重试"}
             </button>
             <button
-              onClick={() => router.push("/")}
+              onClick={() => { void handleBack(); }}
               className="rounded-xl bg-white/[0.06] border border-white/[0.08] px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/[0.10] transition-all duration-150 motion-button active:scale-[0.96]"
             >
               {t.reader.backToShelf}
@@ -642,7 +642,7 @@ export default function ReaderPage() {
           <div className="text-4xl mb-4">📖</div>
           <p className="text-lg font-medium">{ t.reader.comicNotFound}</p>
           <button
-            onClick={() => router.push("/")}
+            onClick={() => { void handleBack(); }}
             className="mt-6 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/25 transition-all duration-150 motion-button active:scale-[0.96]"
           >
             {t.reader.backToShelf}
@@ -801,16 +801,7 @@ export default function ReaderPage() {
         direction={direction}
         isFullscreen={isFullscreen}
         readerTheme={readerTheme}
-        onBack={async () => {
-          // 智能返回：优先回到合集详情页，否则回首页
-          // 使用 replace 避免 reader → group → back → reader 的历史栈循环
-          await finishSessionRef.current?.();
-          if (seriesGroupId) {
-            router.replace(`/group/${seriesGroupId}`);
-          } else {
-            router.push('/');
-          }
-        }}
+        onBack={() => { void handleBack(); }}
         onPageChange={handlePageChange}
         onModeChange={handleModeChange}
         onDirectionChange={handleDirectionChange}
