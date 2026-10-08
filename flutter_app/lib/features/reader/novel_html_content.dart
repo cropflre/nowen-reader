@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
@@ -77,20 +76,7 @@ Future<Uint8List> loadNovelImageBytes(String source) async {
   if (uri.scheme != 'http' && uri.scheme != 'https') {
     throw const FormatException('Unsupported image URL');
   }
-  final headers = await getCookieHeaders(source);
-  final dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 30),
-  ));
-  try {
-    final response = await dio.get<List<int>>(
-      source,
-      options: Options(responseType: ResponseType.bytes, headers: headers),
-    );
-    return Uint8List.fromList(response.data!);
-  } finally {
-    dio.close();
-  }
+  return readerImageLoader.load(source);
 }
 
 /// 图片请求按各自 URL 读取 Cookie，兼容受保护资源和 SVG 图片文件。

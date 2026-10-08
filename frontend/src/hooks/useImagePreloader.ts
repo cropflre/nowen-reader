@@ -22,33 +22,25 @@ function getEffectiveRange(range: number): number {
   return range;
 }
 
-/**
- * 触发后端页面预热（适用于网盘等高延迟存储场景）
- */
-function triggerWarmup(comicId: string, startPage: number, count: number) {
-  fetch(apiPath(`/api/comics/${comicId}/warmup`), {
+function triggerWarmup(comicId: string, sessionId: string, startPage: number, count: number) {
+  return fetch(apiPath(`/api/comics/${comicId}/warmup`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ startPage, count }),
-  }).catch(() => {
-    // 静默失败，不影响阅读体验
+    body: JSON.stringify({ sessionId, startPage, count }),
+  }).then(response => {
+    if (!response.ok) throw new Error("Warmup failed");
   });
 }
 
-/**
- * 通知后端阅读结束，释放阅读锁
- */
-function triggerWarmupDone(comicId: string) {
-  // 使用 sendBeacon 确保页面关闭时也能发出请求
-  if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-    navigator.sendBeacon(apiPath(`/api/comics/${comicId}/warmup-done`), JSON.stringify({}));
-  } else {
-    fetch(apiPath(`/api/comics/${comicId}/warmup-done`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    }).catch(() => {});
-  }
+function triggerWarmupDone(comicId: string, sessionId: string) {
+  const body = JSON.stringify({ sessionId });
+  if (navigator.sendBeacon?.(apiPath(`/api/comics/${comicId}/warmup-done`), new Blob([body], { type: "application/json" }))) return;
+  fetch(apiPath(`/api/comics/${comicId}/warmup-done`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {});
 }
 
 /**
@@ -69,23 +61,65 @@ export function useImagePreloader(
   comicId?: string
 ) {
   const preloadedRef = useRef(new Set<string>());
-  const warmupRef = useRef(new Set<number>()); // 已触发预热的页面范围起点
-  const comicIdRef = useRef(comicId);
+  const sessionRef = useRef<string | null>(null);
+  const bucketRef = useRef<number | null>(null);
+  const pageRef = useRef(currentPage);
+  const totalRef = useRef(pages.length);
+  pageRef.current = currentPage;
+  totalRef.current = pages.length;
+  const hasPages = pages.length > 0;
 
-  // 首次加载时触发后端预热（预热前 15 页）
+  const warmAhead = useCallback(() => {
+    const session = sessionRef.current;
+    const page = pageRef.current;
+    const bucket = Math.floor(page / 4);
+    if (!comicId || !session || bucketRef.current === bucket || page + 1 >= totalRef.current) return;
+    bucketRef.current = bucket;
+    triggerWarmup(comicId, session, page + 1, Math.min(8, totalRef.current - page - 1))
+      .catch(() => {
+        if (sessionRef.current === session && bucketRef.current === bucket) bucketRef.current = null;
+      });
+  }, [comicId]);
+
   useEffect(() => {
-    if (!comicId || pages.length === 0) return;
-    comicIdRef.current = comicId;
-    triggerWarmup(comicId, 0, 15);
-    warmupRef.current.add(0);
-
-    // 页面卸载时释放阅读锁
-    return () => {
-      if (comicIdRef.current) {
-        triggerWarmupDone(comicIdRef.current);
-      }
+    if (!comicId || !hasPages) return;
+    preloadedRef.current.clear();
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const stop = () => {
+      clearInterval(heartbeat);
+      const session = sessionRef.current;
+      sessionRef.current = null;
+      bucketRef.current = null;
+      if (session) triggerWarmupDone(comicId, session);
     };
-  }, [comicId, pages.length]);
+    const start = () => {
+      if (document.visibilityState === "hidden" || sessionRef.current) return;
+      const session = crypto.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      sessionRef.current = session;
+      const renew = () => {
+        triggerWarmup(comicId, session, pageRef.current, -1).catch(() => {});
+      };
+      renew();
+      heartbeat = setInterval(renew, 30_000);
+      warmAhead();
+    };
+    const visibilityChanged = () => {
+      if (document.visibilityState === "hidden") stop();
+      else start();
+    };
+    start();
+    document.addEventListener("visibilitychange", visibilityChanged);
+    window.addEventListener("pagehide", stop);
+    window.addEventListener("pageshow", start);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", visibilityChanged);
+      window.removeEventListener("pagehide", stop);
+      window.removeEventListener("pageshow", start);
+    };
+  }, [comicId, hasPages, warmAhead]);
+
+  useEffect(() => { warmAhead(); }, [currentPage, warmAhead]);
 
   useEffect(() => {
     if (pages.length === 0) return;
@@ -103,23 +137,5 @@ export function useImagePreloader(
       const img = new Image();
       img.src = url;
     }
-
-    // 当用户翻到预加载范围的后半段时，触发后端预热下一批页面
-    if (comicId) {
-      const warmupThreshold = currentPage + Math.floor(effectiveRange / 2);
-      const warmupStart = currentPage + effectiveRange;
-      // 每 10 页触发一次预热，避免频繁请求
-      const warmupBucket = Math.floor(warmupStart / 10) * 10;
-      if (!warmupRef.current.has(warmupBucket) && warmupStart < pages.length) {
-        warmupRef.current.add(warmupBucket);
-        triggerWarmup(comicId, warmupStart, 15);
-      }
-    }
-  }, [pages, currentPage, range, comicId]);
-
-  // Reset when pages change (e.g. different comic)
-  useEffect(() => {
-    preloadedRef.current.clear();
-    warmupRef.current.clear();
-  }, [pages]);
+  }, [pages, currentPage, range]);
 }

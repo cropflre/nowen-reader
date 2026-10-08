@@ -216,7 +216,7 @@ func (h *ImageHandler) GetPageImage(c *gin.Context) {
 	if err := checkComicAccess(c, id); err != nil {
 		return
 	}
-	result, err := service.GetPageImage(id, pageIndex)
+	result, err := service.GetPageFile(id, pageIndex)
 	if err != nil {
 		errMsg := err.Error()
 		log.Printf("[page] GetPageImage failed for %s page %d: %v", id, pageIndex, err)
@@ -235,21 +235,16 @@ func (h *ImageHandler) GetPageImage(c *gin.Context) {
 		return
 	}
 
-	// Generate ETag from content MD5
-	etag := `"` + archive.ContentMD5(result.Data) + `"`
-
-	// Check If-None-Match for 304
-	if c.GetHeader("If-None-Match") == etag {
-		c.Header("ETag", etag)
-		c.Status(http.StatusNotModified)
+	file, err := os.Open(result.Path)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Page cache unavailable"})
 		return
 	}
-
+	defer file.Close()
 	c.Header("Content-Type", result.MimeType)
-	c.Header("Cache-Control", "public, max-age=31536000, immutable")
-	c.Header("Content-Length", strconv.Itoa(len(result.Data)))
-	c.Header("ETag", etag)
-	c.Data(http.StatusOK, result.MimeType, result.Data)
+	c.Header("Cache-Control", "private, no-cache")
+	c.Header("ETag", result.ETag)
+	http.ServeContent(c.Writer, c.Request, filepath.Base(result.Path), result.ModTime, file)
 }
 
 // ============================================================
@@ -813,33 +808,38 @@ func (h *ImageHandler) WarmupPages(c *gin.Context) {
 	}
 
 	var body struct {
-		StartPage int `json:"startPage"` // 起始页码（0-based）
-		Count     int `json:"count"`     // 预热页数
+		StartPage int    `json:"startPage"` // 起始页码（0-based）
+		Count     int    `json:"count"`     // 预热页数; -1 renews only the reading lease
+		SessionID string `json:"sessionId"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
-		// 默认值：从第 0 页开始预热 10 页
-		body.StartPage = 0
-		body.Count = 10
+	if err := c.ShouldBindJSON(&body); err != nil && err != io.EOF {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid warmup request"})
+		return
 	}
-	if body.Count <= 0 {
-		body.Count = 10
+	if body.StartPage < 0 || body.Count < -1 || len(body.SessionID) > 128 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid warmup request"})
+		return
+	}
+	if body.Count == 0 {
+		body.Count = 8
 	}
 	if body.Count > 30 {
 		body.Count = 30 // 限制最大预热页数
 	}
 
-	// 标记开始阅读，暂停后台扫描
-	service.AcquireReadingLock()
-
-	// 异步预热（不阻塞响应）
-	service.WarmupPages(id, body.StartPage, body.Count)
+	active := service.TouchReadingSession(getUserID(c), id, body.SessionID)
+	if active && body.Count > 0 {
+		service.WarmupPages(id, body.StartPage, body.Count)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"comicId":   id,
-		"startPage": body.StartPage,
-		"count":     body.Count,
-		"message":   "Warmup started in background",
+		"success":           true,
+		"comicId":           id,
+		"startPage":         body.StartPage,
+		"count":             body.Count,
+		"sessionActive":     active,
+		"sessionTtlSeconds": int(service.ReadingSessionTTL.Seconds()),
+		"message":           "Warmup started in background",
 	})
 }
 
@@ -855,7 +855,16 @@ func (h *ImageHandler) WarmupDone(c *gin.Context) {
 		return
 	}
 
-	service.ReleaseReadingLock()
+	var body struct {
+		SessionID string `json:"sessionId"`
+	}
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&body); err != nil || len(body.SessionID) > 128 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reading session"})
+			return
+		}
+	}
+	service.EndReadingSession(getUserID(c), id, body.SessionID)
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 

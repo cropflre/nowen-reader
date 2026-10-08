@@ -2,11 +2,101 @@ package archive
 
 import (
 	"archive/zip"
+	"compress/flate"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
+
+func TestEpubReaderLoadsOnlyRequestedChapters(t *testing.T) {
+	fp := writeTestEpub(t, "lazy.epub", map[string]string{
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf":      testOPF([]string{"one.xhtml", "two.xhtml"}, true),
+		"OEBPS/toc.ncx": testNCX(
+			`<navPoint><navLabel><text>One</text></navLabel><content src="one.xhtml"/></navPoint>`,
+			`<navPoint><navLabel><text>Two</text></navLabel><content src="two.xhtml"/></navPoint>`,
+		),
+		"OEBPS/one.xhtml": testXHTML("One", "first body"),
+		"OEBPS/two.xhtml": testXHTML("Two", "second body"),
+	})
+	r, err := newEpubReader(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	// Count actual ZIP decompressions after metadata/TOC initialization.
+	reads := 0
+	r.rc.RegisterDecompressor(zip.Deflate, func(reader io.Reader) io.ReadCloser {
+		reads++
+		return flate.NewReader(reader)
+	})
+	if got := GetEpubChapterTitles(r); len(got) != 2 || got[1] != "Two" {
+		t.Fatalf("TOC = %v", got)
+	}
+	if reads != 0 {
+		t.Fatalf("TOC decompressed %d chapter bodies", reads)
+	}
+	for i := 0; i < 2; i++ {
+		data, err := r.ExtractEntry("chapter-0001.html")
+		if err != nil || !strings.Contains(string(data), "first body") {
+			t.Fatalf("first chapter = %s, %v", data, err)
+		}
+	}
+	text, err := r.ExtractEntryText("chapter-0001.html")
+	if err != nil || !strings.Contains(string(text), "first body") || reads != 1 {
+		t.Fatalf("text = %s, err = %v, ZIP reads = %d; want one read", text, err, reads)
+	}
+	if _, err := r.ExtractEntry("chapter-0002.html"); err != nil || reads != 2 {
+		t.Fatalf("second chapter: %v, ZIP reads = %d; want two", err, reads)
+	}
+}
+
+func TestEpubReaderConcurrentChaptersAndImages(t *testing.T) {
+	fp := writeTestEpub(t, "concurrent.epub", map[string]string{
+		"META-INF/container.xml": testContainerXML,
+		"OEBPS/content.opf":      testOPF([]string{"one.xhtml", "two.xhtml"}, true),
+		"OEBPS/toc.ncx": testNCX(
+			`<navPoint><navLabel><text>One</text></navLabel><content src="one.xhtml"/></navPoint>`,
+			`<navPoint><navLabel><text>Two</text></navLabel><content src="two.xhtml"/></navPoint>`,
+		),
+		"OEBPS/one.xhtml":   `<html><head><link rel="stylesheet" href="style.css"/></head><body><p>first body</p></body></html>`,
+		"OEBPS/two.xhtml":   `<html><head><link rel="stylesheet" href="style.css"/></head><body><p>second body</p></body></html>`,
+		"OEBPS/style.css":   `body { background-image: url('picture.png'); }`,
+		"OEBPS/picture.png": "image bytes",
+	})
+	r, err := newEpubReader(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	var wg sync.WaitGroup
+	errors := make(chan error, 30)
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			r.SetComicID("book")
+			data, err := r.ExtractEntry(fmt.Sprintf("chapter-%04d.html", i%2+1))
+			if err != nil || !strings.Contains(string(data), "/api/comics/book/epub-resource/OEBPS/picture.png") {
+				errors <- fmt.Errorf("chapter = %s, err = %v", data, err)
+				return
+			}
+			images := ListEpubEmbeddedImages(r)
+			if len(images) != 1 || images[0] != "OEBPS/picture.png" {
+				errors <- fmt.Errorf("images = %v", images)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errors)
+	for err := range errors {
+		t.Error(err)
+	}
+}
 
 func TestEpubReaderPrefersNCXOverSpine(t *testing.T) {
 	fp := writeTestEpub(t, "converted-book.zip", map[string]string{

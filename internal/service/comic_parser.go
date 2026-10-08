@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +19,9 @@ import (
 // ============================================================
 
 type cachedReader struct {
-	reader   archive.Reader
-	lastUsed time.Time
+	reader    archive.Reader
+	lastUsed  time.Time
+	signature string
 }
 
 var (
@@ -58,12 +58,21 @@ func cleanExpiredReaders() {
 // getPooledReader returns a cached or new archive reader.
 // Caller must NOT call Close() on the returned reader.
 func getPooledReader(fp string) (archive.Reader, error) {
+	info, err := os.Stat(fp)
+	if err != nil {
+		return nil, err
+	}
+	signature := fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
 	// Fast path: check if reader is already cached
 	readerPoolMu.Lock()
-	if cached, ok := readerPool[fp]; ok {
+	if cached, ok := readerPool[fp]; ok && cached.signature == signature {
 		cached.lastUsed = time.Now()
 		readerPoolMu.Unlock()
 		return cached.reader, nil
+	}
+	if stale := readerPool[fp]; stale != nil {
+		stale.reader.Close()
+		delete(readerPool, fp)
 	}
 	readerPoolMu.Unlock()
 
@@ -79,7 +88,7 @@ func getPooledReader(fp string) (archive.Reader, error) {
 	defer readerPoolMu.Unlock()
 
 	// Double-check: another goroutine may have created the same reader
-	if cached, ok := readerPool[fp]; ok {
+	if cached, ok := readerPool[fp]; ok && cached.signature == signature {
 		// Someone else created it; close ours and use theirs
 		reader.Close()
 		cached.lastUsed = time.Now()
@@ -102,7 +111,7 @@ func getPooledReader(fp string) (archive.Reader, error) {
 		}
 	}
 
-	readerPool[fp] = &cachedReader{reader: reader, lastUsed: time.Now()}
+	readerPool[fp] = &cachedReader{reader: reader, lastUsed: time.Now(), signature: signature}
 	return reader, nil
 }
 
@@ -144,6 +153,7 @@ func invalidatePageListCache() {
 
 // InvalidateAllCaches clears all in-memory caches.
 func InvalidateAllCaches() {
+	invalidatePageIndexes()
 	InvalidateReaderPool()
 	invalidatePageListCache()
 }
@@ -221,7 +231,7 @@ func GetComicPagesEx(comicID string) (*PagesResult, error) {
 	// Check cache for entries — 使用文件大小和修改时间作为缓存键，避免阅读进度更新导致缓存失效
 	cacheKey := comicID
 	if stat, statErr := os.Stat(fp); statErr == nil {
-		cacheKey = fmt.Sprintf("%s:%d:%d", comicID, stat.Size(), stat.ModTime().Unix())
+		cacheKey = fmt.Sprintf("%s:%d:%d", comicID, stat.Size(), stat.ModTime().UnixNano())
 	}
 	pageListCacheMu.RLock()
 	if cached, ok := pageListCache[cacheKey]; ok && time.Since(cached.ts) < pageListCacheTTL && cached.isNovel == isNovel {
@@ -502,193 +512,24 @@ type PageImage struct {
 // GetPageImage extracts a single page from the archive.
 // Uses disk cache to avoid re-extracting.
 func GetPageImage(comicID string, pageIndex int) (*PageImage, error) {
-	fp, _, err := FindComicFilePath(comicID)
+	file, err := GetPageFile(comicID, pageIndex)
 	if err != nil {
 		return nil, err
 	}
-
-	archiveType := archive.DetectType(fp)
-
-	// PDF: use special rendering path
-	if archiveType == archive.TypePdf {
-		return getPdfPageImage(comicID, fp, pageIndex)
+	data, err := os.ReadFile(file.Path)
+	if err != nil {
+		return nil, err
 	}
-
-	return getArchivePageImage(comicID, fp, pageIndex)
+	return &PageImage{Data: data, MimeType: file.MimeType}, nil
 }
 
-// GetPageImageData extracts the raw image bytes for a page (used for cover selection).
+// GetPageImageData extracts raw image bytes for cover selection and converters.
 func GetPageImageData(comicID string, pageIndex int) ([]byte, error) {
 	img, err := GetPageImage(comicID, pageIndex)
 	if err != nil {
 		return nil, err
 	}
 	return img.Data, nil
-}
-
-// getArchivePageImage extracts a page from a non-PDF archive.
-func getArchivePageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
-	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
-	archiveType := archive.DetectType(fp)
-	isImageFolder := archiveType == archive.TypeImageFolder
-
-	// 图片文件夹漫画不使用磁盘缓存（图片本身就在磁盘上，无需复制）
-	if !isImageFolder {
-		// Check disk cache
-		if entries, err := os.ReadDir(cacheDir); err == nil {
-			prefix := fmt.Sprintf("%d.", pageIndex)
-			for _, e := range entries {
-				if strings.HasPrefix(e.Name(), prefix) {
-					data, err := os.ReadFile(filepath.Join(cacheDir, e.Name()))
-					if err == nil {
-						return &PageImage{
-							Data:     data,
-							MimeType: archive.GetMimeType(e.Name()),
-						}, nil
-					}
-				}
-			}
-		}
-	}
-
-	// Extract from archive
-	reader, err := getPooledReader(fp)
-	if err != nil {
-		return nil, err
-	}
-
-	// 优先从 pageListCache 获取页面列表，避免重复计算
-	var images []string
-	cacheKey := comicID
-	if stat, statErr := os.Stat(fp); statErr == nil {
-		cacheKey = fmt.Sprintf("%s:%d:%d", comicID, stat.Size(), stat.ModTime().Unix())
-	}
-	pageListCacheMu.RLock()
-	if cached, ok := pageListCache[cacheKey]; ok && time.Since(cached.ts) < pageListCacheTTL {
-		images = cached.entries
-	}
-	pageListCacheMu.RUnlock()
-
-	// 如果缓存未命中，重新计算
-	if images == nil {
-		if archive.IsEbookType(archiveType) {
-			switch archiveType {
-			case archive.TypeMobi, archive.TypeAzw3:
-				images = archive.ListMobiEmbeddedImages(reader)
-			default:
-				images = archive.ListEpubEmbeddedImages(reader)
-			}
-		} else {
-			images = archive.GetImageEntries(reader)
-		}
-	}
-
-	if pageIndex < 0 || pageIndex >= len(images) {
-		return nil, fmt.Errorf("page index %d out of range (0-%d)", pageIndex, len(images)-1)
-	}
-
-	entryName := images[pageIndex]
-
-	var data []byte
-	var mimeType string
-
-	if archive.IsEbookType(archiveType) {
-		switch archiveType {
-		case archive.TypeMobi, archive.TypeAzw3:
-			imgData, imgMime, err := archive.GetMobiEmbeddedImageData(reader, pageIndex)
-			if err != nil {
-				return nil, fmt.Errorf("extract page %d: %w", pageIndex, err)
-			}
-			data = imgData
-			mimeType = imgMime
-		default:
-			imgData, imgMime, err := archive.GetEpubEmbeddedImageData(reader, entryName)
-			if err != nil {
-				return nil, fmt.Errorf("extract page %d: %w", pageIndex, err)
-			}
-			data = imgData
-			mimeType = imgMime
-		}
-	} else {
-		data, err = reader.ExtractEntry(entryName)
-		if err != nil {
-			return nil, fmt.Errorf("extract page %d: %w", pageIndex, err)
-		}
-		mimeType = archive.GetMimeType(entryName)
-	}
-
-	ext := strings.ToLower(filepath.Ext(entryName))
-	if ext == "" && archive.IsEbookType(archiveType) {
-		ext = ".jpg" // MOBI/AZW3 entries have no file extension; use .jpg as default
-	}
-
-	// Write to disk cache (fire-and-forget) — 图片文件夹漫画跳过缓存
-	if !isImageFolder {
-		go func() {
-			if err := os.MkdirAll(cacheDir, 0755); err != nil {
-				return
-			}
-			cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIndex, ext))
-			tmpPath := cachePath + fmt.Sprintf(".%d.tmp", time.Now().UnixNano())
-			defer os.Remove(tmpPath) // Ensures cleanup regardless of panics or early exits
-			if err := os.WriteFile(tmpPath, data, 0644); err == nil {
-				_ = os.Rename(tmpPath, cachePath)
-			}
-		}()
-	}
-
-	return &PageImage{Data: data, MimeType: mimeType}, nil
-}
-
-// getPdfPageImage renders a PDF page dynamically to JPEG or PNG.
-func getPdfPageImage(comicID, fp string, pageIndex int) (*PageImage, error) {
-	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
-
-	// Check disk cache for JPEG first
-	jpgPath := filepath.Join(cacheDir, fmt.Sprintf("%d.jpg", pageIndex))
-	if data, err := os.ReadFile(jpgPath); err == nil {
-		return &PageImage{Data: data, MimeType: "image/jpeg"}, nil
-	}
-
-	// Check disk cache for PNG fallback
-	pngPath := filepath.Join(cacheDir, fmt.Sprintf("%d.png", pageIndex))
-	if data, err := os.ReadFile(pngPath); err == nil {
-		return &PageImage{Data: data, MimeType: "image/png"}, nil
-	}
-
-	// 动态计算用于阅读的最佳 DPI
-	targetDPI := 200 // 默认值
-	if w, _, err := archive.GetPdfPageSize(fp, pageIndex); err == nil && w > 0 {
-		// 目标宽度定为 1920 像素，确保在现代高分屏上足够清晰
-		targetDPI = archive.CalcReadingDPI(w, 1920)
-	}
-
-	// Render from PDF (returns data, ext, error)
-	data, ext, err := archive.RenderPdfPage(fp, pageIndex, targetDPI)
-	if err != nil {
-		return nil, fmt.Errorf("render PDF page %d: %w", pageIndex, err)
-	}
-
-	mimeType := "image/jpeg"
-	if ext == ".png" {
-		mimeType = "image/png"
-	}
-
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIndex, ext))
-
-	// Cache to disk (fire-and-forget)
-	go func() {
-		if err := os.MkdirAll(cacheDir, 0755); err != nil {
-			return
-		}
-		tmpPath := cachePath + fmt.Sprintf(".%d.tmp", time.Now().UnixNano())
-		defer os.Remove(tmpPath) // Ensures cleanup regardless of panics or early exits
-		if err := os.WriteFile(tmpPath, data, 0644); err == nil {
-			_ = os.Rename(tmpPath, cachePath)
-		}
-	}()
-
-	return &PageImage{Data: data, MimeType: mimeType}, nil
 }
 
 // ============================================================
@@ -717,322 +558,6 @@ func GetComicThumbnail(comicID string) ([]byte, string, float64, error) {
 		return nil, "", 0, err
 	}
 	return archive.GenerateThumbnail(fp, comicID)
-}
-
-// ============================================================
-// Warmup: 批量预提取页面到磁盘缓存（方案 B）
-// ============================================================
-
-// WarmupPages 后台异步预提取指定漫画的 N 页到磁盘缓存。
-// startPage: 起始页码（0-based），count: 预提取页数。
-// 该函数立即返回，实际解压在后台 goroutine 中执行。
-func WarmupPages(comicID string, startPage, count int) {
-	go func() {
-		fp, _, err := FindComicFilePath(comicID)
-		if err != nil {
-			return
-		}
-
-		archiveType := archive.DetectType(fp)
-		// 仅对漫画格式预热（小说和图片文件夹不需要）
-		if archive.IsNovelType(archiveType) || archiveType == archive.TypeImageFolder {
-			return
-		}
-
-		// PDF 使用专用预热逻辑
-		if archiveType == archive.TypePdf {
-			warmupPdf(comicID, fp, startPage, count)
-			return
-		}
-
-		reader, err := getPooledReader(fp)
-		if err != nil {
-			return
-		}
-
-		var images []string
-		if archive.IsEbookType(archiveType) {
-			switch archiveType {
-			case archive.TypeMobi, archive.TypeAzw3:
-				images = archive.ListMobiEmbeddedImages(reader)
-			default:
-				images = archive.ListEpubEmbeddedImages(reader)
-			}
-		} else {
-			images = archive.GetImageEntries(reader)
-		}
-		if len(images) == 0 {
-			return
-		}
-
-		cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
-
-		// 计算需要预热的页面范围
-		end := startPage + count
-		if end > len(images) {
-			end = len(images)
-		}
-		if startPage < 0 {
-			startPage = 0
-		}
-
-		// E-book archives in comic mode: use dedicated warmup (different extraction path)
-		isEbookComic := archive.IsEbookType(archiveType)
-
-		if isEbookComic {
-			warmupEbookComic(comicID, archiveType, reader, images, startPage, end, cacheDir)
-		} else if archiveType == archive.TypeRar {
-			// 方案 C: RAR 批量解压优化
-			warmupRarBatch(fp, comicID, images, startPage, end, cacheDir)
-		} else {
-			// ZIP/7z 等格式逐页解压（支持随机访问，性能好）
-			warmupNormal(reader, comicID, images, startPage, end, cacheDir)
-		}
-	}()
-}
-
-// warmupPdf 对 PDF 文件进行预渲染缓存。
-// 使用并行渲染，最多 2 个并发（PDF 渲染较重，避免 OOM）。
-func warmupPdf(comicID, fp string, startPage, count int) {
-	pageCount, err := archive.GetPdfPageCount(fp)
-	if err != nil {
-		return
-	}
-
-	cacheDir := filepath.Join(config.GetPagesCacheDir(), comicID)
-
-	// 计算需要预热的页面范围
-	end := startPage + count
-	if end > pageCount {
-		end = pageCount
-	}
-	if startPage < 0 {
-		startPage = 0
-	}
-
-	// 收集需要预热的页面
-	cacheSet := buildCacheSet(cacheDir)
-	var pagesToWarm []int
-	for i := startPage; i < end; i++ {
-		if !cacheSetHas(cacheSet, i) {
-			pagesToWarm = append(pagesToWarm, i)
-		}
-	}
-
-	if len(pagesToWarm) == 0 {
-		return
-	}
-
-	// 确保缓存目录存在
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return
-	}
-
-	// 并行预热，最多 2 个并发（PDF 渲染较重）
-	warmed := 0
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 2)
-
-	for _, i := range pagesToWarm {
-		wg.Add(1)
-		go func(pageIdx int) {
-			defer wg.Done()
-			sem <- struct{}{}        // 获取信号量
-			defer func() { <-sem }() // 释放信号量
-
-			data, ext, err := archive.RenderPdfPage(fp, pageIdx)
-			if err != nil {
-				return
-			}
-
-			cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIdx, ext))
-			if err := os.WriteFile(cachePath, data, 0644); err == nil {
-				mu.Lock()
-				warmed++
-				mu.Unlock()
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	if warmed > 0 {
-		log.Printf("[warmup] PDF pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, startPage, end-1)
-	}
-}
-
-// warmupEbookComic 对电子书漫画格式（EPUB/MOBI/AZW3）逐页预热缓存。
-// 与普通漫画不同，电子书漫画使用专用的图片提取接口（按索引而非按路径）。
-func warmupEbookComic(comicID string, archiveType archive.ArchiveType, reader archive.Reader, images []string, start, end int, cacheDir string) {
-	warmed := 0
-	cacheSet := buildCacheSet(cacheDir)
-	for i := start; i < end; i++ {
-		if cacheSetHas(cacheSet, i) {
-			continue
-		}
-
-		var data []byte
-		var mimeType string
-		var err error
-
-		switch archiveType {
-		case archive.TypeMobi, archive.TypeAzw3:
-			data, mimeType, err = archive.GetMobiEmbeddedImageData(reader, i)
-		default: // EPUB
-			data, mimeType, err = archive.GetEpubEmbeddedImageData(reader, images[i])
-		}
-
-		if err != nil {
-			log.Printf("[warmup] Failed to extract page %d for %s: %v", i, comicID, err)
-			continue
-		}
-
-		ext := ".jpg"
-		switch mimeType {
-		case "image/png":
-			ext = ".png"
-		case "image/gif":
-			ext = ".gif"
-		case "image/webp":
-			ext = ".webp"
-		}
-
-		if err := os.MkdirAll(cacheDir, 0755); err != nil {
-			return
-		}
-		cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", i, ext))
-		_ = os.WriteFile(cachePath, data, 0644)
-		warmed++
-	}
-	if warmed > 0 {
-		log.Printf("[warmup] Ebook pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, start, end-1)
-	}
-}
-
-// warmupNormal 对 ZIP/7z 等支持随机访问的格式并行预热。
-func warmupNormal(reader archive.Reader, comicID string, images []string, start, end int, cacheDir string) {
-	cacheSet := buildCacheSet(cacheDir)
-
-	// 收集需要预热的页面
-	var pagesToWarm []int
-	for i := start; i < end; i++ {
-		if !cacheSetHas(cacheSet, i) {
-			pagesToWarm = append(pagesToWarm, i)
-		}
-	}
-
-	if len(pagesToWarm) == 0 {
-		return
-	}
-
-	// 确保缓存目录存在
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return
-	}
-
-	// 并行预热，最多 4 个并发
-	warmed := 0
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4)
-
-	for _, i := range pagesToWarm {
-		wg.Add(1)
-		go func(pageIdx int) {
-			defer wg.Done()
-			sem <- struct{}{}        // 获取信号量
-			defer func() { <-sem }() // 释放信号量
-
-			entryName := images[pageIdx]
-			data, err := reader.ExtractEntry(entryName)
-			if err != nil {
-				return
-			}
-
-			ext := strings.ToLower(filepath.Ext(entryName))
-			cachePath := filepath.Join(cacheDir, fmt.Sprintf("%d%s", pageIdx, ext))
-			if err := os.WriteFile(cachePath, data, 0644); err == nil {
-				mu.Lock()
-				warmed++
-				mu.Unlock()
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	if warmed > 0 {
-		log.Printf("[warmup] Pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, start, end-1)
-	}
-}
-
-// warmupRarBatch 对 RAR 格式使用流式批量解压，避免每页都从头扫描。
-func warmupRarBatch(fp, comicID string, images []string, start, end int, cacheDir string) {
-	// 构建需要提取的 entry 名称集合
-	needExtract := make(map[string]int) // entryName -> pageIndex
-	cacheSet := buildCacheSet(cacheDir)
-	for i := start; i < end; i++ {
-		if !cacheSetHas(cacheSet, i) {
-			needExtract[images[i]] = i
-		}
-	}
-	if len(needExtract) == 0 {
-		return
-	}
-
-	// 确保缓存目录存在
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return
-	}
-
-	// 一次性流式扫描 RAR，遇到需要的 entry 就提取
-	warmed, err := archive.BatchExtractRarEntries(fp, needExtract, cacheDir)
-	if err != nil {
-		log.Printf("[warmup] RAR batch extract failed for %s: %v", comicID, err)
-		return
-	}
-	if warmed > 0 {
-		log.Printf("[warmup] RAR batch pre-cached %d pages for %s (pages %d-%d)", warmed, comicID, start, end-1)
-	}
-}
-
-// pageExistsInCache 检查某页是否已在磁盘缓存中。
-func pageExistsInCache(cacheDir string, pageIndex int) bool {
-	entries, err := os.ReadDir(cacheDir)
-	if err != nil {
-		return false
-	}
-	prefix := fmt.Sprintf("%d.", pageIndex)
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-// buildCacheSet reads the cache directory once and returns a set of cached page prefixes.
-// This avoids O(n²) directory reads when checking many pages.
-func buildCacheSet(cacheDir string) map[string]bool {
-	set := make(map[string]bool)
-	entries, err := os.ReadDir(cacheDir)
-	if err != nil {
-		return set
-	}
-	for _, e := range entries {
-		name := e.Name()
-		// Extract the page index prefix (e.g., "0." from "0.webp")
-		if dot := strings.IndexByte(name, '.'); dot > 0 {
-			set[name[:dot]] = true
-		}
-	}
-	return set
-}
-
-// cacheSetHas checks if a page exists in the pre-built cache set.
-func cacheSetHas(cacheSet map[string]bool, pageIndex int) bool {
-	return cacheSet[strconv.Itoa(pageIndex)]
 }
 
 // ============================================================
@@ -1105,9 +630,11 @@ func invalidatePageImageCacheIfNeeded(comicID string, entries []string) {
 	// Include both page order and source file identity so replacing a file at
 	// the same path cannot leave stale extracted or OPDS-PSE pages behind.
 	sourceFingerprint := ""
+	currentReaderDir := ""
 	if sourcePath, _, err := FindComicFilePath(comicID); err == nil {
 		if info, statErr := os.Stat(sourcePath); statErr == nil {
 			sourceFingerprint = fmt.Sprintf("%d|%d", info.Size(), info.ModTime().UnixNano())
+			currentReaderDir = readerCacheDir(comicID, sourcePath, info)
 		}
 	}
 	fingerprint := fmt.Sprintf("%s|%s|%s|%d|%s",
@@ -1131,6 +658,20 @@ func invalidatePageImageCacheIfNeeded(comicID string, entries []string) {
 	}
 
 	for _, e := range entriesOnDisk {
+		if e.Name() == "reader" {
+			// Retire older source versions without removing the current version,
+			// which another request may already be publishing or serving.
+			if currentReaderDir != "" {
+				versions, _ := os.ReadDir(filepath.Join(cacheDir, "reader"))
+				for _, version := range versions {
+					oldDir := filepath.Join(cacheDir, "reader", version.Name())
+					if oldDir != currentReaderDir {
+						_ = os.RemoveAll(oldDir)
+					}
+				}
+			}
+			continue
+		}
 		if e.Name() == ".order-fp" {
 			continue
 		}

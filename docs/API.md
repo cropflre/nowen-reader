@@ -672,6 +672,14 @@ Content-Type: application/json
 | POST | `/api/comics/:id/warmup-done` | 预热完成 |
 | POST | `/api/thumbnails/manage` | 缩略图管理 🔒管理员 |
 
+### 页面预热与阅读会话
+
+`POST /api/comics/:id/warmup` 接收 `sessionId`、`startPage`（从 0 开始）和 `count`。建议预热接下来的 8 页，最多 30 页；`count: -1` 只续期会话，不执行解压。服务端合并重叠任务，并限制后台解压并发。
+
+客户端每次进入阅读界面生成新的 `sessionId`，阅读期间每 30 秒续期，退出或进入后台时向 `POST /api/comics/:id/warmup-done` 发送同一 `sessionId`。恢复阅读时使用新的 ID。会话按用户、作品和会话 ID 隔离，重复续期/结束不会累加锁；已结束会话的迟到心跳在回收前会被忽略。最后一次心跳满 120 秒后会话自动失效，不再阻止后台扫描。旧客户端不传 `sessionId` 时使用用户与作品对应的兼容会话，也会超时。
+
+`GET /api/comics/:id/page/:pageIndex` 支持 `ETag` 条件请求（304）和字节范围请求。缓存按源文件路径、大小和纳秒修改时间区分版本，响应使用 `Cache-Control: private, no-cache`；命中缓存仍检查访问权限。
+
 ### 页面与小说目录
 
 `GET /api/comics/:id/pages` 返回漫画页面或小说章节的平铺列表。小说章节继续使用稳定的 `index` 作为阅读进度、书签、搜索和章节内容接口的定位值，同时提供可选的目录层级字段：

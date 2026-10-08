@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
@@ -13,6 +14,7 @@ import 'package:nowen_reader/data/api/api_client.dart';
 import 'package:nowen_reader/data/api/comic_api.dart';
 import 'package:nowen_reader/features/reader/novel_html_content.dart';
 import 'package:nowen_reader/features/reader/novel_reader_screen.dart';
+import 'package:nowen_reader/widgets/authenticated_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _png =
@@ -21,6 +23,7 @@ const _image = 'data:image/png;base64,$_png';
 
 class _ReaderApi extends ComicApi {
   _ReaderApi() : super(Dio());
+  final chapterRequests = <int>[];
 
   @override
   Future<Map<String, dynamic>> getPages(String comicId) async => {
@@ -36,14 +39,16 @@ class _ReaderApi extends ComicApi {
 
   @override
   Future<Map<String, dynamic>> getChapterContent(
-          String comicId, int chapterIndex) async =>
-      {
+          String comicId, int chapterIndex) async {
+    chapterRequests.add(chapterIndex);
+    return {
         'title': chapterIndex == 0 ? '第一章' : '第二章',
         'mimeType': 'text/html; charset=utf-8',
         'content': chapterIndex == 0
             ? '<p>插图之前</p><img src="$_image" width="240" height="240">${List.generate(30, (i) => '<p>正文第$i段，保留章节图文阅读顺序。</p>').join()}<p>章节结尾</p>'
             : '<h2>第二章标题</h2><p>第二章内容</p><img src="$_image">',
       };
+  }
 
   @override
   Future<void> recordReadingActivity({
@@ -65,6 +70,65 @@ void main() {
     persistCookieJar = PersistCookieJar(storage: FileStorage(cookies.path));
   });
   tearDownAll(() async => cookies.delete(recursive: true));
+
+  testWidgets('comic widget and image provider reuse prefetched bytes',
+      (tester) async {
+    readerImageLoader.clear();
+    const url = 'https://reader.example/api/comics/book/page/0';
+    final bytes = await tester.runAsync(() async {
+      final image = await createTestImage();
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    });
+    await readerImageLoader.load(url,
+        readLocal: () async => bytes);
+    await tester.pumpWidget(const MaterialApp(
+      home: Row(children: [
+        AuthenticatedImage(imageUrl: url, width: 40, height: 40),
+        Image(image: AuthenticatedImageProvider(url), width: 40, height: 40),
+      ]),
+    ));
+    await tester.runAsync(() async {
+      final context = tester.element(find.byType(Row));
+      await precacheImage(const AuthenticatedImageProvider(url), context);
+      await precacheImage(MemoryImage(bytes!), context);
+    });
+    await tester.pumpAndSettle();
+    expect(find.byType(RawImage), findsNWidgets(2));
+    for (final image in tester.widgetList<RawImage>(find.byType(RawImage))) {
+      expect(image.image, isNotNull);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late image response cannot replace the current page',
+      (tester) async {
+    readerImageLoader.clear();
+    const firstUrl = 'https://reader.example/page/first';
+    const secondUrl = 'https://reader.example/page/second';
+    final first = Completer<Uint8List?>();
+    final second = Completer<Uint8List?>();
+    final firstLoad = readerImageLoader.load(firstUrl, readLocal: () => first.future);
+    final secondLoad = readerImageLoader.load(secondUrl, readLocal: () => second.future);
+    const key = ValueKey('page');
+    await tester.pumpWidget(const MaterialApp(
+      home: AuthenticatedImage(key: key, imageUrl: firstUrl),
+    ));
+    await tester.pumpWidget(const MaterialApp(
+      home: AuthenticatedImage(key: key, imageUrl: secondUrl),
+    ));
+    final currentBytes = base64Decode(_png);
+    second.complete(currentBytes);
+    await secondLoad;
+    await tester.pumpAndSettle();
+    first.complete(base64Decode(_png));
+    await firstLoad;
+    await tester.pumpAndSettle();
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as MemoryImage).bytes, same(currentBytes));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('renders rich prose, inline images and vector SVG',
       (tester) async {
@@ -116,14 +180,16 @@ void main() {
         (tester) async {
       SharedPreferences.setMockInitialValues({'novel_pageMode': swipe ? 1 : 0});
       final client = ApiClient()..setBaseUrl('https://reader.example/nowen');
+      final api = _ReaderApi();
       await tester.pumpWidget(ProviderScope(
         overrides: [
-          comicApiProvider.overrideWithValue(_ReaderApi()),
+          comicApiProvider.overrideWithValue(api),
           apiClientProvider.overrideWithValue(client),
         ],
         child: const MaterialApp(home: NovelReaderScreen(comicId: 'book')),
       ));
       await tester.pumpAndSettle();
+      expect(api.chapterRequests, [0, 1]); // The next chapter is ready in advance.
       expect(find.byType(NovelHtmlContent), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
       if (swipe) {
@@ -163,6 +229,7 @@ void main() {
                 .widget<NovelHtmlContent>(find.byType(NovelHtmlContent))
                 .content,
             contains('第二章内容'));
+        expect(api.chapterRequests, [0, 1]); // Turning chapters reuses read-ahead.
       }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

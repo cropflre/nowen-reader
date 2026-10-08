@@ -1441,29 +1441,47 @@
   </div>
 </div>
 
-<div class="endpoint public-endpoint" data-search="GET /api/comics/:id/page/:pageIndex Get a single page image" id="get-api-comics-id-page-pageindex">
+<div class="endpoint auth-required" data-search="GET /api/comics/:id/page/:pageIndex Get a single page image 获取单个页面图片 ETag 304 Range 206 cache 缓存" id="get-api-comics-id-page-pageindex">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/comics/:id/page/:pageIndex</span>
     <span class="summary">Get a single page image</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns binary image data for a specific page. Supports ETag and 304 Not Modified responses for caching.</p>
+    <p class="description">Serves the original page image directly from a cached file after authentication and access checks. The cache uses a page index and atomic writes; source path, size and nanosecond modification time determine its version. Replacing the source invalidates the old version.</p>
 
     <h4>Path Parameters</h4>
     <table class="params-table">
       <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
-        <tr><td>pageIndex</td><td>int</td><td>Yes</td><td>0-based page index</td></tr>
+        <tr><td>pageIndex</td><td>integer</td><td>Yes</td><td>0-based page index</td></tr>
       </tbody>
     </table>
 
-    <h4>Response <span class="status-code">200</span></h4>
-    <p class="description">Binary image data with ETag/304 support</p>
+    <h4>Request Headers</h4>
+    <table class="params-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>If-None-Match</td><td>string</td><td>No</td><td>Previously returned ETag; a match returns 304 without an image body.</td></tr>
+        <tr><td>If-Modified-Since</td><td>HTTP date</td><td>No</td><td>Conditional request using Last-Modified. If-None-Match takes precedence.</td></tr>
+        <tr><td>Range</td><td>string</td><td>No</td><td>Optional byte range, for example bytes=0-1023.</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Response Headers</h4>
+    <pre class="code-block"><code>Content-Type: image/png
+Cache-Control: private, no-cache
+ETag: W/&quot;metadata-version&quot;
+Last-Modified: Thu, 08 Oct 2026 12:00:00 GMT
+Accept-Ranges: bytes</code></pre>
+    <p class="description">Content-Type follows the image format. ETag uses file metadata, avoiding a full image read and MD5 hash on a cache hit. Clients may store the response privately and must revalidate before reuse.</p>
+
+    <h4>Responses</h4>
+    <p class="description">200: full binary image; 206: requested byte range; 304: unchanged, no body; 416: unsatisfiable range. Authentication and access checks also apply to cached pages and conditional requests.</p>
 
     <div class="badges">
-      <span class="badge badge-public">Public</span>
+      <span class="badge badge-auth">Auth Required</span>
     </div>
   </div>
 </div>
@@ -1649,37 +1667,57 @@
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup Warm up comic page cache" id="post-api-comics-id-warmup">
+<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup Warm up pages and renew reading session 预热页面并续期阅读会话 sessionId heartbeat 120 TTL 超时 心跳" id="post-api-comics-id-warmup">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
     <span class="path">/api/comics/:id/warmup</span>
-    <span class="summary">Warm up comic page cache</span>
+    <span class="summary">Warm up pages and renew reading session</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Pre-generates cached page images starting from <code>startPage</code>. The <code>count</code> parameter has a max of 30 and defaults to 10.</p>
+    <p class="description">Pre-generates page images and renews a reading session. Overlapping requests share work. RAR/7z pages are extracted in batches; background extraction concurrency is bounded to leave capacity for foreground reading.</p>
 
     <h4>Path Parameters</h4>
     <table class="params-table">
       <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID; requires canView on its library.</td></tr>
       </tbody>
     </table>
 
     <h4>Request Body</h4>
+    <table class="params-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>sessionId</td><td>string</td><td>No</td><td>Use a new ID for each reading session (max 128 bytes). Omitted or empty IDs use a legacy session scoped to the user and comic.</td></tr>
+        <tr><td>startPage</td><td>integer</td><td>No</td><td>0-based starting page, default 0; must be non-negative.</td></tr>
+        <tr><td>count</td><td>integer</td><td>No</td><td>Default 8 when omitted or 0; values above 30 are capped at 30. Use -1 for a heartbeat without extraction. Other negative values are invalid.</td></tr>
+      </tbody>
+    </table>
     <pre class="code-block"><code>{
-  "startPage": 0,
-  "count": 10
+  &quot;sessionId&quot;: &quot;reader-session-unique-id&quot;,
+  &quot;startPage&quot;: 21,
+  &quot;count&quot;: 8
+}</code></pre>
+
+    <h4>Heartbeat and expiry</h4>
+    <p class="description">Renew every 30 seconds while reading. The lease expires 120 seconds after the last renewal and no longer pauses background scanning. Repeated warmups renew the same lease instead of incrementing a global lock. Sessions are isolated by user, comic and sessionId. On exit or backgrounding, call warmup-done; resume with a new ID.</p>
+    <pre class="code-block"><code>{
+  &quot;sessionId&quot;: &quot;reader-session-unique-id&quot;,
+  &quot;startPage&quot;: 21,
+  &quot;count&quot;: -1
 }</code></pre>
 
     <h4>Response <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  "success": true,
-  "comicId": "string",
-  "startPage": 0,
-  "count": 10,
-  "message": "string"
+  &quot;success&quot;: true,
+  &quot;comicId&quot;: &quot;comic-id&quot;,
+  &quot;startPage&quot;: 21,
+  &quot;count&quot;: 8,
+  &quot;sessionActive&quot;: true,
+  &quot;sessionTtlSeconds&quot;: 120,
+  &quot;message&quot;: &quot;Warmup started in background&quot;
 }</code></pre>
+    <p class="description">sessionActive is false if the session has already ended and its end marker has not yet expired; no warmup is queued in that case. Invalid JSON, a negative startPage, count below -1, or an oversized sessionId returns 400.</p>
 
     <div class="badges">
       <span class="badge badge-auth">Auth Required</span>
@@ -1687,26 +1725,37 @@
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup-done Mark warmup as complete" id="post-api-comics-id-warmup-done">
+<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup-done End reading session 结束阅读会话 sessionId release 释放 心跳" id="post-api-comics-id-warmup-done">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
     <span class="path">/api/comics/:id/warmup-done</span>
-    <span class="summary">Mark warmup as complete</span>
+    <span class="summary">End reading session</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Signals that the warmup process for the comic has finished.</p>
+    <p class="description">Ends the current user&#x27;s reading session for this comic. Call when leaving the reader or entering the background. Repeated calls are safe and do not release other reading sessions. Late heartbeats for the same ID are ignored while its end marker is retained (120 seconds). Use a fresh ID when resuming.</p>
 
     <h4>Path Parameters</h4>
     <table class="params-table">
       <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID; requires canView on its library.</td></tr>
       </tbody>
     </table>
 
+    <h4>Request Body</h4>
+    <table class="params-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>sessionId</td><td>string</td><td>No</td><td>The same ID used for warmup (max 128 bytes). Omit only to end the legacy user/comic session.</td></tr>
+      </tbody>
+    </table>
+    <pre class="code-block"><code>{
+  &quot;sessionId&quot;: &quot;reader-session-unique-id&quot;
+}</code></pre>
+
     <h4>Response <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  "success": true
+  &quot;success&quot;: true
 }</code></pre>
 
     <div class="badges">

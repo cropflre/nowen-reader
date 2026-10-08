@@ -299,6 +299,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final api = _ref.read(authApiProvider);
       await api.logout();
     } catch (_) {}
+    readerImageLoader.clear();
     state = state.copyWith(clearUser: true, isLoading: false);
   }
 

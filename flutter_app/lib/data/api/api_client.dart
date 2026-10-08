@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/reader_image_loader.dart';
+
 // ============================================================
 // 常量 & 全局变量
 // ============================================================
@@ -17,6 +19,18 @@ const String _kServerHistoryKey = 'server_history';
 
 /// 全局持久化 CookieJar（登录状态保持）
 late final PersistCookieJar persistCookieJar;
+
+/// Keep one HTTP adapter alive so successive pages reuse the connection.
+final readerImageLoader = ReaderImageLoader(dio: _createReaderImageDio());
+
+Dio _createReaderImageDio() {
+  final dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 60),
+  ));
+  if (!kIsWeb) dio.interceptors.add(CookieManager(persistCookieJar));
+  return dio;
+}
 
 /// 初始化持久化 CookieJar（在 main 中调用）
 Future<void> initCookieJar() async {
@@ -70,12 +84,14 @@ class ApiClient {
 
   /// 设置服务器地址
   void setBaseUrl(String url) {
+    if (_baseUrl != url) readerImageLoader.clear();
     _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
     _dio.options.baseUrl = '$_baseUrl/api';
   }
 
   /// 清除所有 Cookie（退出登录时调用）
   Future<void> clearCookies() async {
+    readerImageLoader.clear();
     await _cookieJar.deleteAll();
   }
 

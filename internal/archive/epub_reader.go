@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/nowen-reader/nowen-reader/internal/config"
 	"golang.org/x/net/html"
@@ -22,6 +23,9 @@ import (
 // ============================================================
 
 type epubChapter struct {
+	once        sync.Once
+	err         error
+	refIndex    int
 	title       string
 	href        string // path inside the EPUB zip
 	fragment    string
@@ -62,7 +66,15 @@ type epubReader struct {
 	filepath                  string
 	comicID                   string // populated later for image URL rewriting
 	rc                        *zip.ReadCloser
-	chapters                  []epubChapter
+	chapters                  []*epubChapter
+	chapterRefs               []epubChapterRef
+	spineRefs                 []epubChapterRef
+	chapterIndices            map[string]int
+	files                     map[string]*zip.File
+	filesFolded               map[string]*zip.File
+	comicIDMu                 sync.RWMutex
+	spineImagesOnce           sync.Once
+	stylesheetMu              sync.Mutex
 	entries                   []Entry
 	coverPath                 string // path to cover image inside the EPUB
 	resources                 map[string]bool
@@ -182,6 +194,18 @@ func newEpubReader(fp string) (*epubReader, error) {
 		rc:                        rc,
 		resources:                 make(map[string]bool),
 		stylesheetBodyBackgrounds: make(map[string][]epubBodyBackgroundRule),
+		files:                     make(map[string]*zip.File, len(rc.File)),
+		filesFolded:               make(map[string]*zip.File, len(rc.File)),
+	}
+	for _, f := range rc.File {
+		// Preserve the first match, including the existing case-insensitive fallback.
+		if r.files[f.Name] == nil {
+			r.files[f.Name] = f
+		}
+		folded := strings.ToLower(f.Name)
+		if r.filesFolded[folded] == nil {
+			r.filesFolded[folded] = f
+		}
 	}
 
 	if err := r.parseEpub(); err != nil {
@@ -263,33 +287,61 @@ func (r *epubReader) parseEpub() error {
 		chapterRefs = spineRefs
 	}
 
-	// Step 5: Extract chapter content. TOC entries define visible chapter
-	// boundaries, while the spine supplies every XHTML document in that range.
-	// This supports converted EPUBs that split a title page and its body into
-	// adjacent spine documents.
-	r.chapters = make([]epubChapter, 0, len(chapterRefs))
+	// Build the TOC without sanitizing every chapter. Body content and the
+	// comic-mode image index are loaded only when requested.
+	r.chapterRefs = chapterRefs
+	r.spineRefs = spineRefs
+	r.chapters = make([]*epubChapter, 0, len(chapterRefs))
 	r.entries = make([]Entry, 0, len(chapterRefs))
-
+	r.chapterIndices = make(map[string]int, len(chapterRefs))
 	for i, ref := range chapterRefs {
-		parts := chapterParts(chapterRefs, spineRefs, i)
-		var titleHTML string
-		var textParts []string
-		var htmlParts []string
+		if r.zipFile(ref.href) == nil {
+			continue
+		}
+		title := strings.TrimSpace(ref.title)
+		if title == "" {
+			// Spine-only books have no TOC labels; retain document title fallback.
+			if data, err := r.readZipFile(ref.href); err == nil {
+				title = extractXHTMLTitle(string(data))
+			}
+		}
+		if title == "" {
+			title = fmt.Sprintf("第 %d 章", i+1)
+		}
+		entryName := fmt.Sprintf("chapter-%04d.html", i+1)
+		r.chapterIndices[entryName] = len(r.chapters)
+		r.entries = append(r.entries, Entry{Name: entryName})
+		r.chapters = append(r.chapters, &epubChapter{
+			refIndex:   i,
+			title:      title,
+			href:       ref.href,
+			fragment:   ref.fragment,
+			level:      ref.level,
+			playOrder:  ref.playOrder,
+			spineIndex: ref.spineIndex,
+			source:     ref.source,
+		})
+	}
+	return nil
+}
+
+func (r *epubReader) loadChapter(index int) (*epubChapter, error) {
+	ch := r.chapters[index]
+	ch.once.Do(func() {
+		parts := chapterParts(r.chapterRefs, r.spineRefs, ch.refIndex)
+		var textParts, htmlParts []string
+		readAny := false
 		for _, part := range parts {
 			data, err := r.readZipFile(part.href)
 			if err != nil {
 				continue
 			}
-			rawHTML := string(data)
-			if titleHTML == "" {
-				titleHTML = rawHTML
-			}
-			chapterHTML := sliceXHTMLByFragments(rawHTML, part.startFragment, part.endFragment)
+			readAny = true
+			chapterHTML := sliceXHTMLByFragments(string(data), part.startFragment, part.endFragment)
 			if textContent := strings.TrimSpace(extractTextFromXHTML(chapterHTML)); textContent != "" {
 				textParts = append(textParts, textContent)
 			}
-			chapterDir := path.Dir(part.href)
-			htmlContent := sanitizeEpubHTML(chapterHTML, chapterDir)
+			htmlContent := sanitizeEpubHTML(chapterHTML, path.Dir(part.href))
 			if backgroundPath := r.findBodyBackgroundImage(chapterHTML, part.href); backgroundPath != "" {
 				backgroundHTML := `<img src="` + stdhtml.EscapeString(backgroundPath) + `" alt="">`
 				if htmlContent == "" {
@@ -302,48 +354,16 @@ func (r *epubReader) parseEpub() error {
 				htmlParts = append(htmlParts, htmlContent)
 			}
 		}
-		if titleHTML == "" {
-			continue
+		if !readAny {
+			ch.err = fmt.Errorf("read EPUB chapter: %s", ch.href)
 		}
+		ch.content = strings.Join(textParts, "\n\n")
+		ch.htmlContent = strings.Join(htmlParts, "\n")
+	})
+	return ch, ch.err
+}
 
-		title := strings.TrimSpace(ref.title)
-		if title == "" {
-			title = extractXHTMLTitle(titleHTML)
-		}
-		if title == "" {
-			title = fmt.Sprintf("第 %d 章", i+1)
-		}
-
-		entryName := fmt.Sprintf("chapter-%04d.html", i+1)
-		r.entries = append(r.entries, Entry{
-			Name:        entryName,
-			IsDirectory: false,
-		})
-
-		r.chapters = append(r.chapters, epubChapter{
-			title:       title,
-			href:        ref.href,
-			fragment:    ref.fragment,
-			level:       ref.level,
-			playOrder:   ref.playOrder,
-			spineIndex:  ref.spineIndex,
-			source:      ref.source,
-			content:     strings.Join(textParts, "\n\n"),
-			htmlContent: strings.Join(htmlParts, "\n"),
-		})
-	}
-
-	// Log if no chapters have text content (image-heavy EPUB)
-	textChapterCount := 0
-	for _, ch := range r.chapters {
-		if ch.content != "" {
-			textChapterCount++
-		}
-	}
-	if textChapterCount == 0 {
-		log.Printf("[epub] No text chapters in %s (image-heavy, will use comic mode)", r.filepath)
-	}
-
+func (r *epubReader) loadSpineImages() {
 	// Step 5: Extract image paths from each XHTML page in spine order.
 	// This is used by comic mode to list embedded images in correct reading order
 	// rather than the arbitrary zip entry order.
@@ -351,7 +371,7 @@ func (r *epubReader) parseEpub() error {
 	r.spineImageSet = make(map[string]bool)
 	imgSrcRegex := regexp.MustCompile(`(?i)<img[^>]+src\s*=\s*"([^"]+)"`)
 	svgImgRegex := regexp.MustCompile(`(?i)<image[^>]+href\s*=\s*"([^"]+)"`)
-	for _, ref := range spineRefs {
+	for _, ref := range r.spineRefs {
 		data, err := r.readZipFile(ref.href)
 		if err != nil {
 			log.Printf("[epub] Step5: failed to read %s: %v", ref.href, err)
@@ -400,8 +420,6 @@ func (r *epubReader) parseEpub() error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func resolveEpubHref(baseDir, href string) (string, string) {
@@ -694,10 +712,7 @@ func (r *epubReader) epubFileExists(name string) bool {
 	if name == "" {
 		return false
 	}
-	if _, err := r.readZipFile(name); err == nil {
-		return true
-	}
-	return false
+	return r.zipFile(name) != nil
 }
 
 func (r *epubReader) parseNCXChapters(pkg opfPackage, opfDir string, manifestMap map[string]opfItem, spineIndexByHref map[string]int) []epubChapterRef {
@@ -964,30 +979,16 @@ func (r *epubReader) findOPFPath() (string, error) {
 	return "", fmt.Errorf("no rootfile found in container.xml")
 }
 
-func (r *epubReader) readZipFile(name string) ([]byte, error) {
-	// Exact match first
-	for _, f := range r.rc.File {
-		if f.Name == name {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
-			}
-			defer rc.Close()
-			return io.ReadAll(rc)
-		}
+func (r *epubReader) zipFile(name string) *zip.File {
+	if f := r.files[name]; f != nil {
+		return f
 	}
-	// Case-insensitive fallback (some EPUBs have case mismatches
-	// between OPF references and actual ZIP entry names)
-	lower := strings.ToLower(name)
-	for _, f := range r.rc.File {
-		if strings.ToLower(f.Name) == lower {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
-			}
-			defer rc.Close()
-			return io.ReadAll(rc)
-		}
+	return r.filesFolded[strings.ToLower(name)]
+}
+
+func (r *epubReader) readZipFile(name string) ([]byte, error) {
+	if f := r.zipFile(name); f != nil {
+		return readZipEntry(f)
 	}
 	return nil, fmt.Errorf("file not found in EPUB: %s", name)
 }
@@ -997,53 +998,45 @@ func (r *epubReader) ListEntries() []Entry {
 }
 
 func (r *epubReader) ExtractEntry(entryName string) ([]byte, error) {
-	for i, e := range r.entries {
-		if e.Name == entryName {
-			ch := r.chapters[i]
-			if ch.htmlContent != "" {
-				html := ch.htmlContent
-				// Rewrite image src to API URLs if comicID is set
-				if r.comicID != "" {
-					html = r.rewriteImageURLs(html)
-				}
-				return []byte(html), nil
-			}
-			return []byte(ch.content), nil
+	if i, ok := r.chapterIndices[entryName]; ok {
+		ch, err := r.loadChapter(i)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// Also allow extracting raw resources (images, CSS)
-	for _, f := range r.rc.File {
-		if f.Name == entryName {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
-			}
-			defer rc.Close()
-			return io.ReadAll(rc)
+		if ch.htmlContent != "" {
+			return []byte(r.rewriteImageURLs(ch.htmlContent)), nil
 		}
+		return []byte(ch.content), nil
 	}
-
-	return nil, fmt.Errorf("entry not found in epub: %s", entryName)
+	return r.readZipFile(entryName)
 }
 
 // ExtractEntryText returns the plain text content of a chapter (no HTML).
 func (r *epubReader) ExtractEntryText(entryName string) ([]byte, error) {
-	for i, e := range r.entries {
-		if e.Name == entryName {
-			return []byte(r.chapters[i].content), nil
+	if i, ok := r.chapterIndices[entryName]; ok {
+		ch, err := r.loadChapter(i)
+		if err != nil {
+			return nil, err
 		}
+		return []byte(ch.content), nil
 	}
 	return nil, fmt.Errorf("entry not found in epub: %s", entryName)
 }
 
 // SetComicID sets the comic ID for image URL rewriting.
 func (r *epubReader) SetComicID(id string) {
+	r.comicIDMu.Lock()
+	defer r.comicIDMu.Unlock()
 	r.comicID = id
 }
 
 // rewriteImageURLs replaces relative image paths in HTML with API URLs.
 func (r *epubReader) rewriteImageURLs(html string) string {
+	r.comicIDMu.RLock()
+	defer r.comicIDMu.RUnlock()
+	if r.comicID == "" {
+		return html
+	}
 	return rewriteEpubImageAttributes(html, func(src string) string {
 		if !isLocalEpubResource(src) {
 			return src
@@ -1091,6 +1084,8 @@ func (r *epubReader) findBodyBackgroundImage(rawHTML, documentPath string) strin
 	if len(bodyClasses) == 0 && inlineStyle == "" && len(stylesheetHrefs) == 0 {
 		return ""
 	}
+	r.stylesheetMu.Lock()
+	defer r.stylesheetMu.Unlock()
 	if r.stylesheetBodyBackgrounds == nil {
 		r.stylesheetBodyBackgrounds = make(map[string][]epubBodyBackgroundRule)
 	}
@@ -1864,6 +1859,7 @@ func ListEpubEmbeddedImages(r Reader) []string {
 	if !ok || er.rc == nil {
 		return nil
 	}
+	er.spineImagesOnce.Do(er.loadSpineImages)
 	var images []string
 	seen := make(map[string]bool)
 

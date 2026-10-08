@@ -10,6 +10,7 @@ import '../../data/api/comic_api.dart';
 import '../../data/api/api_client.dart';
 import '../../data/services/cache_service.dart';
 import '../../data/services/reading_activity_tracker.dart';
+import '../../data/services/reader_chapter_loader.dart';
 import 'novel_settings.dart';
 import 'novel_panels.dart';
 import 'novel_tap_zone_settings.dart';
@@ -93,6 +94,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   // 阅读会话
   late final ComicApi _api;
   late final ReadingActivityTracker _activity;
+  late final ReaderChapterLoader _chapterLoader;
+  int _chapterLoadGeneration = 0;
 
   // 搜索用：缓存章节内容
   final Map<int, String> _chapterCache = {};
@@ -102,6 +105,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     super.initState();
     _currentChapter = widget.initialChapter;
     _api = ref.read(comicApiProvider);
+    _chapterLoader = ReaderChapterLoader(fetch: (index) async {
+      final local = await cacheService.readCachedChapter(widget.comicId, index);
+      return local ?? await _api.getChapterContent(widget.comicId, index);
+    });
     _activity = ReadingActivityTracker(api: _api, comicId: widget.comicId);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initTTS();
@@ -313,6 +320,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     final speedPx =
         _settings.autoScrollSpeed == 1 ? 1.0 : _settings.autoScrollSpeed == 2 ? 2.0 : 4.0;
     _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (_chapterLoading) return;
       if (!_scrollController.hasClients) return;
       final maxScroll = _scrollController.position.maxScrollExtent;
       if (_scrollController.offset >= maxScroll - 2) {
@@ -535,6 +543,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   Future<void> _loadChapter(int index) async {
     if (index < 0 || index >= _totalChapters) return;
+    final generation = ++_chapterLoadGeneration;
     setState(() {
       _chapterLoading = true;
       _currentChapter = index;
@@ -544,16 +553,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       _swipePageInfos = [];
     });
     try {
-      // 1. 优先读取本地离线缓存
-      Map<String, dynamic>? data;
-      final cachedData = await cacheService.readCachedChapter(widget.comicId, index);
-      if (cachedData != null) {
-        data = cachedData;
-      } else {
-        // 2. 从网络加载
-        data = await _api.getChapterContent(widget.comicId, index);
-      }
-      if (!mounted || index != _currentChapter) return;
+      final data = await _chapterLoader.load(index);
+      if (!mounted || generation != _chapterLoadGeneration) return;
       final content = data['content'] ?? '';
       final chapterTitle = data['title'] ?? '第${index + 1}章';
       final chapterMimeType = data['mimeType'];
@@ -576,13 +577,27 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       // 延迟计算swipe总页数
       _computeSwipePages();
       _activity.updatePage(index, _totalChapters);
+      unawaited(_prefetchChapters(index));
     } catch (e) {
-      if (mounted && index == _currentChapter) {
+      if (mounted && generation == _chapterLoadGeneration) {
         setState(() {
           _chapterContent = '';
           _chapterLoading = false;
           _loadError = '章节加载失败：$e';
         });
+      }
+    }
+  }
+
+  Future<void> _prefetchChapters(int index) async {
+    // Fetch one at a time, prioritizing the next chapter on slow connections.
+    for (final next in [index + 1, index - 1]) {
+      if (!mounted || _currentChapter != index) return;
+      if (next < 0 || next >= _totalChapters) continue;
+      try {
+        await _chapterLoader.load(next);
+      } catch (_) {
+        // Foreground navigation will retry a failed read-ahead request.
       }
     }
   }
@@ -888,7 +903,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   Future<String> _getChapterText(int index) async {
     if (_chapterCache.containsKey(index)) return _chapterCache[index]!;
     try {
-      final data = await _api.getChapterContent(widget.comicId, index);
+      final data = await _chapterLoader.load(index);
       final content = data['content'] ?? '';
       final text = _stripHtml(content);
       _chapterCache[index] = text;

@@ -1898,29 +1898,47 @@
   </div>
 </div>
 
-<div class="endpoint public-endpoint" data-search="GET /api/comics/:id/page/:pageIndex Get a single page image" id="get-api-comics-id-page-pageindex">
+<div class="endpoint auth-required" data-search="GET /api/comics/:id/page/:pageIndex Get a single page image 获取单个页面图片 ETag 304 Range 206 cache 缓存" id="get-api-comics-id-page-pageindex">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
     <span class="path">/api/comics/:id/page/:pageIndex</span>
     <span class="summary"><span data-en="Get a single page image" data-zh="获取单个页面图片">Get a single page image</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Returns binary image data for a specific page. Supports ETag and 304 Not Modified responses for caching." data-zh="返回特定页面的二进制图片数据。支持ETag和304 Not Modified缓存响应。">Returns binary image data for a specific page. Supports ETag and 304 Not Modified responses for caching.</span></p>
+    <p class="description"><span data-en="Serves the original page image directly from a cached file after authentication and access checks. The cache uses a page index and atomic writes; source path, size and nanosecond modification time determine its version. Replacing the source invalidates the old version." data-zh="认证及权限校验后，直接从缓存文件响应页面原图。缓存使用页面索引和原子写入，按源文件路径、大小及纳秒修改时间区分版本；替换源文件后旧版本失效。">Serves the original page image directly from a cached file after authentication and access checks. The cache uses a page index and atomic writes; source path, size and nanosecond modification time determine its version. Replacing the source invalidates the old version.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
       <tbody>
-        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
-        <tr><td>pageIndex</td><td>int</td><td>Yes</td><td>0-based page index</td></tr>
+        <tr><td>id</td><td>string</td><td><span data-en="Yes" data-zh="是">Yes</span></td><td><span data-en="Comic ID" data-zh="漫画 ID">Comic ID</span></td></tr>
+        <tr><td>pageIndex</td><td>integer</td><td><span data-en="Yes" data-zh="是">Yes</span></td><td><span data-en="0-based page index" data-zh="页面索引，从 0 开始">0-based page index</span></td></tr>
       </tbody>
     </table>
 
-    <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
-    <p class="description"><span data-en="Binary image data with ETag/304 support" data-zh="支持ETag/304的二进制图片数据">Binary image data with ETag/304 support</span></p>
+    <h4><span data-en="Request Headers" data-zh="请求头">Request Headers</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody>
+        <tr><td>If-None-Match</td><td>string</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="Previously returned ETag; a match returns 304 without an image body." data-zh="上次响应的 ETag；匹配时返回 304，不传输图片正文。">Previously returned ETag; a match returns 304 without an image body.</span></td></tr>
+        <tr><td>If-Modified-Since</td><td>HTTP date</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="Conditional request using Last-Modified. If-None-Match takes precedence." data-zh="使用 Last-Modified 发起条件请求，If-None-Match 优先。">Conditional request using Last-Modified. If-None-Match takes precedence.</span></td></tr>
+        <tr><td>Range</td><td>string</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="Optional byte range, for example bytes=0-1023." data-zh="可选字节范围，例如 bytes=0-1023。">Optional byte range, for example bytes=0-1023.</span></td></tr>
+      </tbody>
+    </table>
+
+    <h4><span data-en="Response Headers" data-zh="响应头">Response Headers</span></h4>
+    <pre class="code-block"><code>Content-Type: image/png
+Cache-Control: private, no-cache
+ETag: W/&quot;metadata-version&quot;
+Last-Modified: Thu, 08 Oct 2026 12:00:00 GMT
+Accept-Ranges: bytes</code></pre>
+    <p class="description"><span data-en="Content-Type follows the image format. ETag uses file metadata, avoiding a full image read and MD5 hash on a cache hit. Clients may store the response privately and must revalidate before reuse." data-zh="Content-Type 按图片格式返回。ETag 根据文件元数据生成，缓存命中时无需读取整张图片并计算 MD5。客户端可私有缓存，但再次使用前必须重新验证。">Content-Type follows the image format. ETag uses file metadata, avoiding a full image read and MD5 hash on a cache hit. Clients may store the response privately and must revalidate before reuse.</span></p>
+
+    <h4><span data-en="Responses" data-zh="响应状态">Responses</span></h4>
+    <p class="description"><span data-en="200: full binary image; 206: requested byte range; 304: unchanged, no body; 416: unsatisfiable range. Authentication and access checks also apply to cached pages and conditional requests." data-zh="200：完整图片；206：指定字节范围；304：内容未变，无正文；416：字节范围无法满足。缓存页面及条件请求同样执行认证和权限检查。">200: full binary image; 206: requested byte range; 304: unchanged, no body; 416: unsatisfiable range. Authentication and access checks also apply to cached pages and conditional requests.</span></p>
 
     <div class="badges">
-      <span class="badge badge-public"><span data-en="Public" data-zh="公开">Public</span></span>
+      <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
     </div>
   </div>
 </div>
@@ -2106,37 +2124,57 @@
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup Warm up comic page cache" id="post-api-comics-id-warmup">
+<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup Warm up pages and renew reading session 预热页面并续期阅读会话 sessionId heartbeat 120 TTL 超时 心跳" id="post-api-comics-id-warmup">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
     <span class="path">/api/comics/:id/warmup</span>
-    <span class="summary"><span data-en="Warm up comic page cache" data-zh="预热漫画页面缓存">Warm up comic page cache</span></span>
+    <span class="summary"><span data-en="Warm up pages and renew reading session" data-zh="预热页面并续期阅读会话">Warm up pages and renew reading session</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Pre-generates cached page images starting from <code>startPage</code>. The <code>count</code> parameter has a max of 30 and defaults to 10.</p>
+    <p class="description"><span data-en="Pre-generates page images and renews a reading session. Overlapping requests share work. RAR/7z pages are extracted in batches; background extraction concurrency is bounded to leave capacity for foreground reading." data-zh="预热页面图片并续期阅读会话。重叠请求合并处理，RAR/7z 使用批量解压；后台解压并发受限，为当前阅读保留处理容量。">Pre-generates page images and renews a reading session. Overlapping requests share work. RAR/7z pages are extracted in batches; background extraction concurrency is bounded to leave capacity for foreground reading.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
       <tbody>
-        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+        <tr><td>id</td><td>string</td><td><span data-en="Yes" data-zh="是">Yes</span></td><td><span data-en="Comic ID; requires canView on its library." data-zh="漫画 ID；要求所属书库的 canView 权限。">Comic ID; requires canView on its library.</span></td></tr>
       </tbody>
     </table>
 
     <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody>
+        <tr><td>sessionId</td><td>string</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="Use a new ID for each reading session (max 128 bytes). Omitted or empty IDs use a legacy session scoped to the user and comic." data-zh="每次进入阅读生成新的会话 ID，最多 128 字节；省略或为空时使用按用户和漫画隔离的兼容会话。">Use a new ID for each reading session (max 128 bytes). Omitted or empty IDs use a legacy session scoped to the user and comic.</span></td></tr>
+        <tr><td>startPage</td><td>integer</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="0-based starting page, default 0; must be non-negative." data-zh="预热起始页，从 0 开始，默认 0，不能为负数。">0-based starting page, default 0; must be non-negative.</span></td></tr>
+        <tr><td>count</td><td>integer</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="Default 8 when omitted or 0; values above 30 are capped at 30. Use -1 for a heartbeat without extraction. Other negative values are invalid." data-zh="省略或为 0 时默认 8 页；超过 30 时限制为 30 页。-1 表示仅续期，不解压；其他负数无效。">Default 8 when omitted or 0; values above 30 are capped at 30. Use -1 for a heartbeat without extraction. Other negative values are invalid.</span></td></tr>
+      </tbody>
+    </table>
     <pre class="code-block"><code>{
-  "startPage": 0,
-  "count": 10
+  &quot;sessionId&quot;: &quot;reader-session-unique-id&quot;,
+  &quot;startPage&quot;: 21,
+  &quot;count&quot;: 8
+}</code></pre>
+
+    <h4><span data-en="Heartbeat and expiry" data-zh="心跳与超时回收">Heartbeat and expiry</span></h4>
+    <p class="description"><span data-en="Renew every 30 seconds while reading. The lease expires 120 seconds after the last renewal and no longer pauses background scanning. Repeated warmups renew the same lease instead of incrementing a global lock. Sessions are isolated by user, comic and sessionId. On exit or backgrounding, call warmup-done; resume with a new ID." data-zh="阅读期间每 30 秒续期。最后一次续期满 120 秒后会话自动失效，不再阻止后台扫描。重复预热只续期同一会话，不会累加全局锁。会话按用户、漫画及 sessionId 隔离；退出或进入后台时调用 warmup-done，恢复阅读使用新的 ID。">Renew every 30 seconds while reading. The lease expires 120 seconds after the last renewal and no longer pauses background scanning. Repeated warmups renew the same lease instead of incrementing a global lock. Sessions are isolated by user, comic and sessionId. On exit or backgrounding, call warmup-done; resume with a new ID.</span></p>
+    <pre class="code-block"><code>{
+  &quot;sessionId&quot;: &quot;reader-session-unique-id&quot;,
+  &quot;startPage&quot;: 21,
+  &quot;count&quot;: -1
 }</code></pre>
 
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  "success": true,
-  "comicId": "string",
-  "startPage": 0,
-  "count": 10,
-  "message": "string"
+  &quot;success&quot;: true,
+  &quot;comicId&quot;: &quot;comic-id&quot;,
+  &quot;startPage&quot;: 21,
+  &quot;count&quot;: 8,
+  &quot;sessionActive&quot;: true,
+  &quot;sessionTtlSeconds&quot;: 120,
+  &quot;message&quot;: &quot;Warmup started in background&quot;
 }</code></pre>
+    <p class="description"><span data-en="sessionActive is false if the session has already ended and its end marker has not yet expired; no warmup is queued in that case. Invalid JSON, a negative startPage, count below -1, or an oversized sessionId returns 400." data-zh="已结束会话的结束标记尚未回收时，sessionActive 为 false，此时不会排入预热任务。JSON 无效、startPage 为负数、count 小于 -1 或 sessionId 超长时返回 400。">sessionActive is false if the session has already ended and its end marker has not yet expired; no warmup is queued in that case. Invalid JSON, a negative startPage, count below -1, or an oversized sessionId returns 400.</span></p>
 
     <div class="badges">
       <span class="badge badge-auth"><span data-en="Auth Required" data-zh="需要认证">Auth Required</span></span>
@@ -2144,26 +2182,37 @@
   </div>
 </div>
 
-<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup-done Mark warmup as complete" id="post-api-comics-id-warmup-done">
+<div class="endpoint auth-required" data-search="POST /api/comics/:id/warmup-done End reading session 结束阅读会话 sessionId release 释放 心跳" id="post-api-comics-id-warmup-done">
   <div class="endpoint-header">
     <span class="method method-POST">POST</span>
     <span class="path">/api/comics/:id/warmup-done</span>
-    <span class="summary"><span data-en="Mark warmup as complete" data-zh="标记预热完成">Mark warmup as complete</span></span>
+    <span class="summary"><span data-en="End reading session" data-zh="结束阅读会话">End reading session</span></span>
   </div>
   <div class="endpoint-body">
-    <p class="description"><span data-en="Signals that the warmup process for the comic has finished." data-zh="通知漫画预热过程已完成。">Signals that the warmup process for the comic has finished.</span></p>
+    <p class="description"><span data-en="Ends the current user&#x27;s reading session for this comic. Call when leaving the reader or entering the background. Repeated calls are safe and do not release other reading sessions. Late heartbeats for the same ID are ignored while its end marker is retained (120 seconds). Use a fresh ID when resuming." data-zh="结束当前用户在这本漫画上的阅读会话，应在退出阅读或进入后台时调用。重复调用安全，不会释放其他会话。结束标记保留 120 秒，期间同一 ID 的迟到心跳会被忽略；恢复阅读时使用新的 ID。">Ends the current user&#x27;s reading session for this comic. Call when leaving the reader or entering the background. Repeated calls are safe and do not release other reading sessions. Late heartbeats for the same ID are ignored while its end marker is retained (120 seconds). Use a fresh ID when resuming.</span></p>
 
     <h4><span data-en="Path Parameters" data-zh="路径参数">Path Parameters</span></h4>
     <table class="params-table">
       <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
       <tbody>
-        <tr><td>id</td><td>string</td><td>Yes</td><td>Comic ID</td></tr>
+        <tr><td>id</td><td>string</td><td><span data-en="Yes" data-zh="是">Yes</span></td><td><span data-en="Comic ID; requires canView on its library." data-zh="漫画 ID；要求所属书库的 canView 权限。">Comic ID; requires canView on its library.</span></td></tr>
       </tbody>
     </table>
 
+    <h4><span data-en="Request Body" data-zh="请求体">Request Body</span></h4>
+    <table class="params-table">
+      <thead><tr><th><span data-en="Name" data-zh="名称">Name</span></th><th><span data-en="Type" data-zh="类型">Type</span></th><th><span data-en="Required" data-zh="必填">Required</span></th><th><span data-en="Description" data-zh="说明">Description</span></th></tr></thead>
+      <tbody>
+        <tr><td>sessionId</td><td>string</td><td><span data-en="No" data-zh="否">No</span></td><td><span data-en="The same ID used for warmup (max 128 bytes). Omit only to end the legacy user/comic session." data-zh="与 warmup 使用同一 ID，最多 128 字节；省略时只结束当前用户和漫画的兼容会话。">The same ID used for warmup (max 128 bytes). Omit only to end the legacy user/comic session.</span></td></tr>
+      </tbody>
+    </table>
+    <pre class="code-block"><code>{
+  &quot;sessionId&quot;: &quot;reader-session-unique-id&quot;
+}</code></pre>
+
     <h4><span data-en="Response" data-zh="响应">Response</span> <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  "success": true
+  &quot;success&quot;: true
 }</code></pre>
 
     <div class="badges">

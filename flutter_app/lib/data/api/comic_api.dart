@@ -54,6 +54,21 @@ class ComicApi {
     return res.data;
   }
 
+  Future<void> warmupPages(String comicId, String sessionId,
+      {required int startPage, required int count}) async {
+    await _dio.post('/comics/$comicId/warmup', data: {
+      'sessionId': sessionId,
+      'startPage': startPage,
+      'count': count,
+    });
+  }
+
+  Future<void> endWarmup(String comicId, String sessionId) async {
+    await _dio.post('/comics/$comicId/warmup-done', data: {
+      'sessionId': sessionId,
+    });
+  }
+
   /// 获取小说章节内容
   Future<Map<String, dynamic>> getChapterContent(String comicId, int chapterIndex) async {
     final res = await _dio.get('/comics/$comicId/chapter/$chapterIndex');

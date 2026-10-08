@@ -9,6 +9,7 @@ import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/services/reading_activity_tracker.dart';
+import '../../data/services/reader_warmup_session.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/reader_settings_panel.dart';
 import 'novel_reader_screen.dart';
@@ -39,6 +40,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
 
   late final ComicApi _api;
   late final ReadingActivityTracker _activity;
+  late final ReaderWarmupSession _warmup;
 
   // 设置
   ReaderSettings _settings = const ReaderSettings();
@@ -55,6 +57,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     // 提前缓存 API 引用
     _api = ref.read(comicApiProvider);
     _activity = ReadingActivityTracker(api: _api, comicId: widget.comicId);
+    _warmup = ReaderWarmupSession(api: _api, comicId: widget.comicId);
     // 全屏沉浸模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _loadSettings();
@@ -67,6 +70,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     // 恢复系统UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _activity.dispose();
+    _warmup.dispose();
     _pageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -74,6 +78,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
 
   /// 拦截返回操作，尽量在退出前完成最后一次活动同步
   Future<void> _onWillPop() async {
+    _warmup.dispose();
     await _activity.finish();
     if (mounted) Navigator.of(context).pop();
   }
@@ -111,6 +116,8 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
         _loading = false;
       });
       _activity.start(_currentPage, _totalPages);
+      _warmup.start(_currentPage, _totalPages);
+      unawaited(_prefetchPages(_currentPage));
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -119,6 +126,28 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   void _onPageChanged(int page) {
     setState(() => _currentPage = page);
     _activity.updatePage(page, _totalPages);
+    unawaited(_prefetchPages(page));
+  }
+
+  Future<void> _prefetchPages(int page) async {
+    final serverUrl = ref.read(authProvider).serverUrl;
+    // Keep read-ahead small and sequential so it does not flood the server.
+    for (final next in [page, page + 1, page + 2, page - 1]) {
+      if (!mounted || _currentPage != page) return;
+      if (next < 0 || next >= _totalPages) continue;
+      try {
+        await loadAuthenticatedImageBytes(
+          getImageUrl(serverUrl, widget.comicId, page: next),
+          comicId: widget.comicId,
+          pageIndex: next,
+        );
+        if (next == page && mounted && _currentPage == page) {
+          _warmup.prefetch(page);
+        }
+      } catch (_) {
+        // A failed speculative load must not interrupt the visible page.
+      }
+    }
   }
 
   void _toggleOverlay() {
@@ -324,8 +353,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
       reverse: _settings.direction == ReadingDirection.rtl,
       onPageChanged: (groupIndex) {
         final firstPage = pageGroups[groupIndex].first;
-        setState(() => _currentPage = firstPage);
-        _activity.updatePage(firstPage, _totalPages);
+        _onPageChanged(firstPage);
       },
       itemBuilder: (context, groupIndex) {
         final pages = pageGroups[groupIndex];
@@ -408,8 +436,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
             final page =
                 (notification.metrics.pixels / viewportHeight).floor();
             if (page != _currentPage && page >= 0 && page < _totalPages) {
-              setState(() => _currentPage = page);
-              _activity.updatePage(page, _totalPages);
+              _onPageChanged(page);
             }
           }
         }
@@ -432,9 +459,9 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
               height: MediaQuery.of(context).size.height,
               child: const Center(child: CircularProgressIndicator()),
             ),
-            errorWidget: SizedBox(
+            errorWidget: const SizedBox(
               height: 200,
-              child: const Center(
+              child: Center(
                 child: Icon(Icons.broken_image,
                     color: Colors.white54, size: 48),
               ),

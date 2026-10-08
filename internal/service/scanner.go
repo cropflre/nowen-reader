@@ -46,10 +46,6 @@ var (
 	// 防抖：文件变更后延迟触发同步
 	fsDebounceTicker *time.Timer
 	fsDebounceMu     sync.Mutex
-
-	// 阅读时暂停扫描：当有活跃阅读会话时，暂停后台扫描以减少 IO 竞争
-	activeReaders   int
-	activeReadersMu sync.Mutex
 )
 
 // 从配置文件读取可配置参数
@@ -59,29 +55,6 @@ func getScannerCooldown() time.Duration {
 		return time.Duration(cfg.ScannerConfig.SyncCooldownSec) * time.Second
 	}
 	return 30 * time.Second
-}
-
-// AcquireReadingLock 在开始阅读时调用，暂停后台扫描以减少 IO 竞争。
-func AcquireReadingLock() {
-	activeReadersMu.Lock()
-	activeReaders++
-	activeReadersMu.Unlock()
-}
-
-// ReleaseReadingLock 在结束阅读时调用，恢复后台扫描。
-func ReleaseReadingLock() {
-	activeReadersMu.Lock()
-	if activeReaders > 0 {
-		activeReaders--
-	}
-	activeReadersMu.Unlock()
-}
-
-// isReadingActive 判断是否有活跃的阅读会话。
-func isReadingActive() bool {
-	activeReadersMu.Lock()
-	defer activeReadersMu.Unlock()
-	return activeReaders > 0
 }
 
 func getFSDebounceDelay() time.Duration {
