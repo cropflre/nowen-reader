@@ -10,6 +10,7 @@ import '../../data/providers/auth_provider.dart';
 import '../../data/providers/comic_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/work_tags.dart';
+import '../../widgets/work_categories.dart';
 
 /// 合集详情页。
 ///
@@ -476,8 +477,21 @@ class _GroupDetailV2ScreenState
                   .setGroupTags(widget.groupId, names);
               if (!mounted) return;
               setState(() {
-                _detail = {...detail, 'tagItems': saved.map((name) => {'name': name}).toList()};
+                _detail = {...?_detail, 'tagItems': saved.map((name) => {'name': name}).toList()};
               });
+            },
+          ),
+          const SizedBox(height: 12),
+          WorkCategories(
+            categories: (detail['categories'] as List? ?? []).whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item)).toList(),
+            canEdit: ref.watch(authProvider).user?.isAdmin ?? false,
+            loadOptions: () => ref.read(categoryApiProvider).listCategories(),
+            onSave: (slugs) async {
+              final saved = await ref.read(categoryApiProvider)
+                  .setGroupCategories(widget.groupId, slugs);
+              if (!mounted) return;
+              setState(() => _detail = {...?_detail, 'categories': saved});
             },
           ),
         ],

@@ -325,6 +325,9 @@ export default function GroupDetailPanel({
   const [groupCategories, setGroupCategories] = useState<GroupCategory[]>([]);
   const [allCategories, setAllCategories] = useState<GroupCategory[]>([]);
   const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryLoadError, setCategoryLoadError] = useState(false);
+  const [categoryCatalogError, setCategoryCatalogError] = useState(false);
   const [categorySyncing, setCategorySyncing] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [aiCategoryLoading, setAiCategoryLoading] = useState(false);
@@ -379,23 +382,31 @@ export default function GroupDetailPanel({
 
   // 加载分类
   const loadCategories = useCallback(async () => {
-    const cats = await fetchGroupCategories(group.id);
-    setGroupCategories(cats);
+    setCategoryLoading(true);
+    setCategoryLoadError(false);
+    try {
+      const cats = await fetchGroupCategories(group.id);
+      setGroupCategories(cats);
+    } catch {
+      setCategoryLoadError(true);
+    } finally {
+      setCategoryLoading(false);
+    }
   }, [group.id]);
 
   const loadAllCategories = useCallback(async () => {
+    setCategoryCatalogError(false);
     try {
       const res = await fetch(apiPath("/api/categories"));
-      if (res.ok) {
-        const data = await res.json();
-        setAllCategories((data.categories || []).map((c: Record<string, unknown>) => ({
-          id: c.id as number,
-          name: c.name as string,
-          slug: c.slug as string,
-          icon: c.icon as string,
-        })));
-      }
-    } catch { /* ignore */ }
+      if (!res.ok) throw new Error("加载分类失败");
+      const data = await res.json();
+      setAllCategories((data.categories || []).map((c: Record<string, unknown>) => ({
+        id: c.id as number,
+        name: c.name as string,
+        slug: c.slug as string,
+        icon: c.icon as string,
+      })));
+    } catch { setCategoryCatalogError(true); }
   }, []);
 
   useEffect(() => {
@@ -619,6 +630,7 @@ export default function GroupDetailPanel({
 
   // ── 分类管理 ──
   const handleToggleCategory = useCallback(async (slug: string) => {
+    if (categorySaving || categoryLoading || categoryLoadError || categorySyncing) return;
     setCategorySaving(true);
     const currentSlugs = groupCategories.map(c => c.slug);
     const isRemoving = currentSlugs.includes(slug);
@@ -634,10 +646,12 @@ export default function GroupDetailPanel({
           ? `已移除分类「${catName}」`
           : `已添加分类「${catName}」${result.syncedTo > 0 ? `，已同步到 ${result.syncedTo} 卷` : ""}`
       );
-      await loadCategories();
+      setGroupCategories(result.categories);
+    } else {
+      toast.error("保存分类失败，请重试");
     }
     setCategorySaving(false);
-  }, [group.id, groupCategories, allCategories, toast, loadCategories]);
+  }, [group.id, groupCategories, allCategories, toast, loadCategories, categorySaving, categoryLoading, categoryLoadError, categorySyncing]);
 
   const handleSyncCategories = useCallback(async () => {
     setCategorySyncing(true);
@@ -668,7 +682,7 @@ export default function GroupDetailPanel({
   }, [group.id, locale, toast]);
 
   const handleApplyAiCategories = useCallback(async (slugs: string[]) => {
-    if (slugs.length === 0) return;
+    if (slugs.length === 0 || categorySaving || categoryLoading || categoryLoadError || categorySyncing) return;
     setCategorySaving(true);
     const currentSlugs = groupCategories.map(c => c.slug);
     const newSlugs = [...new Set([...currentSlugs, ...slugs])];
@@ -676,11 +690,13 @@ export default function GroupDetailPanel({
     if (result?.success) {
       const addedCount = newSlugs.length - currentSlugs.length;
       toast.success(`已添加 ${addedCount} 个分类${result.syncedTo > 0 ? `，已同步到 ${result.syncedTo} 卷` : ""}`);
-      await loadCategories();
+      setGroupCategories(result.categories);
       setAiSuggestedCategories([]);
+    } else {
+      toast.error("保存分类失败，请重试");
     }
     setCategorySaving(false);
-  }, [group.id, groupCategories, toast, loadCategories]);
+  }, [group.id, groupCategories, toast, loadCategories, categorySaving, categoryLoading, categoryLoadError, categorySyncing]);
 
   // ── 从首卷继承元数据 ──
   const handleInheritMetadata = useCallback(async () => {
@@ -1143,18 +1159,20 @@ export default function GroupDetailPanel({
                 <span className="text-[10px] text-muted/60">({groupCategories.length})</span>
               )}
             </h4>
-            {groupCategories.length > 0 && (
+            {directComicCount > 0 && groupCategories.length > 0 && (
               <button
                 onClick={handleSyncCategories}
-                disabled={categorySyncing}
+                disabled={categorySyncing || categorySaving || categoryLoading || categoryLoadError}
                 className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] text-accent/80 transition-colors hover:bg-accent/10"
-                title="将系列分类同步到所有卷"
+                title="将合集分类添加到直接加入的散本"
               >
                 {categorySyncing ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />}
                 同步
               </button>
             )}
           </div>
+          {categoryLoading && <p role="status" className="text-xs text-muted">加载分类中…</p>}
+          {categoryLoadError && <p role="alert" className="text-xs text-red-400">分类加载失败 <button type="button" onClick={() => void loadCategories()} className="underline">重试</button></p>}
           <div className="flex flex-wrap gap-1">
             {groupCategories.map((cat) => (
               <span
@@ -1164,15 +1182,16 @@ export default function GroupDetailPanel({
                 <span className="text-xs">{cat.icon}</span>
                 {cat.name}
                 <button
+                  aria-label={`移除分类 ${cat.name}`}
                   onClick={() => handleToggleCategory(cat.slug)}
-                  disabled={categorySaving}
-                  className="ml-0.5 rounded-full p-0.5 opacity-0 transition-all group-hover/cat:opacity-100 hover:bg-white/10"
+                  disabled={categorySaving || categoryLoading || categoryLoadError || categorySyncing}
+                  className="ml-0.5 rounded-full p-0.5 transition-all hover:bg-white/10"
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
               </span>
             ))}
-            {groupCategories.length === 0 && (
+            {groupCategories.length === 0 && !categoryLoading && !categoryLoadError && (
               <span className="text-[10px] text-muted/40">暂无分类</span>
             )}
           </div>
@@ -1210,7 +1229,9 @@ export default function GroupDetailPanel({
                 </button>
               </div>
               <div className="flex flex-wrap gap-1">
-                {allCategories.length === 0 ? (
+                {categoryCatalogError ? (
+                  <p role="alert" className="text-xs text-red-400">分类列表加载失败 <button type="button" onClick={() => void loadAllCategories()} className="underline">重试</button></p>
+                ) : allCategories.length === 0 ? (
                   <span className="text-[10px] text-muted/50">暂无可用分类，请先在设置中初始化</span>
                 ) : (
                   allCategories.map((cat) => {
@@ -1218,8 +1239,9 @@ export default function GroupDetailPanel({
                     return (
                       <button
                         key={cat.slug}
+                        aria-pressed={isSelected}
                         onClick={() => handleToggleCategory(cat.slug)}
-                        disabled={categorySaving}
+                        disabled={categorySaving || categoryLoading || categoryLoadError || categorySyncing}
                         className={`rounded-md px-1.5 py-0.5 text-[10px] transition-all ${
                           isSelected
                             ? "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40"
@@ -1257,7 +1279,7 @@ export default function GroupDetailPanel({
               <div className="flex gap-1.5">
                 <button
                   onClick={() => handleApplyAiCategories(aiSuggestedCategories)}
-                  disabled={categorySaving}
+                  disabled={categorySaving || categoryLoading || categoryLoadError || categorySyncing}
                   className="rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-40"
                 >
                   全部添加 ({aiSuggestedCategories.length})
@@ -1274,7 +1296,7 @@ export default function GroupDetailPanel({
 
           <p className="text-[9px] text-muted/40 flex items-center gap-0.5">
             <ArrowDownToLine className="h-2.5 w-2.5" />
-            添加/删除分类时自动同步到所有卷
+            分类保存在合集上，可按需同步到直接加入的散本
           </p>
         </div>
 

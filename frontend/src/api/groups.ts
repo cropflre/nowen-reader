@@ -389,22 +389,17 @@ export interface GroupCategory {
 
 /** 获取系列分类 */
 export async function fetchGroupCategories(groupId: number): Promise<GroupCategory[]> {
-  try {
-    const data: any = await apiClient.get(`/api/groups/${groupId}/categories`);
-    return data.categories || [];
-  } catch {
-    return [];
-  }
+  const data = await apiClient.get<{ categories: GroupCategory[] }>(`/api/groups/${groupId}/categories`);
+  return data.categories;
 }
 
-/** 设置系列分类（替换所有，可选自动同步到所有卷�?*/
+/** 设置合集自身分类（替换所有现有分类）。 */
 export async function setGroupCategories(
   groupId: number,
-  categorySlugs: string[],
-  autoSync: boolean = true
-): Promise<{ success: boolean; syncedTo: number } | null> {
+  categorySlugs: string[]
+): Promise<{ success: boolean; syncedTo: number; categories: GroupCategory[] } | null> {
   try {
-    return await apiClient.put(`/api/groups/${groupId}/categories`, { categorySlugs, autoSync });
+    return await apiClient.put(`/api/groups/${groupId}/categories`, { categorySlugs });
   } catch {
     return null;
   }

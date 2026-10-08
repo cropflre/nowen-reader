@@ -71,6 +71,23 @@ class CategoryApi {
   final Dio _dio;
   CategoryApi(this._dio);
 
+  Future<List<Map<String, dynamic>>> setGroupCategories(
+      int groupId, List<String> slugs) async {
+    final res = await _dio.put('/groups/$groupId/categories',
+        data: {'categorySlugs': slugs});
+    return (res.data['categories'] as List)
+        .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> setSeriesCategories(
+      String seriesId, List<String> slugs) async {
+    final res = await _dio.put(
+        '/series/${Uri.encodeComponent(seriesId)}/categories',
+        data: {'categorySlugs': slugs});
+    return (res.data['categories'] as List)
+        .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
   /// 获取分类列表
   Future<List<dynamic>> listCategories() async {
     final res = await _dio.get('/categories');

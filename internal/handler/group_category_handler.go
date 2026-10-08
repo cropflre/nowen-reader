@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -22,13 +23,11 @@ func (h *GroupHandler) GetGroupCategories(c *gin.Context) {
 		return
 	}
 
-	cats, err := store.GetGroupCategories(id)
-	if err != nil {
-		log.Printf("[API] GetGroupCategories error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列分类失败"})
+	group, ok := accessibleGroup(c, id)
+	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"categories": cats})
+	c.JSON(http.StatusOK, gin.H{"categories": group.Categories})
 }
 
 // PUT /api/groups/:id/categories — 设置系列分类（替换所有）
@@ -40,15 +39,28 @@ func (h *GroupHandler) SetGroupCategories(c *gin.Context) {
 	}
 
 	var body struct {
-		CategorySlugs []string `json:"categorySlugs"`
-		AutoSync      bool     `json:"autoSync"`
+		CategorySlugs *[]string `json:"categorySlugs"`
+		AutoSync      bool      `json:"autoSync"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := c.ShouldBindJSON(&body); err != nil || body.CategorySlugs == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
 
-	if err := store.SetGroupCategories(id, body.CategorySlugs); err != nil {
+	group, err := store.GetGroupByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取合集失败"})
+		return
+	}
+	if group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "合集不存在"})
+		return
+	}
+	if err := store.SetGroupCategories(id, *body.CategorySlugs); err != nil {
+		if errors.Is(err, store.ErrCategoryNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "所选分类不存在，请刷新后重试"})
+			return
+		}
 		log.Printf("[API] SetGroupCategories error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "设置系列分类失败"})
 		return
@@ -56,13 +68,19 @@ func (h *GroupHandler) SetGroupCategories(c *gin.Context) {
 
 	// 自动同步到所有卷
 	var syncedTo int
-	if body.AutoSync && len(body.CategorySlugs) > 0 {
+	if body.AutoSync && len(*body.CategorySlugs) > 0 {
 		_, syncedTo, _ = store.SyncGroupCategoriesToVolumes(id)
+	}
+	categories, err := store.GetGroupCategories(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取合集分类失败"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
-		"syncedTo": syncedTo,
+		"success":    true,
+		"syncedTo":   syncedTo,
+		"categories": categories,
 	})
 }
 

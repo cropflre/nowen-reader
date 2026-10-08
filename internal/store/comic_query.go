@@ -44,25 +44,26 @@ func ftsEscapeQuery(input string) string {
 
 // ComicListOptions 保存列表查询参数。
 type ComicListOptions struct {
-	Search           string
-	Tags             []string
-	FavoritesOnly    bool
-	SortBy           string // "title" | "addedAt" | "lastReadAt" | "rating" | "custom"
-	SortOrder        string // "asc" | "desc"
-	Page             int
-	PageSize         int
-	Category         string
-	ContentType      string   // "comic" | "novel" | "" (全部)
-	ReadingStatus    string   // "want" | "reading" | "finished" | "shelved" | "" (全部)
-	ExcludeGrouped   bool     // 是否排除已在分组中的漫画（用于分组视图）
-	MetaFilter       string   // "all" | "with" | "missing" — 按元数据状态过滤
-	UserID           string   // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
-	LibraryIDs       []string // 书库过滤 — 只返回这些书库下的漫画（空=不过滤）
-	FilterLibraryIDs bool     // 如果启用，即使 LibraryIDs 为空也强制过滤（此时返回空）
-	Uncategorized    bool     // 筛选没有分类关联的作品
-	Untagged         bool     // 筛选没有标签关联的作品
-	SeriesView       bool     // 是否开启目录折叠混合视图
-	MatchSeriesTags  bool     // 折叠查询内部使用：同时匹配目录作品自身标签
+	Search                string
+	Tags                  []string
+	FavoritesOnly         bool
+	SortBy                string // "title" | "addedAt" | "lastReadAt" | "rating" | "custom"
+	SortOrder             string // "asc" | "desc"
+	Page                  int
+	PageSize              int
+	Category              string
+	ContentType           string   // "comic" | "novel" | "" (全部)
+	ReadingStatus         string   // "want" | "reading" | "finished" | "shelved" | "" (全部)
+	ExcludeGrouped        bool     // 是否排除已在分组中的漫画（用于分组视图）
+	MetaFilter            string   // "all" | "with" | "missing" — 按元数据状态过滤
+	UserID                string   // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
+	LibraryIDs            []string // 书库过滤 — 只返回这些书库下的漫画（空=不过滤）
+	FilterLibraryIDs      bool     // 如果启用，即使 LibraryIDs 为空也强制过滤（此时返回空）
+	Uncategorized         bool     // 筛选没有分类关联的作品
+	Untagged              bool     // 筛选没有标签关联的作品
+	SeriesView            bool     // 是否开启目录折叠混合视图
+	MatchSeriesTags       bool     // 折叠查询内部使用：同时匹配目录作品自身标签
+	MatchSeriesCategories bool     // 折叠查询内部使用：同时匹配目录作品自身分类
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -181,14 +182,21 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		conditions = append(conditions, tagCondition)
 	}
 
-	// Category filtering
-	if opts.Category != "" {
-		if opts.Category == "uncategorized" {
-			conditions = append(conditions, `c."id" NOT IN (SELECT "comicId" FROM "ComicCategory")`)
-		} else {
-			conditions = append(conditions, `c."id" IN (SELECT cc."comicId" FROM "ComicCategory" cc JOIN "Category" cat ON cc."categoryId" = cat."id" WHERE cat."slug" = ?)`)
+	// Work categories apply only when querying the collapsed directory shelf.
+	if opts.Category != "" && opts.Category != "uncategorized" {
+		categoryCondition := `c."id" IN (SELECT cc."comicId" FROM "ComicCategory" cc JOIN "Category" cat ON cc."categoryId" = cat."id" WHERE cat."slug" = ?)`
+		args = append(args, opts.Category)
+		if opts.MatchSeriesCategories {
+			categoryCondition = "(" + categoryCondition + ` OR EXISTS (
+				SELECT 1 FROM "ComicSeriesItem" si_cat
+				JOIN "ComicSeries" s_cat ON s_cat."id" = si_cat."seriesId" AND s_cat."libraryId" = c."libraryId"
+				JOIN "ComicSeriesCategory" sc_cat ON sc_cat."seriesId" = s_cat."id"
+				JOIN "Category" cat ON cat."id" = sc_cat."categoryId"
+				WHERE si_cat."comicId" = c."id" AND cat."slug" = ?
+			))`
 			args = append(args, opts.Category)
 		}
+		conditions = append(conditions, categoryCondition)
 	}
 
 	// ContentType filtering: 使用 type 字段高效筛选
@@ -215,8 +223,16 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	}
 
 	// Uncategorized: 筛选没有分类关联的作品
-	if opts.Uncategorized {
+	if opts.Uncategorized || opts.Category == "uncategorized" {
 		conditions = append(conditions, `c."id" NOT IN (SELECT "comicId" FROM "ComicCategory")`)
+		if opts.MatchSeriesCategories {
+			conditions = append(conditions, `NOT EXISTS (
+				SELECT 1 FROM "ComicSeriesItem" si_cat
+				JOIN "ComicSeries" s_cat ON s_cat."id" = si_cat."seriesId" AND s_cat."libraryId" = c."libraryId"
+				JOIN "ComicSeriesCategory" sc_cat ON sc_cat."seriesId" = s_cat."id"
+				WHERE si_cat."comicId" = c."id"
+			)`)
+		}
 	}
 
 	// Untagged: 筛选没有标签关联的作品

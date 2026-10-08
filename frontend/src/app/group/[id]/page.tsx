@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
+import DetailAmbientBackdrop from "@/components/DetailAmbientBackdrop";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -118,6 +119,9 @@ export default function GroupDetailPage() {
   const [groupCategories, setGroupCategories] = useState<GroupCategory[]>([]);
   const [allCategories, setAllCategories] = useState<GroupCategory[]>([]);
   const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryLoadError, setCategoryLoadError] = useState(false);
+  const [categoryCatalogError, setCategoryCatalogError] = useState(false);
   const [categorySyncing, setCategorySyncing] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [aiCategoryLoading, setAiCategoryLoading] = useState(false);
@@ -224,24 +228,32 @@ export default function GroupDetailPage() {
   // 加载系列分类
   const loadGroupCategories = useCallback(async () => {
     if (!groupId) return;
-    const cats = await fetchGroupCategories(groupId);
-    setGroupCategories(cats);
+    setCategoryLoading(true);
+    setCategoryLoadError(false);
+    try {
+      const cats = await fetchGroupCategories(groupId);
+      setGroupCategories(cats);
+    } catch {
+      setCategoryLoadError(true);
+    } finally {
+      setCategoryLoading(false);
+    }
   }, [groupId]);
 
   // 加载所有可用分类
   const loadAllCategories = useCallback(async () => {
+    setCategoryCatalogError(false);
     try {
       const res = await fetch(apiPath("/api/categories"));
-      if (res.ok) {
-        const data = await res.json();
-        setAllCategories((data.categories || []).map((c: Record<string, unknown>) => ({
-          id: c.id as number,
-          name: c.name as string,
-          slug: c.slug as string,
-          icon: c.icon as string,
-        })));
-      }
-    } catch { /* ignore */ }
+      if (!res.ok) throw new Error("加载分类失败");
+      const data = await res.json();
+      setAllCategories((data.categories || []).map((c: Record<string, unknown>) => ({
+        id: c.id as number,
+        name: c.name as string,
+        slug: c.slug as string,
+        icon: c.icon as string,
+      })));
+    } catch { setCategoryCatalogError(true); }
   }, []);
 
   useEffect(() => {
@@ -251,7 +263,7 @@ export default function GroupDetailPage() {
 
   // 添加/移除系列分类
   const handleToggleCategory = useCallback(async (slug: string) => {
-    if (!group) return;
+    if (!group || categorySaving || categoryLoading || categoryLoadError || categorySyncing) return;
     setCategorySaving(true);
     const currentSlugs = groupCategories.map(c => c.slug);
     const isRemoving = currentSlugs.includes(slug);
@@ -268,10 +280,12 @@ export default function GroupDetailPage() {
           ? `已移除分类「${catName}」`
           : `已添加分类「${catName}」${result.syncedTo > 0 ? `，已同步到 ${result.syncedTo} 卷` : ""}`
       );
-      await loadGroupCategories();
+      setGroupCategories(result.categories);
+    } else {
+      toast.error("保存分类失败，请重试");
     }
     setCategorySaving(false);
-  }, [group, groupCategories, allCategories, toast, loadGroupCategories]);
+  }, [group, groupCategories, allCategories, toast, loadGroupCategories, categorySaving, categoryLoading, categoryLoadError, categorySyncing]);
 
   // 同步分类到所有卷
   const handleSyncCategoriesToVolumes = useCallback(async () => {
@@ -306,7 +320,7 @@ export default function GroupDetailPage() {
 
   // 应用 AI 建议的分类
   const handleApplyAiCategories = useCallback(async (slugs: string[]) => {
-    if (!group || slugs.length === 0) return;
+    if (!group || slugs.length === 0 || categorySaving || categoryLoading || categoryLoadError || categorySyncing) return;
     setCategorySaving(true);
     const currentSlugs = groupCategories.map(c => c.slug);
     const newSlugs = [...new Set([...currentSlugs, ...slugs])];
@@ -314,11 +328,13 @@ export default function GroupDetailPage() {
     if (result?.success) {
       const addedCount = newSlugs.length - currentSlugs.length;
       toast.success(`已添加 ${addedCount} 个分类${result.syncedTo > 0 ? `，已同步到 ${result.syncedTo} 卷` : ""}`);
-      await loadGroupCategories();
+      setGroupCategories(result.categories);
       setAiSuggestedCategories([]);
+    } else {
+      toast.error("保存分类失败，请重试");
     }
     setCategorySaving(false);
-  }, [group, groupCategories, toast, loadGroupCategories]);
+  }, [group, groupCategories, toast, loadGroupCategories, categorySaving, categoryLoading, categoryLoadError, categorySyncing]);
 
   // 添加系列标签
   const handleAddGroupTag = useCallback(async () => {
@@ -812,9 +828,10 @@ export default function GroupDetailPage() {
   const allowGroupMemberSync = directorySeriesCount === 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="detail-ambient-page relative isolate min-h-screen bg-background">
+      <DetailAmbientBackdrop cover={{ id: `group-${group.id}`, coverUrl: group.coverUrl, title: group.name, tags: [...group.tags.split(/[,，]/).filter(Boolean), ...groupTags] }} />
       {/* Header */}
-      <div className="sticky top-0 z-30 border-b border-border/30 bg-background/95 backdrop-blur-xl">
+      <div className="ambient-topbar sticky top-0 z-30 border-b border-border/30 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1200px] items-center gap-3 px-4 py-3">
           <button
             onClick={() => {
@@ -892,7 +909,7 @@ export default function GroupDetailPage() {
       </div>
 
       {/* Content */}
-      <main className="mx-auto max-w-[1200px] px-4 py-6">
+      <main className="relative z-10 mx-auto max-w-[1200px] px-4 py-6">
         {/* ═══════════════════════════════════════════════════════
             系列元数据区域（类似 Komga/Kavita 的布局）
             ═══════════════════════════════════════════════════════ */}
@@ -1287,8 +1304,7 @@ export default function GroupDetailPage() {
               )}
 
               {/* 系列分类管理 */}
-              {(groupCategories.length > 0 || isAdmin) && (
-                <div className="mb-4">
+              <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-xs font-medium uppercase tracking-wider text-muted flex items-center gap-1.5">
                       <FolderOpen className="h-3 w-3" />
@@ -1297,22 +1313,24 @@ export default function GroupDetailPage() {
                         <span className="text-[10px] text-muted/60">({groupCategories.length})</span>
                       )}
                     </h4>
-                    {isAdmin && groupCategories.length > 0 && (
+                    {isAdmin && group.comics.length > 0 && groupCategories.length > 0 && (
                       <button
                         onClick={handleSyncCategoriesToVolumes}
-                        disabled={categorySyncing}
+                        disabled={categorySyncing || categorySaving || categoryLoading || categoryLoadError}
                         className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-accent/80 transition-colors hover:bg-accent/10"
-                        title="将系列分类同步到所有卷"
+                        title="将合集分类添加到直接加入的散本"
                       >
                         {categorySyncing ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
                           <RefreshCw className="h-3 w-3" />
                         )}
-                        <span>同步到所有卷</span>
+                        <span>同步到散本</span>
                       </button>
                     )}
                   </div>
+                  {categoryLoading && <p role="status" className="text-xs text-muted">加载分类中…</p>}
+                  {categoryLoadError && <p role="alert" className="text-xs text-red-400">分类加载失败 <button type="button" onClick={() => void loadGroupCategories()} className="underline">重试</button></p>}
                   <div className="flex flex-wrap gap-1.5">
                     {groupCategories.map((cat) => (
                       <span
@@ -1323,16 +1341,17 @@ export default function GroupDetailPage() {
                         {cat.name}
                         {isAdmin && (
                           <button
+                            aria-label={`移除分类 ${cat.name}`}
                             onClick={() => handleToggleCategory(cat.slug)}
-                            disabled={categorySaving}
-                            className="ml-0.5 rounded-full p-0.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/10"
+                            disabled={categorySaving || categoryLoading || categoryLoadError || categorySyncing}
+                            className="ml-0.5 rounded-full p-0.5 transition-all hover:bg-white/10"
                           >
                             <X className="h-3 w-3" />
                           </button>
                         )}
                       </span>
                     ))}
-                    {groupCategories.length === 0 && !isAdmin && (
+                    {groupCategories.length === 0 && !categoryLoading && !categoryLoadError && (
                       <span className="text-xs text-muted/50">暂无分类</span>
                     )}
                   </div>
@@ -1375,7 +1394,9 @@ export default function GroupDetailPage() {
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {allCategories.length === 0 ? (
+                        {categoryCatalogError ? (
+                          <p role="alert" className="text-xs text-red-400">分类列表加载失败 <button type="button" onClick={() => void loadAllCategories()} className="underline">重试</button></p>
+                        ) : allCategories.length === 0 ? (
                           <span className="text-xs text-muted/50">暂无可用分类，请先在设置中初始化分类</span>
                         ) : (
                           allCategories.map((cat) => {
@@ -1383,8 +1404,9 @@ export default function GroupDetailPage() {
                             return (
                               <button
                                 key={cat.slug}
+                                aria-pressed={isSelected}
                                 onClick={() => handleToggleCategory(cat.slug)}
-                                disabled={categorySaving}
+                                disabled={categorySaving || categoryLoading || categoryLoadError || categorySyncing}
                                 className={`rounded-md px-2 py-1 text-xs transition-all ${
                                   isSelected
                                     ? "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40"
@@ -1425,7 +1447,7 @@ export default function GroupDetailPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleApplyAiCategories(aiSuggestedCategories)}
-                          disabled={categorySaving}
+                          disabled={categorySaving || categoryLoading || categoryLoadError || categorySyncing}
                           className="rounded-md bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-40"
                         >
                           全部添加 ({aiSuggestedCategories.length})
@@ -1440,14 +1462,13 @@ export default function GroupDetailPage() {
                     </div>
                   )}
 
-                  {isAdmin && groupCategories.length > 0 && (
+                  {isAdmin && group.comics.length > 0 && groupCategories.length > 0 && (
                     <p className="mt-1.5 text-[10px] text-muted/50 flex items-center gap-1">
                       <ArrowDownToLine className="h-3 w-3" />
-                      添加/删除分类时自动同步到系列内所有卷
+                      分类保存在合集上，可按需同步到直接加入的散本
                     </p>
                   )}
                 </div>
-              )}
 
               {/* 操作按钮 */}
               <div className="flex flex-wrap items-center gap-2">

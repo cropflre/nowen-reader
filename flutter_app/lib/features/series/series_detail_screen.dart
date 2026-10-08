@@ -9,6 +9,7 @@ import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/work_tags.dart';
+import '../../widgets/work_categories.dart';
 
 /// 目录作品详情页。
 ///
@@ -352,7 +353,22 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                   .setSeriesTags(widget.seriesId, names);
               if (!mounted) return;
               setState(() {
-                _detail = {...?_detail, 'series': {...summary, 'tags': saved}};
+                _detail = {...?_detail, 'series': {...?(_detail?['series'] as Map?), 'tags': saved}};
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          WorkCategories(
+            categories: (summary['categories'] as List? ?? []).whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item)).toList(),
+            canEdit: summary['canManage'] == true,
+            loadOptions: () => ref.read(categoryApiProvider).listCategories(),
+            onSave: (slugs) async {
+              final saved = await ref.read(categoryApiProvider)
+                  .setSeriesCategories(widget.seriesId, slugs);
+              if (!mounted) return;
+              setState(() {
+                _detail = {...?_detail, 'series': {...?(_detail?['series'] as Map?), 'categories': saved}};
               });
             },
           ),

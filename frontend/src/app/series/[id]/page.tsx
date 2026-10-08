@@ -22,7 +22,9 @@ import {
   Unlock,
   X,
 } from "lucide-react";
-import { fetchSeriesDetail, redetectSeries, setSeriesTags, updateSeries, updateSeriesStructure } from "@/api/series";
+import { fetchSeriesDetail, redetectSeries, setSeriesTags, setSeriesCategories, updateSeries, updateSeriesStructure } from "@/api/series";
+import WorkCategories from "@/components/WorkCategories";
+import DetailAmbientBackdrop from "@/components/DetailAmbientBackdrop";
 import { useToast } from "@/components/Toast";
 import { GroupMetadataSearch } from "@/components/GroupMetadataSearch";
 import type { SeriesDetail, SeriesItem } from "@/types/series";
@@ -233,8 +235,9 @@ export default function SeriesDetailPage() {
   const { series } = detail;
   const overallProgress = series.itemCount > 0 ? Math.round((series.completedItemCount / series.itemCount) * 100) : 0;
   return (
-    <main className="min-h-screen bg-background pb-24">
-      <header className="sticky top-0 z-30 border-b border-border/50 bg-background/85 backdrop-blur-xl">
+    <main className="detail-ambient-page relative isolate min-h-screen bg-background pb-24">
+      <DetailAmbientBackdrop cover={series} />
+      <header className="ambient-topbar sticky top-0 z-30 border-b border-border/50 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
           <button onClick={() => router.push("/books")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
@@ -250,7 +253,7 @@ export default function SeriesDetailPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="relative z-10 mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <section className="overflow-hidden rounded-3xl border border-border/50 bg-card/55 shadow-xl shadow-black/5">
           <div className="grid gap-6 p-5 sm:grid-cols-[180px_1fr] sm:p-7">
             <div className="relative mx-auto aspect-[5/7] w-full max-w-[180px] overflow-hidden rounded-2xl bg-card shadow-lg">
@@ -309,6 +312,12 @@ export default function SeriesDetailPage() {
                 </div>
               )}
 
+              <div className="mt-5 max-w-3xl border-t border-border/50 pt-5">
+                <WorkCategories key={series.id} categories={series.categories || []} canEdit={!!series.canManage} onSave={async (slugs) => {
+                  const categories = await setSeriesCategories(series.id, slugs);
+                  setDetail((current) => current?.series.id === series.id ? { ...current, series: { ...current.series, categories } } : current);
+                }} />
+              </div>
               <div className="mt-5 max-w-3xl space-y-3 border-t border-border/50 pt-5">
                 <h2 className="flex items-center gap-1.5 text-xs font-medium text-muted"><Tag className="h-3.5 w-3.5" />标签</h2>
                 <div className="flex flex-wrap gap-1.5">

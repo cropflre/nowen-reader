@@ -22,6 +22,7 @@ export interface SeriesSummary {
   externalRatingUpdatedAt?: string | null;
   metadataLocked: boolean;
   tags: Array<{ id: number; name: string; color: string }>;
+  categories: Array<{ id: number; name: string; slug: string; icon: string }>;
   itemCount: number;
   sectionCount: number;
   completedItemCount: number;

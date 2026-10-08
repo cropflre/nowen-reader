@@ -626,6 +626,9 @@ func TestTagsEndpoint(t *testing.T) {
 
 func TestCategoriesEndpoint(t *testing.T) {
 	r := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatal(err)
+	}
 	cookie := registerAndLogin(t, r)
 
 	// List categories (empty)

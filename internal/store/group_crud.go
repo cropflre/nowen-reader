@@ -43,26 +43,27 @@ type ComicGroupWithCount struct {
 
 // ComicGroupDetail 包含系列详情和所属漫画列表。
 type ComicGroupDetail struct {
-	ID            int               `json:"id"`
-	Name          string            `json:"name"`
-	CoverURL      string            `json:"coverUrl"`
-	SortOrder     int               `json:"sortOrder"`
-	ShelfSeries   bool              `json:"shelfSeries"`
-	ShelfSortMode string            `json:"shelfSortMode"`
-	Author        string            `json:"author"`
-	Description   string            `json:"description"`
-	Tags          string            `json:"tags"`
-	TagItems      []Tag             `json:"tagItems"`
-	Year          *int              `json:"year"`
-	Publisher     string            `json:"publisher"`
-	Language      string            `json:"language"`
-	Genre         string            `json:"genre"`
-	Status        string            `json:"status"`
-	CreatedAt     string            `json:"createdAt"`
-	UpdatedAt     string            `json:"updatedAt"`
-	ComicCount    int               `json:"comicCount"`
-	SeriesList    []GroupSeriesItem `json:"seriesList"`
-	Comics        []GroupComicItem  `json:"comics"`
+	ID            int                 `json:"id"`
+	Name          string              `json:"name"`
+	CoverURL      string              `json:"coverUrl"`
+	SortOrder     int                 `json:"sortOrder"`
+	ShelfSeries   bool                `json:"shelfSeries"`
+	ShelfSortMode string              `json:"shelfSortMode"`
+	Author        string              `json:"author"`
+	Description   string              `json:"description"`
+	Tags          string              `json:"tags"`
+	TagItems      []Tag               `json:"tagItems"`
+	Categories    []CategoryWithCount `json:"categories"`
+	Year          *int                `json:"year"`
+	Publisher     string              `json:"publisher"`
+	Language      string              `json:"language"`
+	Genre         string              `json:"genre"`
+	Status        string              `json:"status"`
+	CreatedAt     string              `json:"createdAt"`
+	UpdatedAt     string              `json:"updatedAt"`
+	ComicCount    int                 `json:"comicCount"`
+	SeriesList    []GroupSeriesItem   `json:"seriesList"`
+	Comics        []GroupComicItem    `json:"comics"`
 }
 
 // GroupSeriesItem 分组内的目录作品条目。
@@ -173,15 +174,43 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 
 	if opts.Category != "" {
 		visible, values := visibility("c_category")
-		conditions = append(conditions, `EXISTS (
+		categoryMatch := `(EXISTS (
+			SELECT 1 FROM "GroupCategory" own_cat
+			JOIN "Category" cat ON cat."id" = own_cat."categoryId"
+			WHERE own_cat."groupId" = g."id"`
+		if opts.Category != "uncategorized" {
+			categoryMatch += ` AND cat."slug" = ?`
+			whereArgs = append(whereArgs, opts.Category)
+		}
+		categoryMatch += `) OR EXISTS (
 			SELECT 1 FROM "GroupExpandedComic" gm_category
 			JOIN "Comic" c_category ON c_category."id" = gm_category."comicId"
 			JOIN "ComicCategory" cc ON cc."comicId" = c_category."id"
 			JOIN "Category" cat ON cat."id" = cc."categoryId"
-			WHERE gm_category."groupId" = g."id" AND `+visible+` AND cat."slug" = ?
-		)`)
+			WHERE gm_category."groupId" = g."id" AND ` + visible
 		whereArgs = append(whereArgs, values...)
-		whereArgs = append(whereArgs, opts.Category)
+		if opts.Category != "uncategorized" {
+			categoryMatch += ` AND cat."slug" = ?`
+			whereArgs = append(whereArgs, opts.Category)
+		}
+		categoryMatch += `) OR EXISTS (
+			SELECT 1 FROM "ComicGroupSeries" gs_cat
+			JOIN "ComicSeries" s_cat ON s_cat."id" = gs_cat."seriesId"
+			JOIN "ComicSeriesCategory" sc_cat ON sc_cat."seriesId" = s_cat."id"
+			JOIN "Category" cat ON cat."id" = sc_cat."categoryId"
+			JOIN "ComicSeriesItem" si_cat ON si_cat."seriesId" = s_cat."id"
+			JOIN "Comic" c_category ON c_category."id" = si_cat."comicId" AND c_category."libraryId" = s_cat."libraryId"
+			WHERE gs_cat."groupId" = g."id" AND ` + visible
+		whereArgs = append(whereArgs, values...)
+		if opts.Category != "uncategorized" {
+			categoryMatch += ` AND cat."slug" = ?`
+			whereArgs = append(whereArgs, opts.Category)
+		}
+		categoryMatch += `))`
+		if opts.Category == "uncategorized" {
+			categoryMatch = "NOT " + categoryMatch
+		}
+		conditions = append(conditions, categoryMatch)
 	}
 	for index, tagName := range opts.Tags {
 		comicAlias := fmt.Sprintf("c_tag_%d", index)
@@ -496,6 +525,10 @@ func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupD
 
 	seriesRows.Close()
 	g.TagItems, err = GetGroupTags(groupID)
+	if err != nil {
+		return nil, err
+	}
+	g.Categories, err = GetGroupCategories(groupID)
 	if err != nil {
 		return nil, err
 	}

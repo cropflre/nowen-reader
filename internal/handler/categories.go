@@ -24,7 +24,7 @@ func (h *CategoryHandler) ListCategories(c *gin.Context) {
 
 	if scope == "groups" {
 		contentType := c.Query("contentType")
-		cats, err := store.GetGroupCategoryStats(contentType)
+		cats, err := store.GetGroupCategoryStats(contentType, getUserID(c))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch group categories"})
 			return

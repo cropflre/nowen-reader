@@ -140,6 +140,7 @@ func getAllComicsSeriesViewBatched(opts ComicListOptions) (*ComicListResult, err
 	flatOpts := opts
 	flatOpts.SeriesView = false
 	flatOpts.MatchSeriesTags = true
+	flatOpts.MatchSeriesCategories = true
 	flatOpts.Page = 0
 	flatOpts.PageSize = 0
 	flat, err := GetAllComics(flatOpts)
@@ -292,7 +293,7 @@ func collapseComicListIntoSeriesBatched(items []ComicListItem, userID string) ([
 			LibraryID:     summary.LibraryID,
 			ComicCount:    summary.ItemCount,
 			Tags:          tags,
-			Categories:    []ComicCategoryInfo{},
+			Categories:    summary.Categories,
 		})
 	}
 	return collapsed, nil

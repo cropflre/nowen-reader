@@ -606,10 +606,11 @@ type CategoryWithCount struct {
 // GetAllCategories 返回所有分类及其漫画计数。
 func GetAllCategories() ([]CategoryWithCount, error) {
 	rows, err := db.Query(`
-		SELECT cat."id", cat."name", cat."slug", cat."icon", COUNT(cc."comicId") as cnt
+		SELECT cat."id", cat."name", cat."slug", cat."icon",
+		       (SELECT COUNT(*) FROM "ComicCategory" cc WHERE cc."categoryId" = cat."id") +
+		       (SELECT COUNT(*) FROM "ComicSeriesCategory" sc WHERE sc."categoryId" = cat."id") +
+		       (SELECT COUNT(*) FROM "GroupCategory" gc WHERE gc."categoryId" = cat."id") as cnt
 		FROM "Category" cat
-		LEFT JOIN "ComicCategory" cc ON cc."categoryId" = cat."id"
-		GROUP BY cat."id"
 		ORDER BY cat."sortOrder" ASC
 	`)
 	if err != nil {

@@ -7,7 +7,9 @@ export interface ShelfFocus {
   activeId: string;
 }
 
-export function readingBackdropSrc(comic: ApiComic, hideNSFW: boolean): string | null {
+export type AmbientCover = Pick<ApiComic, "id" | "coverUrl"> & Parameters<typeof isNSFW>[0];
+
+export function readingBackdropSrc(comic: AmbientCover, hideNSFW: boolean): string | null {
   if (hideNSFW && isNSFW(comic)) return null;
   const src = typeof comic.coverUrl === "string" ? comic.coverUrl.trim() : "";
   return src || null;

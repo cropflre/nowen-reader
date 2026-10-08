@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { readingBackdropSrc, type ShelfFocus } from "./dashboard-shelf";
+import { readingBackdropSrc, type AmbientCover } from "./dashboard-shelf";
 
-export default function DashboardAmbientBackdrop({ comics, activeId, hideNSFW }: ShelfFocus & { hideNSFW: boolean }) {
+export default function DashboardAmbientBackdrop({ comics, activeId, hideNSFW }: { comics: AmbientCover[]; activeId: string; hideNSFW: boolean }) {
   const [failedSources, setFailedSources] = useState<string[]>([]);
 
   return <div className="dashboard-ambient-backdrop" aria-hidden="true">

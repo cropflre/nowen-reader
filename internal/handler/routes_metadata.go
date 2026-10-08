@@ -182,6 +182,7 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		groupRead.GET("/comic-map", group.GetComicMap)
 		groupRead.GET("/:id", group.GetGroup)
 		groupRead.GET("/:id/tags", group.GetGroupTags)
+		groupRead.GET("/:id/categories", group.GetGroupCategories)
 	}
 
 	groupWrite := api.Group("/groups")
@@ -204,7 +205,6 @@ func registerMetadataRoutes(api *gin.RouterGroup) {
 		groupWrite.POST("/:id/sync-tags", group.SyncGroupTags)
 		groupWrite.POST("/:id/override-tags", group.OverrideGroupTags)
 		groupWrite.POST("/:id/ai-suggest-tags", group.AISuggestTags)
-		groupWrite.GET("/:id/categories", group.GetGroupCategories)
 		groupWrite.PUT("/:id/categories", group.SetGroupCategories)
 		groupWrite.POST("/:id/sync-categories", group.SyncGroupCategories)
 		groupWrite.POST("/:id/ai-suggest-categories", group.AISuggestCategories)

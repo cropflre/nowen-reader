@@ -46,38 +46,39 @@ type DetectedSeriesItem struct {
 }
 
 type SeriesSummary struct {
-	ID                      string     `json:"id"`
-	LibraryID               string     `json:"libraryId"`
-	ContentType             string     `json:"contentType"`
-	RootRelativePath        string     `json:"rootRelativePath"`
-	Title                   string     `json:"title"`
-	SortTitle               string     `json:"sortTitle"`
-	CoverComicID            string     `json:"coverComicId"`
-	CoverURL                string     `json:"coverUrl"`
-	Author                  string     `json:"author"`
-	Description             string     `json:"description"`
-	Year                    *int       `json:"year"`
-	Publisher               string     `json:"publisher"`
-	Language                string     `json:"language"`
-	Genre                   string     `json:"genre"`
-	Status                  string     `json:"status"`
-	ExternalRating          *float64   `json:"externalRating"`
-	ExternalRatingMax       *float64   `json:"externalRatingMax"`
-	ExternalRatingSource    string     `json:"externalRatingSource"`
-	ExternalRatingUpdatedAt *time.Time `json:"externalRatingUpdatedAt"`
-	MetadataLocked          bool       `json:"metadataLocked"`
-	Tags                    []Tag      `json:"tags"`
-	ItemCount               int        `json:"itemCount"`
-	SectionCount            int        `json:"sectionCount"`
-	CompletedItemCount      int        `json:"completedItemCount"`
-	TotalReadTime           int        `json:"totalReadTime"`
-	FileSize                int64      `json:"fileSize"`
-	LastReadAt              *string    `json:"lastReadAt"`
-	IsFavorite              bool       `json:"isFavorite"`
-	ManualLocked            bool       `json:"manualLocked"`
-	CanManage               bool       `json:"canManage,omitempty"`
-	CreatedAt               string     `json:"createdAt"`
-	UpdatedAt               string     `json:"updatedAt"`
+	ID                      string              `json:"id"`
+	LibraryID               string              `json:"libraryId"`
+	ContentType             string              `json:"contentType"`
+	RootRelativePath        string              `json:"rootRelativePath"`
+	Title                   string              `json:"title"`
+	SortTitle               string              `json:"sortTitle"`
+	CoverComicID            string              `json:"coverComicId"`
+	CoverURL                string              `json:"coverUrl"`
+	Author                  string              `json:"author"`
+	Description             string              `json:"description"`
+	Year                    *int                `json:"year"`
+	Publisher               string              `json:"publisher"`
+	Language                string              `json:"language"`
+	Genre                   string              `json:"genre"`
+	Status                  string              `json:"status"`
+	ExternalRating          *float64            `json:"externalRating"`
+	ExternalRatingMax       *float64            `json:"externalRatingMax"`
+	ExternalRatingSource    string              `json:"externalRatingSource"`
+	ExternalRatingUpdatedAt *time.Time          `json:"externalRatingUpdatedAt"`
+	MetadataLocked          bool                `json:"metadataLocked"`
+	Tags                    []Tag               `json:"tags"`
+	Categories              []ComicCategoryInfo `json:"categories"`
+	ItemCount               int                 `json:"itemCount"`
+	SectionCount            int                 `json:"sectionCount"`
+	CompletedItemCount      int                 `json:"completedItemCount"`
+	TotalReadTime           int                 `json:"totalReadTime"`
+	FileSize                int64               `json:"fileSize"`
+	LastReadAt              *string             `json:"lastReadAt"`
+	IsFavorite              bool                `json:"isFavorite"`
+	ManualLocked            bool                `json:"manualLocked"`
+	CanManage               bool                `json:"canManage,omitempty"`
+	CreatedAt               string              `json:"createdAt"`
+	UpdatedAt               string              `json:"updatedAt"`
 }
 
 type SeriesItemDetail struct {
@@ -373,6 +374,10 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		return nil, err
 	}
 	summary.Tags = tags
+	summary.Categories, err = GetSeriesCategories(id)
+	if err != nil {
+		return nil, err
+	}
 	if summary.CoverComicID == "" {
 		_ = db.QueryRow(`SELECT "comicId" FROM "ComicSeriesItem" WHERE "seriesId" = ? ORDER BY "sortIndex", "comicId" LIMIT 1`, id).Scan(&summary.CoverComicID)
 	}
@@ -451,7 +456,7 @@ func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicL
 			LibraryID:     summary.LibraryID,
 			ComicCount:    summary.ItemCount,
 			Tags:          tags,
-			Categories:    []ComicCategoryInfo{},
+			Categories:    summary.Categories,
 		})
 	}
 	return collapsed, nil
@@ -469,6 +474,7 @@ func getAllComicsSeriesView(opts ComicListOptions) (*ComicListResult, error) {
 	flatOpts := opts
 	flatOpts.SeriesView = false
 	flatOpts.MatchSeriesTags = true
+	flatOpts.MatchSeriesCategories = true
 	flatOpts.Page = 0
 	flatOpts.PageSize = 0
 	flat, err := GetAllComics(flatOpts)

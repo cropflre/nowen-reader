@@ -35,6 +35,13 @@ export async function setSeriesTags(id: string, tags: string[]): Promise<SeriesS
   return response.tags;
 }
 
+export async function setSeriesCategories(id: string, categorySlugs: string[]): Promise<SeriesSummary["categories"]> {
+  const response = await apiClient.put<{ categories: SeriesSummary["categories"] }>(
+    `/api/series/${encodeURIComponent(id)}/categories`, { categorySlugs },
+  );
+  return response.categories;
+}
+
 export async function rebuildSeries(libraryId?: string): Promise<void> {
   const suffix = libraryId ? `?libraryId=${encodeURIComponent(libraryId)}` : "";
   await apiClient.post(`/api/series/rebuild${suffix}`);

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import LazyImage from "@/components/LazyImage";
+import DetailAmbientBackdrop from "@/components/DetailAmbientBackdrop";
 import Link from "next/link";
 import {
   useComicDetail,
@@ -866,21 +867,11 @@ export default function ComicDetailPage() {
   const progress = calculateStoredReadingProgress(comic.lastReadPage, comic.pageCount, comic.lastReadAt, comic.readingStatus);
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-
-      {/* Hero Background Blur — cover image as blurred backdrop */}
-      {comic?.coverUrl && (
-        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-          <div
-            className="absolute inset-0 scale-110 bg-cover bg-center bg-no-repeat opacity-25 blur-2xl"
-            style={{ backgroundImage: `url(${apiPath(`/api/comics/${comic.id}/thumbnail?v=${coverKey}`)})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background" />
-        </div>
-      )}
+    <div className="detail-ambient-page relative isolate min-h-screen bg-background overflow-x-hidden">
+      <DetailAmbientBackdrop cover={{ ...comic, coverUrl: comic.coverUrl ? apiPath(`/api/comics/${comic.id}/thumbnail?v=${coverKey}`) : "" }} />
 
       {/* Header */}
-      <div className="sticky top-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl">
+      <div className="ambient-topbar sticky top-0 z-50 border-b border-border/50 backdrop-blur-xl">
         <div className="mx-auto flex h-14 sm:h-16 max-w-5xl items-center gap-3 sm:gap-4 px-3 sm:px-6">
           <button
             onClick={() => router.back()}

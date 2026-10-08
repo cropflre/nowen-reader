@@ -1,4 +1,4 @@
-.app-shell .ambient-topbar { background: #0d0f141a; border-color: #ffffff0f; -webkit-backdrop-filter: blur(24px) saturate(1.08); backdrop-filter: blur(24px) saturate(1.08); box-shadow: inset 0 1px 0 #ffffff06; }
+:is(.app-shell, .detail-ambient-page) .ambient-topbar { background: #0d0f141a; border-color: #ffffff0f; -webkit-backdrop-filter: blur(24px) saturate(1.08); backdrop-filter: blur(24px) saturate(1.08); box-shadow: inset 0 1px 0 #ffffff06; }
 html:has(.app-shell) { scrollbar-gutter: stable; }
 .module-page-header { flex-shrink: 0; min-height: 64px; }
 .module-header-inner { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 63px; padding: 8px 16px; }
@@ -34,7 +34,7 @@ html:has(.app-shell) { scrollbar-gutter: stable; }
 .management-tabs a:hover { color: var(--color-foreground); }
 .management-tabs a[aria-current="page"] { color: var(--color-accent); border-color: var(--color-accent); }
 .management-header-inner { padding-top: 0; padding-bottom: 0; }
-html.light .app-shell .ambient-topbar { background: #ffffff26; border-color: #242a3314; box-shadow: inset 0 1px 0 #ffffff66; }
+html.light :is(.app-shell, .detail-ambient-page) .ambient-topbar { background: #ffffff26; border-color: #242a3314; box-shadow: inset 0 1px 0 #ffffff66; }
 html.light .home-ambient-sidebar { background: #ffffff14; border-color: #242a3314; }
 html.light .home-ambient-sidebar .dashboard-glass { background: #ffffff40; border-color: #242a331c; box-shadow: 0 8px 24px #242a330a, inset 0 1px 0 #ffffff66; }
 html.light .library-search-popover { background: #fffffff5; }
@@ -55,12 +55,12 @@ html.light .library-search-popover { background: #fffffff5; }
   .dashboard-user-menu > button > :is(span:nth-child(2), svg) { display: none; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .app-shell .ambient-topbar, .home-ambient-sidebar .dashboard-glass { background: #101319f2; }
-  html.light .app-shell .ambient-topbar, html.light .home-ambient-sidebar .dashboard-glass { background: #fffffff2; }
+  :is(.app-shell, .detail-ambient-page) .ambient-topbar, .home-ambient-sidebar .dashboard-glass { background: #101319f2; }
+  html.light :is(.app-shell, .detail-ambient-page) .ambient-topbar, html.light .home-ambient-sidebar .dashboard-glass { background: #fffffff2; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .app-shell .ambient-topbar, .home-ambient-sidebar .dashboard-glass { background: #101319f2; -webkit-backdrop-filter: none; backdrop-filter: none; }
-  html.light .app-shell .ambient-topbar, html.light .home-ambient-sidebar .dashboard-glass { background: #fffffff2; }
+  :is(.app-shell, .detail-ambient-page) .ambient-topbar, .home-ambient-sidebar .dashboard-glass { background: #101319f2; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html.light :is(.app-shell, .detail-ambient-page) .ambient-topbar, html.light .home-ambient-sidebar .dashboard-glass { background: #fffffff2; }
   .library-search-popover { background: #161a23; -webkit-backdrop-filter: none; backdrop-filter: none; }
   html.light .library-search-popover { background: #fff; }
 }
