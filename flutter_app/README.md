@@ -4,8 +4,8 @@
 
 ## 环境要求
 
-- Flutter SDK >= 3.2.0
-- Dart SDK >= 3.2.0
+- Flutter SDK >= 3.32.0
+- Dart SDK >= 3.4.0
 - Android Studio / VS Code + Flutter 插件
 
 ## 快速开始

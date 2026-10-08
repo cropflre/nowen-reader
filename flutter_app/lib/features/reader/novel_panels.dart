@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'novel_settings.dart';
+import 'novel_content.dart';
 
 // ============================================================
 // 目录 + 书签 面板（左侧抽屉）
@@ -42,6 +43,7 @@ class TOCBookmarkPanel extends StatefulWidget {
 class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
+  final Set<int> _collapsedToc = {};
 
   @override
   void initState() {
@@ -125,11 +127,15 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
   }
 
   Widget _buildTOCList(NovelSettings s, Color primary) {
+    final entries = normalizeNovelToc(widget.chapters);
+    final visible = visibleNovelToc(entries, _collapsedToc);
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      itemCount: widget.chapters.length,
-      itemBuilder: (context, index) {
-        final chapter = widget.chapters[index];
+      itemCount: visible.length,
+      itemBuilder: (context, visibleIndex) {
+        final entry = visible[visibleIndex];
+        final index = entry.index;
+        final chapter = entry.chapter;
         final isActive = index == widget.currentChapter;
         final title = chapter['title'] as String? ??
             chapter['name'] as String? ??
@@ -140,9 +146,26 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
           dense: true,
           selected: isActive,
           selectedTileColor: primary.withAlpha(20),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          contentPadding: EdgeInsets.only(
+              left: 12 + entry.level.clamp(0, 6) * 12.0, right: 12),
           title: Row(
             children: [
+              if (entry.hasChildren)
+                SizedBox(
+                  width: 28,
+                  height: 32,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    tooltip: _collapsedToc.contains(index) ? '展开子目录' : '折叠子目录',
+                    icon: Icon(_collapsedToc.contains(index)
+                        ? Icons.chevron_right : Icons.expand_more, size: 18),
+                    onPressed: () => setState(() {
+                      if (!_collapsedToc.remove(index)) _collapsedToc.add(index);
+                    }),
+                  ),
+                )
+              else
+                const SizedBox(width: 28),
               Text(
                 '${index + 1}. ',
                 style: TextStyle(

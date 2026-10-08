@@ -7,11 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../utils/tts_service.dart';
 
 import '../../data/api/comic_api.dart';
+import '../../data/api/api_client.dart';
 import '../../data/services/cache_service.dart';
 import '../../data/services/reading_activity_tracker.dart';
 import 'novel_settings.dart';
 import 'novel_panels.dart';
 import 'novel_tap_zone_settings.dart';
+import 'novel_content.dart';
+import 'novel_html_content.dart';
 
 /// 小说阅读器
 class NovelReaderScreen extends ConsumerStatefulWidget {
@@ -37,6 +40,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   String _chapterContent = '';
   String _chapterTitle = '';
   String? _chapterMimeType;
+  bool get _isHtml => isNovelHtml(_chapterContent, _chapterMimeType);
+  bool _htmlMetricsScheduled = false;
+  double _htmlDragDistance = 0;
   bool _showOverlay = false;
   bool _showTOC = false;
   bool _showSettings = false;
@@ -532,6 +538,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     setState(() {
       _chapterLoading = true;
       _currentChapter = index;
+      _loadError = null;
+      _swipePage = 0;
+      _swipeTotalPages = 1;
+      _swipePageInfos = [];
     });
     try {
       // 1. 优先读取本地离线缓存
@@ -543,7 +553,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         // 2. 从网络加载
         data = await _api.getChapterContent(widget.comicId, index);
       }
-      if (!mounted) return;
+      if (!mounted || index != _currentChapter) return;
       final content = data['content'] ?? '';
       final chapterTitle = data['title'] ?? '第${index + 1}章';
       final chapterMimeType = data['mimeType'];
@@ -567,7 +577,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       _computeSwipePages();
       _activity.updatePage(index, _totalChapters);
     } catch (e) {
-      if (mounted) {
+      if (mounted && index == _currentChapter) {
         setState(() {
           _chapterContent = '';
           _chapterLoading = false;
@@ -583,6 +593,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   void _computeSwipePages() {
     if (_settings.pageMode != NovelPageMode.swipe) return;
+    if (_isHtml) {
+      _scheduleHtmlPageMetrics();
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final screenSize = MediaQuery.of(context).size;
@@ -595,10 +609,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         return;
       }
 
-      final isHtml = _chapterMimeType == 'text/html' ||
-          _chapterContent.trimLeft().startsWith('<');
-      final displayText = isHtml ? _stripHtml(_chapterContent) : _chapterContent;
-      final paragraphs = displayText
+      final paragraphs = _chapterContent
           .split('\n')
           .where((line) => line.trim().isNotEmpty)
           .toList();
@@ -696,20 +707,14 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   void _swipePrevPage() {
     if (_swipePage > 0) {
-      _swipePageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      _goToSwipePage(_swipePage - 1);
     } else if (_currentChapter > 0) {
       _loadChapter(_currentChapter - 1).then((_) {
         // 跳到上一章最后一页
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             final lastPage = max(0, _swipeTotalPages - 1);
-            setState(() => _swipePage = lastPage);
-            if (_swipePageController.hasClients) {
-              _swipePageController.jumpToPage(lastPage);
-            }
+            _goToSwipePage(lastPage, animate: false);
           }
         });
       });
@@ -718,13 +723,61 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   void _swipeNextPage() {
     if (_swipePage < _swipeTotalPages - 1) {
-      _swipePageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      _goToSwipePage(_swipePage + 1);
     } else if (_currentChapter < _totalChapters - 1) {
       _loadChapter(_currentChapter + 1);
     }
+  }
+
+  void _goToSwipePage(int page, {bool animate = true}) {
+    final targetPage = page.clamp(0, max(0, _swipeTotalPages - 1)).toInt();
+    setState(() => _swipePage = targetPage);
+    if (_isHtml) {
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final offset = min(
+          targetPage * position.viewportDimension, position.maxScrollExtent);
+      if (animate) {
+        _scrollController.animateTo(offset,
+            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      } else {
+        _scrollController.jumpTo(offset);
+      }
+    } else if (_swipePageController.hasClients) {
+      if (animate) {
+        _swipePageController.animateToPage(targetPage,
+            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      } else {
+        _swipePageController.jumpToPage(targetPage);
+      }
+    }
+  }
+
+  // 实际布局变化（包括图片异步加载、旋转和字号变化）后重算图文章节页数。
+  void _scheduleHtmlPageMetrics() {
+    if (_htmlMetricsScheduled) return;
+    _htmlMetricsScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _htmlMetricsScheduled = false;
+      if (!mounted || !_isHtml || _settings.pageMode != NovelPageMode.swipe ||
+          !_scrollController.hasClients) {
+        return;
+      }
+      final position = _scrollController.position;
+      if (!position.hasContentDimensions || position.viewportDimension <= 0) return;
+      final pages = max(1,
+          ((position.maxScrollExtent + position.viewportDimension) /
+              position.viewportDimension).ceil());
+      final page = _swipePage.clamp(0, pages - 1);
+      if (_swipeTotalPages != pages || _swipePage != page) {
+        setState(() {
+          _swipeTotalPages = pages;
+          _swipePage = page;
+        });
+      }
+      final offset = min(page * position.viewportDimension, position.maxScrollExtent);
+      if ((position.pixels - offset).abs() > 1) _scrollController.jumpTo(offset);
+    });
   }
 
   // ============================================================
@@ -902,10 +955,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           final target = (ratio * max(0, _swipeTotalPages - 1)).round();
-          setState(() => _swipePage = target);
-          if (_swipePageController.hasClients) {
-            _swipePageController.jumpToPage(target);
-          }
+          _goToSwipePage(target, animate: false);
         });
         return;
       }
@@ -956,24 +1006,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     }
   }
 
-  /// 简单的 HTML 标签剥离
-  String _stripHtml(String html) {
-    var text = html.replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), '');
-    text = text.replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), '');
-    text = text.replaceAll(RegExp(r'<br\s*/?>'), '\n');
-    text = text.replaceAll(RegExp(r'</p>'), '\n\n');
-    text = text.replaceAll(RegExp(r'</div>'), '\n');
-    text = text.replaceAll(RegExp(r'</h[1-6]>'), '\n\n');
-    text = text.replaceAll(RegExp(r'<[^>]*>'), '');
-    text = text.replaceAll('&nbsp;', ' ');
-    text = text.replaceAll('&lt;', '<');
-    text = text.replaceAll('&gt;', '>');
-    text = text.replaceAll('&amp;', '&');
-    text = text.replaceAll('&quot;', '"');
-    text = text.replaceAll('&#39;', "'");
-    text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n');
-    return text.trim();
-  }
+  String _stripHtml(String content) => novelPlainText(content);
 
   // ============================================================
   // UI 构建
@@ -1409,12 +1442,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       );
     }
 
-    final isHtml = _chapterMimeType == 'text/html' ||
-        _chapterContent.trimLeft().startsWith('<');
-    final displayText = isHtml ? _stripHtml(_chapterContent) : _chapterContent;
-
     // 将文本按段落分割
-    final paragraphs = displayText
+    final paragraphs = _chapterContent
         .split('\n')
         .where((line) => line.trim().isNotEmpty)
         .toList();
@@ -1436,7 +1465,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         ),
       ),
       // 章节正文（段落）
-      ...paragraphs.map((p) => Padding(
+      if (_isHtml)
+        _buildHtmlContent()
+      else ...paragraphs.map((p) => Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: SelectableText(
               '　　${p.trim()}',
@@ -1479,6 +1510,54 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     ];
 
     // ====== 左右翻页(swipe)模式 ======
+    if (_isHtml && _settings.pageMode == NovelPageMode.swipe) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => _htmlDragDistance = 0,
+        onHorizontalDragUpdate: (details) => _htmlDragDistance += details.delta.dx,
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          if (_htmlDragDistance < -40 || velocity < -300) {
+            _swipeNextPage();
+          } else if (_htmlDragDistance > 40 || velocity > 300) {
+            _swipePrevPage();
+          }
+        },
+        child: NotificationListener<ScrollMetricsNotification>(
+          onNotification: (notification) {
+            if (notification.depth == 0) _scheduleHtmlPageMetrics();
+            return false;
+          },
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                controller: _scrollController,
+                physics: const NeverScrollableScrollPhysics(),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(_settings.horizontalPadding, 16,
+                      _settings.horizontalPadding, 40),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: contentWidgets,
+                  ),
+                ),
+              ),
+              if (_swipeTotalPages > 1)
+                Positioned(
+                  bottom: 8,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Text('${_swipePage + 1} / $_swipeTotalPages',
+                        style: TextStyle(fontSize: 10,
+                            color: _settings.secondaryTextColor)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_settings.pageMode == NovelPageMode.swipe) {
       return Stack(
         children: [
@@ -1540,6 +1619,22 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       ),
       children: contentWidgets,
     );
+  }
+
+  Widget _buildHtmlContent() {
+    final content = NovelHtmlContent(
+      content: _chapterContent,
+      serverUrl: ref.read(apiClientProvider).baseUrl,
+      textStyle: TextStyle(
+        color: _settings.textColor,
+        fontSize: _settings.fontSize,
+        height: _settings.lineHeight,
+        fontFamily: _settings.fontFamily,
+      ),
+    );
+    return _settings.pageMode == NovelPageMode.swipe
+        ? content
+        : SelectionArea(child: content);
   }
 
   /// 顶部工具栏
