@@ -430,6 +430,9 @@ func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicL
 		if summary.SectionCount > 0 {
 			tags = append(tags, ComicTagInfo{Name: fmt.Sprintf("%d 季/篇", summary.SectionCount), Color: ""})
 		}
+		for _, tag := range summary.Tags {
+			tags = append(tags, ComicTagInfo{Name: tag.Name, Color: tag.Color})
+		}
 		collapsed = append(collapsed, ComicListItem{
 			ID:            SeriesShelfIDPrefix + summary.ID,
 			Filename:      "__series__.cbz",
@@ -465,6 +468,7 @@ func getAllComicsSeriesView(opts ComicListOptions) (*ComicListResult, error) {
 
 	flatOpts := opts
 	flatOpts.SeriesView = false
+	flatOpts.MatchSeriesTags = true
 	flatOpts.Page = 0
 	flatOpts.PageSize = 0
 	flat, err := GetAllComics(flatOpts)

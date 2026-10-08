@@ -95,6 +95,8 @@ export default function GroupDetailPage() {
 
   // 系列级标签管理状态
   const [groupTags, setGroupTags] = useState<GroupTag[]>([]);
+  const [tagLoadError, setTagLoadError] = useState(false);
+  const [tagLoading, setTagLoading] = useState(true);
   const [newTagInput, setNewTagInput] = useState("");
   const [tagSyncing, setTagSyncing] = useState(false);
   const [tagSaving, setTagSaving] = useState(false);
@@ -203,8 +205,16 @@ export default function GroupDetailPage() {
   // 加载系列标签
   const loadGroupTags = useCallback(async () => {
     if (!groupId) return;
-    const tags = await fetchGroupTags(groupId);
-    setGroupTags(tags);
+    setTagLoading(true);
+    try {
+      const tags = await fetchGroupTags(groupId);
+      setGroupTags(tags);
+      setTagLoadError(false);
+    } catch {
+      setTagLoadError(true);
+    } finally {
+      setTagLoading(false);
+    }
   }, [groupId]);
 
   useEffect(() => {
@@ -312,11 +322,12 @@ export default function GroupDetailPage() {
 
   // 添加系列标签
   const handleAddGroupTag = useCallback(async () => {
+    if (tagSaving || tagLoading || tagLoadError) return;
     if (!group || !newTagInput.trim()) return;
     setTagSaving(true);
     const currentNames = groupTags.map(t => t.name);
     // 支持逗号分隔批量添加
-    const newNames = newTagInput.split(",").map(s => s.trim()).filter(Boolean);
+    const newNames = newTagInput.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
     const allNames = [...new Set([...currentNames, ...newNames])];
     const result = await setGroupTagsApi(group.id, allNames);
     if (result?.success) {
@@ -329,12 +340,15 @@ export default function GroupDetailPage() {
       );
       setNewTagInput("");
       await loadGroupTags();
+    } else {
+      toast.error("保存标签失败，请重试");
     }
     setTagSaving(false);
-  }, [group, newTagInput, groupTags, toast, loadGroupTags]);
+  }, [group, newTagInput, groupTags, toast, loadGroupTags, tagSaving, tagLoading, tagLoadError]);
 
   // 删除系列标签
   const handleRemoveGroupTag = useCallback(async (tagName: string) => {
+    if (tagSaving || tagLoading || tagLoadError) return;
     if (!group) return;
     setTagSaving(true);
     const newNames = groupTags.filter(t => t.name !== tagName).map(t => t.name);
@@ -343,10 +357,13 @@ export default function GroupDetailPage() {
       const syncedTo = result.syncedTo || 0;
       toast.success(
         `已移除标签「${tagName}」${syncedTo > 0 ? `，已从 ${syncedTo} 卷中移除` : ""}`
-      );      await loadGroupTags();
+      );
+      await loadGroupTags();
+    } else {
+      toast.error("保存标签失败，请重试");
     }
     setTagSaving(false);
-  }, [group, groupTags, toast, loadGroupTags]);
+  }, [group, groupTags, toast, loadGroupTags, tagSaving, tagLoading, tagLoadError]);
 
   // 完整同步标签到所有卷
   // AI 建议标签
@@ -372,6 +389,7 @@ export default function GroupDetailPage() {
 
   // 应用 AI 建议的标签
   const handleApplyAiTags = useCallback(async (tagsToAdd: string[]) => {
+    if (tagSaving || tagLoading || tagLoadError) return;
     if (!group || tagsToAdd.length === 0) return;
     setTagSaving(true);
     const currentNames = groupTags.map(t => t.name);
@@ -386,9 +404,11 @@ export default function GroupDetailPage() {
       setAiSuggestedTags([]);
       setAiSelectedTags(new Set());
       await loadGroupTags();
+    } else {
+      toast.error("保存标签失败，请重试");
     }
     setTagSaving(false);
-  }, [group, groupTags, toast, loadGroupTags, t.comicGroup]);
+  }, [group, groupTags, toast, loadGroupTags, t.comicGroup, tagSaving, tagLoading, tagLoadError]);
 
   const handleSyncTagsToVolumes = useCallback(async () => {
     if (!group) return;
@@ -1065,7 +1085,7 @@ export default function GroupDetailPage() {
               )}
 
               {/* 系列标签管理 */}
-              {(groupTags.length > 0 || isAdmin) && (
+              {(
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-xs font-medium uppercase tracking-wider text-muted flex items-center gap-1.5">
@@ -1075,33 +1095,33 @@ export default function GroupDetailPage() {
                         <span className="text-[10px] text-muted/60">({groupTags.length})</span>
                       )}
                     </h4>
-                    {isAdmin && groupTags.length > 0 && (
+                    {isAdmin && groupTags.length > 0 && group.comics.length > 0 && (
                       <div className="flex items-center gap-2">
                         <button
                           onClick={handleSyncTagsToVolumes}
                           disabled={tagSyncing}
                           className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-accent/80 transition-colors hover:bg-accent/10"
-                          title="将系列标签增量同步到所有卷（仅添加缺少的标签）"
+                          title="将合集标签添加到直接加入的散本，仅补充缺少的标签"
                         >
                           {tagSyncing ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : (
                             <RefreshCw className="h-3 w-3" />
                           )}
-                          <span>同步到所有卷</span>
+                          <span>同步到散本</span>
                         </button>
                         <button
                           onClick={() => setOverrideConfirm(true)}
                           disabled={overrideLoading}
                           className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-orange-400/80 transition-colors hover:bg-orange-400/10"
-                          title="将系列标签覆盖到所有卷（先清除卷的所有标签，再设置为系列标签）"
+                          title="用合集标签替换直接加入的散本的现有标签"
                         >
                           {overrideLoading ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
-                          <span>覆盖到所有卷</span>
+                          <span>覆盖到散本</span>
                         </button>
                       </div>
                     )}
@@ -1117,38 +1137,45 @@ export default function GroupDetailPage() {
                         {isAdmin && (
                           <button
                             onClick={() => handleRemoveGroupTag(tag.name)}
-                            disabled={tagSaving}
-                            className="ml-0.5 rounded-full p-0.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-white/10"
+                            disabled={tagSaving || tagLoading || tagLoadError}
+                            aria-label={`移除标签 ${tag.name}`}
+                            className="ml-0.5 rounded-full p-0.5 transition-all hover:bg-white/10 disabled:opacity-40"
                           >
                             <X className="h-3 w-3" />
                           </button>
                         )}
                       </span>
                     ))}
-                    {groupTags.length === 0 && !isAdmin && (
+                    {groupTags.length === 0 && !tagLoading && !tagLoadError && (
                       <span className="text-xs text-muted/50">暂无标签</span>
                     )}
                   </div>
+                  {tagLoading && <p className="mt-2 text-xs text-muted">正在加载标签...</p>}
+                  {tagLoadError && <p role="alert" className="mt-2 text-xs text-red-400">标签加载失败。<button onClick={loadGroupTags} className="ml-2 underline">重试</button></p>}
                   {isAdmin && (
                     <div className="mt-2 flex gap-2">
                       <input
                         type="text"
+                        aria-label="添加标签"
                         value={newTagInput}
+                        disabled={tagSaving || tagLoading || tagLoadError}
                         onChange={(e) => setNewTagInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleAddGroupTag()}
                         placeholder="添加标签（多个用逗号分隔）"
-                        className="flex-1 rounded-lg bg-card px-3 py-1.5 text-xs text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/30"
+                        className="min-w-0 flex-1 rounded-lg bg-card px-3 py-1.5 text-xs text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/30"
                       />
                       <button
                         onClick={handleAddGroupTag}
-                        disabled={!newTagInput.trim() || tagSaving}
-                        className="rounded-lg bg-accent/20 px-2.5 py-1.5 text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
+                        aria-label="添加标签"
+                        disabled={!newTagInput.trim() || tagSaving || tagLoading || tagLoadError}
+                        className="flex items-center gap-1 rounded-lg bg-accent/20 px-2.5 py-1.5 text-xs text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
                       >
                         {tagSaving ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
                           <Plus className="h-3.5 w-3.5" />
                         )}
+                        添加
                       </button>
                       {aiConfigured && (
                         <button
@@ -1217,7 +1244,7 @@ export default function GroupDetailPage() {
                   {isAdmin && groupTags.length > 0 && (
                     <p className="mt-1.5 text-[10px] text-muted/50 flex items-center gap-1">
                       <ArrowDownToLine className="h-3 w-3" />
-                      添加/删除标签时自动同步到系列内所有卷
+                      标签保存在合集上，可按需同步到直接加入的散本
                     </p>
                   )}
 
@@ -1229,8 +1256,8 @@ export default function GroupDetailPage() {
                         <span>确认覆盖标签</span>
                       </div>
                       <p className="mb-3 text-[11px] text-muted/70 leading-relaxed">
-                        此操作将<strong className="text-orange-400">清除</strong>系列内所有卷的现有标签，
-                        然后将当前系列的 <strong className="text-orange-400">{groupTags.length}</strong> 个标签设置到每一卷。
+                        此操作将<strong className="text-orange-400">清除</strong>直接加入合集的散本的现有标签，
+                        然后将当前合集的 <strong className="text-orange-400">{groupTags.length}</strong> 个标签设置到这些散本。
                         此操作不可撤销，请确认是否继续？
                       </p>
                       <div className="flex gap-2">
@@ -1886,7 +1913,7 @@ export default function GroupDetailPage() {
                   )}
                   <p className="text-[10px] text-muted/60 flex items-center gap-1">
                     <ArrowDownToLine className="h-3 w-3" />
-                    标签通过系列详情页的标签管理器管理，添加/删除时自动同步到所有卷
+                    标签可在合集详情页直接添加或删除
                   </p>
                 </div>
               </div>

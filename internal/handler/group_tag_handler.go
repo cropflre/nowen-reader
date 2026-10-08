@@ -16,13 +16,11 @@ func (h *GroupHandler) GetGroupTags(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的系列ID"})
 		return
 	}
-
-	tags, err := store.GetGroupTags(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列标签失败"})
+	group, ok := accessibleGroup(c, id)
+	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"tags": tags})
+	c.JSON(http.StatusOK, gin.H{"tags": group.TagItems})
 }
 
 // PUT /api/groups/:id/tags — 设置系列标签
@@ -34,18 +32,55 @@ func (h *GroupHandler) SetGroupTags(c *gin.Context) {
 	}
 
 	var body struct {
-		Tags []string `json:"tags"`
+		Tags *[]string `json:"tags"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := c.ShouldBindJSON(&body); err != nil || body.Tags == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
 
-	if err := store.SetGroupTags(id, body.Tags); err != nil {
+	group, err := store.GetGroupByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取合集失败"})
+		return
+	}
+	if group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "合集不存在"})
+		return
+	}
+	previous := group.TagItems
+	if err := store.SetGroupTags(id, *body.Tags); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "设置系列标签失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	tags, err := store.GetGroupTags(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取合集标签失败"})
+		return
+	}
+	oldNames := make(map[string]bool, len(previous))
+	newNames := make(map[string]bool, len(tags))
+	for _, tag := range previous {
+		oldNames[tag.Name] = true
+	}
+	added, removed, unchanged := []string{}, []string{}, []string{}
+	for _, tag := range tags {
+		newNames[tag.Name] = true
+		if oldNames[tag.Name] {
+			unchanged = append(unchanged, tag.Name)
+		} else {
+			added = append(added, tag.Name)
+		}
+	}
+	for _, tag := range previous {
+		if !newNames[tag.Name] {
+			removed = append(removed, tag.Name)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true, "tags": tags, "added": added, "removed": removed,
+		"unchanged": unchanged, "syncedTo": 0,
+	})
 }
 
 // POST /api/groups/:id/sync-tags — 将系列标签同步到所有卷

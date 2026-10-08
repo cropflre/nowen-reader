@@ -613,6 +613,9 @@ func TestComicsEndpoints(t *testing.T) {
 
 func TestTagsEndpoint(t *testing.T) {
 	r := setupTestRouter(t)
+	if err := store.RunMigrations(); err != nil {
+		t.Fatal(err)
+	}
 	cookie := registerAndLogin(t, r)
 
 	w := performAuthedRequest(r, "GET", "/api/tags", nil, cookie)

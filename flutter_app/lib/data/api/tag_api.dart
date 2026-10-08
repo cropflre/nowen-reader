@@ -14,6 +14,28 @@ class TagApi {
     return res.data['tags'] ?? [];
   }
 
+  Future<List<String>> setGroupTags(int groupId, List<String> tags) async {
+    final res = await _dio.put('/groups/$groupId/tags', data: {'tags': tags});
+    return _tagNames(res.data['tags']);
+  }
+
+  Future<List<Map<String, dynamic>>> setSeriesTags(
+      String seriesId, List<String> tags) async {
+    final res = await _dio.put('/series/${Uri.encodeComponent(seriesId)}/tags',
+        data: {'tags': tags});
+    return (res.data['tags'] as List)
+        .whereType<Map>()
+        .map((tag) => Map<String, dynamic>.from(tag))
+        .toList();
+  }
+
+  List<String> _tagNames(dynamic tags) {
+    return (tags as List)
+        .whereType<Map>()
+        .map((tag) => tag['name'].toString())
+        .toList();
+  }
+
   /// 更新标签颜色
   Future<void> updateColor(int tagId, String color) async {
     await _dio.put('/tags/color', data: {

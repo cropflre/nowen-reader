@@ -62,6 +62,7 @@ type ComicListOptions struct {
 	Uncategorized    bool     // 筛选没有分类关联的作品
 	Untagged         bool     // 筛选没有标签关联的作品
 	SeriesView       bool     // 是否开启目录折叠混合视图
+	MatchSeriesTags  bool     // 折叠查询内部使用：同时匹配目录作品自身标签
 }
 
 // ComicListItem 是漫画在列表结果中的序列化表示。
@@ -161,10 +162,23 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			placeholders[i] = "?"
 			args = append(args, t)
 		}
-		conditions = append(conditions, fmt.Sprintf(
+		tagCondition := fmt.Sprintf(
 			`c."id" IN (SELECT ct."comicId" FROM "ComicTag" ct JOIN "Tag" t ON ct."tagId" = t."id" WHERE t."name" IN (%s))`,
 			strings.Join(placeholders, ","),
-		))
+		)
+		if opts.MatchSeriesTags {
+			tagCondition = "(" + tagCondition + fmt.Sprintf(` OR EXISTS (
+				SELECT 1 FROM "ComicSeriesItem" si_tag
+				JOIN "ComicSeries" s_tag ON s_tag."id" = si_tag."seriesId" AND s_tag."libraryId" = c."libraryId"
+				JOIN "ComicSeriesTag" st_tag ON st_tag."seriesId" = s_tag."id"
+				JOIN "Tag" t_tag ON t_tag."id" = st_tag."tagId"
+				WHERE si_tag."comicId" = c."id" AND t_tag."name" IN (%s)
+			))`, strings.Join(placeholders, ","))
+			for _, name := range opts.Tags {
+				args = append(args, name)
+			}
+		}
+		conditions = append(conditions, tagCondition)
 	}
 
 	// Category filtering
@@ -208,6 +222,14 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	// Untagged: 筛选没有标签关联的作品
 	if opts.Untagged {
 		conditions = append(conditions, `c."id" NOT IN (SELECT "comicId" FROM "ComicTag")`)
+		if opts.MatchSeriesTags {
+			conditions = append(conditions, `NOT EXISTS (
+				SELECT 1 FROM "ComicSeriesItem" si_tag
+				JOIN "ComicSeries" s_tag ON s_tag."id" = si_tag."seriesId" AND s_tag."libraryId" = c."libraryId"
+				JOIN "ComicSeriesTag" st_tag ON st_tag."seriesId" = s_tag."id"
+				WHERE si_tag."comicId" = c."id"
+			)`)
+		}
 	}
 
 	// MetaFilter: 按元数据状态过滤

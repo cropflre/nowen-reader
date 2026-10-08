@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
+import '../../data/api/tag_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../widgets/authenticated_image.dart';
+import '../../widgets/work_tags.dart';
 
 /// 目录作品详情页。
 ///
@@ -341,14 +343,19 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
               ),
             ),
           ],
-          if (tags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: tags.map((tag) => _chip(tag, cs)).toList(),
-            ),
-          ],
+          const SizedBox(height: 12),
+          WorkTags(
+            tags: tags,
+            canEdit: summary['canManage'] == true,
+            onSave: (names) async {
+              final saved = await ref.read(tagApiProvider)
+                  .setSeriesTags(widget.seriesId, names);
+              if (!mounted) return;
+              setState(() {
+                _detail = {...?_detail, 'series': {...summary, 'tags': saved}};
+              });
+            },
+          ),
         ],
       ),
     );

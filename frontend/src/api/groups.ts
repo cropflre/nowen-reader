@@ -318,18 +318,14 @@ export interface TagSyncResult {
 
 /** 获取系列标签 */
 export async function fetchGroupTags(groupId: number): Promise<GroupTag[]> {
-  try {
-    const data: any = await apiClient.get(`/api/groups/${groupId}/tags`);
-    return data.tags || [];
-  } catch {
-    return [];
-  }
+  const data = await apiClient.get<{ tags: GroupTag[] }>(`/api/groups/${groupId}/tags`);
+  return data.tags;
 }
 
-/** 设置系列标签（替换所有现有标签，自动同步到所有卷�?*/
-export async function setGroupTags(groupId: number, tags: string[], autoSync: boolean = true): Promise<TagSyncResult | null> {
+/** 设置合集自身的标签（替换所有现有标签）。 */
+export async function setGroupTags(groupId: number, tags: string[]): Promise<TagSyncResult | null> {
   try {
-    return await apiClient.put(`/api/groups/${groupId}/tags`, { tags, autoSync });
+    return await apiClient.put(`/api/groups/${groupId}/tags`, { tags });
   } catch {
     return null;
   }

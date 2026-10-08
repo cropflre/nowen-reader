@@ -139,6 +139,7 @@ func getAllComicsSeriesViewBatched(opts ComicListOptions) (*ComicListResult, err
 
 	flatOpts := opts
 	flatOpts.SeriesView = false
+	flatOpts.MatchSeriesTags = true
 	flatOpts.Page = 0
 	flatOpts.PageSize = 0
 	flat, err := GetAllComics(flatOpts)
@@ -269,6 +270,9 @@ func collapseComicListIntoSeriesBatched(items []ComicListItem, userID string) ([
 		tags := []ComicTagInfo{{Name: fmt.Sprintf("%d 项", summary.ItemCount), Color: ""}}
 		if summary.SectionCount > 0 {
 			tags = append(tags, ComicTagInfo{Name: fmt.Sprintf("%d 季/篇", summary.SectionCount), Color: ""})
+		}
+		for _, tag := range summary.Tags {
+			tags = append(tags, ComicTagInfo{Name: tag.Name, Color: tag.Color})
 		}
 		collapsed = append(collapsed, ComicListItem{
 			ID:            SeriesShelfIDPrefix + summary.ID,

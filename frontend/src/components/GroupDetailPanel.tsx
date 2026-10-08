@@ -310,6 +310,8 @@ export default function GroupDetailPanel({
 
   // 标签管理状态
   const [groupTags, setGroupTags] = useState<GroupTag[]>([]);
+  const [tagLoadError, setTagLoadError] = useState(false);
+  const [tagLoading, setTagLoading] = useState(true);
   const [newTagInput, setNewTagInput] = useState("");
   const [tagSaving, setTagSaving] = useState(false);
   const [tagSyncing, setTagSyncing] = useState(false);
@@ -353,8 +355,16 @@ export default function GroupDetailPanel({
 
   // 加载标签
   const loadTags = useCallback(async () => {
-    const tags = await fetchGroupTags(group.id);
-    setGroupTags(tags);
+    setTagLoading(true);
+    try {
+      const tags = await fetchGroupTags(group.id);
+      setGroupTags(tags);
+      setTagLoadError(false);
+    } catch {
+      setTagLoadError(true);
+    } finally {
+      setTagLoading(false);
+    }
   }, [group.id]);
 
   useEffect(() => { loadTags(); }, [loadTags]);
@@ -500,10 +510,11 @@ export default function GroupDetailPanel({
 
   // ── 标签管理 ──
   const handleAddTag = useCallback(async () => {
+    if (tagSaving || tagLoading || tagLoadError) return;
     if (!newTagInput.trim()) return;
     setTagSaving(true);
     const currentNames = groupTags.map(t => t.name);
-    const newNames = newTagInput.split(",").map(s => s.trim()).filter(Boolean);
+    const newNames = newTagInput.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
     const allNames = [...new Set([...currentNames, ...newNames])];
     const result = await setGroupTagsApi(group.id, allNames);
     if (result?.success) {
@@ -516,11 +527,14 @@ export default function GroupDetailPanel({
       );
       setNewTagInput("");
       await loadTags();
+    } else {
+      toast.error("保存标签失败，请重试");
     }
     setTagSaving(false);
-  }, [group.id, newTagInput, groupTags, toast, loadTags]);
+  }, [group.id, newTagInput, groupTags, toast, loadTags, tagSaving, tagLoading, tagLoadError]);
 
   const handleRemoveTag = useCallback(async (tagName: string) => {
+    if (tagSaving || tagLoading || tagLoadError) return;
     setTagSaving(true);
     const newNames = groupTags.filter(t => t.name !== tagName).map(t => t.name);
     const result = await setGroupTagsApi(group.id, newNames);
@@ -528,9 +542,11 @@ export default function GroupDetailPanel({
       const syncedTo = result.syncedTo || 0;
       toast.success(`已移除标签「${tagName}」${syncedTo > 0 ? `，已从 ${syncedTo} 卷中移除` : ""}`);
       await loadTags();
+    } else {
+      toast.error("保存标签失败，请重试");
     }
     setTagSaving(false);
-  }, [group.id, groupTags, toast, loadTags]);
+  }, [group.id, groupTags, toast, loadTags, tagSaving, tagLoading, tagLoadError]);
 
   const handleSyncTags = useCallback(async () => {
     setTagSyncing(true);
@@ -582,6 +598,7 @@ export default function GroupDetailPanel({
   }, [aiSuggestLoading, group.id, locale, toast]);
 
   const handleApplyAiTags = useCallback(async (tagsToAdd: string[]) => {
+    if (tagSaving || tagLoading || tagLoadError) return;
     if (tagsToAdd.length === 0) return;
     setTagSaving(true);
     const currentNames = groupTags.map(t => t.name);
@@ -594,9 +611,11 @@ export default function GroupDetailPanel({
       setAiSuggestedTags([]);
       setAiSelectedTags(new Set());
       await loadTags();
+    } else {
+      toast.error("保存标签失败，请重试");
     }
     setTagSaving(false);
-  }, [group.id, groupTags, toast, loadTags]);
+  }, [group.id, groupTags, toast, loadTags, tagSaving, tagLoading, tagLoadError]);
 
   // ── 分类管理 ──
   const handleToggleCategory = useCallback(async (slug: string) => {
@@ -947,13 +966,13 @@ export default function GroupDetailPanel({
                 <span className="text-[10px] text-muted/60">({groupTags.length})</span>
               )}
             </h4>
-            {groupTags.length > 0 && (
+            {groupTags.length > 0 && directComicCount > 0 && (
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleSyncTags}
                   disabled={tagSyncing}
                   className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] text-accent/80 transition-colors hover:bg-accent/10"
-                  title="将系列标签增量同步到所有卷"
+                  title="将合集标签添加到直接加入的散本"
                 >
                   {tagSyncing ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />}
                   同步
@@ -962,7 +981,7 @@ export default function GroupDetailPanel({
                   onClick={() => setOverrideConfirm(true)}
                   disabled={overrideLoading}
                   className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] text-orange-400/80 transition-colors hover:bg-orange-400/10"
-                  title="覆盖到所有卷（先清除再设置）"
+                  title="用合集标签替换直接加入的散本的现有标签"
                 >
                   {overrideLoading ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Copy className="h-2.5 w-2.5" />}
                   覆盖
@@ -979,20 +998,25 @@ export default function GroupDetailPanel({
                 {tag.name}
                 <button
                   onClick={() => handleRemoveTag(tag.name)}
-                  disabled={tagSaving}
-                  className="ml-0.5 rounded-full p-0.5 opacity-0 transition-all group-hover/tag:opacity-100 hover:bg-white/10"
+                  disabled={tagSaving || tagLoading || tagLoadError}
+                  aria-label={`移除标签 ${tag.name}`}
+                  className="ml-0.5 rounded-full p-0.5 transition-all hover:bg-white/10 disabled:opacity-40"
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
               </span>
             ))}
-            {groupTags.length === 0 && (
+            {groupTags.length === 0 && !tagLoading && !tagLoadError && (
               <span className="text-[10px] text-muted/40">暂无标签</span>
             )}
           </div>
+          {tagLoading && <p className="text-xs text-muted">正在加载标签...</p>}
+          {tagLoadError && <p role="alert" className="text-xs text-red-400">标签加载失败。<button onClick={loadTags} className="ml-2 underline">重试</button></p>}
           <div className="flex gap-1.5">
             <input
               type="text"
+              aria-label="添加标签"
+              disabled={tagSaving || tagLoading || tagLoadError}
               value={newTagInput}
               onChange={(e) => setNewTagInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
@@ -1001,10 +1025,12 @@ export default function GroupDetailPanel({
             />
             <button
               onClick={handleAddTag}
-              disabled={!newTagInput.trim() || tagSaving}
-              className="rounded-lg bg-accent/20 px-2 py-1.5 text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
+              aria-label="添加标签"
+              disabled={!newTagInput.trim() || tagSaving || tagLoading || tagLoadError}
+              className="flex items-center gap-1 rounded-lg bg-accent/20 px-2 py-1.5 text-[11px] text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
             >
               {tagSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              添加
             </button>
             {aiConfigured && (
               <button
@@ -1078,7 +1104,7 @@ export default function GroupDetailPanel({
                 确认覆盖标签
               </div>
               <p className="mb-2 text-[10px] text-muted/70 leading-relaxed">
-                此操作将<strong className="text-orange-400">清除</strong>所有卷的现有标签，
+                此操作将<strong className="text-orange-400">清除</strong>直接加入合集的散本的现有标签，
                 然后设置当前系列的 <strong className="text-orange-400">{groupTags.length}</strong> 个标签。不可撤销。
               </p>
               <div className="flex gap-1.5">
@@ -1103,7 +1129,7 @@ export default function GroupDetailPanel({
 
           <p className="text-[9px] text-muted/40 flex items-center gap-0.5">
             <ArrowDownToLine className="h-2.5 w-2.5" />
-            添加/删除标签时自动同步到所有卷
+            标签保存在合集上，可按需同步到直接加入的散本
           </p>
         </div>
 

@@ -406,13 +406,14 @@ type TagWithCount struct {
 	Count int    `json:"count"`
 }
 
-// GetAllTags 返回所有标签及其漫画计数。
+// GetAllTags 返回所有标签及其内容关联计数（散本、目录作品、合集）。
 func GetAllTags() ([]TagWithCount, error) {
 	rows, err := db.Query(`
-		SELECT t."id", t."name", t."color", COUNT(ct."comicId") as cnt
+		SELECT t."id", t."name", t."color",
+		       (SELECT COUNT(*) FROM "ComicTag" ct WHERE ct."tagId" = t."id") +
+		       (SELECT COUNT(*) FROM "ComicSeriesTag" st WHERE st."tagId" = t."id") +
+		       (SELECT COUNT(*) FROM "ComicGroupTag" gt WHERE gt."tagId" = t."id") AS cnt
 		FROM "Tag" t
-		LEFT JOIN "ComicTag" ct ON ct."tagId" = t."id"
-		GROUP BY t."id"
 		ORDER BY t."name" ASC
 	`)
 	if err != nil {
@@ -543,29 +544,51 @@ func DeleteTag(tagName string) error {
 
 // RenameTag 重命名标签，目标标签已存在时自动合并。
 func RenameTag(oldName, newName string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	// Check if target tag exists
 	var existingID int
-	err := db.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, newName).Scan(&existingID)
+	err = tx.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, newName).Scan(&existingID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
 
 	var oldID int
-	err2 := db.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, oldName).Scan(&oldID)
-	if err2 != nil {
+	err2 := tx.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, oldName).Scan(&oldID)
+	if err2 == sql.ErrNoRows {
 		return nil // old tag doesn't exist
+	}
+	if err2 != nil {
+		return err2
+	}
+	if oldID == existingID {
+		return nil
 	}
 
 	if err == sql.ErrNoRows {
 		// Simple rename
-		_, err = db.Exec(`UPDATE "Tag" SET "name" = ? WHERE "id" = ?`, newName, oldID)
-		return err
+		if _, err := tx.Exec(`UPDATE "Tag" SET "name" = ? WHERE "id" = ?`, newName, oldID); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 
 	// Target exists: merge
-	_, _ = db.Exec(`
-		UPDATE OR IGNORE "ComicTag" SET "tagId" = ? WHERE "tagId" = ?
-	`, existingID, oldID)
-	_, _ = db.Exec(`DELETE FROM "ComicTag" WHERE "tagId" = ?`, oldID)
-	_, _ = db.Exec(`DELETE FROM "Tag" WHERE "id" = ?`, oldID)
-	return nil
+	for _, table := range []string{"ComicTag", "ComicSeriesTag", "ComicGroupTag"} {
+		if _, err := tx.Exec(`UPDATE OR IGNORE "`+table+`" SET "tagId" = ? WHERE "tagId" = ?`, existingID, oldID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM "`+table+`" WHERE "tagId" = ?`, oldID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM "Tag" WHERE "id" = ?`, oldID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ============================================================

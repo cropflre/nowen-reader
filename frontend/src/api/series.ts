@@ -28,6 +28,13 @@ export async function updateSeriesStructure(
   await apiClient.put(`/api/series/${encodeURIComponent(id)}/structure`, { items });
 }
 
+export async function setSeriesTags(id: string, tags: string[]): Promise<SeriesSummary["tags"]> {
+  const response = await apiClient.put<{ tags: SeriesSummary["tags"] }>(
+    `/api/series/${encodeURIComponent(id)}/tags`, { tags },
+  );
+  return response.tags;
+}
+
 export async function rebuildSeries(libraryId?: string): Promise<void> {
   const suffix = libraryId ? `?libraryId=${encodeURIComponent(libraryId)}` : "";
   await apiClient.post(`/api/series/rebuild${suffix}`);

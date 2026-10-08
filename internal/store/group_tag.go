@@ -28,26 +28,26 @@ func GetGroupTags(groupID int) ([]Tag, error) {
 	for rows.Next() {
 		var t Tag
 		if err := rows.Scan(&t.ID, &t.Name, &t.Color); err != nil {
-			continue
+			return nil, err
 		}
 		tags = append(tags, t)
 	}
 	if tags == nil {
 		tags = []Tag{}
 	}
-	return tags, nil
+	return tags, rows.Err()
 }
 
 // SetGroupTags 设置系列的标签（替换所有现有标签）。
 // tagNames: 标签名称列表，不存在的标签会自动创建。
 func SetGroupTags(groupID int, tagNames []string) error {
-	// 先删除现有关联
-	if _, err := db.Exec(`DELETE FROM "ComicGroupTag" WHERE "groupId" = ?`, groupID); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
-
-	if len(tagNames) == 0 {
-		return nil
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM "ComicGroupTag" WHERE "groupId" = ?`, groupID); err != nil {
+		return err
 	}
 
 	// 确保标签存在并获取 ID
@@ -58,23 +58,28 @@ func SetGroupTags(groupID int, tagNames []string) error {
 		}
 		// 查找或创建标签
 		var tagID int
-		err := db.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, name).Scan(&tagID)
+		err := tx.QueryRow(`SELECT "id" FROM "Tag" WHERE "name" = ?`, name).Scan(&tagID)
 		if err == sql.ErrNoRows {
 			// 创建新标签
-			res, err := db.Exec(`INSERT INTO "Tag" ("name", "color") VALUES (?, '')`, name)
+			res, err := tx.Exec(`INSERT INTO "Tag" ("name", "color") VALUES (?, '')`, name)
 			if err != nil {
-				continue
+				return err
 			}
-			id, _ := res.LastInsertId()
+			id, err := res.LastInsertId()
+			if err != nil {
+				return err
+			}
 			tagID = int(id)
 		} else if err != nil {
-			continue
+			return err
 		}
 		// 添加关联
-		db.Exec(`INSERT OR IGNORE INTO "ComicGroupTag" ("groupId", "tagId") VALUES (?, ?)`, groupID, tagID)
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO "ComicGroupTag" ("groupId", "tagId") VALUES (?, ?)`, groupID, tagID); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 // SyncGroupTagsToVolumes 将系列级标签同步到系列内所有卷。

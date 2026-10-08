@@ -52,6 +52,7 @@ type ComicGroupDetail struct {
 	Author        string            `json:"author"`
 	Description   string            `json:"description"`
 	Tags          string            `json:"tags"`
+	TagItems      []Tag             `json:"tagItems"`
 	Year          *int              `json:"year"`
 	Publisher     string            `json:"publisher"`
 	Language      string            `json:"language"`
@@ -188,13 +189,18 @@ func GetAllGroupsWithOptions(opts GroupListOptions) ([]ComicGroupWithCount, erro
 		tagAlias := fmt.Sprintf("tag_%d", index)
 		comicTagAlias := fmt.Sprintf("ct_tag_%d", index)
 		visible, values := visibility(comicAlias)
-		conditions = append(conditions, fmt.Sprintf(`EXISTS (
+		conditions = append(conditions, fmt.Sprintf(`(EXISTS (
+			SELECT 1 FROM "ComicGroupTag" own_tag
+			JOIN "Tag" own_name ON own_name."id" = own_tag."tagId"
+			WHERE own_tag."groupId" = g."id" AND own_name."name" = ?
+		) OR EXISTS (
 			SELECT 1 FROM "GroupExpandedComic" %[1]s
 			JOIN "Comic" %[2]s ON %[2]s."id" = %[1]s."comicId"
 			JOIN "ComicTag" %[3]s ON %[3]s."comicId" = %[2]s."id"
 			JOIN "Tag" %[4]s ON %[4]s."id" = %[3]s."tagId"
 			WHERE %[1]s."groupId" = g."id" AND %[5]s AND %[4]s."name" = ?
-		)`, memberAlias, comicAlias, comicTagAlias, tagAlias, visible))
+		))`, memberAlias, comicAlias, comicTagAlias, tagAlias, visible))
+		whereArgs = append(whereArgs, tagName)
 		whereArgs = append(whereArgs, values...)
 		whereArgs = append(whereArgs, tagName)
 	}
@@ -488,6 +494,11 @@ func GetGroupByIDWithOptions(groupID int, opts GroupDetailOptions) (*ComicGroupD
 		g.CoverURL = g.Comics[0].CoverURL
 	}
 
+	seriesRows.Close()
+	g.TagItems, err = GetGroupTags(groupID)
+	if err != nil {
+		return nil, err
+	}
 	return &g, nil
 }
 

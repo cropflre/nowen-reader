@@ -14,13 +14,16 @@ import {
   Loader2,
   Lock,
   Pencil,
+  Plus,
   RefreshCw,
   Save,
   Sparkles,
+  Tag,
   Unlock,
   X,
 } from "lucide-react";
-import { fetchSeriesDetail, redetectSeries, updateSeries, updateSeriesStructure } from "@/api/series";
+import { fetchSeriesDetail, redetectSeries, setSeriesTags, updateSeries, updateSeriesStructure } from "@/api/series";
+import { useToast } from "@/components/Toast";
 import { GroupMetadataSearch } from "@/components/GroupMetadataSearch";
 import type { SeriesDetail, SeriesItem } from "@/types/series";
 import { useAuth } from "@/lib/auth-context";
@@ -58,6 +61,7 @@ export default function SeriesDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const toast = useToast();
   const isAdmin = user?.role === "admin";
   const id = String(params?.id || "");
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
@@ -73,6 +77,8 @@ export default function SeriesDetailPage() {
   const [title, setTitle] = useState("");
   const [manageStructure, setManageStructure] = useState(false);
   const [showScraper, setShowScraper] = useState(false);
+  const [newTag, setNewTag] = useState("");
+  const [tagSaving, setTagSaving] = useState(false);
   const [draftItems, setDraftItems] = useState<Record<string, { sectionId: string; sortIndex: number }>>({});
 
   const load = useCallback(async () => {
@@ -189,6 +195,27 @@ export default function SeriesDetailPage() {
     }
   };
 
+  const saveTags = async (names: string[], clearInput = false) => {
+    if (!detail?.series.canManage || tagSaving) return;
+    setTagSaving(true);
+    try {
+      const tags = await setSeriesTags(detail.series.id, names);
+      setDetail((previous) => previous ? { ...previous, series: { ...previous.series, tags } } : previous);
+      if (clearInput) setNewTag("");
+      toast.success("标签已更新");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存标签失败，请重试");
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const addTags = () => {
+    const names = newTag.split(/[,，\n]/).map((name) => name.trim()).filter(Boolean);
+    if (!detail || names.length === 0) return;
+    void saveTags([...new Set([...detail.series.tags.map((tag) => tag.name), ...names])], true);
+  };
+
   if (loading) {
     return <main className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-accent" /></main>;
   }
@@ -266,27 +293,38 @@ export default function SeriesDetailPage() {
                 {series.canManage && <button onClick={handleRedetect} disabled={busy || series.manualLocked} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-muted hover:text-foreground disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />重新识别</button>}
               </div>
 
-              {(series.author || series.year || series.publisher || series.language || series.genre || series.description || series.tags.length > 0 || series.externalRating != null) && (
+              {(series.author || series.year || series.publisher || series.language || series.genre || series.description || series.externalRating != null) && (
                 <div className="mt-5 max-w-3xl space-y-3 border-t border-border/50 pt-5">
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
                     {series.author && <span>作者：<span className="text-foreground">{series.author}</span></span>}
                     {series.year && <span>年份：<span className="text-foreground">{series.year}</span></span>}
                     {series.publisher && <span>出版：<span className="text-foreground">{series.publisher}</span></span>}
                     {series.language && <span>语言：<span className="text-foreground">{series.language}</span></span>}
+                    {series.genre && <span>类型：<span className="text-foreground">{series.genre}</span></span>}
                     {series.externalRating != null && (
                       <span>评分：<span className="text-foreground">{series.externalRating}{series.externalRatingMax ? `/${series.externalRatingMax}` : ""}</span></span>
                     )}
                   </div>
-                  {(series.tags.length > 0 || series.genre) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {(series.tags.length > 0 ? series.tags.map((tag) => tag.name) : series.genre.split(",").map((name) => name.trim()).filter(Boolean)).map((name) => (
-                        <span key={name} className="rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">{name}</span>
-                      ))}
-                    </div>
-                  )}
                   {series.description && <p className="whitespace-pre-line text-sm leading-6 text-muted">{series.description}</p>}
                 </div>
               )}
+
+              <div className="mt-5 max-w-3xl space-y-3 border-t border-border/50 pt-5">
+                <h2 className="flex items-center gap-1.5 text-xs font-medium text-muted"><Tag className="h-3.5 w-3.5" />标签</h2>
+                <div className="flex flex-wrap gap-1.5">
+                  {series.tags.map((tag) => (
+                    <span key={tag.id} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">
+                      {tag.name}
+                      {series.canManage && <button type="button" disabled={tagSaving} aria-label={`移除标签 ${tag.name}`} onClick={() => void saveTags(series.tags.filter((item) => item.id !== tag.id).map((item) => item.name))} className="rounded-full p-0.5 hover:bg-accent/15 disabled:opacity-40"><X className="h-3 w-3" /></button>}
+                    </span>
+                  ))}
+                  {series.tags.length === 0 && <span className="text-xs text-muted/60">暂无标签</span>}
+                </div>
+                {series.canManage && <form onSubmit={(event) => { event.preventDefault(); addTags(); }} className="flex max-w-xl gap-2">
+                  <input aria-label="添加标签" value={newTag} disabled={tagSaving} onChange={(event) => setNewTag(event.target.value)} placeholder="添加标签，多个用逗号分隔" className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-accent disabled:opacity-50" />
+                  <button type="submit" disabled={tagSaving || !newTag.trim()} className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-2 text-xs text-white disabled:opacity-40">{tagSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}添加</button>
+                </form>}
+              </div>
             </div>
           </div>
         </section>

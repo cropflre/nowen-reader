@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
+import '../../data/api/tag_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/comic_provider.dart';
 import '../../widgets/authenticated_image.dart';
+import '../../widgets/work_tags.dart';
 
 /// 合集详情页。
 ///
@@ -368,11 +370,13 @@ class _GroupDetailV2ScreenState
     final language = detail['language']?.toString() ?? '';
     final status = detail['status']?.toString() ?? '';
     final year = detail['year'];
-    final tags = (detail['tags']?.toString() ?? '')
-        .split(',')
-        .map((tag) => tag.trim())
-        .where((tag) => tag.isNotEmpty)
-        .toList();
+    final tagItems = detail['tagItems'];
+    final tags = tagItems is List
+        ? tagItems.whereType<Map>()
+            .map((tag) => tag['name']?.toString() ?? '')
+            .where((name) => name.isNotEmpty).toList()
+        : (detail['tags']?.toString() ?? '').split(',')
+            .map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -463,14 +467,19 @@ class _GroupDetailV2ScreenState
               ),
             ),
           ],
-          if (tags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: tags.map(_chip).toList(),
-            ),
-          ],
+          const SizedBox(height: 12),
+          WorkTags(
+            tags: tags,
+            canEdit: ref.watch(authProvider).user?.isAdmin ?? false,
+            onSave: (names) async {
+              final saved = await ref.read(tagApiProvider)
+                  .setGroupTags(widget.groupId, names);
+              if (!mounted) return;
+              setState(() {
+                _detail = {...detail, 'tagItems': saved.map((name) => {'name': name}).toList()};
+              });
+            },
+          ),
         ],
       ),
     );
