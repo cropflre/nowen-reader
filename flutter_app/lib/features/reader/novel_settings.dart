@@ -54,7 +54,8 @@ class NovelBookmark {
     required this.updatedAt,
   });
 
-  String get displayTitle => name.trim().isNotEmpty ? name.trim() : chapterTitle;
+  String get displayTitle =>
+      name.trim().isNotEmpty ? name.trim() : chapterTitle;
 
   NovelBookmark copyWith({
     String? name,
@@ -132,7 +133,7 @@ class NovelSettings {
     this.theme = NovelTheme.night,
     this.font = NovelFont.system,
     this.padding = NovelPadding.standard,
-    this.pageMode = NovelPageMode.scroll,
+    this.pageMode = NovelPageMode.swipe,
     this.autoScrollSpeed = 2,
     this.leftTapAction = NovelTapAction.previousPage,
     this.centerTapAction = NovelTapAction.menu,
@@ -170,17 +171,24 @@ class NovelSettings {
 
   static Future<NovelSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
+    // 旧版把上下滚动作为默认值保存，升级时统一恢复左右翻页。
+    // 只迁移一次；此后用户主动选择的上下滚动仍然保留。
+    if (prefs.getInt('novel_pageModeVersion') != 1) {
+      await prefs.setInt('novel_pageMode', NovelPageMode.swipe.index);
+      await prefs.setInt('novel_pageModeVersion', 1);
+    }
     return NovelSettings(
       fontSize: prefs.getDouble('novel_fontSize') ?? 18,
       lineHeight: prefs.getDouble('novel_lineHeight') ?? 1.8,
-      theme: NovelTheme.values[
-          (prefs.getInt('novel_theme') ?? 0).clamp(0, NovelTheme.values.length - 1)],
-      font: NovelFont.values[
-          (prefs.getInt('novel_font') ?? 0).clamp(0, NovelFont.values.length - 1)],
-      padding: NovelPadding.values[
-          (prefs.getInt('novel_padding') ?? 1).clamp(0, NovelPadding.values.length - 1)],
+      theme: NovelTheme.values[(prefs.getInt('novel_theme') ?? 0)
+          .clamp(0, NovelTheme.values.length - 1)],
+      font: NovelFont.values[(prefs.getInt('novel_font') ?? 0)
+          .clamp(0, NovelFont.values.length - 1)],
+      padding: NovelPadding.values[(prefs.getInt('novel_padding') ?? 1)
+          .clamp(0, NovelPadding.values.length - 1)],
       pageMode: NovelPageMode.values[
-          (prefs.getInt('novel_pageMode') ?? 0).clamp(0, NovelPageMode.values.length - 1)],
+          (prefs.getInt('novel_pageMode') ?? NovelPageMode.swipe.index)
+              .clamp(0, NovelPageMode.values.length - 1)],
       autoScrollSpeed: (prefs.getInt('novel_autoScrollSpeed') ?? 2).clamp(1, 3),
       leftTapAction: _loadTapAction(
         prefs.getInt('novel_leftTapAction'),
@@ -194,7 +202,8 @@ class NovelSettings {
         prefs.getInt('novel_rightTapAction'),
         NovelTapAction.nextPage,
       ),
-      tapZonesInScrollMode: prefs.getBool('novel_tapZonesInScrollMode') ?? false,
+      tapZonesInScrollMode:
+          prefs.getBool('novel_tapZonesInScrollMode') ?? false,
     );
   }
 
@@ -206,6 +215,7 @@ class NovelSettings {
     await prefs.setInt('novel_font', font.index);
     await prefs.setInt('novel_padding', padding.index);
     await prefs.setInt('novel_pageMode', pageMode.index);
+    await prefs.setInt('novel_pageModeVersion', 1);
     await prefs.setInt('novel_autoScrollSpeed', autoScrollSpeed);
     await prefs.setInt('novel_leftTapAction', leftTapAction.index);
     await prefs.setInt('novel_centerTapAction', centerTapAction.index);
@@ -322,8 +332,8 @@ class BookmarkManager {
     try {
       final list = jsonDecode(json) as List;
       final bookmarks = list
-          .map((e) => NovelBookmark.fromJson(
-              Map<String, dynamic>.from(e as Map)))
+          .map((e) =>
+              NovelBookmark.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
       final needsMigration = list.any((e) =>
           e is Map &&
@@ -339,7 +349,8 @@ class BookmarkManager {
     }
   }
 
-  static Future<void> save(String comicId, List<NovelBookmark> bookmarks) async {
+  static Future<void> save(
+      String comicId, List<NovelBookmark> bookmarks) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       '$_key$comicId',

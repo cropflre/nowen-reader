@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/app_version_provider.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/cache_provider.dart';
@@ -239,7 +240,11 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.info_outline_rounded,
                 iconColor: cs.onSurfaceVariant,
                 title: l10n.version,
-                subtitle: '1.0.0',
+                subtitle: ref.watch(appVersionProvider).when(
+                  data: (version) => version,
+                  loading: () => '…',
+                  error: (_, __) => '暂时无法读取版本',
+                ),
                 showArrow: false,
               ),
               _SettingsTile(

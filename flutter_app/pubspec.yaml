@@ -1,7 +1,7 @@
 name: nowen_reader
 description: NowenReader Flutter 客户端 — 漫画/小说阅读器
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -42,6 +42,7 @@ dependencies:
   path_provider: ^2.1.5
   # 文件选择（上传功能）
   file_picker: ^8.0.0
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

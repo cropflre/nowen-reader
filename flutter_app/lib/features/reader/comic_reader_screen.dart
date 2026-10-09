@@ -8,6 +8,7 @@ import 'package:photo_view/photo_view.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../data/services/reading_activity_tracker.dart';
 import '../../data/services/reader_warmup_session.dart';
 import '../../widgets/authenticated_image.dart';
@@ -80,7 +81,10 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   Future<void> _onWillPop() async {
     _warmup.dispose();
     await _activity.finish();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) {
+      notifyReadingProgress(ref, widget.comicId);
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -103,7 +107,6 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
             MaterialPageRoute(
               builder: (_) => NovelReaderScreen(
                 comicId: widget.comicId,
-                initialChapter: widget.initialPage,
               ),
             ),
           );

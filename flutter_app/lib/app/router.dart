@@ -78,7 +78,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) {
           final comicId = state.pathParameters['id']!;
           final pageStr = state.uri.queryParameters['page'];
-          final initialPage = pageStr != null ? int.tryParse(pageStr) ?? 0 : 0;
+          final initialPage = pageStr != null ? int.tryParse(pageStr) : null;
           return ReaderDispatchScreen(
             comicId: comicId,
             initialPosition: initialPage,
@@ -91,7 +91,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           final comicId = state.pathParameters['id']!;
           final chapterStr = state.uri.queryParameters['chapter'];
           final initialChapter =
-              chapterStr != null ? int.tryParse(chapterStr) ?? 0 : 0;
+              chapterStr != null ? int.tryParse(chapterStr) : null;
           return NovelReaderScreen(
             comicId: comicId,
             initialChapter: initialChapter,

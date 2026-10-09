@@ -3,6 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/comic_api.dart';
 import '../models/comic.dart';
 
+/// 阅读器完成进度同步后，通知仍留在导航栈中的首页和详情页刷新。
+final readingProgressRevisionProvider = StateProvider<int>((ref) => 0);
+
+void notifyReadingProgress(WidgetRef ref, String comicId) {
+  ref.invalidate(comicDetailProvider(comicId));
+  ref.invalidate(statsProvider);
+  ref.read(comicListProvider.notifier).loadComics();
+  ref.read(readingProgressRevisionProvider.notifier).state++;
+}
+
 /// 漫画列表参数
 class ComicListParams {
   final int page;

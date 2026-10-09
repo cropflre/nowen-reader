@@ -28,6 +28,11 @@ flutter build apk --release
 flutter build appbundle --release
 ```
 
+客户端设置中的版本号读取自安装包。默认版本由 `pubspec.yaml` 的
+`version` 决定，也可以在发布构建时使用
+`flutter build apk --release --build-name=1.0.2 --build-number=3` 指定。
+每次发布应增加构建号，以便 Android 识别更新。
+
 ## 项目结构
 
 ```

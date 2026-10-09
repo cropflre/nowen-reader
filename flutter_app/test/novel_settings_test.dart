@@ -11,6 +11,19 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('new installations default to horizontal paging', () async {
+    expect(const NovelSettings().pageMode, NovelPageMode.swipe);
+    expect((await NovelSettings.load()).pageMode, NovelPageMode.swipe);
+  });
+
+  test('upgrade resets the old vertical default once', () async {
+    SharedPreferences.setMockInitialValues({'novel_pageMode': 0});
+    expect((await NovelSettings.load()).pageMode, NovelPageMode.swipe);
+
+    await const NovelSettings(pageMode: NovelPageMode.scroll).save();
+    expect((await NovelSettings.load()).pageMode, NovelPageMode.scroll);
+  });
+
   test('tap zone defaults preserve existing swipe behavior', () async {
     final settings = await NovelSettings.load();
 
@@ -90,7 +103,8 @@ void main() {
     expect(migrated.single['updatedAt'], 1700000000000);
   });
 
-  test('bookmark manager preserves multiple positions in one chapter', () async {
+  test('bookmark manager preserves multiple positions in one chapter',
+      () async {
     final bookmarks = [
       const NovelBookmark(
         id: 'bookmark-a',
@@ -118,8 +132,7 @@ void main() {
 
     expect(loaded, hasLength(2));
     expect(loaded.map((bookmark) => bookmark.id), ['bookmark-a', 'bookmark-b']);
-    expect(
-        loaded.map((bookmark) => bookmark.positionRatio), [0.2, 0.8]);
+    expect(loaded.map((bookmark) => bookmark.positionRatio), [0.2, 0.8]);
     expect(loaded.first.displayTitle, '人物登场');
   });
 }

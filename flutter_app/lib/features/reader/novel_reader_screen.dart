@@ -8,7 +8,10 @@ import '../../utils/tts_service.dart';
 
 import '../../data/api/comic_api.dart';
 import '../../data/api/api_client.dart';
+import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../data/services/cache_service.dart';
+import '../../data/services/novel_reading_position.dart';
 import '../../data/services/reading_activity_tracker.dart';
 import '../../data/services/reader_chapter_loader.dart';
 import 'novel_settings.dart';
@@ -20,19 +23,20 @@ import 'novel_html_content.dart';
 /// 小说阅读器
 class NovelReaderScreen extends ConsumerStatefulWidget {
   final String comicId;
-  final int initialChapter;
+  final int? initialChapter;
 
   const NovelReaderScreen({
     super.key,
     required this.comicId,
-    this.initialChapter = 0,
+    this.initialChapter,
   });
 
   @override
   ConsumerState<NovelReaderScreen> createState() => _NovelReaderScreenState();
 }
 
-class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
+class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _loading = true;
   bool _chapterLoading = false;
   int _currentChapter = 0;
@@ -44,11 +48,15 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   bool get _isHtml => isNovelHtml(_chapterContent, _chapterMimeType);
   bool _htmlMetricsScheduled = false;
   double _htmlDragDistance = 0;
+  late final AnimationController _htmlPageAnimation;
+  Animation<Offset> _htmlPageSlide = const AlwaysStoppedAnimation(Offset.zero);
   bool _showOverlay = false;
   bool _showTOC = false;
   bool _showSettings = false;
   bool _showTapSettings = false;
   bool _showSearch = false;
+  double? _chapterSliderValue;
+  bool _exiting = false;
   final ScrollController _scrollController = ScrollController();
 
   // 左右翻页(swipe)模式状态
@@ -96,6 +104,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   late final ReadingActivityTracker _activity;
   late final ReaderChapterLoader _chapterLoader;
   int _chapterLoadGeneration = 0;
+  late final NovelReadingPositionStore _positionStore;
+  NovelReadingPosition? _positionToRestore;
+  NovelReadingPosition? _lastKnownPosition;
+  Timer? _positionSaveTimer;
 
   // 搜索用：缓存章节内容
   final Map<int, String> _chapterCache = {};
@@ -103,8 +115,17 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   @override
   void initState() {
     super.initState();
-    _currentChapter = widget.initialChapter;
+    _currentChapter = widget.initialChapter ?? 0;
     _api = ref.read(comicApiProvider);
+    _positionStore = NovelReadingPositionStore(
+      serverUrl: ref.read(apiClientProvider).baseUrl,
+      userId: ref.read(authProvider).user?.id ?? '',
+      comicId: widget.comicId,
+    );
+    _htmlPageAnimation = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 240));
+    WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_onScrollPositionChanged);
     _chapterLoader = ReaderChapterLoader(fetch: (index) async {
       final local = await cacheService.readCachedChapter(widget.comicId, index);
       return local ?? await _api.getChapterContent(widget.comicId, index);
@@ -112,9 +133,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     _activity = ReadingActivityTracker(api: _api, comicId: widget.comicId);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initTTS();
-    _loadSettings();
+    _initializeReader();
     _loadBookmarks();
-    _loadPages();
     _startTimeTimer();
     // 注册键盘快捷键
     ServicesBinding.instance.keyboard.addHandler(_handleKeyEvent);
@@ -122,6 +142,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _positionSaveTimer?.cancel();
+    unawaited(_savePosition());
+    _htmlPageAnimation.dispose();
     ServicesBinding.instance.keyboard.removeHandler(_handleKeyEvent);
     _autoScrollTimer?.cancel();
     _timeTimer?.cancel();
@@ -131,6 +155,67 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     _scrollController.dispose();
     _swipePageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeReader() async {
+    // 分页必须使用已经加载的翻页设置，避免启动时误用滚动模式。
+    await _loadSettings();
+    if (mounted) await _loadPages();
+  }
+
+  void _onScrollPositionChanged() {
+    if (_settings.pageMode == NovelPageMode.scroll) _schedulePositionSave();
+  }
+
+  void _schedulePositionSave() {
+    if (_loading || _chapterLoading || _loadError != null) return;
+    // 在滚动视图仍挂载时记录位置，避免返回后的 dispose 把位置覆盖为零。
+    _capturePosition();
+    _positionSaveTimer?.cancel();
+    _positionSaveTimer = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_savePosition());
+    });
+  }
+
+  NovelReadingPosition? _capturePosition() {
+    if (_loading ||
+        _chapterLoading ||
+        _loadError != null ||
+        _totalChapters == 0) {
+      return null;
+    }
+    if (_positionToRestore != null) return _positionToRestore;
+    if (_settings.pageMode == NovelPageMode.scroll &&
+        (!_scrollController.hasClients ||
+            !_scrollController.position.hasContentDimensions)) {
+      return _lastKnownPosition;
+    }
+    return _lastKnownPosition = NovelReadingPosition(
+      chapter: _currentChapter,
+      page: _swipePage,
+      totalPages: _swipeTotalPages,
+      swipe: _settings.pageMode == NovelPageMode.swipe,
+      ratio: _currentBookmarkPositionRatio(),
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  Future<void> _savePosition() async {
+    final position = _capturePosition();
+    if (position == null) return;
+    try {
+      await _positionStore.save(position);
+    } catch (_) {
+      // 本机存储失败不阻止服务端章节进度同步。
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _positionSaveTimer?.cancel();
+      unawaited(_savePosition());
+    }
   }
 
   // ============================================================
@@ -151,7 +236,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       return true;
     }
     // → / D: 下一章
-    if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.keyD) {
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.keyD) {
       if (_settings.pageMode == NovelPageMode.swipe) {
         _swipeNextPage();
       } else {
@@ -163,7 +249,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     if (key == LogicalKeyboardKey.arrowUp) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          (_scrollController.offset - 200).clamp(0.0, _scrollController.position.maxScrollExtent),
+          (_scrollController.offset - 200)
+              .clamp(0.0, _scrollController.position.maxScrollExtent),
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
@@ -173,7 +260,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     if (key == LogicalKeyboardKey.arrowDown) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          (_scrollController.offset + 200).clamp(0.0, _scrollController.position.maxScrollExtent),
+          (_scrollController.offset + 200)
+              .clamp(0.0, _scrollController.position.maxScrollExtent),
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
@@ -204,7 +292,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   void _startTimeTimer() {
     _updateTime();
-    _timeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _updateTime());
+    _timeTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _updateTime());
   }
 
   void _updateTime() {
@@ -317,8 +406,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   void _startAutoScrollTimer() {
     _autoScrollTimer?.cancel();
     // 速度映射：1=慢(1px/50ms), 2=中(2px/50ms), 3=快(4px/50ms)
-    final speedPx =
-        _settings.autoScrollSpeed == 1 ? 1.0 : _settings.autoScrollSpeed == 2 ? 2.0 : 4.0;
+    final speedPx = _settings.autoScrollSpeed == 1
+        ? 1.0
+        : _settings.autoScrollSpeed == 2
+            ? 2.0
+            : 4.0;
     _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (_chapterLoading) return;
       if (!_scrollController.hasClients) return;
@@ -376,9 +468,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     final bookmark = NovelBookmark(
       id: 'bookmark-${now.microsecondsSinceEpoch}',
       chapterIndex: _currentChapter,
-      chapterTitle: _chapterTitle.isNotEmpty
-          ? _chapterTitle
-          : '第${_currentChapter + 1}章',
+      chapterTitle:
+          _chapterTitle.isNotEmpty ? _chapterTitle : '第${_currentChapter + 1}章',
       positionRatio: positionRatio,
       timestamp: now.millisecondsSinceEpoch,
       updatedAt: now.millisecondsSinceEpoch,
@@ -507,6 +598,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         _api.getPages(widget.comicId),
         _api.getComic(widget.comicId),
       ]);
+      final savedPosition = await _positionStore.load();
       if (!mounted) return;
       final data = results[0];
       final comicData = results[1];
@@ -514,12 +606,25 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
       // 如果没有通过路由指定初始章节，尝试从服务器恢复阅读进度
       int startChapter = _currentChapter;
-      if (widget.initialChapter == 0) {
+      if (widget.initialChapter == null) {
         final lastReadPage = comicData['lastReadPage'] as int? ?? 0;
         if (lastReadPage > 0 && lastReadPage < pages.length) {
           startChapter = lastReadPage;
         }
+        if (savedPosition != null && savedPosition.chapter < pages.length) {
+          final serverReadAt =
+              DateTime.tryParse(comicData['lastReadAt']?.toString() ?? '');
+          // 同章使用本机页码；不同章则尊重其他设备更新的阅读记录。
+          if (savedPosition.chapter == startChapter ||
+              serverReadAt == null ||
+              !serverReadAt.isAfter(savedPosition.updatedAt)) {
+            startChapter = savedPosition.chapter;
+            _positionToRestore = savedPosition;
+          }
+        }
       }
+      if (pages.isNotEmpty)
+        startChapter = startChapter.clamp(0, pages.length - 1);
 
       setState(() {
         _title = data['title'] ?? '';
@@ -530,7 +635,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         _loadError = null;
       });
       _activity.start(_currentChapter, _totalChapters);
-      _loadChapter(_currentChapter);
+      await _loadChapter(_currentChapter, position: _positionToRestore);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -541,8 +646,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     }
   }
 
-  Future<void> _loadChapter(int index) async {
+  Future<void> _loadChapter(int index, {NovelReadingPosition? position}) async {
     if (index < 0 || index >= _totalChapters) return;
+    _positionSaveTimer?.cancel();
+    _htmlPageAnimation.stop();
+    _htmlPageSlide = const AlwaysStoppedAnimation(Offset.zero);
+    _positionToRestore = position;
+    _lastKnownPosition = position;
     final generation = ++_chapterLoadGeneration;
     setState(() {
       _chapterLoading = true;
@@ -577,6 +687,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       // 延迟计算swipe总页数
       _computeSwipePages();
       _activity.updatePage(index, _totalChapters);
+      if (_settings.pageMode == NovelPageMode.scroll) {
+        _restoreScrollPosition();
+      }
+      _schedulePositionSave();
       unawaited(_prefetchChapters(index));
     } catch (e) {
       if (mounted && generation == _chapterLoadGeneration) {
@@ -616,7 +730,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       if (!mounted) return;
       final screenSize = MediaQuery.of(context).size;
       final headerH = MediaQuery.of(context).padding.top + 4 + 16 + 4; // 顶部栏高度
-      final statusBarH = MediaQuery.of(context).padding.bottom + 2 + 14 + 2; // 底部状态栏高度
+      final statusBarH =
+          MediaQuery.of(context).padding.bottom + 2 + 14 + 2; // 底部状态栏高度
       final viewH = screenSize.height - headerH - statusBarH;
       final viewW = screenSize.width - _settings.horizontalPadding * 2;
       if (viewH <= 0 || viewW <= 0) {
@@ -708,19 +823,32 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       setState(() {
         _swipePageInfos = pageInfos;
         _swipeTotalPages = max(1, pageInfos.length);
+        if (_positionToRestore != null) {
+          _swipePage = _positionToRestore!.pageFor(_swipeTotalPages);
+          _positionToRestore = null;
+        }
         if (_swipePage >= _swipeTotalPages) {
           _swipePage = _swipeTotalPages - 1;
         }
-        // 同步 PageController
+      });
+      final targetPage = _swipePage;
+      final generation = _chapterLoadGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _chapterLoading || generation != _chapterLoadGeneration)
+          return;
+        // 页数更新并完成布局后再同步 PageController，避免被旧的单页范围截断。
         if (_swipePageController.hasClients &&
-            _swipePageController.page?.round() != _swipePage) {
-          _swipePageController.jumpToPage(_swipePage);
+            _swipePageController.page?.round() != targetPage) {
+          _swipePageController.jumpToPage(targetPage);
         }
+        if (_swipePage != targetPage) setState(() => _swipePage = targetPage);
+        _schedulePositionSave();
       });
     });
   }
 
   void _swipePrevPage() {
+    if (_chapterLoading) return;
     if (_swipePage > 0) {
       _goToSwipePage(_swipePage - 1);
     } else if (_currentChapter > 0) {
@@ -737,6 +865,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   }
 
   void _swipeNextPage() {
+    if (_chapterLoading) return;
     if (_swipePage < _swipeTotalPages - 1) {
       _goToSwipePage(_swipePage + 1);
     } else if (_currentChapter < _totalChapters - 1) {
@@ -746,17 +875,27 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 
   void _goToSwipePage(int page, {bool animate = true}) {
     final targetPage = page.clamp(0, max(0, _swipeTotalPages - 1)).toInt();
+    final direction = targetPage.compareTo(_swipePage);
+    _positionToRestore = null;
     setState(() => _swipePage = targetPage);
     if (_isHtml) {
       if (!_scrollController.hasClients) return;
       final position = _scrollController.position;
       final offset = min(
           targetPage * position.viewportDimension, position.maxScrollExtent);
-      if (animate) {
-        _scrollController.animateTo(offset,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-      } else {
-        _scrollController.jumpTo(offset);
+      // HTML 只布局一份，直接定位内容切片，再做横向入场动画。
+      // 不再用纵向 animateTo 模拟左右翻页，也不会重复解析整章 HTML。
+      _scrollController.jumpTo(offset);
+      if (animate && direction != 0) {
+        setState(() {
+          _htmlPageSlide = Tween<Offset>(
+            begin: Offset(direction.toDouble(), 0),
+            end: Offset.zero,
+          )
+              .chain(CurveTween(curve: Curves.easeOutCubic))
+              .animate(_htmlPageAnimation);
+        });
+        _htmlPageAnimation.forward(from: 0);
       }
     } else if (_swipePageController.hasClients) {
       if (animate) {
@@ -766,6 +905,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         _swipePageController.jumpToPage(targetPage);
       }
     }
+    _schedulePositionSave();
   }
 
   // 实际布局变化（包括图片异步加载、旋转和字号变化）后重算图文章节页数。
@@ -774,24 +914,45 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     _htmlMetricsScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _htmlMetricsScheduled = false;
-      if (!mounted || !_isHtml || _settings.pageMode != NovelPageMode.swipe ||
+      if (!mounted ||
+          !_isHtml ||
+          _settings.pageMode != NovelPageMode.swipe ||
           !_scrollController.hasClients) {
         return;
       }
       final position = _scrollController.position;
-      if (!position.hasContentDimensions || position.viewportDimension <= 0) return;
-      final pages = max(1,
+      if (!position.hasContentDimensions || position.viewportDimension <= 0)
+        return;
+      final pages = max(
+          1,
           ((position.maxScrollExtent + position.viewportDimension) /
-              position.viewportDimension).ceil());
-      final page = _swipePage.clamp(0, pages - 1);
+                  position.viewportDimension)
+              .ceil());
+      final page =
+          _positionToRestore?.pageFor(pages) ?? _swipePage.clamp(0, pages - 1);
       if (_swipeTotalPages != pages || _swipePage != page) {
         setState(() {
           _swipeTotalPages = pages;
           _swipePage = page;
         });
       }
-      final offset = min(page * position.viewportDimension, position.maxScrollExtent);
-      if ((position.pixels - offset).abs() > 1) _scrollController.jumpTo(offset);
+      final offset =
+          min(page * position.viewportDimension, position.maxScrollExtent);
+      if ((position.pixels - offset).abs() > 1)
+        _scrollController.jumpTo(offset);
+    });
+  }
+
+  void _restoreScrollPosition() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _chapterLoading || !_scrollController.hasClients) return;
+      final position = _positionToRestore;
+      if (position != null) {
+        _scrollController.jumpTo(
+            position.ratio * _scrollController.position.maxScrollExtent);
+        _positionToRestore = null;
+      }
+      _schedulePositionSave();
     });
   }
 
@@ -918,10 +1079,17 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   // ============================================================
 
   Future<void> _onWillPop() async {
+    if (_exiting) return;
+    _exiting = true;
     _stopTTS();
     _autoScrollTimer?.cancel();
+    _positionSaveTimer?.cancel();
+    await _savePosition();
     await _activity.finish();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) {
+      notifyReadingProgress(ref, widget.comicId);
+      Navigator.of(context).pop();
+    }
   }
 
   void _toggleOverlay() {
@@ -992,6 +1160,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
   }
 
   void _updateSettings(NovelSettings s) {
+    final position = NovelReadingPosition(
+        chapter: _currentChapter,
+        page: _swipePage,
+        totalPages: _swipeTotalPages,
+        swipe: _settings.pageMode == NovelPageMode.swipe,
+        ratio: _currentBookmarkPositionRatio(),
+        updatedAt: DateTime.now());
     final oldSpeed = _settings.autoScrollSpeed;
     final oldPageMode = _settings.pageMode;
     final oldFontSize = _settings.fontSize;
@@ -1006,16 +1181,20 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     }
     // 翻页模式变更时重新计算页数
     if (s.pageMode != oldPageMode) {
+      _positionToRestore = position;
       _swipePage = 0;
       if (s.pageMode == NovelPageMode.swipe) {
         _computeSwipePages();
+      } else {
+        _restoreScrollPosition();
       }
     } else if (s.pageMode == NovelPageMode.swipe &&
         (s.fontSize != oldFontSize ||
             s.lineHeight != oldLineHeight ||
             s.padding != oldPadding ||
             s.font != oldFont)) {
-      // 排版参数变化时，重置到第一页并重新计算分页
+      // 排版变化后按章内比例恢复，避免丢失正在阅读的位置。
+      _positionToRestore = position;
       _swipePage = 0;
       _computeSwipePages();
     }
@@ -1052,11 +1231,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, size: 48, color: _settings.secondaryTextColor),
+              Icon(Icons.error_outline,
+                  size: 48, color: _settings.secondaryTextColor),
               const SizedBox(height: 16),
               Text(
                 _loadError!,
-                style: TextStyle(color: _settings.secondaryTextColor, fontSize: 14),
+                style: TextStyle(
+                    color: _settings.secondaryTextColor, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
@@ -1074,7 +1255,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: Text('返回', style: TextStyle(color: _settings.secondaryTextColor)),
+                child: Text('返回',
+                    style: TextStyle(color: _settings.secondaryTextColor)),
               ),
             ],
           ),
@@ -1229,9 +1411,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                 child: GestureDetector(
                   onTap: () => setState(() => _showTtsPanel = true),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withAlpha(220),
+                      color:
+                          Theme.of(context).colorScheme.primary.withAlpha(220),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: const [
                         BoxShadow(color: Colors.black26, blurRadius: 8),
@@ -1240,11 +1424,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.volume_up, size: 14, color: Colors.white),
+                        const Icon(Icons.volume_up,
+                            size: 14, color: Colors.white),
                         const SizedBox(width: 4),
                         Text(
                           _ttsPaused ? '已暂停' : '朗读中...',
-                          style: const TextStyle(fontSize: 11, color: Colors.white),
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.white),
                         ),
                       ],
                     ),
@@ -1260,7 +1446,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                 right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
                       color: _settings.isDark
                           ? Colors.green.withAlpha(25)
@@ -1292,7 +1479,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                         const SizedBox(width: 6),
                         GestureDetector(
                           onTap: _toggleAutoScroll,
-                          child: Icon(Icons.close, size: 14,
+                          child: Icon(Icons.close,
+                              size: 14,
                               color: _settings.isDark
                                   ? Colors.green[400]
                                   : Colors.green[600]),
@@ -1323,10 +1511,12 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           // 目录按钮
           GestureDetector(
             onTap: () => setState(() {
+              _tocInitialTab = 0;
               _showTOC = true;
               _showOverlay = false;
             }),
-            child: Icon(Icons.list, size: 16, color: _settings.secondaryTextColor),
+            child:
+                Icon(Icons.list, size: 16, color: _settings.secondaryTextColor),
           ),
           const SizedBox(width: 8),
           // 章节标题
@@ -1351,7 +1541,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               _showSearch = true;
               _showOverlay = false;
             }),
-            child: Icon(Icons.search, size: 16, color: _settings.secondaryTextColor),
+            child: Icon(Icons.search,
+                size: 16, color: _settings.secondaryTextColor),
           ),
           const SizedBox(width: 8),
           // 书签按钮
@@ -1367,7 +1558,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               _showSettings = true;
               _showOverlay = false;
             }),
-            child: Icon(Icons.text_fields, size: 16, color: _settings.secondaryTextColor),
+            child: Icon(Icons.text_fields,
+                size: 16, color: _settings.secondaryTextColor),
           ),
         ],
       ),
@@ -1398,20 +1590,23 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                 ? _chapterTitle
                 : '第${_currentChapter + 1}章',
             style: TextStyle(
-                color: _settings.secondaryTextColor.withAlpha(120), fontSize: 10),
+                color: _settings.secondaryTextColor.withAlpha(120),
+                fontSize: 10),
           ),
           Row(
             children: [
               Text(
                 '$progress%',
                 style: TextStyle(
-                    color: _settings.secondaryTextColor.withAlpha(120), fontSize: 10),
+                    color: _settings.secondaryTextColor.withAlpha(120),
+                    fontSize: 10),
               ),
               const SizedBox(width: 12),
               Text(
                 _currentTime,
                 style: TextStyle(
-                    color: _settings.secondaryTextColor.withAlpha(120), fontSize: 10),
+                    color: _settings.secondaryTextColor.withAlpha(120),
+                    fontSize: 10),
               ),
             ],
           ),
@@ -1436,11 +1631,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 40, color: _settings.secondaryTextColor),
+            Icon(Icons.error_outline,
+                size: 40, color: _settings.secondaryTextColor),
             const SizedBox(height: 12),
             Text(
               _loadError!,
-              style: TextStyle(color: _settings.secondaryTextColor, fontSize: 13),
+              style:
+                  TextStyle(color: _settings.secondaryTextColor, fontSize: 13),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -1482,18 +1679,19 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       // 章节正文（段落）
       if (_isHtml)
         _buildHtmlContent()
-      else ...paragraphs.map((p) => Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: SelectableText(
-              '　　${p.trim()}',
-              style: TextStyle(
-                color: _settings.textColor,
-                fontSize: _settings.fontSize,
-                height: _settings.lineHeight,
-                fontFamily: _settings.fontFamily,
+      else
+        ...paragraphs.map((p) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: SelectableText(
+                '　　${p.trim()}',
+                style: TextStyle(
+                  color: _settings.textColor,
+                  fontSize: _settings.fontSize,
+                  height: _settings.lineHeight,
+                  fontFamily: _settings.fontFamily,
+                ),
               ),
-            ),
-          )),
+            )),
       // 上/下一章按钮
       const SizedBox(height: 20),
       Divider(color: _settings.secondaryTextColor.withAlpha(40)),
@@ -1504,7 +1702,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           if (_currentChapter > 0)
             TextButton.icon(
               onPressed: _prevChapter,
-              icon: Icon(Icons.chevron_left, color: _settings.secondaryTextColor),
+              icon:
+                  Icon(Icons.chevron_left, color: _settings.secondaryTextColor),
               label: Text('上一章',
                   style: TextStyle(color: _settings.secondaryTextColor)),
             ),
@@ -1515,7 +1714,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           if (_currentChapter < _totalChapters - 1)
             TextButton.icon(
               onPressed: _nextChapter,
-              icon: Icon(Icons.chevron_right, color: _settings.secondaryTextColor),
+              icon: Icon(Icons.chevron_right,
+                  color: _settings.secondaryTextColor),
               label: Text('下一章',
                   style: TextStyle(color: _settings.secondaryTextColor)),
             ),
@@ -1529,7 +1729,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: (_) => _htmlDragDistance = 0,
-        onHorizontalDragUpdate: (details) => _htmlDragDistance += details.delta.dx,
+        onHorizontalDragUpdate: (details) =>
+            _htmlDragDistance += details.delta.dx,
         onHorizontalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
           if (_htmlDragDistance < -40 || velocity < -300) {
@@ -1545,18 +1746,25 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           },
           child: Stack(
             children: [
-              SingleChildScrollView(
-                controller: _scrollController,
-                physics: const NeverScrollableScrollPhysics(),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(_settings.horizontalPadding, 16,
-                      _settings.horizontalPadding, 40),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: contentWidgets,
-                  ),
-                ),
-              ),
+              ClipRect(
+                  child: SlideTransition(
+                      position: _htmlPageSlide,
+                      child: SingleChildScrollView(
+                        key: const ValueKey('novel-html-pages'),
+                        controller: _scrollController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                              _settings.horizontalPadding,
+                              16,
+                              _settings.horizontalPadding,
+                              40),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: contentWidgets,
+                          ),
+                        ),
+                      ))),
               if (_swipeTotalPages > 1)
                 Positioned(
                   bottom: 8,
@@ -1564,8 +1772,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                   right: 0,
                   child: Center(
                     child: Text('${_swipePage + 1} / $_swipeTotalPages',
-                        style: TextStyle(fontSize: 10,
-                            color: _settings.secondaryTextColor)),
+                        style: TextStyle(
+                            fontSize: 10, color: _settings.secondaryTextColor)),
                   ),
                 ),
             ],
@@ -1581,6 +1789,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
             itemCount: _swipeTotalPages,
             onPageChanged: (page) {
               setState(() => _swipePage = page);
+              _schedulePositionSave();
             },
             itemBuilder: (context, pageIndex) {
               return Padding(
@@ -1602,7 +1811,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               right: 0,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: _settings.isDark
                         ? Colors.white.withAlpha(20)
@@ -1623,7 +1833,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
       );
     }
 
-    // ====== 上下滚动模式（默认） ======
+    // ====== 上下滚动模式 ======
     return ListView(
       controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
@@ -1678,7 +1888,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                 child: Text(
                   _title,
                   style: const TextStyle(
-                      color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -1686,7 +1898,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               ),
               // 信息按钮
               IconButton(
-                icon: const Icon(Icons.info_outline, color: Colors.white, size: 20),
+                icon: const Icon(Icons.info_outline,
+                    color: Colors.white, size: 20),
                 onPressed: () {}, // TODO: 书籍信息
               ),
             ],
@@ -1721,25 +1934,54 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.chevron_left, color: Colors.white70, size: 22),
+                      icon: const Icon(Icons.chevron_left,
+                          color: Colors.white70, size: 22),
                       onPressed: _currentChapter > 0 ? _prevChapter : null,
                     ),
                     Expanded(
                       child: Slider(
-                        value: _currentChapter.toDouble(),
+                        key: const ValueKey('novel-chapter-slider'),
+                        value:
+                            _chapterSliderValue ?? _currentChapter.toDouble(),
                         min: 0,
-                        max: (_totalChapters - 1).toDouble().clamp(0, double.infinity),
-                        onChanged: (v) => _goToChapter(v.toInt()),
+                        max: (_totalChapters - 1)
+                            .toDouble()
+                            .clamp(0, double.infinity),
+                        divisions:
+                            _totalChapters > 1 ? _totalChapters - 1 : null,
+                        label:
+                            '第${(_chapterSliderValue ?? _currentChapter).round() + 1}章',
+                        onChangeStart: _totalChapters > 1
+                            ? (v) => setState(() => _chapterSliderValue = v)
+                            : null,
+                        onChanged: _totalChapters > 1
+                            ? (v) => setState(() => _chapterSliderValue = v)
+                            : null,
+                        onChangeEnd: _totalChapters > 1
+                            ? (v) {
+                                setState(() => _chapterSliderValue = null);
+                                final chapter = v.round();
+                                if (chapter != _currentChapter) {
+                                  if (_ttsPlaying) _stopTTS();
+                                  _loadChapter(chapter);
+                                }
+                              }
+                            : null,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.chevron_right, color: Colors.white70, size: 22),
-                      onPressed:
-                          _currentChapter < _totalChapters - 1 ? _nextChapter : null,
+                      icon: const Icon(Icons.chevron_right,
+                          color: Colors.white70, size: 22),
+                      onPressed: _currentChapter < _totalChapters - 1
+                          ? _nextChapter
+                          : null,
                     ),
                     Text(
-                      '${_currentChapter + 1}/$_totalChapters',
-                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
+                      '${(_chapterSliderValue ?? _currentChapter).round() + 1}/$_totalChapters',
+                      style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontFamily: 'monospace'),
                     ),
                   ],
                 ),
@@ -1834,7 +2076,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
                     ].map((t) {
                       final isActive = _settings.theme == t.$1;
                       return GestureDetector(
-                        onTap: () => _updateSettings(_settings.copyWith(theme: t.$1)),
+                        onTap: () =>
+                            _updateSettings(_settings.copyWith(theme: t.$1)),
                         child: Container(
                           width: 22,
                           height: 22,
@@ -1913,7 +2156,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
     }
 
     final info = _swipePageInfos[pageIndex];
-    final useParagraphs = _cachedParagraphs.isNotEmpty ? _cachedParagraphs : paragraphs;
+    final useParagraphs =
+        _cachedParagraphs.isNotEmpty ? _cachedParagraphs : paragraphs;
     final isLastPage = pageIndex == _swipeTotalPages - 1;
 
     return Column(
@@ -1926,7 +2170,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
             child: SizedBox(
               width: double.infinity,
               child: Text(
-                _cachedChapterTitle.isNotEmpty ? _cachedChapterTitle : _chapterTitle,
+                _cachedChapterTitle.isNotEmpty
+                    ? _cachedChapterTitle
+                    : _chapterTitle,
                 style: TextStyle(
                   color: _settings.textColor,
                   fontSize: _settings.fontSize + 4,
@@ -1940,7 +2186,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
           ),
         // 该页对应的段落
         ...List.generate(
-          (info.endParagraph - info.startParagraph).clamp(0, useParagraphs.length),
+          (info.endParagraph - info.startParagraph)
+              .clamp(0, useParagraphs.length),
           (i) {
             final idx = info.startParagraph + i;
             if (idx >= useParagraphs.length) return const SizedBox.shrink();
@@ -1969,18 +2216,21 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
               if (_currentChapter > 0)
                 TextButton.icon(
                   onPressed: _prevChapter,
-                  icon: Icon(Icons.chevron_left, color: _settings.secondaryTextColor),
+                  icon: Icon(Icons.chevron_left,
+                      color: _settings.secondaryTextColor),
                   label: Text('上一章',
                       style: TextStyle(color: _settings.secondaryTextColor)),
                 ),
               Text(
                 '${_currentChapter + 1} / $_totalChapters',
-                style: TextStyle(fontSize: 12, color: _settings.secondaryTextColor),
+                style: TextStyle(
+                    fontSize: 12, color: _settings.secondaryTextColor),
               ),
               if (_currentChapter < _totalChapters - 1)
                 TextButton.icon(
                   onPressed: _nextChapter,
-                  icon: Icon(Icons.chevron_right, color: _settings.secondaryTextColor),
+                  icon: Icon(Icons.chevron_right,
+                      color: _settings.secondaryTextColor),
                   label: Text('下一章',
                       style: TextStyle(color: _settings.secondaryTextColor)),
                 ),
@@ -1996,8 +2246,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen> {
 /// Swipe 模式每页的分页信息
 class _SwipePageInfo {
   final int startParagraph; // 起始段落索引（包含）
-  final int endParagraph;   // 结束段落索引（不包含）
-  final bool hasTitle;      // 该页是否包含章节标题
+  final int endParagraph; // 结束段落索引（不包含）
+  final bool hasTitle; // 该页是否包含章节标题
 
   const _SwipePageInfo({
     required this.startParagraph,
@@ -2023,9 +2273,8 @@ class _ToolButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    final activeColor = isActive
-        ? Theme.of(context).colorScheme.primary
-        : Colors.white;
+    final activeColor =
+        isActive ? Theme.of(context).colorScheme.primary : Colors.white;
     return GestureDetector(
       onTap: onTap,
       child: Padding(
@@ -2033,8 +2282,7 @@ class _ToolButton extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                color: enabled ? activeColor : Colors.white30, size: 22),
+            Icon(icon, color: enabled ? activeColor : Colors.white30, size: 22),
             const SizedBox(height: 3),
             Text(
               label,

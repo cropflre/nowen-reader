@@ -111,6 +111,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
+          ref.read(readingProgressRevisionProvider.notifier).state++;
           await ref.read(comicListProvider.notifier).loadComics();
         },
         color: cs.primary,

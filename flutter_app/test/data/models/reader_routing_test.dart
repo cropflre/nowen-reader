@@ -32,7 +32,9 @@ void main() {
 
       expect(comic.isPdf, isFalse);
       expect(comic.isNovel, isTrue);
-      expect(comic.readerRoute(), '/novel/epub-novel?chapter=3');
+      expect(comic.readerRoute(), '/novel/epub-novel');
+      expect(comic.readerRoute(position: 0), '/novel/epub-novel?chapter=0');
+      expect(comic.readerRoute(position: 3), '/novel/epub-novel?chapter=3');
     });
 
     test('image comics keep using the comic reader', () {

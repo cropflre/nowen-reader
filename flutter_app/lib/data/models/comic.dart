@@ -199,7 +199,9 @@ class Comic {
   String readerRoute({int? position}) {
     final current = position ?? lastReadPage;
     if (isPdf) return '/pdf/$id?page=$current';
-    if (isNovel) return '/novel/$id?chapter=$current';
+    if (isNovel) {
+      return position == null ? '/novel/$id' : '/novel/$id?chapter=$position';
+    }
     return '/reader/$id?page=$current';
   }
 

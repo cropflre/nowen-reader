@@ -7,6 +7,7 @@ import '../data/api/api_client.dart';
 import '../data/api/comic_api.dart';
 import '../data/models/comic.dart';
 import '../data/providers/auth_provider.dart';
+import '../data/providers/comic_provider.dart';
 import 'authenticated_image.dart';
 import 'animations.dart';
 
@@ -22,6 +23,7 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
   List<Comic> _recentComics = [];
   bool _loading = true;
   bool _collapsed = false;
+  int _fetchGeneration = 0;
 
   @override
   void initState() {
@@ -30,6 +32,7 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
   }
 
   Future<void> _fetchRecent() async {
+    final generation = ++_fetchGeneration;
     try {
       final api = ref.read(comicApiProvider);
       final data = await api.listComics(
@@ -43,14 +46,16 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
           .where((c) => c.hasReadingProgress && !c.isFinished)
           .take(8)
           .toList();
-      if (mounted) {
+      if (mounted && generation == _fetchGeneration) {
         setState(() {
           _recentComics = comics;
           _loading = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _fetchGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -73,6 +78,7 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(readingProgressRevisionProvider, (_, __) => _fetchRecent());
     if (_loading || _recentComics.isEmpty) return const SizedBox.shrink();
 
     final cs = Theme.of(context).colorScheme;
@@ -103,7 +109,8 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: cs.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
@@ -159,9 +166,8 @@ class _ContinueReadingState extends ConsumerState<ContinueReading> {
             ),
           ),
           secondChild: const SizedBox(height: 8),
-          crossFadeState: _collapsed
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
+          crossFadeState:
+              _collapsed ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 250),
           sizeCurve: Curves.easeInOut,
         ),
@@ -263,16 +269,21 @@ class _ContinueReadingCard extends StatelessWidget {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    comic.pageCount > 0
-                                        ? '${comic.displayPage}/${comic.pageCount}'
-                                        : '${comic.displayPage}',
-                                    style: const TextStyle(
-                                      color: Colors.white60,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
+                                  Expanded(
+                                      child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            comic.pageCount > 0
+                                                ? '${comic.displayPage}/${comic.pageCount}'
+                                                : '${comic.displayPage}',
+                                            style: const TextStyle(
+                                              color: Colors.white60,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ))),
+                                  const SizedBox(width: 4),
                                   Text(
                                     '$progress%',
                                     style: TextStyle(

@@ -13,12 +13,12 @@ import 'pdf_reader_screen.dart';
 /// 特别是小说库中的 PDF，必须进入 PDF 阅读器而不是章节阅读器。
 class ReaderDispatchScreen extends ConsumerStatefulWidget {
   final String comicId;
-  final int initialPosition;
+  final int? initialPosition;
 
   const ReaderDispatchScreen({
     super.key,
     required this.comicId,
-    this.initialPosition = 0,
+    this.initialPosition,
   });
 
   @override
@@ -105,7 +105,7 @@ class _ReaderDispatchScreenState extends ConsumerState<ReaderDispatchScreen> {
     if (comic.isPdf) {
       return PdfReaderScreen(
         comicId: comic.id,
-        initialPage: widget.initialPosition,
+        initialPage: widget.initialPosition ?? 0,
       );
     }
     if (comic.isNovel) {
@@ -116,7 +116,7 @@ class _ReaderDispatchScreenState extends ConsumerState<ReaderDispatchScreen> {
     }
     return ComicReaderScreen(
       comicId: comic.id,
-      initialPage: widget.initialPosition,
+      initialPage: widget.initialPosition ?? 0,
     );
   }
 }

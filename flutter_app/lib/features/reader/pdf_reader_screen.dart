@@ -11,6 +11,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../data/api/api_client.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../data/services/reading_activity_tracker.dart';
 
 /// PDF 阅读器 — 基于 pdfrx（PDFium），支持全平台
@@ -111,7 +112,10 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
 
   Future<void> _onWillPop() async {
     await _activity.finish();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) {
+      notifyReadingProgress(ref, widget.comicId);
+      Navigator.of(context).pop();
+    }
   }
 
   void _toggleOverlay() {

@@ -39,15 +39,15 @@ class _ReaderApi extends ComicApi {
 
   @override
   Future<Map<String, dynamic>> getChapterContent(
-          String comicId, int chapterIndex) async {
+      String comicId, int chapterIndex) async {
     chapterRequests.add(chapterIndex);
     return {
-        'title': chapterIndex == 0 ? '第一章' : '第二章',
-        'mimeType': 'text/html; charset=utf-8',
-        'content': chapterIndex == 0
-            ? '<p>插图之前</p><img src="$_image" width="240" height="240">${List.generate(30, (i) => '<p>正文第$i段，保留章节图文阅读顺序。</p>').join()}<p>章节结尾</p>'
-            : '<h2>第二章标题</h2><p>第二章内容</p><img src="$_image">',
-      };
+      'title': chapterIndex == 0 ? '第一章' : '第二章',
+      'mimeType': 'text/html; charset=utf-8',
+      'content': chapterIndex == 0
+          ? '<p>插图之前</p><img src="$_image" width="240" height="240">${List.generate(30, (i) => '<p>正文第$i段，保留章节图文阅读顺序。</p>').join()}<p>章节结尾</p>'
+          : '<h2>第二章标题</h2><p>第二章内容</p><img src="$_image">',
+    };
   }
 
   @override
@@ -81,8 +81,7 @@ void main() {
       image.dispose();
       return data!.buffer.asUint8List();
     });
-    await readerImageLoader.load(url,
-        readLocal: () async => bytes);
+    await readerImageLoader.load(url, readLocal: () async => bytes);
     await tester.pumpWidget(const MaterialApp(
       home: Row(children: [
         AuthenticatedImage(imageUrl: url, width: 40, height: 40),
@@ -109,8 +108,10 @@ void main() {
     const secondUrl = 'https://reader.example/page/second';
     final first = Completer<Uint8List?>();
     final second = Completer<Uint8List?>();
-    final firstLoad = readerImageLoader.load(firstUrl, readLocal: () => first.future);
-    final secondLoad = readerImageLoader.load(secondUrl, readLocal: () => second.future);
+    final firstLoad =
+        readerImageLoader.load(firstUrl, readLocal: () => first.future);
+    final secondLoad =
+        readerImageLoader.load(secondUrl, readLocal: () => second.future);
     const key = ValueKey('page');
     await tester.pumpWidget(const MaterialApp(
       home: AuthenticatedImage(key: key, imageUrl: firstUrl),
@@ -178,7 +179,10 @@ void main() {
   for (final swipe in [false, true]) {
     testWidgets('reader retains images in ${swipe ? 'swipe' : 'scroll'} mode',
         (tester) async {
-      SharedPreferences.setMockInitialValues({'novel_pageMode': swipe ? 1 : 0});
+      SharedPreferences.setMockInitialValues({
+        'novel_pageMode': swipe ? 1 : 0,
+        'novel_pageModeVersion': 1,
+      });
       final client = ApiClient()..setBaseUrl('https://reader.example/nowen');
       final api = _ReaderApi();
       await tester.pumpWidget(ProviderScope(
@@ -189,7 +193,8 @@ void main() {
         child: const MaterialApp(home: NovelReaderScreen(comicId: 'book')),
       ));
       await tester.pumpAndSettle();
-      expect(api.chapterRequests, [0, 1]); // The next chapter is ready in advance.
+      expect(
+          api.chapterRequests, [0, 1]); // The next chapter is ready in advance.
       expect(find.byType(NovelHtmlContent), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
       if (swipe) {
@@ -212,7 +217,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(controller.offset, 0);
         // 视口变化后，图文章节必须按新布局重算页数。
-        tester.view.physicalSize = const Size(390, 844) * tester.view.devicePixelRatio;
+        tester.view.physicalSize =
+            const Size(390, 844) * tester.view.devicePixelRatio;
         addTearDown(tester.view.resetPhysicalSize);
         await tester.pumpAndSettle();
         final resizedPages = ((controller.position.maxScrollExtent +
@@ -229,7 +235,8 @@ void main() {
                 .widget<NovelHtmlContent>(find.byType(NovelHtmlContent))
                 .content,
             contains('第二章内容'));
-        expect(api.chapterRequests, [0, 1]); // Turning chapters reuses read-ahead.
+        expect(
+            api.chapterRequests, [0, 1]); // Turning chapters reuses read-ahead.
       }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

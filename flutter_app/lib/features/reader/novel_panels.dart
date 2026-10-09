@@ -42,7 +42,9 @@ class TOCBookmarkPanel extends StatefulWidget {
 
 class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
     with SingleTickerProviderStateMixin {
+  static const _tocRowHeight = 56.0;
   late TabController _tabCtrl;
+  late final ScrollController _tocScrollController;
   final Set<int> _collapsedToc = {};
 
   @override
@@ -53,11 +55,54 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
       vsync: this,
       initialIndex: widget.initialTabIndex.clamp(0, 1),
     );
+    _tocScrollController = ScrollController(
+      initialScrollOffset: _currentChapterOffset(),
+    );
+    _tabCtrl.addListener(_onTabChanged);
+  }
+
+  double _currentChapterOffset() {
+    final entries =
+        visibleNovelToc(normalizeNovelToc(widget.chapters), _collapsedToc);
+    final index = entries.indexWhere((e) => e.index == widget.currentChapter);
+    return (index - 2).clamp(0, entries.length) * _tocRowHeight;
+  }
+
+  void _onTabChanged() {
+    if (_tabCtrl.index == 0) _revealCurrentChapter();
+  }
+
+  void _revealCurrentChapter() {
+    final entries = normalizeNovelToc(widget.chapters);
+    if (widget.currentChapter < 0 || widget.currentChapter >= entries.length) {
+      return;
+    }
+    var parent = entries[widget.currentChapter].parentIndex;
+    setState(() {
+      while (parent != null) {
+        _collapsedToc.remove(parent);
+        parent = entries[parent!].parentIndex;
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_tocScrollController.hasClients) return;
+      _tocScrollController.jumpTo(_currentChapterOffset()
+          .clamp(0.0, _tocScrollController.position.maxScrollExtent));
+    });
+  }
+
+  @override
+  void didUpdateWidget(TOCBookmarkPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentChapter != widget.currentChapter) {
+      _revealCurrentChapter();
+    }
   }
 
   @override
   void dispose() {
     _tabCtrl.dispose();
+    _tocScrollController.dispose();
     super.dispose();
   }
 
@@ -86,7 +131,8 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
                         unselectedLabelColor: s.secondaryTextColor,
                         indicatorColor: primary,
                         indicatorSize: TabBarIndicatorSize.label,
-                        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        labelStyle: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600),
                         unselectedLabelStyle: const TextStyle(fontSize: 13),
                         tabs: [
                           Tab(text: '目录 (${widget.chapters.length})'),
@@ -102,7 +148,8 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
                       tooltip: '添加书签',
                     ),
                     IconButton(
-                      icon: Icon(Icons.close, color: s.secondaryTextColor, size: 20),
+                      icon: Icon(Icons.close,
+                          color: s.secondaryTextColor, size: 20),
                       onPressed: widget.onClose,
                     ),
                   ],
@@ -130,6 +177,8 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
     final entries = normalizeNovelToc(widget.chapters);
     final visible = visibleNovelToc(entries, _collapsedToc);
     return ListView.builder(
+      controller: _tocScrollController,
+      itemExtent: _tocRowHeight,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       itemCount: visible.length,
       itemBuilder: (context, visibleIndex) {
@@ -143,6 +192,7 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
         final hasBookmark =
             widget.bookmarks.any((b) => b.chapterIndex == index);
         return ListTile(
+          key: ValueKey('toc-chapter-$index'),
           dense: true,
           selected: isActive,
           selectedTileColor: primary.withAlpha(20),
@@ -157,10 +207,14 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
                   child: IconButton(
                     padding: EdgeInsets.zero,
                     tooltip: _collapsedToc.contains(index) ? '展开子目录' : '折叠子目录',
-                    icon: Icon(_collapsedToc.contains(index)
-                        ? Icons.chevron_right : Icons.expand_more, size: 18),
+                    icon: Icon(
+                        _collapsedToc.contains(index)
+                            ? Icons.chevron_right
+                            : Icons.expand_more,
+                        size: 18),
                     onPressed: () => setState(() {
-                      if (!_collapsedToc.remove(index)) _collapsedToc.add(index);
+                      if (!_collapsedToc.remove(index))
+                        _collapsedToc.add(index);
                     }),
                   ),
                 )
@@ -201,12 +255,15 @@ class _TOCBookmarkPanelState extends State<TOCBookmarkPanel>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bookmark_border, size: 40, color: s.secondaryTextColor.withAlpha(80)),
+            Icon(Icons.bookmark_border,
+                size: 40, color: s.secondaryTextColor.withAlpha(80)),
             const SizedBox(height: 8),
-            Text('暂无书签', style: TextStyle(color: s.secondaryTextColor, fontSize: 13)),
+            Text('暂无书签',
+                style: TextStyle(color: s.secondaryTextColor, fontSize: 13)),
             const SizedBox(height: 4),
             Text('点击标题栏的书签图标添加',
-                style: TextStyle(color: s.secondaryTextColor.withAlpha(120), fontSize: 11)),
+                style: TextStyle(
+                    color: s.secondaryTextColor.withAlpha(120), fontSize: 11)),
           ],
         ),
       );
@@ -386,11 +443,19 @@ class SettingsPanel extends StatelessWidget {
                                 color: t.$3,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: isSelected ? primary : (isDark ? Colors.white24 : Colors.black12),
+                                  color: isSelected
+                                      ? primary
+                                      : (isDark
+                                          ? Colors.white24
+                                          : Colors.black12),
                                   width: isSelected ? 2.5 : 1,
                                 ),
                                 boxShadow: isSelected
-                                    ? [BoxShadow(color: primary.withAlpha(60), blurRadius: 6)]
+                                    ? [
+                                        BoxShadow(
+                                            color: primary.withAlpha(60),
+                                            blurRadius: 6)
+                                      ]
                                     : null,
                               ),
                             ),
@@ -400,7 +465,9 @@ class SettingsPanel extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 10,
                                 color: isSelected ? primary : labelColor,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                               ),
                             ),
                           ],
@@ -416,33 +483,47 @@ class SettingsPanel extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    _buildIconBtn(Icons.remove, textColor, isDark,
+                    _buildIconBtn(
+                        Icons.remove,
+                        textColor,
+                        isDark,
                         settings.fontSize > 12
-                            ? () => onChanged(settings.copyWith(fontSize: settings.fontSize - 1))
+                            ? () => onChanged(settings.copyWith(
+                                fontSize: settings.fontSize - 1))
                             : null),
                     Expanded(
                       child: Slider(
                         value: settings.fontSize,
                         min: 12,
                         max: 32,
-                        onChanged: (v) => onChanged(settings.copyWith(fontSize: v)),
+                        onChanged: (v) =>
+                            onChanged(settings.copyWith(fontSize: v)),
                       ),
                     ),
-                    _buildIconBtn(Icons.add, textColor, isDark,
+                    _buildIconBtn(
+                        Icons.add,
+                        textColor,
+                        isDark,
                         settings.fontSize < 32
-                            ? () => onChanged(settings.copyWith(fontSize: settings.fontSize + 1))
+                            ? () => onChanged(settings.copyWith(
+                                fontSize: settings.fontSize + 1))
                             : null),
                   ],
                 ),
 
                 // 行距
-                _buildLabel('行距: ${settings.lineHeight.toStringAsFixed(1)}', labelColor),
+                _buildLabel('行距: ${settings.lineHeight.toStringAsFixed(1)}',
+                    labelColor),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    _buildIconBtn(Icons.remove, textColor, isDark,
+                    _buildIconBtn(
+                        Icons.remove,
+                        textColor,
+                        isDark,
                         settings.lineHeight > 1.2
-                            ? () => onChanged(settings.copyWith(lineHeight: settings.lineHeight - 0.2))
+                            ? () => onChanged(settings.copyWith(
+                                lineHeight: settings.lineHeight - 0.2))
                             : null),
                     Expanded(
                       child: Slider(
@@ -450,12 +531,17 @@ class SettingsPanel extends StatelessWidget {
                         min: 1.2,
                         max: 3.0,
                         divisions: 9,
-                        onChanged: (v) => onChanged(settings.copyWith(lineHeight: v)),
+                        onChanged: (v) =>
+                            onChanged(settings.copyWith(lineHeight: v)),
                       ),
                     ),
-                    _buildIconBtn(Icons.add, textColor, isDark,
+                    _buildIconBtn(
+                        Icons.add,
+                        textColor,
+                        isDark,
                         settings.lineHeight < 3.0
-                            ? () => onChanged(settings.copyWith(lineHeight: settings.lineHeight + 0.2))
+                            ? () => onChanged(settings.copyWith(
+                                lineHeight: settings.lineHeight + 0.2))
                             : null),
                   ],
                 ),
@@ -465,7 +551,11 @@ class SettingsPanel extends StatelessWidget {
                 _buildLabel('页边距', labelColor),
                 const SizedBox(height: 8),
                 _buildChips<NovelPadding>(
-                  _paddingOptions, settings.padding, primary, textColor, isDark,
+                  _paddingOptions,
+                  settings.padding,
+                  primary,
+                  textColor,
+                  isDark,
                   (v) => onChanged(settings.copyWith(padding: v)),
                 ),
                 const SizedBox(height: 12),
@@ -474,7 +564,11 @@ class SettingsPanel extends StatelessWidget {
                 _buildLabel('翻页模式', labelColor),
                 const SizedBox(height: 8),
                 _buildChips<NovelPageMode>(
-                  _pageModeOptions, settings.pageMode, primary, textColor, isDark,
+                  _pageModeOptions,
+                  settings.pageMode,
+                  primary,
+                  textColor,
+                  isDark,
                   (v) => onChanged(settings.copyWith(pageMode: v)),
                 ),
                 const SizedBox(height: 12),
@@ -484,7 +578,10 @@ class SettingsPanel extends StatelessWidget {
                 const SizedBox(height: 8),
                 _buildChips<int>(
                   [(1, '慢速'), (2, '中速'), (3, '快速')],
-                  settings.autoScrollSpeed, primary, textColor, isDark,
+                  settings.autoScrollSpeed,
+                  primary,
+                  textColor,
+                  isDark,
                   (v) => onChanged(settings.copyWith(autoScrollSpeed: v)),
                 ),
                 const SizedBox(height: 12),
@@ -493,7 +590,11 @@ class SettingsPanel extends StatelessWidget {
                 _buildLabel('字体', labelColor),
                 const SizedBox(height: 8),
                 _buildChips<NovelFont>(
-                  _fontOptions, settings.font, primary, textColor, isDark,
+                  _fontOptions,
+                  settings.font,
+                  primary,
+                  textColor,
+                  isDark,
                   (v) => onChanged(settings.copyWith(font: v)),
                 ),
                 const SizedBox(height: 16),
@@ -514,10 +615,13 @@ class SettingsPanel extends StatelessWidget {
   }
 
   Widget _buildLabel(String text, Color color) {
-    return Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500));
+    return Text(text,
+        style:
+            TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500));
   }
 
-  Widget _buildIconBtn(IconData icon, Color color, bool isDark, VoidCallback? onTap) {
+  Widget _buildIconBtn(
+      IconData icon, Color color, bool isDark, VoidCallback? onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -526,7 +630,8 @@ class SettingsPanel extends StatelessWidget {
           color: isDark ? Colors.white10 : Colors.black.withAlpha(8),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, size: 18, color: onTap != null ? color : color.withAlpha(60)),
+        child: Icon(icon,
+            size: 18, color: onTap != null ? color : color.withAlpha(60)),
       ),
     );
   }
@@ -701,24 +806,28 @@ class _SearchPanelState extends State<SearchPanel> {
                       child: Container(
                         height: 40,
                         decoration: BoxDecoration(
-                          color: s.isDark ? Colors.white10 : Colors.black.withAlpha(8),
+                          color: s.isDark
+                              ? Colors.white10
+                              : Colors.black.withAlpha(8),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: Row(
                           children: [
-                            Icon(Icons.search, size: 18, color: s.secondaryTextColor),
+                            Icon(Icons.search,
+                                size: 18, color: s.secondaryTextColor),
                             const SizedBox(width: 8),
                             Expanded(
                               child: TextField(
                                 controller: _ctrl,
                                 focusNode: _focusNode,
-                                style: TextStyle(
-                                    color: s.textColor, fontSize: 14),
+                                style:
+                                    TextStyle(color: s.textColor, fontSize: 14),
                                 decoration: InputDecoration(
                                   hintText: '搜索全书内容...',
                                   hintStyle: TextStyle(
-                                      color: s.secondaryTextColor, fontSize: 13),
+                                      color: s.secondaryTextColor,
+                                      fontSize: 13),
                                   border: InputBorder.none,
                                   isDense: true,
                                   contentPadding: EdgeInsets.zero,
@@ -820,8 +929,8 @@ class _SearchPanelState extends State<SearchPanel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off, size: 40,
-                color: s.secondaryTextColor.withAlpha(80)),
+            Icon(Icons.search_off,
+                size: 40, color: s.secondaryTextColor.withAlpha(80)),
             const SizedBox(height: 8),
             Text('未找到匹配结果',
                 style: TextStyle(fontSize: 13, color: s.secondaryTextColor)),
@@ -835,18 +944,18 @@ class _SearchPanelState extends State<SearchPanel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search, size: 40,
-                color: s.secondaryTextColor.withAlpha(60)),
+            Icon(Icons.search,
+                size: 40, color: s.secondaryTextColor.withAlpha(60)),
             const SizedBox(height: 8),
             Text('输入关键词搜索全书内容',
-                style: TextStyle(fontSize: 12, color: s.secondaryTextColor.withAlpha(120))),
+                style: TextStyle(
+                    fontSize: 12, color: s.secondaryTextColor.withAlpha(120))),
           ],
         ),
       );
     }
 
-    final totalMatches =
-        _results.fold<int>(0, (sum, r) => sum + r.matchCount);
+    final totalMatches = _results.fold<int>(0, (sum, r) => sum + r.matchCount);
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       children: [
@@ -871,7 +980,8 @@ class _SearchPanelState extends State<SearchPanel> {
                     style: TextStyle(
                       fontSize: 13,
                       color: isActive ? primary : s.textColor,
-                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isActive ? FontWeight.bold : FontWeight.normal,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -943,7 +1053,8 @@ class TTSControlPanel extends StatelessWidget {
           color: isDark ? Colors.white10 : Colors.black12,
         ),
         boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4)),
+          BoxShadow(
+              color: Colors.black26, blurRadius: 12, offset: Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -976,8 +1087,7 @@ class TTSControlPanel extends StatelessWidget {
             return GestureDetector(
               onTap: () => onRateChanged(r),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 margin: const EdgeInsets.only(right: 2),
                 decoration: BoxDecoration(
                   color: isActive

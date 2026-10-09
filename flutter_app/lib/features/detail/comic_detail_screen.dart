@@ -7,6 +7,7 @@ import '../../widgets/authenticated_image.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../data/providers/cache_provider.dart';
 import '../../data/services/cache_service.dart';
 import '../reader/novel_reader_screen.dart';
@@ -36,12 +37,13 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     try {
       final api = ref.read(comicApiProvider);
       final data = await api.getComic(widget.comicId);
+      if (!mounted) return;
       setState(() {
         _comic = Comic.fromJson(data);
         _loading = false;
       });
     } catch (_) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -83,6 +85,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(readingProgressRevisionProvider, (_, __) => _loadDetail());
     final serverUrl = ref.watch(authProvider).serverUrl;
     final cs = Theme.of(context).colorScheme;
 
@@ -286,7 +289,6 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                               MaterialPageRoute(
                                 builder: (_) => NovelReaderScreen(
                                   comicId: comic.id,
-                                  initialChapter: comic.lastReadPage,
                                 ),
                               ),
                             );
