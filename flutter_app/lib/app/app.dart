@@ -3,14 +3,40 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/app_localizations.dart';
+import '../data/providers/server_route_provider.dart';
 import 'router.dart';
 import 'theme.dart';
 
-class NowenReaderApp extends ConsumerWidget {
+class NowenReaderApp extends ConsumerStatefulWidget {
   const NowenReaderApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NowenReaderApp> createState() => _NowenReaderAppState();
+}
+
+class _NowenReaderAppState extends ConsumerState<NowenReaderApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    ref
+        .read(serverRouteProvider.notifier)
+        .setForeground(state == AppLifecycleState.resumed);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(

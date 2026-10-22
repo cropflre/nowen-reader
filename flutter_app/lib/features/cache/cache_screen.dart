@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/server_route_provider.dart';
 import '../../data/providers/cache_provider.dart';
 import '../../data/services/cache_service.dart';
 import '../../data/services/offline_library_service.dart';
@@ -259,7 +260,10 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
   Future<void> _syncOfflineProgress(String serverUrl) async {
     final api = ref.read(comicApiProvider);
     final entries = ref.read(cacheEntriesProvider);
-    final normalizedServer = serverUrl.replaceAll(RegExp(r'/+$'), '');
+    final routeState = ref.read(serverRouteProvider);
+    final routes = routeState.verification == ServerRouteVerification.verified
+        ? routeState.config : ServerRouteConfig(primaryUrl: serverUrl);
+    final normalizedServer = routes.canonicalUrl(serverUrl);
 
     for (final entry in entries.where((item) => item.isNovel)) {
       final manifest =
@@ -267,7 +271,7 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
       final manifestServer =
           (manifest?.serverUrl ?? '').replaceAll(RegExp(r'/+$'), '');
       if (manifestServer.isNotEmpty &&
-          manifestServer != normalizedServer) {
+          routes.canonicalUrl(manifestServer) != normalizedServer) {
         continue;
       }
 

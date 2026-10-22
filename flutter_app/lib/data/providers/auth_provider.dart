@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_client.dart';
 import '../api/auth_api.dart';
 import '../models/comic.dart';
+import 'server_route_provider.dart';
 
 enum ServerConnectionStatus {
   unknown,
@@ -64,6 +67,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
 
   AuthNotifier(this._ref) : super(const AuthState()) {
+    _ref.listen<String>(serverUrlProvider, (_, url) {
+      if (mounted && state.serverUrl != url) {
+        state = state.copyWith(serverUrl: url);
+      }
+    });
+    _ref.listen<int>(authInvalidationProvider, (_, __) {
+      if (mounted) {
+        state = state.copyWith(
+            clearUser: true,
+            isLoading: false,
+            connectionStatus: ServerConnectionStatus.unauthorized);
+      }
+    });
+    _ref.listen<ServerRouteState>(serverRouteProvider, (previous, next) {
+      if (mounted &&
+          state.isOffline &&
+          previous?.measuring == true &&
+          !next.measuring &&
+          next.latencies[next.activeUrl] != null) {
+        unawaited(checkAuth(selectRoute: false));
+      }
+    });
     _init();
   }
 
@@ -83,7 +108,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       isLoading: true,
       connectionStatus: ServerConnectionStatus.checking,
     );
-    _ref.read(serverUrlProvider.notifier).state = url;
+    final config = await loadServerRouteConfig(url);
+    if (!mounted) return;
+    await _ref.read(serverRouteProvider.notifier).configure(config);
     await checkAuth();
   }
 
@@ -91,7 +118,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///
   /// 地址格式已经由页面校验，因此先持久化，再检测连通性。即使当前断网，
   /// 用户下次打开 App 时也不会丢失刚输入的服务器地址。
-  Future<bool> setServerUrl(String url) async {
+  Future<bool> setServerUrl(
+    String url, {
+    String? backupUrl,
+    ServerRouteMode? mode,
+  }) async {
+    url = normalizeServerUrl(url);
+    final saved = await loadServerRouteConfig(url);
+    final backup = normalizeServerUrl(backupUrl ?? saved.backupUrl);
+    final config = ServerRouteConfig(
+      primaryUrl: url,
+      backupUrl: backup == url ? '' : backup,
+      mode: backup.isEmpty ? ServerRouteMode.automatic : mode ?? saved.mode,
+    );
+    final previous = _ref.read(serverRouteProvider).config.primaryUrl;
+    if (previous.isNotEmpty && previous != url) {
+      await _ref.read(apiClientProvider).clearCookies();
+      state = state.copyWith(clearUser: true);
+    }
     await saveServerUrl(url);
     state = state.copyWith(
       serverUrl: url,
@@ -99,18 +143,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       connectionStatus: ServerConnectionStatus.checking,
       clearError: true,
     );
-    _ref.read(serverUrlProvider.notifier).state = url;
-
-    final ok = await testServerConnection(url);
-    if (!ok) {
-      state = state.copyWith(
-        isLoading: false,
-        connectionStatus: ServerConnectionStatus.offline,
-        error: '服务器暂时不可达，地址已保存，可进入离线缓存',
-      );
-      return false;
-    }
-
+    await _ref.read(serverRouteProvider.notifier).configure(config);
     await checkAuth();
     return state.connectionStatus != ServerConnectionStatus.offline;
   }
@@ -119,7 +152,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///
   /// 只有服务端明确返回 401/403 才视为认证失效；超时、断网、DNS 和
   /// 服务器临时不可达都进入离线状态，不清除 Cookie，也不清除已有用户。
-  Future<void> checkAuth() async {
+  Future<void> checkAuth({bool selectRoute = true}) async {
     if (state.serverUrl.isEmpty) {
       state = state.copyWith(
         isLoading: false,
@@ -135,6 +168,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
 
     try {
+      if (selectRoute) await _ref.read(serverRouteProvider.notifier).refresh();
+      if (!mounted) return;
       final api = _ref.read(authApiProvider);
       final data = await api.me();
       final needsSetup = data['needsSetup'] == true;
@@ -181,6 +216,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// 登录
   Future<bool> login(String username, String password) async {
+    final routes = _ref.read(serverRouteProvider.notifier);
+    routes.setAuthenticating(true);
     state = state.copyWith(
       isLoading: true,
       connectionStatus: ServerConnectionStatus.checking,
@@ -210,7 +247,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           clearError: true,
         );
         await saveServerRecord(ServerRecord(
-          url: state.serverUrl,
+          url: _ref.read(serverRouteProvider).config.primaryUrl,
           username: user.username,
           nickname: user.nickname.isNotEmpty ? user.nickname : null,
           lastUsed: DateTime.now(),
@@ -241,12 +278,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
         error: msg,
       );
       return false;
+    } finally {
+      routes.setAuthenticating(false);
+      unawaited(routes.refresh());
     }
   }
 
   /// 注册
   Future<bool> register(
       String username, String password, String nickname) async {
+    final routes = _ref.read(serverRouteProvider.notifier);
+    routes.setAuthenticating(true);
     state = state.copyWith(
       isLoading: true,
       connectionStatus: ServerConnectionStatus.checking,
@@ -290,15 +332,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
         error: msg,
       );
       return false;
+    } finally {
+      routes.setAuthenticating(false);
+      unawaited(routes.refresh());
     }
   }
 
   /// 退出登录
   Future<void> logout() async {
+    final routes = _ref.read(serverRouteProvider.notifier);
+    routes.setAuthenticating(true);
     try {
       final api = _ref.read(authApiProvider);
       await api.logout();
     } catch (_) {}
+    await _ref.read(apiClientProvider).clearCookies();
+    routes.setAuthenticating(false);
     readerImageLoader.clear();
     state = state.copyWith(clearUser: true, isLoading: false);
   }

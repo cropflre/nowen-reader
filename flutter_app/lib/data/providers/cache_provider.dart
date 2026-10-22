@@ -4,6 +4,7 @@ import '../api/api_client.dart';
 import '../api/comic_api.dart';
 import '../services/cache_service.dart';
 import '../services/offline_library_service.dart';
+import 'server_route_provider.dart';
 
 final cacheServiceProvider = Provider<CacheService>((ref) {
   return cacheService;
@@ -11,7 +12,7 @@ final cacheServiceProvider = Provider<CacheService>((ref) {
 
 final cacheEntriesProvider =
     StateNotifierProvider<CacheEntriesNotifier, List<CacheEntry>>((ref) {
-  return CacheEntriesNotifier(ref.watch(cacheServiceProvider));
+  return CacheEntriesNotifier(ref.watch(cacheServiceProvider), ref);
 });
 
 final comicCacheStatusProvider =
@@ -51,8 +52,9 @@ final totalCacheSizeProvider = Provider<String>((ref) {
 
 class CacheEntriesNotifier extends StateNotifier<List<CacheEntry>> {
   final CacheService _service;
+  final Ref _ref;
 
-  CacheEntriesNotifier(this._service) : super([]) {
+  CacheEntriesNotifier(this._service, this._ref) : super([]) {
     _refresh();
   }
 
@@ -71,12 +73,18 @@ class CacheEntriesNotifier extends StateNotifier<List<CacheEntry>> {
     Map<int, String> chapterTitles = const {},
   }) async {
     final previous = await offlineLibraryService.getManifest(comicId);
+    final routeState = _ref.read(serverRouteProvider);
+    final routes = routeState.verification == ServerRouteVerification.verified
+        ? routeState.config : ServerRouteConfig(primaryUrl: serverUrl);
+    final canonicalServer = routes.canonicalUrl(serverUrl);
+    final sameServer = previous != null &&
+        routes.canonicalUrl(previous.serverUrl) == canonicalServer;
 
     // 当前缓存文件仍按 comicId 存储。若另一个服务器出现相同 ID，
     // 先清理旧缓存再写入，避免把两台服务器的内容混在一起。
     if (previous != null &&
         previous.serverUrl.isNotEmpty &&
-        previous.serverUrl != serverUrl) {
+        !sameServer) {
       await _service.deleteCache(comicId);
       await offlineLibraryService.deleteManifest(comicId);
     }
@@ -84,7 +92,8 @@ class CacheEntriesNotifier extends StateNotifier<List<CacheEntry>> {
     await offlineLibraryService.saveManifest(
       OfflineBookManifest(
         comicId: comicId,
-        serverUrl: serverUrl,
+        // Preserve existing offline progress keys when an address is paired.
+        serverUrl: sameServer ? previous.serverUrl : canonicalServer,
         title: title,
         isNovel: isNovel,
         totalChapters: totalPages,

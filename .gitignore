@@ -12,7 +12,7 @@ nowen-reader-api-doc.md
 
 # Local implementation plans
 /BASE_URL_IMPLEMENTATION_PLAN.md
-/design-qa.md
+**/design-qa.md
 
 # Data
 *.db
@@ -35,8 +35,9 @@ storage-history.json
 .claude/
 dbcheck
 migrate
-# Comics (user data)
+# Comics and local books (user data)
 comics/
+/*.epub
 
 # Frontend build output (embedded via go:embed)
 # Keep web/dist/.gitkeep, ignore everything else in dist

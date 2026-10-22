@@ -5,18 +5,20 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api/api_client.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/server_route_provider.dart';
 
 /// 服务器配置页面 —— 首次启动或切换服务器时显示。
 class ServerConfigScreen extends ConsumerStatefulWidget {
   const ServerConfigScreen({super.key});
 
   @override
-  ConsumerState<ServerConfigScreen> createState() =>
-      _ServerConfigScreenState();
+  ConsumerState<ServerConfigScreen> createState() => _ServerConfigScreenState();
 }
 
 class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
   final _urlCtrl = TextEditingController(text: 'http://');
+  final _backupCtrl = TextEditingController();
+  ServerRouteMode _mode = ServerRouteMode.automatic;
   final _formKey = GlobalKey<FormState>();
   bool _busy = false;
   String? _errorMsg;
@@ -31,6 +33,7 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
   @override
   void dispose() {
     _urlCtrl.dispose();
+    _backupCtrl.dispose();
     super.dispose();
   }
 
@@ -43,8 +46,17 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
 
     final savedUrl = results[0] as String;
     final history = results[1] as List<ServerRecord>;
+    final primary = savedUrl.isNotEmpty
+        ? savedUrl
+        : history.isNotEmpty
+            ? history.first.url
+            : '';
+    final config = await loadServerRouteConfig(primary);
+    if (!mounted) return;
     setState(() {
       _history = history;
+      _backupCtrl.text = config.backupUrl;
+      _mode = config.mode;
       if (savedUrl.isNotEmpty) {
         _urlCtrl.text = savedUrl;
       } else if (history.isNotEmpty && _urlCtrl.text == 'http://') {
@@ -54,22 +66,11 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
   }
 
   String _normalizeUrl(String raw) {
-    var url = raw.trim();
-    while (url.endsWith('/')) {
-      url = url.substring(0, url.length - 1);
-    }
-    return url;
+    return normalizeServerUrl(raw);
   }
 
   String? _validateUrl(String? value) {
-    final input = (value ?? '').trim();
-    if (input.isEmpty) return '请输入服务器地址';
-    if (!input.startsWith('http://') && !input.startsWith('https://')) {
-      return '地址必须以 http:// 或 https:// 开头';
-    }
-    final uri = Uri.tryParse(input);
-    if (uri == null || uri.host.isEmpty) return '地址格式不正确';
-    return null;
+    return validateServerUrl(value ?? '');
   }
 
   Future<void> _connect() async {
@@ -83,15 +84,23 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
     });
 
     try {
-      final connected =
-          await ref.read(authProvider.notifier).setServerUrl(url);
+      final connected = await ref
+          .read(authProvider.notifier)
+          .setServerUrl(url, backupUrl: _backupCtrl.text, mode: _mode);
       if (!mounted) return;
 
-      if (!connected) {
+      if (connected) {
+        if (ref.read(authProvider).user == null) {
+          context.go('/login');
+        } else if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/');
+        }
+      } else {
         final error = ref.read(authProvider).error;
         setState(() {
-          _errorMsg =
-              error ?? '服务器暂时不可达，地址已保存，可进入离线缓存';
+          _errorMsg = error ?? '服务器暂时不可达，地址已保存，可进入离线缓存';
         });
       }
     } catch (error) {
@@ -155,8 +164,8 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '输入你的服务器地址。地址会先保存在本机，'
-                      '即使当前断网也不会丢失。',
+                      '填写同一服务器的内网和公网地址，自动使用延迟更低的线路。'
+                      '也可以只填写一个地址。配置会保存在本机。',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
@@ -172,11 +181,71 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                       validator: _validateUrl,
                       onFieldSubmitted: (_) => _connect(),
                       decoration: const InputDecoration(
-                        labelText: '服务器地址',
+                        labelText: '主线路地址',
                         hintText: 'http://192.168.1.100:3000',
                         prefixIcon: Icon(Icons.link_rounded),
                         border: OutlineInputBorder(),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _backupCtrl,
+                      enabled: !_busy,
+                      autocorrect: false,
+                      keyboardType: TextInputType.url,
+                      textInputAction: TextInputAction.go,
+                      onFieldSubmitted: (_) => _connect(),
+                      validator: (value) {
+                        final error =
+                            validateServerUrl(value ?? '', optional: true);
+                        if (error != null) return error;
+                        if ((value ?? '').trim().isNotEmpty &&
+                            _normalizeUrl(value!) ==
+                                _normalizeUrl(_urlCtrl.text)) {
+                          return '备用线路不能与主线路相同';
+                        }
+                        return null;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: '备用线路地址（可选）',
+                        hintText: 'https://reader.example.com',
+                        prefixIcon: Icon(Icons.alt_route_rounded),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<ServerRouteMode>(
+                      // Flutter 3.32 does not have initialValue yet.
+                      // ignore: deprecated_member_use
+                      value: _mode,
+                      decoration: const InputDecoration(
+                          labelText: '线路模式', border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(
+                            value: ServerRouteMode.automatic,
+                            child: Text('自动 · 低延迟优先')),
+                        DropdownMenuItem(
+                            value: ServerRouteMode.primary,
+                            child: Text('仅使用主线路')),
+                        DropdownMenuItem(
+                            value: ServerRouteMode.backup,
+                            child: Text('仅使用备用线路')),
+                      ],
+                      validator: (mode) => mode == ServerRouteMode.backup &&
+                              _backupCtrl.text.trim().isEmpty
+                          ? '请先填写备用线路地址'
+                          : null,
+                      onChanged: _busy
+                          ? null
+                          : (mode) => setState(
+                              () => _mode = mode ?? ServerRouteMode.automatic),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '首次验证需要两条线路同时可达并登录。验证成功后保留结果；'
+                      '在外网暂时无法访问内网时，仍可使用公网线路。',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                     if (_errorMsg != null) ...[
                       const SizedBox(height: 12),
@@ -191,16 +260,14 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                           children: [
                             Icon(
                               Icons.cloud_off_rounded,
-                              color:
-                                  theme.colorScheme.onErrorContainer,
+                              color: theme.colorScheme.onErrorContainer,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _errorMsg!,
                                 style: TextStyle(
-                                  color:
-                                      theme.colorScheme.onErrorContainer,
+                                  color: theme.colorScheme.onErrorContainer,
                                 ),
                               ),
                             ),
@@ -270,9 +337,14 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                             ),
                             onTap: _busy
                                 ? null
-                                : () {
+                                : () async {
+                                    final config =
+                                        await loadServerRouteConfig(record.url);
+                                    if (!mounted) return;
                                     setState(() {
                                       _urlCtrl.text = record.url;
+                                      _backupCtrl.text = config.backupUrl;
+                                      _mode = config.mode;
                                       _errorMsg = null;
                                     });
                                   },

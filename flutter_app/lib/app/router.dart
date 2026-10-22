@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,6 +20,7 @@ import '../features/search/search_screen.dart';
 import '../features/series/series_detail_screen.dart';
 import '../features/server/server_config_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/settings/server_settings_screen.dart';
 import '../features/settings/site_settings_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/stats/folder_tree_stats_screen.dart';
@@ -27,11 +29,15 @@ import '../features/tag_manager/tag_manager_screen.dart';
 import '../features/upload/upload_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  // Refresh redirects without replacing the navigator or the open reader.
+  final refresh = ValueNotifier<int>(0);
+  ref.listen(authProvider, (_, __) => refresh.value++);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
+    refreshListenable: refresh,
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final location = state.matchedLocation;
       final isLoggedIn = authState.user != null;
       final hasServer = authState.serverUrl.isNotEmpty;
@@ -72,6 +78,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (_, __) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/settings/server',
+        builder: (_, __) => const ServerSettingsScreen(),
       ),
       GoRoute(
         path: '/reader/:id',
@@ -125,8 +135,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/',
-            pageBuilder: (_, __) =>
-                const NoTransitionPage(child: HomeScreen()),
+            pageBuilder: (_, __) => const NoTransitionPage(child: HomeScreen()),
           ),
           GoRoute(
             path: '/search',
@@ -201,4 +210,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  ref.onDispose(() {
+    router.dispose();
+    refresh.dispose();
+  });
+  return router;
 });

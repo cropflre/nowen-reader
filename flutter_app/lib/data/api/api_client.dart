@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/reader_image_loader.dart';
+import '../services/server_route_service.dart';
 
 // ============================================================
 // 常量 & 全局变量
@@ -58,7 +59,10 @@ class ApiClient {
   late final Dio _dio;
   late final PersistCookieJar _cookieJar;
   String _baseUrl = '';
+  /// Stable identity for local reading positions across LAN/WAN switches.
+  String libraryServerUrl = '';
   OnUnauthorizedCallback? onUnauthorized;
+  Future<String?> Function(String failedUrl)? onConnectionFailure;
 
   ApiClient({this.onUnauthorized}) {
     _cookieJar = persistCookieJar;
@@ -76,6 +80,7 @@ class ApiClient {
       _dio.interceptors.add(CookieManager(_cookieJar));
     }
     _dio.interceptors.add(_LogInterceptor());
+    _dio.interceptors.add(_RouteFailoverInterceptor(this));
     _dio.interceptors.add(_AuthInterceptor(this));
   }
 
@@ -168,6 +173,43 @@ class ApiClient {
   PersistCookieJar get cookieJar => _cookieJar;
 }
 
+class _RouteFailoverInterceptor extends Interceptor {
+  final ApiClient client;
+  _RouteFailoverInterceptor(this.client);
+
+  @override
+  void onError(DioException error, ErrorInterceptorHandler handler) async {
+    final request = error.requestOptions;
+    // Only replay reads. A write may have reached the server before timing out.
+    if (isRouteConnectionFailure(error) &&
+        ['GET', 'HEAD'].contains(request.method) &&
+        request.extra['routeRetried'] != true &&
+        client.onConnectionFailure != null) {
+      try {
+        final failed = request.baseUrl.endsWith('/api')
+            ? request.baseUrl.substring(0, request.baseUrl.length - 4) : '';
+        final alternate = await client.onConnectionFailure!(failed);
+        if (alternate != null && alternate != failed) {
+          final headers = Map<String, dynamic>.from(request.headers)
+            ..remove('Cookie')..remove('cookie');
+          final response = await client.dio.fetch<dynamic>(request.copyWith(
+            baseUrl: '$alternate/api', headers: headers,
+            extra: {...request.extra, 'routeRetried': true},
+          ));
+          handler.resolve(response);
+          return;
+        }
+      } on DioException catch (retryError) {
+        handler.next(retryError);
+        return;
+      } catch (_) {
+        // Keep the original connection error if route selection cannot finish.
+      }
+    }
+    handler.next(error);
+  }
+}
+
 /// 日志拦截器
 class _LogInterceptor extends Interceptor {
   @override
@@ -225,7 +267,8 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    if (err.response?.statusCode == 401 && !_isHandling401) {
+    if (err.response?.statusCode == 401 && !_isHandling401 &&
+        err.requestOptions.baseUrl == '${_client.baseUrl}/api') {
       _isHandling401 = true;
       // 排除登录/注册/健康检查等不需要认证的接口
       final path = err.requestOptions.path;
@@ -257,26 +300,22 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       // 使用 Future.microtask 避免在 build 阶段修改 state
       Future.microtask(() {
         try {
-          // 动态导入会导致循环依赖，所以这里通过 ref 间接访问
-          // authProvider 在 auth_provider.dart 中定义
-          // 这里只清除 cookie，让 checkAuth 自然失败
-          persistCookieJar.deleteAll();
-          // 通知 serverUrlProvider 触发重建（间接触发 authProvider 重新检查）
-          final url = ref.read(serverUrlProvider);
-          ref.read(serverUrlProvider.notifier).state = '';
-          Future.delayed(const Duration(milliseconds: 100), () {
-            ref.read(serverUrlProvider.notifier).state = url;
-          });
+          ref.read(authInvalidationProvider.notifier).state++;
         } catch (_) {}
       });
     },
   );
-  final serverUrl = ref.watch(serverUrlProvider);
+  // Keep the Dio instance alive: readers retain API objects while routes change.
+  ref.listen<String>(serverUrlProvider, (_, url) => client.setBaseUrl(url));
+  final serverUrl = ref.read(serverUrlProvider);
   if (serverUrl.isNotEmpty) {
     client.setBaseUrl(serverUrl);
   }
+  ref.onDispose(() => client.dio.close());
   return client;
 });
+
+final authInvalidationProvider = StateProvider<int>((ref) => 0);
 
 /// 服务器地址 Provider
 final serverUrlProvider = StateProvider<String>((ref) => '');

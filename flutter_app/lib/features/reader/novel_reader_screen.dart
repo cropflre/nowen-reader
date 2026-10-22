@@ -118,7 +118,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     _currentChapter = widget.initialChapter ?? 0;
     _api = ref.read(comicApiProvider);
     _positionStore = NovelReadingPositionStore(
-      serverUrl: ref.read(apiClientProvider).baseUrl,
+      serverUrl: ref.read(apiClientProvider).libraryServerUrl.isNotEmpty
+          ? ref.read(apiClientProvider).libraryServerUrl
+          : ref.read(apiClientProvider).baseUrl,
       userId: ref.read(authProvider).user?.id ?? '',
       comicId: widget.comicId,
     );
