@@ -1,6 +1,26 @@
+.library-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "stats view" "filters filters";
+  align-items: center;
+  gap: 12px;
+}
+
+.library-toolbar-stats { grid-area: stats; }
+.library-toolbar-filters { grid-area: filters; }
+.library-view-switch { grid-area: view; }
+
+@media (min-width: 1280px) {
+  .library-toolbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "stats filters view";
+  }
+}
+
 .library-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(0, min(100%, var(--book-card-width))));
+  /* Keep empty tracks so a sparse final row never stretches its books. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--book-card-width)), 1fr));
   gap: 16px;
   align-items: stretch;
 }
@@ -13,7 +33,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: var(--book-card-height);
+  height: 100%;
   padding: 7px;
   border: 1px solid var(--library-card-border);
   border-radius: 8px;
@@ -35,7 +55,8 @@
 .library-book-cover {
   position: relative;
   display: block;
-  flex: 1;
+  flex: none;
+  aspect-ratio: 5 / 7;
   min-height: 0;
   overflow: hidden;
   border-radius: 4px;
@@ -51,6 +72,22 @@
 .library-book-extra > span { flex-shrink: 0; }
 .library-book-extra > span:last-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .library-book-rating { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.library-list-format, .library-list-progress { display: none; }
+@media (min-width: 640px) {
+  .library-list-format, .library-list-progress {
+    display: block;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-muted);
+    font-size: 12px;
+    text-align: right;
+  }
+  .library-list-format { width: 64px; }
+  .library-list-progress { width: 80px; font-variant-numeric: tabular-nums; }
+}
 
 .library-book-format { position: absolute; bottom: 5px; left: 5px; z-index: 2; display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; border-radius: 3px; background: #171b20d9; color: #f1f2f4; font-size: 9px; line-height: 14px; }
 .library-book-progress { position: absolute; top: 5px; right: 5px; z-index: 2; display: grid; place-items: center; width: 43px; height: 43px; padding: 5px; border-radius: 50%; background: conic-gradient(var(--library-progress-color) var(--library-progress), #444b57 0); box-shadow: 0 2px 6px #0005; pointer-events: none; }

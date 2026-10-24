@@ -182,6 +182,12 @@ const ComicCard = memo(function ComicCard({
   };
 
   if (viewMode === "list") {
+    const shelfState = appearance === "shelf" ? libraryCardState(comic) : undefined;
+    const shelfProgress = shelfState?.finished ? t.home.statusFinished : shelfState?.started ? `${shelfState.progress}%` : t.dashboard.unread;
+    const shelfColumns = shelfState && <>
+      <span className="library-list-format">{shelfState.seriesId ? t.comicCard.series : shelfState.format}</span>
+      <span className="library-list-progress">{shelfProgress}</span>
+    </>;
     return (
       <div
         className={`group relative block overflow-hidden ${isDragOver ? "drag-over-target" : ""} ${isDragging ? "drag-active" : ""} ${animationIndex !== undefined ? "animate-card-in" : ""} ${isRemoving ? "animate-item-remove" : ""}`}
@@ -252,9 +258,11 @@ const ComicCard = memo(function ComicCard({
               </div>
             </div>
 
-            {comic.progress !== undefined && comic.progress > 0 && (
+            {shelfColumns}
+            {!shelfState && comic.progress !== undefined && comic.progress > 0 && (
               <div className="flex-shrink-0 text-xs text-muted">{Math.round(comic.progress)}%</div>
             )}
+            {shelfState && <span className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />}
           </div>
         ) : (
           <div className="flex items-center gap-1 min-w-0">
@@ -328,7 +336,8 @@ const ComicCard = memo(function ComicCard({
               </div>
 
               {/* Progress (桌面端数字显示) */}
-              {comic.progress !== undefined && comic.progress > 0 && (
+              {shelfColumns}
+              {!shelfState && comic.progress !== undefined && comic.progress > 0 && (
                 <div className="hidden sm:block flex-shrink-0 text-xs text-muted">{Math.round(comic.progress)}%</div>
               )}
 
@@ -362,7 +371,7 @@ const ComicCard = memo(function ComicCard({
       {!coverLoaded && <div className="absolute inset-0 skeleton-shimmer" aria-hidden="true" />}
       <NSFWCoverGuard src={comic.coverUrl} alt={comic.title} isNSFW={isNSFW(comic)} blurEnabled={privacyEnabled && blurNSFW}
         fill unoptimized={isReal} className={`object-cover ${coverLoaded ? "opacity-100" : "opacity-0"}`}
-        sizes="(max-width: 639px) 45vw, (min-width: 1536px) 220px, 200px"
+        sizes="(max-width: 639px) 50vw, 300px"
         onLoad={() => setCoverLoaded(true)} onError={() => setCoverLoaded(true)} />
       {state.showProgress && <span className="library-book-progress" title={progressLabel} aria-label={progressLabel}
         style={{ "--library-progress": `${state.progress}%`, "--library-progress-color": state.progressColor } as CSSProperties}>

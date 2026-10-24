@@ -925,7 +925,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       />
 
       {/* Main Content */}
-      <div id="library-content-panel" role={accessibleLibraries.length > 0 ? "tabpanel" : undefined} aria-labelledby={accessibleLibraries.length > 0 ? (selectedLibraryIds.length ? selectedLibraryIds.map((id) => `library-tab-library-${id}`).join(" ") : "library-tab-all") : undefined} className={`mx-auto w-full max-w-[1760px] px-6 sm:px-8 lg:px-10 2xl:px-14 ${accessibleLibraries.length > 0 ? "pt-[100px] sm:pt-[108px] lg:pt-16" : "pt-14 sm:pt-16"} xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
+      <div id="library-content-panel" role={accessibleLibraries.length > 0 ? "tabpanel" : undefined} aria-labelledby={accessibleLibraries.length > 0 ? (selectedLibraryIds.length ? selectedLibraryIds.map((id) => `library-tab-library-${id}`).join(" ") : "library-tab-all") : undefined} className={`w-full px-4 sm:px-6 lg:px-8 ${accessibleLibraries.length > 0 ? "pt-[100px] sm:pt-[108px] lg:pt-16" : "pt-14 sm:pt-16"} ${batchMode ? "pb-32" : "pb-20 sm:pb-12"}`}>
       <main className="min-w-0 space-y-4 pt-6 sm:pt-8">
         <h1 className="sr-only">{favoritesOnly ? t.home.favorites : "书库"}</h1>
         {/* Data Source Indicator — 空库提示 */}
@@ -988,52 +988,21 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
         {!loading && (
           <>
-            {/* 视图切换 */}
-            <div className="flex justify-end mb-4">
-              {/* View Toggle — 在此处始终可见 */}
-              <div className="flex shrink-0 items-center rounded-lg border border-border/60 bg-card/50 p-0.5">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  aria-label={t.comicCard.gridView}
-                  aria-pressed={viewMode === "grid"}
-                  title={t.comicCard.gridView}
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
-                    viewMode === "grid"
-                      ? "bg-accent text-white shadow-sm"
-                      : "text-muted hover:text-foreground"
-                  }`}
-                >
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setViewMode("list")}
-                  aria-label={t.comicCard.listView}
-                  aria-pressed={viewMode === "list"}
-                  title={t.comicCard.listView}
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
-                    viewMode === "list"
-                      ? "bg-accent text-white shadow-sm"
-                      : "text-muted hover:text-foreground"
-                  }`}
-                >
-                  <List className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
             {/* Library Control Console */}
             <section className="rounded-xl dashboard-glass px-3 py-2.5 sm:px-4 sm:py-3 space-y-2">
             {/* Stats + Sort Controls */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-2 sm:gap-3">
-              <StatsBar
-                totalComics={apiTotal}
-                filteredCount={apiTotal}
-                sortStatus={sortStatus}
-              />
+            <div className="library-toolbar">
+              <div className="library-toolbar-stats min-w-0">
+                <StatsBar
+                  totalComics={apiTotal}
+                  filteredCount={apiTotal}
+                  sortStatus={sortStatus}
+                />
+              </div>
 
-              {/* Sort & Filter Controls — horizontally scrollable on mobile */}
-              <div className="w-full sm:w-auto overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                <div className="flex items-center gap-1.5 sm:gap-2 min-w-max">
+              {/* Sort and filter controls wrap within the available width. */}
+              <div className="library-toolbar-filters min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 lg:justify-end">
                 {/* Detect Duplicates */}
                 <button
                   onClick={() => setShowDuplicates(true)}
@@ -1155,6 +1124,34 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                   {sortOrder === "asc" ? "↑" : "↓"}
                 </button>
                 </div>
+              </div>
+              <div className="library-view-switch flex shrink-0 items-center rounded-lg border border-border/60 bg-card/50 p-0.5" role="group" aria-label={`${t.comicCard.gridView} / ${t.comicCard.listView}`}>
+                <button
+                  onClick={() => setViewMode("grid")}
+                  aria-label={t.comicCard.gridView}
+                  aria-pressed={viewMode === "grid"}
+                  title={t.comicCard.gridView}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
+                    viewMode === "grid"
+                      ? "bg-accent text-white shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  aria-label={t.comicCard.listView}
+                  aria-pressed={viewMode === "list"}
+                  title={t.comicCard.listView}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 ${
+                    viewMode === "list"
+                      ? "bg-accent text-white shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  <List className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
 

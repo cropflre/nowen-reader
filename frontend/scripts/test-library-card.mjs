@@ -61,5 +61,5 @@ assert.equal(libraryCardState({ ...series, pageCount: 1 }).finished, false);
 assert.equal(libraryCardState({ ...series, readingStatus: "finished" }).progress, 100);
 const cardStyles = fs.readFileSync(new URL("../src/components/library-book-card.css", import.meta.url), "utf8");
 assert.ok(cardStyles.includes("var(--book-card-width)"), "Library columns share the continuing-reading card width");
-assert.ok(cardStyles.includes("height: var(--book-card-height)"), "Library cards share the continuing-reading card height");
+assert.ok(cardStyles.includes("aspect-ratio: 5 / 7"), "Fluid library covers keep their proportions as their columns resize");
 console.log("Library card tests passed.");
