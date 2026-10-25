@@ -43,7 +43,7 @@ class ReleaseToolsTest(unittest.TestCase):
         for version in ("1.2.3\ncommit=other", "1.2.3;echo", "01.2.3", "latest", "1.2"):
             with self.assertRaises(ValueError):
                 release.metadata({"INPUT_VERSION": version, "GITHUB_RUN_NUMBER": "8"}, "abc")
-        for number in ("0", "-1", "1\nversion=2", "2100000001"):
+        for number in ("0", "-1", "1\nversion=2", "2099996001", "2100000001"):
             with self.assertRaises(ValueError):
                 release.metadata({"INPUT_VERSION": "1.2.4", "INPUT_BUILD_NUMBER": number}, "abc")
 
@@ -86,6 +86,57 @@ class ReleaseToolsTest(unittest.TestCase):
                 self.assertNotIn("fixture", " ".join(call.args[0]))
                 self.assertIn("input", call.kwargs)
             self.assertNotIn("fixture", output.getvalue())
+
+    def test_flutter_split_apk_version_codes_preserve_existing_offsets(self):
+        # v1.2.2 APKs built with base 1 report these architecture-specific codes.
+        self.assertEqual(signing.apk_version_code(1, "armeabi-v7a"), 1001)
+        self.assertEqual(signing.apk_version_code(1, "arm64-v8a"), 2001)
+        self.assertEqual(signing.apk_version_code(1, "x86_64"), 4001)
+        self.assertEqual(signing.apk_version_code(3556, "armeabi-v7a"), 4556)
+        self.assertEqual(signing.apk_version_code(2099996000, "x86_64"), 2100000000)
+
+    def test_split_apk_version_code_rejects_overflow_or_unknown_abi(self):
+        for number, abi in ((0, "arm64-v8a"), (2099996001, "x86_64"), (1, "invalid")):
+            with self.subTest(number=number, abi=abi), self.assertRaises(ValueError):
+                signing.apk_version_code(number, abi)
+
+    def test_apk_certificate_supports_old_and_new_build_tools(self):
+        expected = "a" * 64
+        for label in ("Signer #1", "V2 Signer:", "V3.0 Signer:",
+                      "Signer (minSdkVersion=33, maxSdkVersion=2147483647)"):
+            with self.subTest(label=label), redirect_stdout(io.StringIO()):
+                signing.verify_certificate(f"{label} certificate SHA-256 digest: {expected}\n", expected)
+
+    def test_apk_certificate_checks_every_signer_and_scheme(self):
+        expected, other = "a" * 64, "b" * 64
+        with redirect_stdout(io.StringIO()):
+            signing.verify_certificate(
+                f"V2 Signer: certificate SHA-256 digest: {expected.upper()}\r\n"
+                f"V3.0 Signer: certificate SHA-256 digest: {expected}\n", expected)
+        for label in ("Signer #2", "V3.0 Signer:"):
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, "mismatch"):
+                signing.verify_certificate(
+                    f"Signer #1 certificate SHA-256 digest: {expected}\n"
+                    f"{label} certificate SHA-256 digest: {other}\n", expected)
+
+    def test_source_stamp_and_public_key_cannot_substitute_for_apk_signer(self):
+        expected, other = "a" * 64, "b" * 64
+        unrelated = (f"Signer #1 public key SHA-256 digest: {expected}\n"
+                     f"Source Stamp Signer certificate SHA-256 digest: {expected}\n")
+        with self.assertRaisesRegex(ValueError, "No APK signing"):
+            signing.verify_certificate(unrelated, expected)
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            signing.verify_certificate(unrelated + f"V2 Signer: certificate SHA-256 digest: {other}\n", expected)
+        with redirect_stdout(io.StringIO()):
+            signing.verify_certificate(
+                f"V2 Signer: certificate SHA-256 digest: {expected}\n"
+                f"Source Stamp Signer certificate SHA-256 digest: {other}\n", expected)
+
+    def test_malformed_apk_certificate_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Malformed"):
+            signing.verify_certificate("V2 Signer: certificate SHA-256 digest: invalid\n", "a" * 64)
+        with self.assertRaisesRegex(ValueError, "Expected a SHA-256"):
+            signing.verify_certificate("", "invalid")
 
     def test_invalid_base64_does_not_create_a_keystore(self):
         fixture = {"ANDROID_KEYSTORE_BASE64": "invalid!", **{v: "fixture" for v in signing.SECRET_KEYS.values()}}

@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       build_number:
-        description: 'Android versionCode; blank = 1000 + workflow run number'
+        description: 'Android base build number; blank = configured base + run number; APKs add ABI offsets'
         required: false
         type: string
       publish:
@@ -132,10 +132,15 @@ jobs:
           for abi in armeabi-v7a arm64-v8a x86_64; do
             apk="flutter_app/build/app/outputs/flutter-apk/app-${abi}-release.apk"
             "$tools/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-certificate.txt"
-            actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt")
-            test "$actual" = "$expected" || { echo 'APK signing certificate mismatch'; exit 1; }
+            python3 scripts/android-signing.py verify-certificate \
+              --output "$RUNNER_TEMP/apk-certificate.txt" --expected "$expected"
             "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
-            grep -F "name='com.nowen.reader' versionCode='$BUILD_NUMBER' versionName='$VERSION'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null
+            expected_code=$(python3 scripts/android-signing.py apk-version-code --build-number "$BUILD_NUMBER" --abi "$abi")
+            grep -F "name='com.nowen.reader' versionCode='$expected_code' versionName='$VERSION'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null || {
+              echo "APK identity/version mismatch for $abi (expected versionCode=$expected_code, versionName=$VERSION)"
+              grep '^package:' "$RUNNER_TEMP/apk-badging.txt"
+              exit 1
+            }
             if grep -q application-debuggable "$RUNNER_TEMP/apk-badging.txt"; then
               echo 'Debuggable APK is not a release artifact'; exit 1
             fi
