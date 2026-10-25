@@ -63,7 +63,7 @@ GHCR 使用工作流的 `GITHUB_TOKEN` 和 `packages: write`。若 GHCR 包已�
 
 - `release-android`：三个 ABI 的 APK、证书 SHA-256、APK 校验和（保存 14 天）。
 - `release-container`：多架构 OCI 归档及校验和（保存 7 天）。
-- `release-metadata`：源码 commit、版本、Android versionCode、构建时间（保存 14 天）。
+- `release-metadata`：源码 commit、版本、Android 基础构建号、构建时间（保存 14 天）。
 
 ## 正式发布
 

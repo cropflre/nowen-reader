@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       build_number:
-        description: 'Android versionCode; blank = 1000 + workflow run number'
+        description: 'Android base build number; blank = configured base + run number; APKs add ABI offsets'
         required: false
         type: string
       publish:
