@@ -1,0 +1,48 @@
+name: Server & Web CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'frontend/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/*.py'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/server-ci.yml'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-release-tools.py
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run build:all
+        working-directory: frontend
+      - run: go vet ./...
+      - run: go test ./... -race -timeout 600s

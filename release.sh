@@ -250,14 +250,9 @@ if [ "$DO_ANDROID" = "1" ]; then
     if [ ! -f "$REPO_ROOT/$FLUTTER_APP_DIR/pubspec.yaml" ]; then
         die "Flutter 项目未找到 pubspec.yaml: $REPO_ROOT/$FLUTTER_APP_DIR/pubspec.yaml"
     fi
-    # 签名检查：未配置 key.properties 会回退到 debug 签名，给不了产品化质量
+    # 正式构建必须沿用 release 签名，与 GitHub 构建保持一致。
     if [ ! -f "$REPO_ROOT/$FLUTTER_APP_DIR/android/key.properties" ]; then
-        warn "未检测到 $FLUTTER_APP_DIR/android/key.properties，APK 将使用 debug 签名（不适合发布）"
-        warn "正式发布请参考 $FLUTTER_APP_DIR/android/key.properties.example 生成签名配置"
-        if [ "$ASSUME_YES" != "1" ]; then
-            read -r -p "仍然继续使用 debug 签名打包？[y/N] " ans
-            case "$ans" in [yY]|[yY][eE][sS]) ;; *) die "已取消（请先准备 keystore 后重试）" ;; esac
-        fi
+        die "正式 APK 缺少签名配置：$FLUTTER_APP_DIR/android/key.properties。请先配置现有 keystore，或使用 GitHub 发布流程。"
     fi
     # GitHub CLI 检查（仅在要上传 Release 时必需）
     if [ "$DO_GH_RELEASE" = "1" ]; then

@@ -17,6 +17,20 @@ val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+// A release must retain the existing signing identity, including on CI.
+if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
+    require(keystorePropertiesFile.exists()) {
+        "Release signing is required. Configure android/key.properties; debug fallback is disabled."
+    }
+    for (key in listOf("storeFile", "storePassword", "keyAlias", "keyPassword")) {
+        require(!keystoreProperties.getProperty(key).isNullOrBlank()) {
+            "Missing release signing property: $key"
+        }
+    }
+    require(file(keystoreProperties.getProperty("storeFile")).isFile) {
+        "Release keystore file was not found."
+    }
+}
 
 android {
     namespace = "com.nowen.reader"
@@ -53,12 +67,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                // 未配置 key.properties 时回退到 debug 签名（仅开发使用）
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("release")
             // 启用代码混淆和资源压缩
             isMinifyEnabled = true
             isShrinkResources = true

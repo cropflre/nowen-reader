@@ -87,6 +87,7 @@ docker compose -f docker-compose.prod.yml up -d
 | [配置说明](./docs/CONFIGURATION.md) | 环境变量、站点设置、AI 配置、扫描器参数、支持格式 |
 | [API 文档](./docs/API.md) | 完整的 RESTful API 参考 |
 | [开发指南](./docs/DEVELOPMENT.md) | 前置条件、项目结构、Makefile 命令、技术栈、CI/CD |
+| [发布指南](./docs/RELEASING.md) | GitHub 构建 Docker 与签名安卓 APK、Secrets 配置和版本发布 |
 | [常见问题](./docs/FAQ.md) | 部署、权限、缩略图、PDF、AI、OPDS 等常见问题 |
 | [Flutter 客户端](./flutter_app/README.md) | 移动端开发与构建说明 |
 

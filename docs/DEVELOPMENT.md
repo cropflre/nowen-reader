@@ -182,8 +182,12 @@ nowen-reader/
 
 项目使用 GitHub Actions 实现自动化：
 
-- **`build.yml`** — 代码推送/PR 触发测试；Tag 推送触发多平台二进制构建 + Docker 多架构推送 + GitHub Release
-- **`deploy.yml`** — main 分支推送触发 Docker 构建推送 + SSH 自动部署；Tag 推送触发多平台构建和 Release
+- **`build.yml`** — 版本 Tag 触发 Docker 多架构镜像与签名安卓 APK 的统一构建发布；手动运行默认只构建候选产物。
+- **`docker.yml`** — main 推送构建 GHCR `edge` 开发镜像，不更新正式版 `latest`。
+- **`flutter-ci.yml`** — Flutter 代码推送/PR 触发分析与测试。
+- **`server-ci.yml`** — 前端检查与构建、Go vet/race 测试、发布工具测试，也被正式发布流程复用。
+
+签名 Secrets、候选构建、版本号和失败恢复见 [发布指南](./RELEASING.md)。
 
 ## 数据库迁移
 

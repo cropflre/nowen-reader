@@ -39,3 +39,9 @@ LICENSE
 
 # Node modules (frontend handled in Dockerfile)
 frontend/node_modules/
+
+# Android signing material and local Flutter artifacts are never build inputs.
+flutter_app/
+**/key.properties
+**/*.keystore
+**/*.jks

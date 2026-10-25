@@ -1,130 +1,285 @@
-name: Build & Release
+name: Release Docker & Android
 
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 1.2.4 or 1.2.4-rc.1'
+        required: true
+        type: string
+      build_number:
+        description: 'Android versionCode; blank = 1000 + workflow run number'
+        required: false
+        type: string
+      publish:
+        description: 'Publish (must run against the matching existing version tag)'
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  BINARY_NAME: nowen-reader
+  FLUTTER_VERSION: '3.47.8'
   DOCKER_IMAGE: cropflre/nowen-reader
 
 jobs:
-  test:
+  metadata:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      commit: ${{ steps.meta.outputs.commit }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      build_time: ${{ steps.meta.outputs.build_time }}
+      publish: ${{ steps.meta.outputs.publish }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - run: go mod download
-      - run: go vet ./...
-      - run: go test ./... -race -v
-
-
-  build:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            suffix: linux-amd64
-          - goos: linux
-            goarch: arm64
-            suffix: linux-arm64
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Build
+      - name: Validate version and publication request
+        id: meta
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          BUILD_NUMBER_BASE: ${{ vars.ANDROID_BUILD_NUMBER_BASE || '1000' }}
+        run: python3 scripts/release-metadata.py
+      - name: Check publication credentials and existing release
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          GIT_COMMIT=${GITHUB_SHA}
-
-          go build -ldflags="-s -w \
-            -X main.Version=${VERSION} \
-            -X main.BuildTime=${BUILD_TIME} \
-            -X main.GitCommit=${GIT_COMMIT}" \
-            -o ${{ env.BINARY_NAME }}-${{ matrix.suffix }} \
-            ./cmd/server
-
+          test -n "$DOCKERHUB_USERNAME" || { echo 'Missing DOCKERHUB_USERNAME'; exit 1; }
+          test -n "$DOCKERHUB_TOKEN" || { echo 'Missing DOCKERHUB_TOKEN'; exit 1; }
+          if gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" --include > "$RUNNER_TEMP/release-check.txt" 2>/dev/null; then
+            echo 'This release already exists; existing release assets will not be overwritten.'
+            exit 1
+          fi
+          grep -Eq '^HTTP/[0-9.]+ 404' "$RUNNER_TEMP/release-check.txt" || {
+            echo 'Could not confirm that the version is unpublished; check GitHub API access.'; exit 1;
+          }
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
-          path: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+          name: release-metadata
+          path: release-info.json
+          if-no-files-found: error
+          retention-days: 14
 
+  server-test:
+    needs: metadata
+    uses: ./.github/workflows/server-ci.yml
 
-  docker:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
+  android:
+    needs: metadata
     runs-on: ubuntu-latest
-
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Restore existing Android release signing identity
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: >-
+          python3 scripts/android-signing.py prepare
+          --android-dir flutter_app/android
+          --signing-dir "$RUNNER_TEMP/android-signing"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: flutter_app
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        working-directory: flutter_app
+      - run: flutter test --reporter expanded
+        working-directory: flutter_app
+      - name: Build signed release APKs
+        working-directory: flutter_app
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+        run: flutter build apk --release --split-per-abi --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+      - name: Verify APK identity, version and release certificate
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          keytool -exportcert -alias "$ANDROID_KEY_ALIAS" \
+            -keystore "$RUNNER_TEMP/android-signing/release.keystore" \
+            -storepass:env ANDROID_STORE_PASSWORD > "$RUNNER_TEMP/android-signing/cert.der"
+          expected=$(sha256sum "$RUNNER_TEMP/android-signing/cert.der" | cut -d ' ' -f1)
+          mkdir -p dist/android
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            apk="flutter_app/build/app/outputs/flutter-apk/app-${abi}-release.apk"
+            "$tools/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-certificate.txt"
+            actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt")
+            test "$actual" = "$expected" || { echo 'APK signing certificate mismatch'; exit 1; }
+            "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
+            grep -F "name='com.nowen.reader' versionCode='$BUILD_NUMBER' versionName='$VERSION'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null
+            if grep -q application-debuggable "$RUNNER_TEMP/apk-badging.txt"; then
+              echo 'Debuggable APK is not a release artifact'; exit 1
+            fi
+            cp "$apk" "dist/android/nowen-reader-v${VERSION}-${abi}.apk"
+          done
+          printf '%s\n' "$expected" > dist/android/android-signing-cert.sha256
+          (cd dist/android && sha256sum ./*.apk android-signing-cert.sha256 > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: dist/android/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -f flutter_app/android/key.properties
+          rm -rf "$RUNNER_TEMP/android-signing"
 
+  docker:
+    needs: [metadata, server-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - name: Build both architectures without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          outputs: type=oci,dest=${{ runner.temp }}/nowen-reader-image.tar
+          build-args: |
+            VERSION=${{ needs.metadata.outputs.tag }}
+            BUILD_TIME=${{ needs.metadata.outputs.build_time }}
+            GIT_COMMIT=${{ needs.metadata.outputs.commit }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.metadata.outputs.commit }}
+            org.opencontainers.image.version=${{ needs.metadata.outputs.tag }}
+          cache-from: type=gha,scope=release-container
+          cache-to: type=gha,mode=max,scope=release-container
+      - name: Checksum container archive
+        working-directory: ${{ runner.temp }}
+        run: sha256sum nowen-reader-image.tar > container-SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-container
+          path: |
+            ${{ runner.temp }}/nowen-reader-image.tar
+            ${{ runner.temp }}/container-SHA256SUMS
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
 
+  publish:
+    needs: [metadata, server-test, android, docker]
+    if: needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-android
+          path: artifacts/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-container
+          path: artifacts/container
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: artifacts/android
+      - name: Verify downloaded artifacts
+        run: |
+          (cd artifacts/android && sha256sum -c SHA256SUMS)
+          (cd artifacts/container && sha256sum -c container-SHA256SUMS)
+      - name: Verify the remote tag still identifies the built commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+        run: |
+          gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" > "$RUNNER_TEMP/tag.json"
+          kind=$(jq -r .object.type "$RUNNER_TEMP/tag.json")
+          object=$(jq -r .object.sha "$RUNNER_TEMP/tag.json")
+          for attempt in 1 2 3 4 5; do
+            if [ "$kind" != tag ]; then break; fi
+            gh api "repos/$GH_REPO/git/tags/$object" > "$RUNNER_TEMP/tag.json"
+            kind=$(jq -r .object.type "$RUNNER_TEMP/tag.json")
+            object=$(jq -r .object.sha "$RUNNER_TEMP/tag.json")
+          done
+          test "$kind" = commit && test "$object" = "$COMMIT" || {
+            echo 'The remote version tag no longer matches the built commit'; exit 1;
+          }
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Version
-        id: v
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install container archive publisher
         run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
-
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            VERSION=${{ steps.v.outputs.VERSION }}
-            BUILD_TIME=${{ steps.v.outputs.BUILD_TIME }}
-            GIT_COMMIT=${{ github.sha }}
-          tags: |
-            ${{ env.DOCKER_IMAGE }}:${{ steps.v.outputs.VERSION }}
-            ${{ env.DOCKER_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-
-  release:
-    needs: [build, docker]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Release
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+      - name: Publish the built multi-architecture archive to both registries
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-
-          gh release create "$VERSION" \
-            artifacts/**/* \
-            --generate-notes
+          ghcr_image="ghcr.io/${REPOSITORY,,}"
+          skopeo copy --all --preserve-digests --authfile "$HOME/.docker/config.json" \
+            oci-archive:artifacts/container/nowen-reader-image.tar "docker://$DOCKER_IMAGE:$RELEASE_TAG"
+          skopeo copy --all --preserve-digests --authfile "$HOME/.docker/config.json" \
+            oci-archive:artifacts/container/nowen-reader-image.tar "docker://$ghcr_image:$RELEASE_TAG"
+      - name: Create the matching GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          flags=(--latest)
+          if [ "$PRERELEASE" = true ]; then flags=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" artifacts/android/* \
+            --verify-tag --target "$COMMIT" --generate-notes "${flags[@]}"
+      - uses: docker/setup-buildx-action@v3
+        if: needs.metadata.outputs.prerelease == 'false'
+      - name: Promote a completed stable release to latest
+        if: needs.metadata.outputs.prerelease == 'false'
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          ghcr_image="ghcr.io/${REPOSITORY,,}"
+          docker buildx imagetools create --tag "$DOCKER_IMAGE:latest" "$DOCKER_IMAGE:$RELEASE_TAG"
+          docker buildx imagetools create --tag "$ghcr_image:latest" "$ghcr_image:$RELEASE_TAG"
