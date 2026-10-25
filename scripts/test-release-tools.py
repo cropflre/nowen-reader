@@ -43,7 +43,7 @@ class ReleaseToolsTest(unittest.TestCase):
         for version in ("1.2.3\ncommit=other", "1.2.3;echo", "01.2.3", "latest", "1.2"):
             with self.assertRaises(ValueError):
                 release.metadata({"INPUT_VERSION": version, "GITHUB_RUN_NUMBER": "8"}, "abc")
-        for number in ("0", "-1", "1\nversion=2", "2100000001"):
+        for number in ("0", "-1", "1\nversion=2", "2099996001", "2100000001"):
             with self.assertRaises(ValueError):
                 release.metadata({"INPUT_VERSION": "1.2.4", "INPUT_BUILD_NUMBER": number}, "abc")
 
@@ -86,6 +86,19 @@ class ReleaseToolsTest(unittest.TestCase):
                 self.assertNotIn("fixture", " ".join(call.args[0]))
                 self.assertIn("input", call.kwargs)
             self.assertNotIn("fixture", output.getvalue())
+
+    def test_flutter_split_apk_version_codes_preserve_existing_offsets(self):
+        # v1.2.2 APKs built with base 1 report these architecture-specific codes.
+        self.assertEqual(signing.apk_version_code(1, "armeabi-v7a"), 1001)
+        self.assertEqual(signing.apk_version_code(1, "arm64-v8a"), 2001)
+        self.assertEqual(signing.apk_version_code(1, "x86_64"), 4001)
+        self.assertEqual(signing.apk_version_code(3556, "armeabi-v7a"), 4556)
+        self.assertEqual(signing.apk_version_code(2099996000, "x86_64"), 2100000000)
+
+    def test_split_apk_version_code_rejects_overflow_or_unknown_abi(self):
+        for number, abi in ((0, "arm64-v8a"), (2099996001, "x86_64"), (1, "invalid")):
+            with self.subTest(number=number, abi=abi), self.assertRaises(ValueError):
+                signing.apk_version_code(number, abi)
 
     def test_apk_certificate_supports_old_and_new_build_tools(self):
         expected = "a" * 64

@@ -135,7 +135,12 @@ jobs:
             python3 scripts/android-signing.py verify-certificate \
               --output "$RUNNER_TEMP/apk-certificate.txt" --expected "$expected"
             "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
-            grep -F "name='com.nowen.reader' versionCode='$BUILD_NUMBER' versionName='$VERSION'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null
+            expected_code=$(python3 scripts/android-signing.py apk-version-code --build-number "$BUILD_NUMBER" --abi "$abi")
+            grep -F "name='com.nowen.reader' versionCode='$expected_code' versionName='$VERSION'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null || {
+              echo "APK identity/version mismatch for $abi (expected versionCode=$expected_code, versionName=$VERSION)"
+              grep '^package:' "$RUNNER_TEMP/apk-badging.txt"
+              exit 1
+            }
             if grep -q application-debuggable "$RUNNER_TEMP/apk-badging.txt"; then
               echo 'Debuggable APK is not a release artifact'; exit 1
             fi

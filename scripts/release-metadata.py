@@ -25,8 +25,8 @@ def metadata(env, commit):
     raw_number = env.get("INPUT_BUILD_NUMBER", "").strip()
     if not raw_number:
         raw_number = str(int(env.get("BUILD_NUMBER_BASE") or "1000") + int(env["GITHUB_RUN_NUMBER"]))
-    if not re.fullmatch(r"[1-9][0-9]*", raw_number) or int(raw_number) > 2100000000:
-        raise ValueError("Android build number must be an integer from 1 to 2100000000")
+    if not re.fullmatch(r"[1-9][0-9]*", raw_number) or int(raw_number) > 2099996000:
+        raise ValueError("Android build number must be an integer from 1 to 2099996000")
     return {
         "version": version,
         "tag": tag,

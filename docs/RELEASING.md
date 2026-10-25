@@ -93,10 +93,13 @@ git push origin v1.2.4
 ## 版本号与升级
 
 Docker 和 APK 使用同一版本、同一源码提交。APK 的 `versionName` 由标签去掉 `v` 得到。
-`versionCode` 默认是仓库变量 `ANDROID_BUILD_NUMBER_BASE`（默认 1000）加本工作流运行序号；
-手动运行时可用 `build_number` 覆盖，必须大于用户已安装正式版的 versionCode。
-首次迁移前，应核对最近已发布 APK 的 versionCode，并按需要设置更大的基数。
-重跑同一次运行保持同一个 versionCode。
+基础构建号默认是仓库变量 `ANDROID_BUILD_NUMBER_BASE`（默认 1000）加本工作流运行序号；
+手动运行时可用 `build_number` 覆盖。Flutter 按 ABI 拆分 APK 时会追加架构偏移，最终
+`versionCode` 分别是基础构建号加 1000（armeabi-v7a）、2000（arm64-v8a）、4000（x86_64）。
+基础构建号范围为 1 到 2099996000，为架构偏移保留空间。
+首次迁移前，应分别核对最近已发布各架构 APK 的 `versionCode`，确保新包的最终值更大，
+并按需要提高基数。`release-info.json` 中的 `build_number` 记录基础构建号。
+重跑同一次运行保持同一个基础构建号及各架构的 `versionCode`。
 
 ## 失败与重试
 

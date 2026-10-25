@@ -93,6 +93,17 @@ def prepare(args):
     print("Prepared signing files (values hidden)")
 
 
+def apk_version_code(build_number, abi):
+    # Flutter adds ABI_VERSION * 1000 when --split-per-abi is enabled.
+    offsets = {"armeabi-v7a": 1000, "arm64-v8a": 2000, "x86_64": 4000}
+    if abi not in offsets:
+        raise ValueError("Unsupported APK ABI")
+    code = build_number + offsets[abi]
+    if build_number < 1 or code > 2100000000:
+        raise ValueError("Android build number exceeds the split APK versionCode range")
+    return code
+
+
 def verify_certificate(output, expected):
     expected = expected.lower()
     if not re.fullmatch(r"[0-9a-f]{64}", expected):
@@ -127,11 +138,16 @@ def main():
     verify = commands.add_parser("verify-certificate", help="Check all APK signer certificate fingerprints")
     verify.add_argument("--output", type=Path, required=True)
     verify.add_argument("--expected", required=True)
+    code = commands.add_parser("apk-version-code", help="Expected Flutter split APK versionCode")
+    code.add_argument("--build-number", type=int, required=True)
+    code.add_argument("--abi", required=True)
     args = parser.parse_args()
     if args.command == "configure" and not re.fullmatch(r"[\w.-]+/[\w.-]+", args.repo):
         parser.error("Expected --repo owner/repository")
     try:
-        if args.command == "verify-certificate":
+        if args.command == "apk-version-code":
+            print(apk_version_code(args.build_number, args.abi))
+        elif args.command == "verify-certificate":
             verify_certificate(args.output.read_text(encoding="utf-8"), args.expected)
         else:
             {"configure": configure, "prepare": prepare}[args.command](args)
