@@ -87,6 +87,44 @@ class ReleaseToolsTest(unittest.TestCase):
                 self.assertIn("input", call.kwargs)
             self.assertNotIn("fixture", output.getvalue())
 
+    def test_apk_certificate_supports_old_and_new_build_tools(self):
+        expected = "a" * 64
+        for label in ("Signer #1", "V2 Signer:", "V3.0 Signer:",
+                      "Signer (minSdkVersion=33, maxSdkVersion=2147483647)"):
+            with self.subTest(label=label), redirect_stdout(io.StringIO()):
+                signing.verify_certificate(f"{label} certificate SHA-256 digest: {expected}\n", expected)
+
+    def test_apk_certificate_checks_every_signer_and_scheme(self):
+        expected, other = "a" * 64, "b" * 64
+        with redirect_stdout(io.StringIO()):
+            signing.verify_certificate(
+                f"V2 Signer: certificate SHA-256 digest: {expected.upper()}\r\n"
+                f"V3.0 Signer: certificate SHA-256 digest: {expected}\n", expected)
+        for label in ("Signer #2", "V3.0 Signer:"):
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, "mismatch"):
+                signing.verify_certificate(
+                    f"Signer #1 certificate SHA-256 digest: {expected}\n"
+                    f"{label} certificate SHA-256 digest: {other}\n", expected)
+
+    def test_source_stamp_and_public_key_cannot_substitute_for_apk_signer(self):
+        expected, other = "a" * 64, "b" * 64
+        unrelated = (f"Signer #1 public key SHA-256 digest: {expected}\n"
+                     f"Source Stamp Signer certificate SHA-256 digest: {expected}\n")
+        with self.assertRaisesRegex(ValueError, "No APK signing"):
+            signing.verify_certificate(unrelated, expected)
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            signing.verify_certificate(unrelated + f"V2 Signer: certificate SHA-256 digest: {other}\n", expected)
+        with redirect_stdout(io.StringIO()):
+            signing.verify_certificate(
+                f"V2 Signer: certificate SHA-256 digest: {expected}\n"
+                f"Source Stamp Signer certificate SHA-256 digest: {other}\n", expected)
+
+    def test_malformed_apk_certificate_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Malformed"):
+            signing.verify_certificate("V2 Signer: certificate SHA-256 digest: invalid\n", "a" * 64)
+        with self.assertRaisesRegex(ValueError, "Expected a SHA-256"):
+            signing.verify_certificate("", "invalid")
+
     def test_invalid_base64_does_not_create_a_keystore(self):
         fixture = {"ANDROID_KEYSTORE_BASE64": "invalid!", **{v: "fixture" for v in signing.SECRET_KEYS.values()}}
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, fixture, clear=True):

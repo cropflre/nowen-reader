@@ -132,14 +132,8 @@ jobs:
           for abi in armeabi-v7a arm64-v8a x86_64; do
             apk="flutter_app/build/app/outputs/flutter-apk/app-${abi}-release.apk"
             "$tools/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-certificate.txt"
-            actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt")
-            if [ "$actual" != "$expected" ]; then
-            echo "APK signing certificate mismatch for $abi (build-tools: $tools)"
-            echo "Expected certificate SHA-256: $expected"
-            echo "Parsed certificate SHA-256: $actual"
-            cat "$RUNNER_TEMP/apk-certificate.txt"
-            exit 1
-          fi
+            python3 scripts/android-signing.py verify-certificate \
+              --output "$RUNNER_TEMP/apk-certificate.txt" --expected "$expected"
             "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
             grep -F "name='com.nowen.reader' versionCode='$BUILD_NUMBER' versionName='$VERSION'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null
             if grep -q application-debuggable "$RUNNER_TEMP/apk-badging.txt"; then
