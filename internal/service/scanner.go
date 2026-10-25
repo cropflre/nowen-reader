@@ -1167,6 +1167,9 @@ func SyncComicsToDatabase() {
 	repairMisclassifiedFolderComics()
 
 	added, _ := quickSync()
+	if err := EnsureComicSeriesFresh(); err != nil {
+		log.Printf("[series] refresh after background scan failed: %v", err)
+	}
 	updateDirMtimes()
 
 	// P3: 扫描新增文件后，自动按文件夹分组（仅在有新增时执行）

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/collate"
@@ -117,6 +118,20 @@ func registerTitleSortKeySQLFunction() error {
 			default:
 				return BuildTitleSortKey(fmt.Sprint(v)), nil
 			}
+		})
+		if titleSortFuncErr != nil {
+			return
+		}
+		titleSortFuncErr = sqlite.RegisterDeterministicScalarFunction("shelf_time_key", 1, func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) == 0 || args[0] == nil {
+				return "", nil
+			}
+			value := fmt.Sprint(args[0])
+			parsed := parseSQLiteTime(value)
+			if parsed.IsZero() {
+				return value, nil
+			}
+			return parsed.UTC().Format(time.RFC3339Nano), nil
 		})
 	})
 	return titleSortFuncErr

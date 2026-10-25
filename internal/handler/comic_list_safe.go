@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/middleware"
@@ -77,6 +78,7 @@ func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 		}
 	}
 
+	queryStarted := time.Now()
 	result, err := store.GetAllComicsShelfSafe(store.ComicListOptions{
 		Search:           search,
 		Tags:             tags,
@@ -102,6 +104,7 @@ func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 		return
 	}
 
+	recordLibraryQuery(c, "shelf", queryStarted, len(result.Comics), result.Total)
 	c.Header("Cache-Control", "private, max-age=15, stale-while-revalidate=60")
 	c.JSON(http.StatusOK, result)
 }

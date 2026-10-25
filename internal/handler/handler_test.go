@@ -31,6 +31,9 @@ func setupTestRouter(t *testing.T) *gin.Engine {
 	if err := store.InitDB(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
+	if err := store.RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
 	t.Cleanup(func() {
 		store.CloseDB()
 		os.Remove(dbPath)

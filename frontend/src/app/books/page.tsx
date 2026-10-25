@@ -521,7 +521,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   const scrollRestoredRef = useRef(false);
   useEffect(() => {
     if (scrollRestoredRef.current) return;
-    if (loading || fetching) return;
+    if (loading) return;
+    // 缓存已可渲染时即恢复位置，不等待后台刷新
     // 数据已加载完成，尝试恢复滚动位置
     const savedY = sessionStorage.getItem("homeScrollY");
     if (savedY) {
@@ -534,7 +535,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       }
     }
     scrollRestoredRef.current = true;
-  }, [loading, fetching]);
+  }, [loading]);
 
   // Sort comics (server-side sorting is primary)
   const sortedComics = useMemo(() => {
@@ -1264,7 +1265,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
               </div>
             </div>
             {/* Comics Grid */}
-            <div className={`transition-opacity duration-200 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+            <div aria-busy={fetching}>
             {sortedComics.length > 0 ? (
               <div
                 className={

@@ -105,27 +105,23 @@ type SeriesDetail struct {
 	Unsectioned []SeriesItemDetail    `json:"unsectioned"`
 }
 
+// GetComicSeriesSourceFingerprint reads an O(1) structural revision. Ordinary
+// reading, rating and favorite updates do not invalidate directory detection.
 func GetComicSeriesSourceFingerprint() (string, error) {
-	var comicCount, comicPathLength, libraryCount int64
-	var comicUpdatedAt, libraryUpdatedAt string
-	err := db.QueryRow(`
-		SELECT COUNT(*),
-		       COALESCE(SUM(LENGTH(COALESCE(NULLIF(c."relativePath", ''), c."filename")) + LENGTH(c."title")), 0),
-		       COALESCE(MAX(CAST(c."updatedAt" AS TEXT)), '')
-		FROM "Comic" c
-		JOIN "Library" l ON l."id" = c."libraryId"
-		WHERE l."enabled" = 1 AND l."type" = 'comic'
-	`).Scan(&comicCount, &comicPathLength, &comicUpdatedAt)
-	if err != nil {
-		return "", err
-	}
-	if err := db.QueryRow(`
-		SELECT COUNT(*), COALESCE(MAX(CAST("updatedAt" AS TEXT)), '')
-		FROM "Library" WHERE "enabled" = 1 AND "type" = 'comic'
-	`).Scan(&libraryCount, &libraryUpdatedAt); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%d:%d:%s:%d:%s", comicCount, comicPathLength, comicUpdatedAt, libraryCount, libraryUpdatedAt), nil
+	var revision string
+	err := db.QueryRow(`SELECT CAST("revision" AS TEXT) FROM "ComicSeriesSourceRevision" WHERE "id" = 1`).Scan(&revision)
+	return revision, err
+}
+
+func GetBuiltComicSeriesFingerprint() (string, error) {
+	var revision string
+	err := db.QueryRow(`SELECT CAST("builtRevision" AS TEXT) FROM "ComicSeriesSourceRevision" WHERE "id" = 1`).Scan(&revision)
+	return revision, err
+}
+
+func MarkComicSeriesBuilt(fingerprint string) error {
+	_, err := db.Exec(`UPDATE "ComicSeriesSourceRevision" SET "builtRevision" = ? WHERE "id" = 1`, fingerprint)
+	return err
 }
 
 func GetSeriesSourceItems(libraryID string) ([]SeriesSourceItem, error) {
@@ -302,23 +298,52 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 }
 
 func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
-	userJoin := ""
-	userArgs := []interface{}{}
-	stateLastRead := `c."lastReadAt"`
-	stateFavorite := `c."isFavorite"`
-	statePage := `c."lastReadPage"`
-	stateStatus := `c."readingStatus"`
-	stateReadTime := `c."totalReadTime"`
-	if userID != "" {
-		userJoin = `LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?`
-		userArgs = append(userArgs, userID)
-		stateLastRead = `ucs."lastReadAt"`
-		stateFavorite = `COALESCE(ucs."isFavorite", 0)`
-		statePage = `COALESCE(ucs."lastReadPage", 0)`
-		stateStatus = `COALESCE(ucs."readingStatus", '')`
-		stateReadTime = `COALESCE(ucs."totalReadTime", 0)`
+	summaries, err := seriesSummariesByIDs([]string{id}, userID)
+	if err != nil {
+		return nil, err
 	}
-	query := fmt.Sprintf(`
+	summary, ok := summaries[id]
+	if !ok {
+		return nil, nil
+	}
+	return &summary, nil
+}
+
+// seriesSummariesByIDs loads summaries and their metadata in bounded batches.
+// Query count depends on the number of batches, rather than the number of works.
+// The CROSS JOIN intentionally keeps membership lookup ahead of Comic lookup;
+// otherwise SQLite may choose libraryId and scan a whole library per work.
+func seriesSummariesByIDs(ids []string, userID string) (map[string]SeriesSummary, error) {
+	result := make(map[string]SeriesSummary, len(ids))
+	for start := 0; start < len(ids); start += seriesMembershipBatchSize {
+		end := start + seriesMembershipBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		placeholders := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for i, id := range batch {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		userJoin := ""
+		userArgs := []interface{}{}
+		stateLastRead := `c."lastReadAt"`
+		stateFavorite := `c."isFavorite"`
+		statePage := `c."lastReadPage"`
+		stateStatus := `c."readingStatus"`
+		stateReadTime := `c."totalReadTime"`
+		if userID != "" {
+			userJoin = `LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?`
+			userArgs = append(userArgs, userID)
+			stateLastRead = `ucs."lastReadAt"`
+			stateFavorite = `COALESCE(ucs."isFavorite", 0)`
+			statePage = `COALESCE(ucs."lastReadPage", 0)`
+			stateStatus = `COALESCE(ucs."readingStatus", '')`
+			stateReadTime = `COALESCE(ucs."totalReadTime", 0)`
+		}
+		query := fmt.Sprintf(`
 		SELECT s."id", s."libraryId",
 		       CASE
 		         WHEN MAX(l."type") = 'novel' THEN 'novel'
@@ -326,7 +351,7 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		         WHEN SUM(CASE WHEN c."type" = 'novel' THEN 1 ELSE 0 END) > COUNT(DISTINCT si."comicId") / 2 THEN 'novel'
 		         ELSE 'comic'
 		       END,
-		       s."rootRelativePath", s."title", s."sortTitle", s."coverComicId", s."coverUrl",
+		       s."rootRelativePath", s."title", s."sortTitle", COALESCE(NULLIF(s."coverComicId", ''), (SELECT "comicId" FROM "ComicSeriesItem" WHERE "seriesId" = s."id" ORDER BY "sortIndex", "comicId" LIMIT 1)), s."coverUrl",
 		       s."author", s."description", s."year", s."publisher", s."language", s."genre", s."status",
 		       s."externalRating", s."externalRatingMax", s."externalRatingSource", s."externalRatingUpdatedAt",
 		       s."metadataLocked", s."manualLocked",
@@ -337,56 +362,110 @@ func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
 		FROM "ComicSeries" s
 		JOIN "Library" l ON l."id" = s."libraryId"
 		JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
-		JOIN "Comic" c ON c."id" = si."comicId"
+		CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
 		LEFT JOIN "ComicSeriesSection" sec ON sec."id" = si."sectionId"
 		%s
-		WHERE s."id" = ?
+		WHERE s."id" IN (%s)
 		GROUP BY s."id"
-	`, stateStatus, stateLastRead, statePage, stateReadTime, stateLastRead, stateFavorite, userJoin)
-	args := append(userArgs, id)
-	var summary SeriesSummary
-	var lastRead sql.NullString
-	var favorite sql.NullBool
-	var storedCoverURL string
-	var createdAt, updatedAt time.Time
-	if err := db.QueryRow(query, args...).Scan(
-		&summary.ID, &summary.LibraryID, &summary.ContentType, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
-		&summary.CoverComicID, &storedCoverURL, &summary.Author, &summary.Description, &summary.Year,
-		&summary.Publisher, &summary.Language, &summary.Genre, &summary.Status,
-		&summary.ExternalRating, &summary.ExternalRatingMax, &summary.ExternalRatingSource, &summary.ExternalRatingUpdatedAt,
-		&summary.MetadataLocked, &summary.ManualLocked, &summary.ItemCount, &summary.SectionCount,
-		&summary.CompletedItemCount, &summary.TotalReadTime, &summary.FileSize, &lastRead, &favorite,
-		&createdAt, &updatedAt,
-	); err == sql.ErrNoRows {
-		return nil, nil
-	} else if err != nil {
-		return nil, err
+	`, stateStatus, stateLastRead, statePage, stateReadTime, stateLastRead, stateFavorite, userJoin, strings.Join(placeholders, ","))
+
+		rows, err := db.Query(query, append(userArgs, args...)...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var summary SeriesSummary
+			var lastRead sql.NullString
+			var favorite sql.NullBool
+			var storedCoverURL string
+			var createdAt, updatedAt time.Time
+			if err := rows.Scan(
+				&summary.ID, &summary.LibraryID, &summary.ContentType, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
+				&summary.CoverComicID, &storedCoverURL, &summary.Author, &summary.Description, &summary.Year,
+				&summary.Publisher, &summary.Language, &summary.Genre, &summary.Status,
+				&summary.ExternalRating, &summary.ExternalRatingMax, &summary.ExternalRatingSource, &summary.ExternalRatingUpdatedAt,
+				&summary.MetadataLocked, &summary.ManualLocked, &summary.ItemCount, &summary.SectionCount,
+				&summary.CompletedItemCount, &summary.TotalReadTime, &summary.FileSize, &lastRead, &favorite,
+				&createdAt, &updatedAt,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			summary.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
+			summary.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
+			if lastRead.Valid && lastRead.String != "" {
+				value := lastRead.String
+				summary.LastReadAt = &value
+			}
+			summary.IsFavorite = favorite.Valid && favorite.Bool
+
+			summary.Tags = []Tag{}
+			summary.Categories = []ComicCategoryInfo{}
+			if storedCoverURL != "" {
+				summary.CoverURL = BuildSeriesCoverURL(summary.ID)
+			} else if summary.CoverComicID != "" {
+				summary.CoverURL = BuildComicCoverURL(summary.CoverComicID)
+			}
+			result[summary.ID] = summary
+
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		tags, err := db.Query(`SELECT st."seriesId", t."id", t."name", t."color"
+        FROM "ComicSeriesTag" st JOIN "Tag" t ON t."id" = st."tagId"
+        WHERE st."seriesId" IN (`+strings.Join(placeholders, ",")+`) ORDER BY t."name"`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for tags.Next() {
+			var id string
+			var tag Tag
+			if err := tags.Scan(&id, &tag.ID, &tag.Name, &tag.Color); err != nil {
+				tags.Close()
+				return nil, err
+			}
+			summary, ok := result[id]
+			if !ok {
+				continue
+			}
+			summary.Tags = append(summary.Tags, tag)
+			result[id] = summary
+		}
+		err = tags.Err()
+		tags.Close()
+		if err != nil {
+			return nil, err
+		}
+		categories, err := db.Query(`SELECT sc."seriesId", cat."id", cat."name", cat."slug", cat."icon"
+        FROM "ComicSeriesCategory" sc JOIN "Category" cat ON cat."id" = sc."categoryId"
+        WHERE sc."seriesId" IN (`+strings.Join(placeholders, ",")+`) ORDER BY cat."sortOrder", cat."id"`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for categories.Next() {
+			var id string
+			var category ComicCategoryInfo
+			if err := categories.Scan(&id, &category.ID, &category.Name, &category.Slug, &category.Icon); err != nil {
+				categories.Close()
+				return nil, err
+			}
+			summary, ok := result[id]
+			if !ok {
+				continue
+			}
+			summary.Categories = append(summary.Categories, category)
+			result[id] = summary
+		}
+		err = categories.Err()
+		categories.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
-	summary.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
-	summary.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-	if lastRead.Valid && lastRead.String != "" {
-		value := lastRead.String
-		summary.LastReadAt = &value
-	}
-	summary.IsFavorite = favorite.Valid && favorite.Bool
-	tags, err := GetSeriesTags(id)
-	if err != nil {
-		return nil, err
-	}
-	summary.Tags = tags
-	summary.Categories, err = GetSeriesCategories(id)
-	if err != nil {
-		return nil, err
-	}
-	if summary.CoverComicID == "" {
-		_ = db.QueryRow(`SELECT "comicId" FROM "ComicSeriesItem" WHERE "seriesId" = ? ORDER BY "sortIndex", "comicId" LIMIT 1`, id).Scan(&summary.CoverComicID)
-	}
-	if storedCoverURL != "" {
-		summary.CoverURL = BuildSeriesCoverURL(id)
-	} else if summary.CoverComicID != "" {
-		summary.CoverURL = BuildComicCoverURL(summary.CoverComicID)
-	}
-	return &summary, nil
+	return result, nil
 }
 
 func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicListItem, error) {
@@ -460,67 +539,6 @@ func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicL
 		})
 	}
 	return collapsed, nil
-}
-
-// getAllComicsSeriesView applies filters to readable items, collapses directory
-// series, then paginates the logical shelf. This keeps a series from being split
-// across SQL pages and gives callers stable totals for the mixed shelf.
-func getAllComicsSeriesView(opts ComicListOptions) (*ComicListResult, error) {
-	page, pageSize := opts.Page, opts.PageSize
-	if page < 1 {
-		page = 1
-	}
-
-	flatOpts := opts
-	flatOpts.SeriesView = false
-	flatOpts.MatchSeriesTags = true
-	flatOpts.MatchSeriesCategories = true
-	flatOpts.Page = 0
-	flatOpts.PageSize = 0
-	flat, err := GetAllComics(flatOpts)
-	if err != nil {
-		return nil, err
-	}
-	items, err := CollapseComicListIntoSeries(flat.Comics, opts.UserID)
-	if err != nil {
-		return nil, err
-	}
-	shelfOrders := map[string]shelfSeriesOrder{}
-	if opts.SortBy == "" || opts.SortBy == "title" {
-		shelfOrders, err = loadShelfSeriesOrders()
-		if err != nil {
-			return nil, fmt.Errorf("load shelf series order: %w", err)
-		}
-	}
-	sortSeriesShelfItemsWithOrders(items, opts.SortBy, opts.SortOrder, shelfOrders)
-
-	total := len(items)
-	totalPages := 1
-	if pageSize > 0 {
-		if total > 0 {
-			totalPages = (total + pageSize - 1) / pageSize
-		}
-		start := (page - 1) * pageSize
-		if start >= total {
-			items = []ComicListItem{}
-		} else {
-			end := start + pageSize
-			if end > total {
-				end = total
-			}
-			items = items[start:end]
-		}
-	} else {
-		pageSize = total
-	}
-
-	return &ComicListResult{
-		Comics:     items,
-		Total:      total,
-		Page:       page,
-		PageSize:   pageSize,
-		TotalPages: totalPages,
-	}, nil
 }
 
 type shelfSeriesOrder struct {
@@ -811,19 +829,25 @@ func ListSeriesSummaries(libraryIDs []string, userID, search string) ([]SeriesSu
 	var ids []string
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
-		}
-	}
-	rows.Close()
-	result := make([]SeriesSummary, 0, len(ids))
-	for _, id := range ids {
-		summary, err := seriesSummaryByID(id, userID)
-		if err != nil {
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		if summary != nil && summary.ItemCount >= 2 {
-			result = append(result, *summary)
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	summaries, err := seriesSummariesByIDs(ids, userID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SeriesSummary, 0, len(ids))
+	for _, id := range ids {
+		if summary, ok := summaries[id]; ok && summary.ItemCount >= 2 {
+			result = append(result, summary)
 		}
 	}
 	return result, nil
@@ -938,7 +962,7 @@ func GetSeriesMemberComicIDs(id string) ([]string, error) {
 		SELECT si."comicId"
 		FROM "ComicSeriesItem" si
 		JOIN "ComicSeries" s ON s."id" = si."seriesId"
-		JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
+		CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
 		WHERE si."seriesId" = ?
 		ORDER BY si."sortIndex", si."comicId"
 	`, id)

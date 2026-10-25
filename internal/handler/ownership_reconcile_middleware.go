@@ -40,7 +40,14 @@ func reconcileOwnershipAfterScan() gin.HandlerFunc {
 }
 
 func reconcileOwnershipIfDue(reason string, minInterval time.Duration, initialOnly bool) {
-	ownershipReconcileMu.Lock()
+	if initialOnly {
+		// A scan/reconciliation already in progress must not stall list reads.
+		if !ownershipReconcileMu.TryLock() {
+			return
+		}
+	} else {
+		ownershipReconcileMu.Lock()
+	}
 	defer ownershipReconcileMu.Unlock()
 
 	if initialOnly && ownershipInitialCheckDone {
@@ -62,6 +69,7 @@ func reconcileOwnershipIfDue(reason string, minInterval time.Duration, initialOn
 		return
 	}
 	if !preview.CanReconcile {
+		ownershipInitialCheckDone = true
 		// Exact-root conflicts still require an explicit administrator choice;
 		// parent/child duplicate rows remain safe to repair automatically.
 		log.Printf("[ownership] automatic reconciliation after %s skipped: %d unresolved root conflict(s)", reason, len(preview.RootConflicts))
@@ -80,5 +88,14 @@ func reconcileOwnershipIfDue(reason string, minInterval time.Duration, initialOn
 	ownershipInitialCheckDone = true
 	if result != nil && (result.MergedRows > 0 || result.MovedRows > 0) {
 		log.Printf("[ownership] automatic reconciliation after %s: merged=%d moved=%d", reason, result.MergedRows, result.MovedRows)
+	}
+}
+
+// InitializeShelfMaintenance performs legacy repairs before accepting requests.
+// Scans retain their reconciliation hooks; list middleware is a retry fallback.
+func InitializeShelfMaintenance() {
+	reconcileOwnershipIfDue("startup", 0, true)
+	if err := service.EnsureComicSeriesFresh(); err != nil {
+		log.Printf("[series] startup refresh failed: %v", err)
 	}
 }

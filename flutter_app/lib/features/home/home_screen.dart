@@ -31,6 +31,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    final shelf = ref.read(comicListProvider);
+    _seriesView = shelf.params.seriesView;
+    _shelfModeReady = shelf.hasLoaded;
     _scrollController.addListener(_onScroll);
     _initializeShelfMode();
   }
@@ -47,7 +50,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _shelfModeReady = true;
     });
 
-    final current = ref.read(comicListProvider).params;
+    final shelf = ref.read(comicListProvider);
+    // Returning from a reader reuses the account-scoped pages and filters.
+    if (shelf.hasLoaded && shelf.params.seriesView == saved) return;
+    final current = shelf.params;
     final nextSort =
         saved && current.sort == 'pageCount' ? 'title' : current.sort;
     final nextOrder =
@@ -116,6 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         color: cs.primary,
         child: CustomScrollView(
+          key: const PageStorageKey('home-shelf'),
           controller: _scrollController,
           slivers: [
             // ─── 优雅的顶部区域 ───

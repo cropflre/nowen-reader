@@ -44,6 +44,7 @@ func ftsEscapeQuery(input string) string {
 
 // ComicListOptions 保存列表查询参数。
 type ComicListOptions struct {
+	comicIDs              []string // internal page hydration; never supplied by a client
 	Search                string
 	Tags                  []string
 	FavoritesOnly         bool
@@ -130,14 +131,11 @@ type ComicListResult struct {
 // 列表查询
 // ============================================================
 
-// GetAllComics 根据筛选条件、排序和分页获取漫画列表。
-func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
-	if opts.SeriesView {
-		return getAllComicsSeriesView(opts)
-	}
-	// Build WHERE clause
+// comicListFilter builds the shared FROM suffix and positional arguments.
+func comicListFilter(opts ComicListOptions) (joinClause, whereClause string, joinArgs, args []interface{}) {
+	// Shared by physical and logical shelves so filters retain identical semantics.
 	var conditions []string
-	var args []interface{}
+	args = []interface{}{}
 
 	if opts.Search != "" {
 		// 使用 FTS5 全文搜索（10000 条记录下比 LIKE 快 10-50 倍）
@@ -278,18 +276,37 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		conditions = append(conditions, fmt.Sprintf(`c."libraryId" IN (%s)`, strings.Join(placeholders, ",")))
 	}
 
-	whereClause := ""
+	if len(opts.comicIDs) > 0 {
+		placeholders := make([]string, len(opts.comicIDs))
+		for i, id := range opts.comicIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		conditions = append(conditions, `c."id" IN (`+strings.Join(placeholders, ",")+`)`)
+	}
+
+	whereClause = ""
 	if len(conditions) > 0 {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	// 当传入 UserID 时，LEFT JOIN UserComicState 以便取该用户的最近阅读/收藏/评分
-	joinClause := ""
-	joinArgs := []interface{}{}
+	joinClause = ""
+	joinArgs = []interface{}{}
 	if opts.UserID != "" {
 		joinClause = `LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?`
 		joinArgs = append(joinArgs, opts.UserID)
 	}
+
+	return
+}
+
+// GetAllComics 根据筛选条件、排序和分页获取漫画列表。
+func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
+	if opts.SeriesView {
+		return GetAllComicsShelfSafe(opts)
+	}
+	joinClause, whereClause, joinArgs, args := comicListFilter(opts)
 
 	// Sort
 	sortField := `c."titleSortKey"`
@@ -314,6 +331,8 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		}
 	case "custom":
 		sortField = "c.\"sortOrder\""
+	case "pageCount":
+		sortField = `c."pageCount"`
 	case "fileSize":
 		sortField = "c.\"fileSize\""
 	case "metadataSource":
@@ -326,6 +345,10 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 	orderClause := fmt.Sprintf(`ORDER BY %s %s, c."title" %s, c."id" ASC`, sortField, sortDir, sortDir)
 	if opts.SortBy == "" || opts.SortBy == "title" {
 		orderClause = TitleSortOrderSQL("c", sortDir)
+	}
+
+	if opts.SortBy == "pageCount" {
+		orderClause = fmt.Sprintf(`ORDER BY c."pageCount" %s, c."titleSortKey" ASC, c."id" ASC`, sortDir)
 	}
 
 	// Count total
@@ -374,7 +397,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		       COALESCE(ucs."totalReadTime", 0) AS trt,
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       COALESCE(ucs."readingStatus", '') AS readingStatus, c."type", c."coverAspectRatio",
+		       COALESCE(ucs."readingStatus", '') AS readingStatus, c."type", COALESCE(c."libraryId", ''), c."coverAspectRatio",
 		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c
 		%s %s %s %s
@@ -386,7 +409,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
-		       c."readingStatus", c."type", c."coverAspectRatio",
+		       c."readingStatus", c."type", COALESCE(c."libraryId", ''), c."coverAspectRatio",
 		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
 		FROM "Comic" c
 		%s %s %s
@@ -423,7 +446,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			&isFavRaw, &rating, &c.SortOrder, &totalReadTime,
 			&c.Author, &c.Publisher, &year, &c.Description,
 			&c.Language, &c.Genre, &c.MetadataSource,
-			&c.ReadingStatus, &c.ComicType, &c.CoverAspectRatio,
+			&c.ReadingStatus, &c.ComicType, &c.LibraryID, &c.CoverAspectRatio,
 			&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan comic: %w", err)

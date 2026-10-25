@@ -25,6 +25,7 @@ export interface Library {
   createdAt: string;
   updatedAt: string;
   comicCount: number;
+  shelfCount?: number;
   canManage?: boolean;
 }
 
@@ -261,27 +262,8 @@ export async function setUserLibraryAccess(
 export async function fetchAccessibleLibraries(): Promise<Library[]> {
   const res = await fetch(apiPath("/api/libraries/accessible"));
   const data = await safeJson<{ libraries: Library[] }>(res);
-  const libraries = data.libraries || [];
-
-  try {
-    const seriesRes = await fetch(apiPath("/api/series"));
-    if (!seriesRes.ok) return libraries;
-    const seriesData = await seriesRes.json() as {
-      series?: Array<{ libraryId: string; itemCount: number }>;
-    };
-    const groupedSavings = new Map<string, number>();
-    for (const series of seriesData.series || []) {
-      groupedSavings.set(
-        series.libraryId,
-        (groupedSavings.get(series.libraryId) || 0) + Math.max(0, series.itemCount - 1),
-      );
-    }
-    return libraries.map((library) => ({
-      ...library,
-      comicCount: Math.max(0, (library.comicCount || 0) - (groupedSavings.get(library.id) || 0)),
-    }));
-  } catch {
-    // 分层接口不可用时保留原始计数，不阻断书库加载。
-    return libraries;
-  }
+  return (data.libraries || []).map((library) => ({
+    ...library,
+    comicCount: library.shelfCount ?? library.comicCount,
+  }));
 }

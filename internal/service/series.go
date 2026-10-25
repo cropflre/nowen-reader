@@ -9,17 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
 
-var (
-	seriesRefreshMu         sync.Mutex
-	seriesRefreshedAt       time.Time
-	seriesSourceFingerprint string
-)
+var seriesRefreshMu sync.Mutex
 
 var (
 	seasonCNPattern = regexp.MustCompile(`(?i)^第?\s*([一二三四五六七八九十百零〇两0-9]+)\s*季$`)
@@ -29,40 +24,48 @@ var (
 	specialPattern  = regexp.MustCompile(`(?i)^(?:前传|正传|后传|番外|番外篇|特别篇|特別篇|special|extras?)$`)
 )
 
-// EnsureComicSeriesFresh lazily rebuilds directory-derived series. It is used
-// by the shelf endpoint so existing installations receive the hierarchy after
-// upgrading even before the next background scan. A cheap source fingerprint
-// prevents repeated full writes when the scanned content has not changed.
+// EnsureComicSeriesFresh compares persisted structural revisions. Reading
+// progress does not dirty the projection, and a restart can reuse a built one.
 func EnsureComicSeriesFresh() error {
-	seriesRefreshMu.Lock()
-	defer seriesRefreshMu.Unlock()
-	if time.Since(seriesRefreshedAt) < 15*time.Second {
+	// A scan already rebuilding the projection can finish in the background.
+	if !seriesRefreshMu.TryLock() {
 		return nil
 	}
+	defer seriesRefreshMu.Unlock()
 	fingerprint, err := store.GetComicSeriesSourceFingerprint()
 	if err != nil {
 		return err
 	}
-	seriesRefreshedAt = time.Now()
-	if fingerprint == seriesSourceFingerprint {
+	built, err := store.GetBuiltComicSeriesFingerprint()
+	if err != nil {
+		return err
+	}
+	if fingerprint == built {
 		return nil
 	}
+	return rebuildAndMarkComicSeriesLocked(fingerprint)
+}
+
+func rebuildAndMarkComicSeriesLocked(fingerprint string) error {
 	if err := rebuildAllComicSeriesLocked(); err != nil {
 		return err
 	}
-	seriesSourceFingerprint = fingerprint
+	// Capture the revision before rebuilding: a concurrent scanner's later
+	// changes remain dirty and cannot be acknowledged by this build.
+	if err := store.MarkComicSeriesBuilt(fingerprint); err != nil {
+		return err
+	}
 	return nil
 }
 
 func RebuildAllComicSeries() error {
 	seriesRefreshMu.Lock()
 	defer seriesRefreshMu.Unlock()
-	if err := rebuildAllComicSeriesLocked(); err != nil {
+	fingerprint, err := store.GetComicSeriesSourceFingerprint()
+	if err != nil {
 		return err
 	}
-	seriesSourceFingerprint, _ = store.GetComicSeriesSourceFingerprint()
-	seriesRefreshedAt = time.Now()
-	return nil
+	return rebuildAndMarkComicSeriesLocked(fingerprint)
 }
 
 func rebuildAllComicSeriesLocked() error {
@@ -87,8 +90,6 @@ func RebuildComicSeriesForLibrary(libraryID string) error {
 	if err := rebuildComicSeriesForLibraryLocked(libraryID); err != nil {
 		return err
 	}
-	seriesSourceFingerprint, _ = store.GetComicSeriesSourceFingerprint()
-	seriesRefreshedAt = time.Now()
 	return nil
 }
 

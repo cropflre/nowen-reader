@@ -691,11 +691,12 @@ type AccessibleLibrary struct {
 	Enabled       bool   `json:"enabled"`
 	DefaultAccess string `json:"defaultAccess"`
 	ComicCount    int    `json:"comicCount"`
+	ShelfCount    int    `json:"shelfCount"`
 	CanManage     bool   `json:"canManage"`
 }
 
 // GetAccessibleLibrariesWithCount returns all libraries the user can access,
-// enriched with the comic count for each library.
+// enriched with physical and logical counts in one aggregate query.
 func GetAccessibleLibrariesWithCount(userID string) ([]AccessibleLibrary, error) {
 	ids, err := GetUserAccessibleLibraryIDs(userID)
 	if err != nil {
@@ -714,7 +715,24 @@ func GetAccessibleLibrariesWithCount(userID string) ([]AccessibleLibrary, error)
 	}
 	in := strings.Join(placeholders, ",")
 
-	rows, err := db.Query(`SELECT "id", "name", "type", "enabled", COALESCE("defaultAccess", "private") FROM "Library" WHERE "id" IN (`+in+`) ORDER BY "sortOrder", "name"`, args...)
+	manageable, err := GetUserManageableLibraryIDs(userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.Query(`WITH counts AS (
+        SELECT "libraryId", COUNT(*) AS n FROM "Comic" GROUP BY "libraryId"
+    ), grouped AS (
+        SELECT s."libraryId", SUM(CASE WHEN c."type" = 'comic' THEN 1 ELSE 0 END) - 1 AS saving
+        FROM "ComicSeries" s JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
+        CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
+        GROUP BY s."id" HAVING COUNT(*) >= 2 AND saving >= 0
+    ), savings AS (
+        SELECT "libraryId", SUM(saving) AS n FROM grouped GROUP BY "libraryId"
+    ) SELECT l."id", l."name", l."type", l."enabled", COALESCE(l."defaultAccess", 'private'),
+        COALESCE(c.n, 0), COALESCE(c.n, 0) - COALESCE(s.n, 0)
+        FROM "Library" l LEFT JOIN counts c ON c."libraryId" = l."id"
+        LEFT JOIN savings s ON s."libraryId" = l."id"
+        WHERE l."id" IN (`+in+`) ORDER BY l."sortOrder", l."name"`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -723,16 +741,38 @@ func GetAccessibleLibrariesWithCount(userID string) ([]AccessibleLibrary, error)
 	var result []AccessibleLibrary
 	for rows.Next() {
 		var lib AccessibleLibrary
-		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.Enabled, &lib.DefaultAccess); err != nil {
-			continue
+		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.Enabled, &lib.DefaultAccess, &lib.ComicCount, &lib.ShelfCount); err != nil {
+			return nil, err
 		}
-		count, _ := GetLibraryComicCount(lib.ID)
-		lib.ComicCount = count
-		lib.CanManage, _ = UserCanManageLibrary(userID, lib.ID)
+		lib.CanManage = manageable[lib.ID]
 		result = append(result, lib)
 	}
 	if result == nil {
 		return []AccessibleLibrary{}, nil
+	}
+	return result, rows.Err()
+}
+
+// GetUserManageableLibraryIDs resolves enabled-library management grants once,
+// including administrator, direct and inherited group permissions.
+func GetUserManageableLibraryIDs(userID string) (map[string]bool, error) {
+	rows, err := db.Query(`SELECT l."id" FROM "Library" l WHERE l."enabled" = 1 AND (
+        EXISTS (SELECT 1 FROM "User" u WHERE u."id" = ? AND u."role" = 'admin')
+        OR EXISTS (SELECT 1 FROM "UserLibraryAccess" a WHERE a."libraryId" = l."id" AND a."userId" = ? AND a."canManage" = 1)
+        OR EXISTS (SELECT 1 FROM "GroupLibraryAccess" a JOIN "UserGroupMember" m ON m."groupId" = a."groupId"
+            WHERE a."libraryId" = l."id" AND m."userId" = ? AND a."canManage" = 1)
+    )`, userID, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result[id] = true
 	}
 	return result, rows.Err()
 }

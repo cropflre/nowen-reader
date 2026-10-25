@@ -60,6 +60,9 @@ func main() {
 		log.Fatalf("[Main] Schema migration failed: %v", err)
 	}
 
+	// Build existing-library projections before accepting the first shelf request.
+	handler.InitializeShelfMaintenance()
+
 	// Rebuild FTS5 full-text search index in background (non-blocking)
 	go func() {
 		if err := store.RebuildFTSIndex(); err != nil {

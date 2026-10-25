@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/config"
@@ -353,12 +354,14 @@ func (h *LibraryHandler) ListAccessibleLibraries(c *gin.Context) {
 		return
 	}
 
+	queryStarted := time.Now()
 	libraries, err := store.GetAccessibleLibrariesWithCount(uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch accessible libraries"})
 		return
 	}
 
+	recordLibraryQuery(c, "libraries", queryStarted, len(libraries), len(libraries))
 	c.JSON(http.StatusOK, gin.H{"libraries": libraries})
 }
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/middleware"
@@ -70,14 +71,21 @@ func (h *SeriesHandler) List(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"series": []store.SeriesSummary{}})
 		return
 	}
+	queryStarted := time.Now()
 	series, err := store.ListSeriesSummaries(libraryIDs, getUserID(c), c.Query("search"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list comic series"})
 		return
 	}
-	for index := range series {
-		series[index].CanManage, _ = store.UserCanManageLibrary(getUserID(c), series[index].LibraryID)
+	manageable, err := store.GetUserManageableLibraryIDs(getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve library permissions"})
+		return
 	}
+	for index := range series {
+		series[index].CanManage = manageable[series[index].LibraryID]
+	}
+	recordLibraryQuery(c, "series", queryStarted, len(series), len(series))
 	c.JSON(http.StatusOK, gin.H{"series": series})
 }
 

@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/comic_api.dart';
+import 'auth_provider.dart';
 import '../models/comic.dart';
 
 /// 阅读器完成进度同步后，通知仍留在导航栈中的首页和详情页刷新。
@@ -9,7 +11,7 @@ final readingProgressRevisionProvider = StateProvider<int>((ref) => 0);
 void notifyReadingProgress(WidgetRef ref, String comicId) {
   ref.invalidate(comicDetailProvider(comicId));
   ref.invalidate(statsProvider);
-  ref.read(comicListProvider.notifier).loadComics();
+  ref.read(comicListProvider.notifier).refreshVisible();
   ref.read(readingProgressRevisionProvider.notifier).state++;
 }
 
@@ -78,6 +80,7 @@ class ComicListState {
   final List<Comic> comics;
   final int totalCount;
   final bool isLoading;
+  final bool hasLoaded;
   final bool hasMore;
   final ComicListParams params;
   final String? error;
@@ -86,6 +89,7 @@ class ComicListState {
     this.comics = const [],
     this.totalCount = 0,
     this.isLoading = false,
+    this.hasLoaded = false,
     this.hasMore = true,
     this.params = const ComicListParams(),
     this.error,
@@ -95,6 +99,7 @@ class ComicListState {
     List<Comic>? comics,
     int? totalCount,
     bool? isLoading,
+    bool? hasLoaded,
     bool? hasMore,
     ComicListParams? params,
     String? error,
@@ -104,6 +109,7 @@ class ComicListState {
       comics: comics ?? this.comics,
       totalCount: totalCount ?? this.totalCount,
       isLoading: isLoading ?? this.isLoading,
+      hasLoaded: hasLoaded ?? this.hasLoaded,
       hasMore: hasMore ?? this.hasMore,
       params: params ?? this.params,
       error: clearError ? null : (error ?? this.error),
@@ -114,13 +120,19 @@ class ComicListState {
 /// 漫画列表 Notifier
 class ComicListNotifier extends StateNotifier<ComicListState> {
   final Ref _ref;
+  int _requestVersion = 0;
 
   ComicListNotifier(this._ref) : super(const ComicListState());
 
   /// 加载漫画列表（刷新/首次加载）
   Future<void> loadComics({ComicListParams? params}) async {
     final p = params ?? state.params;
-    state = state.copyWith(isLoading: true, params: p.copyWith(page: 1), clearError: true);
+    final version = ++_requestVersion;
+    state = state.copyWith(
+      isLoading: true,
+      params: p.copyWith(page: 1),
+      clearError: true,
+    );
     try {
       final api = _ref.read(comicApiProvider);
       final data = await api.listComics(
@@ -136,6 +148,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         favoritesOnly: p.favoritesOnly,
         seriesView: p.seriesView,
       );
+      if (!mounted || version != _requestVersion) return;
       final list = (data['comics'] as List<dynamic>?)
               ?.map((e) => Comic.fromJson(e))
               .toList() ??
@@ -145,34 +158,88 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         comics: list,
         totalCount: total,
         isLoading: false,
-        hasMore: list.length >= p.limit,
+        hasLoaded: true,
+        hasMore: list.length < total,
         params: p.copyWith(page: 1),
       );
     } catch (e) {
+      if (!mounted || version != _requestVersion) return;
       state = state.copyWith(isLoading: false, error: '加载失败: $e');
+    }
+  }
+
+  /// 阅读返回时保留已加载页和滚动布局，在后台更新当前可见的书架范围。
+  /// 失败保留原列表；筛选、翻页或账户变化后丢弃过时响应。
+  Future<void> refreshVisible() async {
+    if (state.comics.isEmpty || state.isLoading) return;
+    final p = state.params;
+    final version = ++_requestVersion;
+    final visibleLimit = p.page * p.limit;
+    try {
+      final data = await _ref.read(comicApiProvider).listComics(
+            page: 1,
+            limit: visibleLimit,
+            sort: p.sort,
+            order: p.order,
+            search: p.search,
+            tag: p.tag,
+            category: p.category,
+            type: p.type,
+            readingStatus: p.readingStatus,
+            favoritesOnly: p.favoritesOnly,
+            seriesView: p.seriesView,
+          );
+      if (!mounted || version != _requestVersion) return;
+      final list = (data['comics'] as List<dynamic>?)
+              ?.map((e) => Comic.fromJson(e))
+              .toList() ??
+          [];
+      final total = (data['total'] as num?)?.toInt() ?? list.length;
+      final pages = (list.length / p.limit).ceil().clamp(1, p.page);
+      state = state.copyWith(
+        comics: list,
+        totalCount: total,
+        hasMore: list.length < total,
+        params: p.copyWith(page: pages),
+      );
+    } catch (error) {
+      if (!mounted || version != _requestVersion) return;
+      if (error is DioException &&
+          (error.response?.statusCode == 401 ||
+              error.response?.statusCode == 403)) {
+        state = ComicListState(
+            params: p.copyWith(page: 1),
+            hasLoaded: true,
+            hasMore: false,
+            error: '书库访问权限已变更，请刷新后重试');
+      }
+      // 暂时的网络错误保留可继续浏览的缓存，用户可下拉重试。
     }
   }
 
   /// 加载更多（分页）
   Future<void> loadMore() async {
     if (state.isLoading || !state.hasMore) return;
-    final nextPage = state.params.page + 1;
+    final p = state.params;
+    final version = ++_requestVersion;
+    final nextPage = p.page + 1;
     state = state.copyWith(isLoading: true);
     try {
       final api = _ref.read(comicApiProvider);
       final data = await api.listComics(
         page: nextPage,
-        limit: state.params.limit,
-        sort: state.params.sort,
-        order: state.params.order,
-        search: state.params.search,
-        tag: state.params.tag,
-        category: state.params.category,
-        type: state.params.type,
-        readingStatus: state.params.readingStatus,
-        favoritesOnly: state.params.favoritesOnly,
-        seriesView: state.params.seriesView,
+        limit: p.limit,
+        sort: p.sort,
+        order: p.order,
+        search: p.search,
+        tag: p.tag,
+        category: p.category,
+        type: p.type,
+        readingStatus: p.readingStatus,
+        favoritesOnly: p.favoritesOnly,
+        seriesView: p.seriesView,
       );
+      if (!mounted || version != _requestVersion) return;
       final newList = (data['comics'] as List<dynamic>?)
               ?.map((e) => Comic.fromJson(e))
               .toList() ??
@@ -180,10 +247,13 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       state = state.copyWith(
         comics: [...state.comics, ...newList],
         isLoading: false,
-        hasMore: newList.length >= state.params.limit,
-        params: state.params.copyWith(page: nextPage),
+        totalCount: (data['total'] as num?)?.toInt() ?? state.totalCount,
+        hasMore: state.comics.length + newList.length <
+            ((data['total'] as num?)?.toInt() ?? state.totalCount),
+        params: p.copyWith(page: nextPage),
       );
     } catch (e) {
+      if (!mounted || version != _requestVersion) return;
       state = state.copyWith(isLoading: false, error: '加载更多失败: $e');
     }
   }
@@ -209,14 +279,24 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
   }
 }
 
+final comicListScopeProvider = Provider<String>(
+  (ref) => ref.watch(
+    authProvider.select((s) => '${s.serverUrl}:${s.user?.id}:${s.user?.role}'),
+  ),
+);
+
 final comicListProvider =
     StateNotifierProvider<ComicListNotifier, ComicListState>((ref) {
+  // Lists belong to one server/account/role and must not survive an identity change.
+  ref.watch(comicListScopeProvider);
   return ComicListNotifier(ref);
 });
 
 /// 单本漫画详情 Provider
-final comicDetailProvider =
-    FutureProvider.family<Comic?, String>((ref, comicId) async {
+final comicDetailProvider = FutureProvider.family<Comic?, String>((
+  ref,
+  comicId,
+) async {
   final api = ref.read(comicApiProvider);
   try {
     final data = await api.getComic(comicId);
@@ -255,13 +335,18 @@ final groupsProvider = FutureProvider<List<ComicGroup>>((ref) async {
 });
 
 /// 已分组漫画 ID 映射 Provider（漫画ID -> 所属分组ID列表）
-final groupedComicMapProvider = FutureProvider<Map<String, List<int>>>((ref) async {
+final groupedComicMapProvider = FutureProvider<Map<String, List<int>>>((
+  ref,
+) async {
   final api = ref.read(comicApiProvider);
   return await api.getGroupedComicMap();
 });
 
 /// 按内容类型过滤的分组列表 Provider
-final groupsByTypeProvider = FutureProvider.family<List<ComicGroup>, String?>((ref, contentType) async {
+final groupsByTypeProvider = FutureProvider.family<List<ComicGroup>, String?>((
+  ref,
+  contentType,
+) async {
   final api = ref.read(comicApiProvider);
   final data = await api.getGroups(contentType: contentType);
   return data.map((e) => ComicGroup.fromJson(e)).toList();

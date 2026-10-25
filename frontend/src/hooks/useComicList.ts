@@ -7,17 +7,18 @@ import type { ApiComic, ComicsResponse } from "./useComicTypes";
 /**
  * 客户端缓存：漫画列表 API 响应
  * Key = userScope + URL 查询字符串, Value = { data, timestamp }
- * 缓存条目在 CACHE_TTL 毫秒后过期。
+ * 保留最近访问的页面供阅读返回时立即展示，后台重新验证进度与权限。
  * userScope 用于隔离不同用户的缓存，防止权限变更后看到旧数据。
  */
 const comicsCache = new Map<string, { data: ComicsResponse; ts: number }>();
-const COMICS_CACHE_TTL = 30_000; // 30 秒
+const COMICS_CACHE_TTL = 15 * 60_000; // 最多保留 15 分钟，阅读后返回立即恢复
 const MAX_CACHE_ENTRIES = 20;
 export const LIBRARY_ACCESS_CHANGED_EVENT = "nowen-library-access-changed";
 export const COMICS_LOAD_ERROR_EVENT = "nowen-comics-load-error";
 
 /** 当前用户作用域，用于缓存 key 隔离不同用户的缓存 */
 let currentUserScope = "";
+let cacheRevision = 0;
 
 /** 设置当前用户作用域（在 login/logout/refreshUser 时调用） */
 export function setUserScope(userId: string, role: string) {
@@ -25,7 +26,7 @@ export function setUserScope(userId: string, role: string) {
   if (currentUserScope !== newScope) {
     currentUserScope = newScope;
     // 用户身份变更时清空所有缓存
-    comicsCache.clear();
+    invalidateComicsCache();
   }
 }
 
@@ -49,6 +50,7 @@ function setCachedResponse(key: string, data: ComicsResponse) {
 
 /** 清除所有缓存（在变更操作后调用） */
 export function invalidateComicsCache() {
+  cacheRevision += 1;
   comicsCache.clear();
 }
 
@@ -107,7 +109,6 @@ export function useComics(options?: {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const initializedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchComics = useCallback(async () => {
@@ -137,7 +138,9 @@ export function useComics(options?: {
 
     const qs = params.toString();
     // 缓存 key 包含用户作用域，防止不同用户间缓存串用
-    const cacheKey = `${currentUserScope}::${qs || "__default__"}`;
+    const scope = currentUserScope;
+    const revision = cacheRevision;
+    const cacheKey = `${scope}::${qs || "__default__"}`;
     const url = `/api/comics${qs ? `?${qs}` : ""}`;
 
     // Check client cache first
@@ -146,13 +149,10 @@ export function useComics(options?: {
       setComics(cached.comics);
       setTotal(cached.total);
       setTotalPages(cached.totalPages);
-      if (!initializedRef.current) {
-        initializedRef.current = true;
-        setLoading(false);
-      }
+      setLoading(false);
     }
 
-    if (!initializedRef.current && !cached) {
+    if (!cached) {
       setLoading(true);
     }
     setFetching(true);
@@ -160,10 +160,24 @@ export function useComics(options?: {
 
     try {
       const res = await fetch(apiPath(url), { signal: abortController.signal, cache: "no-store" });
-      if (!res.ok) throw new Error(await comicsResponseError(res));
+      if (abortController.signal.aborted || scope !== currentUserScope) return;
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          const message = await comicsResponseError(res);
+          if (abortController.signal.aborted || scope !== currentUserScope) return;
+          invalidateComicsCache();
+          setComics([]);
+          setTotal(0);
+          setTotalPages(1);
+          setError(message);
+          notifyComicsLoadError(message);
+          return;
+        }
+        throw new Error(await comicsResponseError(res));
+      }
       const data: ComicsResponse = await res.json();
       // 检查请求是否被取消
-      if (abortController.signal.aborted) return;
+      if (abortController.signal.aborted || scope !== currentUserScope) return;
       const safeComics = (data.comics || []).map((c) => ({
         ...c,
         tags: c.tags || [],
@@ -172,9 +186,9 @@ export function useComics(options?: {
       setComics(safeComics);
       setTotal(data.total);
       setTotalPages(data.totalPages);
-      setCachedResponse(cacheKey, { ...data, comics: safeComics });
-      initializedRef.current = true;
+      if (revision === cacheRevision) setCachedResponse(cacheKey, { ...data, comics: safeComics });
     } catch (err) {
+      if (abortController.signal.aborted || scope !== currentUserScope) return;
       // 忽略取消的请求
       if (err instanceof Error && err.name === "AbortError") return;
       if (!cached) {
@@ -203,12 +217,18 @@ export function useComics(options?: {
 
   useEffect(() => {
     const handleLibraryAccessChanged = () => {
-      initializedRef.current = false;
       invalidateComicsCache();
       fetchComics();
     };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === LIBRARY_ACCESS_CHANGED_EVENT) handleLibraryAccessChanged();
+    };
+    window.addEventListener("storage", handleStorage);
     window.addEventListener(LIBRARY_ACCESS_CHANGED_EVENT, handleLibraryAccessChanged);
-    return () => window.removeEventListener(LIBRARY_ACCESS_CHANGED_EVENT, handleLibraryAccessChanged);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(LIBRARY_ACCESS_CHANGED_EVENT, handleLibraryAccessChanged);
+    };
   }, [fetchComics]);
 
   const refetch = useCallback(async () => {
