@@ -1,0 +1,3 @@
+#!/bin/bash
+# Data removal, if selected by the user, is handled by fnOS.
+exit 0

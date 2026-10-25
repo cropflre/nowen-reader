@@ -1,0 +1,15 @@
+appname               = nowen-reader
+version               = {{VERSION}}
+display_name          = Nowen Reader（弄文阅读）
+desc                  = `{{DESCRIPTION}}`
+platform              = all
+source                = thirdparty
+maintainer            = Nowen
+maintainer_url        = https://github.com/cropflre/nowen-reader
+distributor           = Nowen
+distributor_url       = https://github.com/cropflre/nowen-reader
+desktop_uidir         = ui
+desktop_applaunchname = nowen-reader.Application
+service_port          = 6680
+checkport             = true
+ctl_stop              = true

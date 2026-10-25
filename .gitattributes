@@ -10,6 +10,8 @@ Dockerfile     text eol=lf
 Makefile       text eol=lf
 *.yml          text eol=lf
 *.yaml         text eol=lf
+scripts/fpk/template/cmd/* text eol=lf
+scripts/fpk/template/manifest text eol=lf
 
 # Windows 专属脚本固定 CRLF
 *.bat          text eol=crlf

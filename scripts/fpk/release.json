@@ -1,0 +1,5 @@
+{
+  "version": "1.2.3",
+  "image": "cropflre/nowen-reader:v1.2.3@sha256:5428ef2b31a6091674b34f351d7cb2177294a88fc5276602610b4cc710a2baba",
+  "platforms": ["linux/amd64", "linux/arm64"]
+}

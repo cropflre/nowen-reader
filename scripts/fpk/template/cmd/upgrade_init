@@ -1,0 +1,5 @@
+#!/bin/bash
+set -eu
+# Retain existing data and prepare missing cache directories as package user.
+: "${TRIM_PKGVAR:?fnOS application data directory is required}"
+mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/cache/thumbnails" "${TRIM_PKGVAR}/cache/pages"

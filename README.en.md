@@ -90,32 +90,52 @@ To deploy at `https://example.com/reader/`, set `BASE_PATH=/reader` and configur
 
 ## 📸 Screenshots
 
-### Desktop
+The desktop and reader screenshots show the v1.2.3 interface with demonstration books and reading data. The interface is shown in Simplified Chinese.
+
+### Home · Continue Reading
+
+<p align="center">
+  <img src="./docs/screenshots/01-home-reading-overview.jpg" alt="Home - Continue reading, recent additions, and library overview" width="100%" />
+</p>
+
+### Library & Book Details
 
 <table>
   <tr>
-    <td align="center"><b>List View (Light)</b></td>
-    <td align="center"><b>Grid View (Light)</b></td>
+    <td align="center" width="50%"><b>Library · Tags & Reading Progress</b></td>
+    <td align="center" width="50%"><b>Book Details · Ratings & Metadata</b></td>
   </tr>
   <tr>
-    <td><img src="./docs/桌面端1.png" alt="Desktop - List View (Light)" /></td>
-    <td><img src="./docs/桌面端2.png" alt="Desktop - Grid View (Light)" /></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Grid View (Dark)</b></td>
-    <td align="center"><b>List View (Dark)</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/桌面端夜间模式.png" alt="Desktop - Grid View (Dark)" /></td>
-    <td><img src="./docs/桌面端夜间模式%20(2).png" alt="Desktop - List View (Dark)" /></td>
+    <td valign="top"><img src="./docs/screenshots/02-library-grid.jpg" alt="Library - Comics and novels, tag filters, favorites, and reading progress" width="100%" /></td>
+    <td valign="top"><img src="./docs/screenshots/03-book-detail.jpg" alt="Book details - Cover, rating, reading status, description, and similar books" width="100%" /></td>
   </tr>
 </table>
 
-### Admin Panel
+### Comic & Novel Readers
 
-<p align="center">
-  <img src="./docs/桌面端后台.png" alt="Admin Panel - File Statistics" width="90%" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><b>Comics · Immersive Single-Page Reading</b></td>
+    <td align="center" width="50%"><b>Novels · Paper Theme</b></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="./docs/screenshots/04-comic-reader.jpg" alt="Comic reader - Single-page reading and page indicator" width="100%" /></td>
+    <td valign="top"><img src="./docs/screenshots/05-novel-reader.jpg" alt="Novel reader - Chapter layout and warm paper theme" width="100%" /></td>
+  </tr>
+</table>
+
+### Library Management & Reader Settings
+
+<table>
+  <tr>
+    <td align="center" width="50%"><b>Libraries · Directories, Scanning & Permissions</b></td>
+    <td align="center" width="50%"><b>Reader Settings · Display Modes & Filters</b></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="./docs/screenshots/06-library-management.jpg" alt="Library management - Separate comic and novel libraries, automatic scanning, and private access" width="100%" /></td>
+    <td valign="top"><img src="./docs/screenshots/07-comic-settings.jpg" alt="Reader settings - Page fit, rendering, reading direction, and image filter controls" width="100%" /></td>
+  </tr>
+</table>
 
 ### Mobile / PWA
 

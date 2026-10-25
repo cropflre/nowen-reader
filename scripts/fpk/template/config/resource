@@ -1,0 +1,8 @@
+{
+  "docker-project": {
+    "projects": [{ "name": "nowen-reader", "path": "docker" }]
+  },
+  "data-share": {
+    "shares": [{ "name": "nowen-reader" }]
+  }
+}

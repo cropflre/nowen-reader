@@ -1,0 +1,17 @@
+#!/bin/bash
+
+case "${1:-}" in
+  start|stop)
+    # fnOS App Center owns the Docker project lifecycle.
+    exit 0
+    ;;
+  status)
+    if [ "$(docker inspect --format '{{.State.Running}}' nowen-reader 2>/dev/null)" = "true" ]; then
+      exit 0
+    fi
+    exit 3
+    ;;
+  *)
+    exit 1
+    ;;
+esac

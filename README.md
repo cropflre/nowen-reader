@@ -84,6 +84,7 @@ docker compose -f docker-compose.prod.yml up -d
 | 文档 | 内容 |
 |:---|:---|
 | [安装指南](./docs/INSTALL.md) | 5 种部署方式：Docker Hub、NAS、源码构建、二进制、Docker Compose |
+| [飞牛应用包](./docs/FNOS-APP.md) | FPK 安装说明、应用中心简介、图标与打包方法 |
 | [配置说明](./docs/CONFIGURATION.md) | 环境变量、站点设置、AI 配置、扫描器参数、支持格式 |
 | [API 文档](./docs/API.md) | 完整的 RESTful API 参考 |
 | [开发指南](./docs/DEVELOPMENT.md) | 前置条件、项目结构、Makefile 命令、技术栈、CI/CD |
@@ -93,32 +94,52 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## 📸 界面预览
 
-### 桌面端
+以下桌面与阅读器截图来自 v1.2.3 的真实运行界面，书籍与阅读记录为演示数据。
+
+### 首页 · 继续阅读
+
+<p align="center">
+  <img src="./docs/screenshots/01-home-reading-overview.jpg" alt="首页 - 继续阅读、最近添加与书库概览" width="100%" />
+</p>
+
+### 书库与作品详情
 
 <table>
   <tr>
-    <td align="center"><b>列表视图（浅色）</b></td>
-    <td align="center"><b>网格视图（浅色）</b></td>
+    <td align="center" width="50%"><b>书库总览 · 标签与阅读进度</b></td>
+    <td align="center" width="50%"><b>作品详情 · 评分与元数据</b></td>
   </tr>
   <tr>
-    <td><img src="./docs/桌面端1.png" alt="桌面端 - 列表视图（浅色）" /></td>
-    <td><img src="./docs/桌面端2.png" alt="桌面端 - 网格视图（浅色）" /></td>
-  </tr>
-  <tr>
-    <td align="center"><b>网格视图（深色）</b></td>
-    <td align="center"><b>列表视图（深色）</b></td>
-  </tr>
-  <tr>
-    <td><img src="./docs/桌面端夜间模式.png" alt="桌面端 - 网格视图（深色）" /></td>
-    <td><img src="./docs/桌面端夜间模式%20(2).png" alt="桌面端 - 列表视图（深色）" /></td>
+    <td valign="top"><img src="./docs/screenshots/02-library-grid.jpg" alt="书库总览 - 漫画与小说、标签筛选、收藏和阅读进度" width="100%" /></td>
+    <td valign="top"><img src="./docs/screenshots/03-book-detail.jpg" alt="作品详情 - 封面、评分、阅读状态、简介与相似作品" width="100%" /></td>
   </tr>
 </table>
 
-### 后台管理
+### 漫画与小说阅读
 
-<p align="center">
-  <img src="./docs/桌面端后台.png" alt="后台管理 - 文件统计" width="90%" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><b>漫画阅读 · 沉浸式单页</b></td>
+    <td align="center" width="50%"><b>小说阅读 · 纸色主题</b></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="./docs/screenshots/04-comic-reader.jpg" alt="漫画阅读器 - 单页阅读与页码指示" width="100%" /></td>
+    <td valign="top"><img src="./docs/screenshots/05-novel-reader.jpg" alt="小说阅读器 - 章节排版与米黄色纸面主题" width="100%" /></td>
+  </tr>
+</table>
+
+### 书库管理与阅读设置
+
+<table>
+  <tr>
+    <td align="center" width="50%"><b>书库管理 · 目录、扫描与权限</b></td>
+    <td align="center" width="50%"><b>阅读设置 · 显示模式与滤镜</b></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="./docs/screenshots/06-library-management.jpg" alt="书库管理 - 独立漫画与小说书库、自动扫描和私密权限" width="100%" /></td>
+    <td valign="top"><img src="./docs/screenshots/07-comic-settings.jpg" alt="阅读器设置 - 适应显示、页面渲染、阅读方向和图片滤镜入口" width="100%" /></td>
+  </tr>
+</table>
 
 ### 移动端 / PWA
 

@@ -1,0 +1,6 @@
+Tool: built-in image_gen.imagegen
+Use case: logo-brand.
+Asset type: final production app icon for Nowen Reader, a self-hosted comic and novel library for a NAS app store.
+Create ONE single square icon, 1024x1024, full bleed. An elegant and distinctive open book silhouette whose two ivory-white pages fold into a subtle capital N in negative space. The right page includes a single bold panel division suggesting comics; the left page remains calm and literary. Restrained contemporary editorial identity, warm paper against deep midnight indigo, with a small vivid amber bookmark integrated into the central fold. Smooth gently rounded book geometry, crisp edges, ample breathing space, strong silhouette instantly legible at 64 pixels. Rich dark indigo rounded-square app tile fills almost the whole canvas, tasteful subtle depth and very soft lighting, near-flat premium graphic design. Centered large mark occupies 66 percent of canvas. Do not render any words, lettering, labels, mockups, devices, extra icons, decorative stars, sparkles, tiny lines, watermarks, or presentation grids. Deliver only the app icon itself, straight-on.
+
+Mechanical exports: Lanczos downsampling using sharp 0.34.5; 64, 256, 512 and 1024 pixels. Original generated PNG preserved alongside the exports.
