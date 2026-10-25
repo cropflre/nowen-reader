@@ -14,7 +14,7 @@ import '../../data/services/reader_warmup_session.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/reader_settings_panel.dart';
 import 'novel_reader_screen.dart';
-
+import 'webtoon_view.dart';
 
 /// 漫画阅读器
 class ComicReaderScreen extends ConsumerStatefulWidget {
@@ -33,7 +33,7 @@ class ComicReaderScreen extends ConsumerStatefulWidget {
 
 class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   late PageController _pageController;
-  final ScrollController _scrollController = ScrollController();
+  final WebtoonController _scrollController = WebtoonController();
   int _currentPage = 0;
   int _totalPages = 0;
   bool _showOverlay = false;
@@ -160,19 +160,26 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   void _toggleAutoPage() {
     setState(() => _autoPage = !_autoPage);
     if (_autoPage) {
-      final interval = _settings.autoPageInterval > 0
-          ? _settings.autoPageInterval
-          : 10;
+      final interval =
+          _settings.autoPageInterval > 0 ? _settings.autoPageInterval : 10;
       _autoPageTimer = Timer.periodic(Duration(seconds: interval), (_) {
-        if (_currentPage < _totalPages - 1) {
-          if (_settings.mode == ComicReadingMode.webtoon) {
-            // 长条模式 — 滚动
+        if (_settings.mode == ComicReadingMode.webtoon) {
+          if (_scrollController.hasClients &&
+              _scrollController.position.extentAfter > 0) {
             _scrollController.animateTo(
-              _scrollController.offset + 500,
+              (_scrollController.offset + 500)
+                  .clamp(0.0, _scrollController.position.maxScrollExtent),
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeInOut,
             );
-          } else if (_settings.mode == ComicReadingMode.doublePage) {
+          } else {
+            _autoPageTimer?.cancel();
+            setState(() => _autoPage = false);
+          }
+          return;
+        }
+        if (_currentPage < _totalPages - 1) {
+          if (_settings.mode == ComicReadingMode.doublePage) {
             // 双页模式 — 翻两页
             _pageController.nextPage(
               duration: const Duration(milliseconds: 300),
@@ -199,6 +206,14 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
     if (s.mode != _settings.mode) {
       _autoPageTimer?.cancel();
       _autoPage = false;
+      if (s.mode == ComicReadingMode.webtoon) {
+        if (_scrollController.page != _currentPage) {
+          _scrollController.jumpToPage(_currentPage);
+        }
+      } else if (_settings.mode == ComicReadingMode.webtoon) {
+        _pageController.dispose();
+        _pageController = PageController(initialPage: _currentPage);
+      }
     }
     setState(() => _settings = s);
   }
@@ -430,48 +445,15 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
 
   /// 长条滚动模式（Webtoon）
   Widget _buildWebtoonView(String serverUrl) {
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollUpdateNotification) {
-          // 根据滚动位置估算当前页码
-          final viewportHeight = notification.metrics.viewportDimension;
-          if (viewportHeight > 0) {
-            final page =
-                (notification.metrics.pixels / viewportHeight).floor();
-            if (page != _currentPage && page >= 0 && page < _totalPages) {
-              _onPageChanged(page);
-            }
-          }
-        }
-        return false;
+    return WebtoonView(
+      controller: _scrollController,
+      comicId: widget.comicId,
+      serverUrl: serverUrl,
+      pageCount: _totalPages,
+      initialPage: _currentPage,
+      onPageChanged: (page) {
+        if (page != _currentPage) _onPageChanged(page);
       },
-      child: ListView.builder(
-        controller: _scrollController,
-        itemCount: _totalPages,
-        itemBuilder: (context, index) {
-          final imageUrl =
-              getImageUrl(serverUrl, widget.comicId, page: index);
-          return AuthenticatedImage(
-            imageUrl: imageUrl,
-            comicId: widget.comicId,
-            pageIndex: index,
-            fit: _settings.fitMode == FitMode.width
-                ? BoxFit.fitWidth
-                : BoxFit.contain,
-            placeholder: SizedBox(
-              height: MediaQuery.of(context).size.height,
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-            errorWidget: const SizedBox(
-              height: 200,
-              child: Center(
-                child: Icon(Icons.broken_image,
-                    color: Colors.white54, size: 48),
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 
@@ -548,8 +530,7 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 Text('${_currentPage + 1}',
@@ -558,17 +539,11 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
                   child: Slider(
                     value: _currentPage.toDouble(),
                     min: 0,
-                    max: (_totalPages - 1)
-                        .toDouble()
-                        .clamp(0, double.infinity),
+                    max: (_totalPages - 1).toDouble().clamp(0, double.infinity),
                     onChanged: (v) {
                       final page = v.toInt();
                       if (_settings.mode == ComicReadingMode.webtoon) {
-                        // 长条模式滚动到对应位置
-                        final viewportH =
-                            MediaQuery.of(context).size.height;
-                        _scrollController.jumpTo(page * viewportH);
-                        setState(() => _currentPage = page);
+                        _scrollController.jumpToPage(page);
                       } else {
                         _pageController.jumpToPage(page);
                       }

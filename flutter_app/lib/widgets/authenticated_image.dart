@@ -39,6 +39,9 @@ class AuthenticatedImage extends StatefulWidget {
   final double? width;
   final double? height;
 
+  /// Reports intrinsic dimensions before replacing a reader's placeholder.
+  final ValueChanged<Size>? onImageSize;
+
   /// 离线缓存参数（可选）
   final String? comicId;
   final int? pageIndex;
@@ -53,6 +56,7 @@ class AuthenticatedImage extends StatefulWidget {
     this.errorWidget,
     this.width,
     this.height,
+    this.onImageSize,
     this.comicId,
     this.pageIndex,
     this.isThumbnail = false,
@@ -100,6 +104,21 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
         pageIndex: widget.pageIndex,
         isThumbnail: widget.isThumbnail,
       );
+      if (widget.onImageSize != null) {
+        final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+        try {
+          final descriptor = await ui.ImageDescriptor.encoded(buffer);
+          try {
+            if (!mounted || generation != _loadGeneration) return;
+            widget.onImageSize!(Size(
+                descriptor.width.toDouble(), descriptor.height.toDouble()));
+          } finally {
+            descriptor.dispose();
+          }
+        } finally {
+          buffer.dispose();
+        }
+      }
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _imageBytes = bytes;
@@ -143,6 +162,12 @@ class _AuthenticatedImageState extends State<AuthenticatedImage> {
       alignment: widget.alignment,
       width: widget.width,
       height: widget.height,
+      frameBuilder: widget.onImageSize == null
+          ? null
+          : (_, child, frame, synchronouslyLoaded) =>
+              synchronouslyLoaded || frame != null
+                  ? child
+                  : widget.placeholder ?? const SizedBox.expand(),
       errorBuilder: (_, __, ___) =>
           widget.errorWidget ??
           const Center(child: Icon(Icons.broken_image_outlined, size: 32)),
