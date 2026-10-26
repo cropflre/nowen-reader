@@ -1,2 +1,6 @@
 #!/bin/bash
-exit 0
+set -eu
+# fnOS has now created the runtime directory and granted package-user access.
+# Prepare nested caches before Docker starts to avoid root-owned page caches.
+: "${TRIM_PKGVAR:?fnOS application data directory is required}"
+mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/cache/thumbnails" "${TRIM_PKGVAR}/cache/pages"

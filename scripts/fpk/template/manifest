@@ -1,6 +1,6 @@
 appname               = nowen-reader
 version               = {{VERSION}}
-display_name          = Nowen Reader（弄文阅读）
+display_name          = 弄文阅读
 desc                  = `{{DESCRIPTION}}`
 platform              = all
 source                = thirdparty

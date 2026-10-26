@@ -42,7 +42,7 @@ def verify_package(package, version, image, description):
         if "=" in line:
             key, value = line.split("=", 1)
             fields[key.strip()] = value.strip().strip("`")
-    expected = {"appname": "nowen-reader", "version": version, "platform": "all",
+    expected = {"appname": "nowen-reader", "display_name": "弄文阅读", "version": version, "platform": "all",
                 "desktop_applaunchname": "nowen-reader.Application", "service_port": "6680"}
     for key, value in expected.items():
         if fields.get(key) != value:
@@ -62,8 +62,8 @@ def verify_package(package, version, image, description):
         if token not in compose:
             raise ValueError(f"Missing fnOS runtime variable: {token}")
     ui = json.loads(app_files["ui/config"][1])[".url"]["nowen-reader.Application"]
-    if ui["port"] != "6680" or ui["protocol"] != "http":
-        raise ValueError("Desktop entry and service port disagree")
+    if ui["port"] != "6680" or ui["protocol"] != "http" or ui["title"] != "弄文阅读":
+        raise ValueError("Desktop entry name, protocol, or service port disagrees")
     for size in (64, 256):
         if app_files[f"ui/images/icon_{size}.png"][1] != files["ICON.PNG" if size == 64 else "ICON_256.PNG"][1]:
             raise ValueError("Desktop and application center icons disagree")
@@ -75,7 +75,9 @@ def verify_package(package, version, image, description):
                  "uninstall_init", "uninstall_callback", "config_init", "config_callback"):
         if f"cmd/{hook}" not in files:
             raise ValueError(f"Missing lifecycle hook: {hook}")
-    for hook in ("install_init", "upgrade_init"):
+    if b"TRIM_PKGVAR" in files["cmd/install_init"][1] or b"mkdir" in files["cmd/install_init"][1]:
+        raise ValueError("install_init must not create runtime directories before fnOS prepares them")
+    for hook in ("install_callback", "upgrade_init"):
         if b'${TRIM_PKGVAR}/cache/pages' not in files[f"cmd/{hook}"][1]:
             raise ValueError("Nested page cache must be prepared by the package user")
     for name, (member, content) in files.items():

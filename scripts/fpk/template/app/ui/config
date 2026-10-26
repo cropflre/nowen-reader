@@ -1,7 +1,7 @@
 {
   ".url": {
     "nowen-reader.Application": {
-      "title": "Nowen Reader（弄文阅读）",
+      "title": "弄文阅读",
       "icon": "images/icon_{0}.png",
       "type": "url",
       "protocol": "http",

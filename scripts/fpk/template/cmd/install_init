@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eu
-# Create nested cache directories as the package user before Docker starts.
-# The image initializes only the cache root ownership on its auto fast path.
-: "${TRIM_PKGVAR:?fnOS application data directory is required}"
-mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/cache/thumbnails" "${TRIM_PKGVAR}/cache/pages"
+# fnOS has not created the application data directory at this stage.
+# Initialize data in install_callback after the platform prepares it.
+exit 0

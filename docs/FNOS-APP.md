@@ -1,14 +1,14 @@
 # 飞牛应用中心上架资料
 
-应用名称：Nowen Reader（弄文阅读）
+应用名称：弄文阅读
 
 一句话简介：把 NAS 变成你的私人漫画与小说书房。
 
 ## 应用简介
 
-收藏了很多好书，却总在文件夹里翻找？让 Nowen Reader 帮你把散落在 NAS 里的漫画与小说，整理成一座有封面、有分类、记得阅读进度的私人书房。
+收藏了很多好书，却总在文件夹里翻找？让弄文阅读帮你把散落在 NAS 里的漫画与小说，整理成一座有封面、有分类、记得阅读进度的私人书房。
 
-Nowen Reader（弄文阅读）是一款免费开源的自托管漫画与小说管理阅读应用。自动扫描本地书籍，按封面浏览、用标签整理、把喜欢的作品加入收藏；在电脑上细读，在平板上翻漫画，在手机上接着看。书籍与阅读记录存放在自己的 NAS，什么时候读、怎么整理，由你做主。
+弄文阅读是一款免费开源的自托管漫画与小说管理阅读应用。自动扫描本地书籍，按封面浏览、用标签整理、把喜欢的作品加入收藏；在电脑上细读，在平板上翻漫画，在手机上接着看。书籍与阅读记录存放在自己的 NAS，什么时候读、怎么整理，由你做主。
 
 ## 主要功能
 
@@ -56,5 +56,13 @@ python3 scripts/fpk/build-fpk.py --fnpack /path/to/fnpack-1.2.3-linux-amd64
 输出：`dist/fpk/nowen-reader-1.2.3.fpk`、`SHA256SUMS` 与 `package-info.json`。
 
 版本及镜像摘要见 `scripts/fpk/release.json`；更新版本时应先确认对应镜像存在，并同步更新摘要。应用中心简介来自 `scripts/fpk/app-description.html`。打包脚本会检查归档中的配置、脚本权限和图标，并写入构建记录。
+
+`install_init` 不创建数据目录；平台准备好应用运行时目录和权限后，由 `install_callback` 以应用用户身份创建数据库目录及 `cache/thumbnails`、`cache/pages`。升级时沿用已有数据目录。
+
+Linux 下可运行安装时序回归测试，覆盖平台尚未创建应用目录、回调目录权限和重复初始化保留数据的场景：
+
+```bash
+python3 -B scripts/fpk/test_lifecycle.py -v
+```
 
 包结构遵循飞牛官方文档：[Docker 应用案例](https://developer.fnnas.com/docs/examples/docker/)、[Manifest](https://developer.fnnas.com/docs/core-concepts/manifest/)、[应用资源](https://developer.fnnas.com/docs/core-concepts/resource/)。本地打包和容器测试不能代替真实飞牛设备的安装、启动、升级与卸载验收。
