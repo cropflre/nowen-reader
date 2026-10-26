@@ -62,6 +62,17 @@ func TestReplaceDetectedSeriesAndCollapseShelf(t *testing.T) {
 		t.Fatalf("ReplaceDetectedSeries failed: %v", err)
 	}
 
+	for _, tc := range []struct{ page, size, want int }{{1, 1, 1}, {2, 1, 0}, {1, 0, 1}} {
+		items, total, err := ListSeriesSummariesPage([]string{library.ID}, "", "", tc.page, tc.size)
+		if err != nil || total != 1 || len(items) != tc.want {
+			t.Fatalf("pagination %+v: items=%d total=%d err=%v", tc, len(items), total, err)
+		}
+	}
+	items, total, err := ListSeriesSummariesPage([]string{library.ID}, "", "missing-title", 1, 1)
+	if err != nil || total != 0 || len(items) != 0 {
+		t.Fatalf("search pagination: items=%d total=%d err=%v", len(items), total, err)
+	}
+
 	flat, err := GetAllComics(ComicListOptions{LibraryIDs: []string{library.ID}})
 	if err != nil {
 		t.Fatalf("GetAllComics failed: %v", err)

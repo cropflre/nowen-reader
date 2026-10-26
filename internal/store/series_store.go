@@ -902,6 +902,13 @@ func GetSeriesDetail(id, userID string) (*SeriesDetail, error) {
 }
 
 func ListSeriesSummaries(libraryIDs []string, userID, search string) ([]SeriesSummary, error) {
+	items, _, err := ListSeriesSummariesPage(libraryIDs, userID, search, 0, 0)
+	return items, err
+}
+
+// ListSeriesSummariesPage paginates effective series before loading metadata.
+// A nonpositive pageSize preserves the unpaginated API.
+func ListSeriesSummariesPage(libraryIDs []string, userID, search string, page, pageSize int) ([]SeriesSummary, int, error) {
 	conditions := []string{"1=1"}
 	args := []interface{}{}
 	if len(libraryIDs) > 0 {
@@ -916,27 +923,45 @@ func ListSeriesSummaries(libraryIDs []string, userID, search string) ([]SeriesSu
 		conditions = append(conditions, `LOWER("title") LIKE ?`)
 		args = append(args, "%"+strings.ToLower(strings.TrimSpace(search))+"%")
 	}
-	rows, err := db.Query(`SELECT "id" FROM "ComicSeries" WHERE `+strings.Join(conditions, " AND ")+` ORDER BY "sortTitle", "title"`, args...)
+	effective := `SELECT s."id", s."sortTitle", s."title" FROM "ComicSeries" s
+        JOIN "Library" l ON l."id" = s."libraryId"
+        JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
+        JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
+        GROUP BY s."id" HAVING COUNT(DISTINCT si."comicId") >= ` + effectiveSeriesMinMembersSQL("l")
+	base := ` FROM "ComicSeries" WHERE ` + strings.Join(conditions, " AND ") + ` AND "id" IN (SELECT "id" FROM (` + effective + `))`
+	var total int
+	if err := db.QueryRow(`SELECT COUNT(*)`+base, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	query := `SELECT "id"` + base + ` ORDER BY "sortTitle", "title", "id"`
+	if pageSize > 0 {
+		if page < 1 {
+			page = 1
+		}
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, pageSize, (page-1)*pageSize)
+	}
+	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, 0, err
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	summaries, err := seriesSummariesByIDs(ids, userID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	result := make([]SeriesSummary, 0, len(ids))
 	for _, id := range ids {
@@ -944,7 +969,7 @@ func ListSeriesSummaries(libraryIDs []string, userID, search string) ([]SeriesSu
 			result = append(result, summary)
 		}
 	}
-	return result, nil
+	return result, total, nil
 }
 
 func UpdateSeries(id, title, coverComicID string, manualLocked *bool) error {

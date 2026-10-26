@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +58,34 @@ func splitQueryIDs(value string) []string {
 }
 
 func (h *SeriesHandler) List(c *gin.Context) {
+	paginated := c.Query("page") != "" || c.Query("pageSize") != ""
+	page, pageSize := 1, 50
+	if paginated {
+		var err error
+		page, err = strconv.Atoi(c.DefaultQuery("page", "1"))
+		if err != nil || page < 1 || page > 2147483647 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page"})
+			return
+		}
+		pageSize, err = strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+		if err != nil || pageSize < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid pageSize"})
+			return
+		}
+		if pageSize > 200 {
+			pageSize = 200
+		}
+	}
+	respond := func(series []store.SeriesSummary, total int) {
+		body := gin.H{"series": series}
+		if paginated {
+			body["total"] = total
+			body["page"] = page
+			body["pageSize"] = pageSize
+			body["totalPages"] = (total + pageSize - 1) / pageSize
+		}
+		c.JSON(http.StatusOK, body)
+	}
 	if err := service.EnsureComicSeriesFresh(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh comic series"})
 		return
@@ -68,11 +97,15 @@ func (h *SeriesHandler) List(c *gin.Context) {
 	}
 	user := middleware.GetCurrentUser(c)
 	if user == nil || (user.Role != "admin" && len(libraryIDs) == 0) {
-		c.JSON(http.StatusOK, gin.H{"series": []store.SeriesSummary{}})
+		respond([]store.SeriesSummary{}, 0)
 		return
 	}
 	queryStarted := time.Now()
-	series, err := store.ListSeriesSummaries(libraryIDs, getUserID(c), c.Query("search"))
+	limit := 0
+	if paginated {
+		limit = pageSize
+	}
+	series, total, err := store.ListSeriesSummariesPage(libraryIDs, getUserID(c), c.Query("search"), page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list comic series"})
 		return
@@ -85,8 +118,8 @@ func (h *SeriesHandler) List(c *gin.Context) {
 	for index := range series {
 		series[index].CanManage = manageable[series[index].LibraryID]
 	}
-	recordLibraryQuery(c, "series", queryStarted, len(series), len(series))
-	c.JSON(http.StatusOK, gin.H{"series": series})
+	recordLibraryQuery(c, "series", queryStarted, len(series), total)
+	respond(series, total)
 }
 
 func (h *SeriesHandler) Get(c *gin.Context) {
