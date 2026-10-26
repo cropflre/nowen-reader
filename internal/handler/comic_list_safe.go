@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nowen-reader/nowen-reader/internal/middleware"
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
@@ -19,6 +18,11 @@ import (
 func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 	if c.Query("seriesView") != "true" || c.Query("sortBy") == "pageCount" {
 		h.ListComicsCompatible(c)
+		return
+	}
+
+	scope, ok := resolveComicListScope(c)
+	if !ok {
 		return
 	}
 
@@ -40,44 +44,6 @@ func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "0"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "0"))
 
-	var libraryIDs []string
-	filterLibraryIDs := false
-	if uid := getUserID(c); uid != "" {
-		user := middleware.GetCurrentUser(c)
-		isAdmin := user != nil && user.Role == "admin"
-		requestedParam := c.Query("libraryIds")
-
-		if isAdmin {
-			if requestedParam != "" {
-				for _, id := range strings.Split(requestedParam, ",") {
-					id = strings.TrimSpace(id)
-					if id != "" {
-						libraryIDs = append(libraryIDs, id)
-					}
-				}
-				filterLibraryIDs = true
-			}
-		} else {
-			filterLibraryIDs = true
-			if accessibleIDs, err := store.GetUserAccessibleLibraryIDs(uid); err == nil {
-				if requestedParam == "" {
-					libraryIDs = accessibleIDs
-				} else {
-					allowed := make(map[string]struct{}, len(accessibleIDs))
-					for _, id := range accessibleIDs {
-						allowed[id] = struct{}{}
-					}
-					for _, id := range strings.Split(requestedParam, ",") {
-						id = strings.TrimSpace(id)
-						if _, ok := allowed[id]; ok {
-							libraryIDs = append(libraryIDs, id)
-						}
-					}
-				}
-			}
-		}
-	}
-
 	queryStarted := time.Now()
 	result, err := store.GetAllComicsShelfSafe(store.ComicListOptions{
 		Search:           search,
@@ -92,8 +58,9 @@ func (h *ComicHandler) ListComicsShelfSafe(c *gin.Context) {
 		ReadingStatus:    c.Query("readingStatus"),
 		ExcludeGrouped:   c.Query("excludeGrouped") == "true",
 		UserID:           getUserID(c),
-		FilterLibraryIDs: filterLibraryIDs,
-		LibraryIDs:       libraryIDs,
+		FilterLibraryIDs: scope.FilterLibraryIDs,
+		LibraryIDs:       scope.LibraryIDs,
+		DirectoryPath:    scope.DirectoryPath,
 		Uncategorized:    c.Query("uncategorized") == "true",
 		Untagged:         c.Query("untagged") == "true",
 		SeriesView:       true,

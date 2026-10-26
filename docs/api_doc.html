@@ -806,9 +806,12 @@
         <tr><td>category</td><td>string</td><td>No</td><td>Category slug filter</td></tr>
         <tr><td>contentType</td><td>string</td><td>No</td><td>&quot;comic&quot; or &quot;novel&quot;</td></tr>
         <tr><td>readingStatus</td><td>string</td><td>No</td><td>&quot;want&quot;, &quot;reading&quot;, &quot;finished&quot;, &quot;shelved&quot;</td></tr>
+        <tr><td>libraryIds</td><td>string</td><td>No</td><td>Comma-separated library IDs (intersected with accessible libraries for non-admin users)</td></tr>
+        <tr><td>directoryPath</td><td>string</td><td>No</td><td>Normalized library-relative category path (e.g. &quot;韩漫&quot; or &quot;韩漫/连载&quot;). Requires a single accessible libraryId in <code>libraryIds</code>; matches by strict path-segment boundary.</td></tr>
         <tr><td>excludeGrouped</td><td>string</td><td>No</td><td>Exclude grouped comics (&quot;true&quot;) (default: &quot;false&quot;)</td></tr>
         <tr><td>page</td><td>int</td><td>No</td><td>Page number (default: 0)</td></tr>
         <tr><td>pageSize</td><td>int</td><td>No</td><td>Items per page (default: 0)</td></tr>
+        <tr><td>seriesView</td><td>string</td><td>No</td><td>&quot;true&quot; to collapse directory works (including single-chapter works when <code>seriesDepth &gt;= 2</code>) into logical shelf items before pagination</td></tr>
       </tbody>
     </table>
 
@@ -2777,7 +2780,7 @@ Accept-Ranges: bytes</code></pre>
     </div>
 
     <div id="endpoints-library" class="endpoint-group">
-    <h2 class="group-title">13. Library Management <span class="group-badge">9 endpoints</span></h2>
+    <h2 class="group-title">13. Library Management <span class="group-badge">14 endpoints</span></h2>
 <div class="endpoint admin-only" data-search="GET /api/admin/libraries List all libraries" id="get-api-admin-libraries">
   <div class="endpoint-header">
     <span class="method method-GET">GET</span>
@@ -2785,7 +2788,7 @@ Accept-Ranges: bytes</code></pre>
     <span class="summary">List all libraries</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns all libraries with comic count, root paths, and scan status.</p>
+    <p class="description">Returns all libraries with seriesDepth, physical comicCount, logical shelfCount, root paths, and scan status.</p>
 
     <h4>Response <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
@@ -2793,7 +2796,8 @@ Accept-Ranges: bytes</code></pre>
     {
       "id": "string",
       "name": "string",
-      "type": "comic|novel|mixed",
+      "type": "comic|novel",
+      "seriesDepth": 1,
       "rootPath": "string",
       "rootPaths": ["string"],
       "enabled": true,
@@ -2804,6 +2808,7 @@ Accept-Ranges: bytes</code></pre>
       "lastScanAdded": 0,
       "lastScanTotal": 0,
       "comicCount": 0,
+      "shelfCount": 0,
       "createdAt": "2024-01-01T00:00:00Z",
       "updatedAt": "2024-01-01T00:00:00Z"
     }
@@ -2823,12 +2828,13 @@ Accept-Ranges: bytes</code></pre>
     <span class="summary">Create a new library</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Create a new library with one or more root directories. Supports multi-directory libraries via rootPaths.</p>
+    <p class="description">Create a new library with one or more root directories. Comic libraries accept configurable <code>seriesDepth</code> (1..8, default 1); novel libraries only support <code>seriesDepth = 1</code>.</p>
 
     <h4>Request Body</h4>
     <pre class="code-block"><code>{
   "name": "string (required)",
-  "type": "comic|novel|mixed (required)",
+  "type": "comic|novel (required)",
+  "seriesDepth": 1,
   "rootPath": "string (optional, use rootPaths instead)",
   "rootPaths": ["string"] (at least one path required),
   "defaultAccess": "public|private (default: private)",
@@ -2846,19 +2852,21 @@ Accept-Ranges: bytes</code></pre>
   </div>
 </div>
 
-<div class="endpoint admin-only" data-search="PUT /api/admin/libraries/:id Update library" id="put-api-admin-libraries-id">
+<div class="endpoint admin-only" data-search="PUT /api/admin/libraries/:id Update library seriesDepth" id="put-api-admin-libraries-id">
   <div class="endpoint-header">
     <span class="method method-PUT">PUT</span>
     <span class="path">/api/admin/libraries/:id</span>
     <span class="summary">Update library</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Update library properties. Use rootPaths to set multiple directories (first path becomes primary).</p>
+    <p class="description">Update library properties. Changing <code>seriesDepth</code> on a comic library atomically validates <code>expectedSourceRevision</code> and manual structure locks, archives a full pre-change snapshot, updates the library, and applies the new work hierarchy. Returns 409 Conflict (<code>SOURCE_REVISION_CONFLICT</code> or <code>MANUAL_LOCK_CONFLICT</code>) when stale or blocked by a manual lock.</p>
 
     <h4>Request Body</h4>
     <pre class="code-block"><code>{
   "name": "string",
-  "type": "comic|novel|mixed",
+  "type": "comic|novel",
+  "seriesDepth": 2,
+  "expectedSourceRevision": "string (optional, from series-layout-preview)",
   "rootPath": "string",
   "rootPaths": ["string"],
   "enabled": true,
@@ -2869,7 +2877,123 @@ Accept-Ranges: bytes</code></pre>
 
     <h4>Response <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
-  "library": {Library}
+  "library": {Library},
+  "snapshot": {SeriesLayoutSnapshotSummary}
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth">Auth Required</span>
+      <span class="badge badge-admin">Admin Only</span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/admin/libraries/:id/series-layout-preview Preview library seriesDepth change" id="post-api-admin-libraries-id-series-layout-preview">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/admin/libraries/:id/series-layout-preview</span>
+    <span class="summary">Preview comic library seriesDepth change</span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description">Computes a bounded dry-run preview of switching a comic library to a target <code>seriesDepth</code> (1..8), including work counts, single-chapter work counts, shallow standalone counts, lock conflicts, and bounded samples.</p>
+
+    <h4>Request Body</h4>
+    <pre class="code-block"><code>{
+  "seriesDepth": 2
+}</code></pre>
+
+    <h4>Response <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "libraryId": "string",
+  "libraryName": "string",
+  "currentSeriesDepth": 1,
+  "targetSeriesDepth": 2,
+  "unchanged": false,
+  "sourceRevision": "12",
+  "totalComicFiles": 21441,
+  "oldSeriesCount": 6,
+  "newSeriesCount": 820,
+  "oldShelfCount": 6,
+  "newShelfCount": 861,
+  "singleChapterSeriesCount": 400,
+  "shallowStandaloneCount": 41,
+  "matchedSeriesCount": 0,
+  "restoredFromHistoryCount": 0,
+  "createdSeriesCount": 820,
+  "archivedSeriesCount": 6,
+  "archivedWithMetadataCount": 1,
+  "hasLockConflicts": false,
+  "lockConflicts": [],
+  "warnings": [],
+  "samples": {
+    "works": [],
+    "archivedSeries": [],
+    "shallowItems": []
+  }
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth">Auth Required</span>
+      <span class="badge badge-admin">Admin Only</span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="GET /api/admin/libraries/:id/series-layout-snapshots List series layout snapshots" id="get-api-admin-libraries-id-series-layout-snapshots">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/admin/libraries/:id/series-layout-snapshots</span>
+    <span class="summary">List series layout snapshots</span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description">Returns summary metadata for up to <code>limit</code> pre-change series layout snapshots of a comic library without exposing full archived payloads.</p>
+
+    <h4>Response <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "libraryId": "string",
+  "snapshots": [SeriesLayoutSnapshotSummary]
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth">Auth Required</span>
+      <span class="badge badge-admin">Admin Only</span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="GET /api/admin/libraries/:id/series-layout-snapshots/:snapshotId/export Export series layout snapshot JSON" id="get-api-admin-libraries-id-series-layout-snapshots-export">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/admin/libraries/:id/series-layout-snapshots/:snapshotId/export</span>
+    <span class="summary">Export series layout snapshot</span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description">Downloads the full versioned JSON payload of a series layout snapshot (including series metadata, sections, items, tags, categories, and group links).</p>
+
+    <h4>Response <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "snapshot": SeriesLayoutSnapshotSummary,
+  "payload": SeriesLayoutSnapshotPayload
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth">Auth Required</span>
+      <span class="badge badge-admin">Admin Only</span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint admin-only" data-search="POST /api/admin/libraries/:id/series-layout-snapshots/:snapshotId/restore Restore series layout snapshot" id="post-api-admin-libraries-id-series-layout-snapshots-restore">
+  <div class="endpoint-header">
+    <span class="method method-POST">POST</span>
+    <span class="path">/api/admin/libraries/:id/series-layout-snapshots/:snapshotId/restore</span>
+    <span class="summary">Restore series layout snapshot</span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description">Atomically restores a comic library's previous <code>seriesDepth</code> and archived directory works after verifying the target library's source and complete business state, including rating value, scale, source and timestamp. Unrelated library changes and reading progress do not block restoration. Returns 409 <code>SNAPSHOT_STATE_CONFLICT</code> for conflicting edits or older unverifiable digests; export such snapshots for manual recovery. Each library retains the latest 10 snapshots, including pre-restore backups, with cleanup in the same transaction.</p>
+
+    <h4>Response <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "success": true,
+  "restoredSnapshotId": "string",
+  "library": {Library},
+  "backupSnapshot": SeriesLayoutSnapshotSummary
 }</code></pre>
     <div class="badges">
       <span class="badge badge-auth">Auth Required</span>
@@ -2963,7 +3087,7 @@ Accept-Ranges: bytes</code></pre>
     <span class="summary">List accessible libraries</span>
   </div>
   <div class="endpoint-body">
-    <p class="description">Returns all libraries the current user can access, based on public access, direct grants, and group inheritance.</p>
+    <p class="description">Returns all enabled libraries the current user can access, enriched with <code>seriesDepth</code>, physical <code>comicCount</code>, logical <code>shelfCount</code>, and <code>canManage</code>.</p>
 
     <h4>Response <span class="status-code">200</span></h4>
     <pre class="code-block"><code>{
@@ -2971,12 +3095,62 @@ Accept-Ranges: bytes</code></pre>
     {
       "id": "string",
       "name": "string",
-      "type": "comic|novel|mixed",
+      "type": "comic|novel",
+      "seriesDepth": 2,
       "enabled": true,
       "defaultAccess": "public|private",
-      "comicCount": 0
+      "comicCount": 21441,
+      "shelfCount": 861,
+      "canManage": true
     }
   ]
+}</code></pre>
+    <div class="badges">
+      <span class="badge badge-auth">Auth Required</span>
+    </div>
+  </div>
+</div>
+
+<div class="endpoint auth-required" data-search="GET /api/libraries/:id/directories List library category directories workCount breadcrumbs" id="get-api-libraries-id-directories">
+  <div class="endpoint-header">
+    <span class="method method-GET">GET</span>
+    <span class="path">/api/libraries/:id/directories</span>
+    <span class="summary">List library category directories</span>
+  </div>
+  <div class="endpoint-body">
+    <p class="description">Returns immediate classification subdirectories up to <code>maxDirectoryDepth = seriesDepth - 1</code>, exact logical work counts, representative cover URLs, and breadcrumbs for an accessible comic library.</p>
+
+    <h4>Query Parameters</h4>
+    <table class="params-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>parent</td><td>string</td><td>No</td><td>Parent library-relative category path (empty for root categories)</td></tr>
+        <tr><td>page</td><td>int</td><td>No</td><td>Page number, 1-indexed (default: 1)</td></tr>
+        <tr><td>pageSize</td><td>int</td><td>No</td><td>Directories per page, max 500 (default: 100)</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Response <span class="status-code">200</span></h4>
+    <pre class="code-block"><code>{
+  "libraryId": "string",
+  "seriesDepth": 2,
+  "maxDirectoryDepth": 1,
+  "parent": "",
+  "breadcrumbs": [],
+  "directories": [
+    {
+      "name": "韩漫",
+      "path": "韩漫",
+      "depth": 1,
+      "workCount": 144,
+      "hasChildren": false,
+      "coverUrl": "/api/comics/comic_001/thumbnail"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 100,
+  "totalPages": 1
 }</code></pre>
     <div class="badges">
       <span class="badge badge-auth">Auth Required</span>

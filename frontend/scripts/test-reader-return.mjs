@@ -55,12 +55,17 @@ for (const state of [{ idx: 0 }, null]) {
 const booksSource = fs.readFileSync(new URL("../src/app/books/page.tsx", import.meta.url), "utf8");
 const ast = ts.createSourceFile("books.tsx", booksSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 let pageInitializer;
+let libraryInitializer;
 let searchEffect;
 let pageEffect;
 function visit(node) {
   if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name)
       && node.name.elements[0]?.name?.getText(ast) === "currentPage") {
     pageInitializer = node.initializer.arguments[0].getText(ast);
+  }
+  if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name)
+      && node.name.elements[0]?.name?.getText(ast) === "selectedLibraryIds") {
+    libraryInitializer = node.initializer.arguments[0].getText(ast);
   }
   if (ts.isCallExpression(node) && node.expression.getText(ast) === "useEffect") {
     const callback = node.arguments[0].getText(ast);
@@ -72,7 +77,7 @@ function visit(node) {
   ts.forEachChild(node, visit);
 }
 visit(ast);
-assert.ok(pageInitializer && pageEffect && searchEffect);
+assert.ok(pageInitializer && libraryInitializer && pageEffect && searchEffect);
 
 function makePage(url, savedPage = "18", favoritesView = false) {
   const location = new URL(url, "http://localhost");
@@ -88,6 +93,8 @@ function makePage(url, savedPage = "18", favoritesView = false) {
   };
   const context = vm.createContext({
     URLSearchParams, window: { location, history }, favoritesView,
+    selectedLibraryIds: [],
+    readStringArrayFromLocalStorage: () => [],
     sessionStorage: {
       getItem: (name) => storage.get(name) ?? null,
       setItem: (name, value) => storage.set(name, value),
@@ -116,7 +123,41 @@ for (const favorites of [false, true]) {
 }
 assert.equal(makePage("/books").context.currentPage, 18);
 assert.equal(makePage("/books?search=new").context.currentPage, 1);
+assert.equal(makePage("/books?dir=%E9%9F%A9%E6%BC%AB").context.currentPage, 1, "Entering a directory without page param starts at page 1");
+{
+  const dirPage = makePage("/books?dir=%E9%9F%A9%E6%BC%AB&page=3", "18", false);
+  assert.equal(dirPage.context.currentPage, 3, "Returning to a directory URL preserves its page");
+  dirPage.context.effectiveDirectoryPath = "韩漫/连载";
+  vm.runInContext(compile(`(${pageEffect})()`), dirPage.context);
+  assert.equal(dirPage.location.searchParams.get("dir"), "韩漫/连载");
+  assert.equal(dirPage.location.searchParams.get("page"), "3");
+  assert.equal(dirPage.storage.get("homeFilter:dir"), "韩漫/连载");
+  dirPage.context.effectiveDirectoryPath = "";
+  dirPage.context.currentPage = 1;
+  vm.runInContext(compile(`(${pageEffect})()`), dirPage.context);
+  assert.equal(dirPage.location.searchParams.has("dir"), false);
+  assert.equal(dirPage.storage.has("homeFilter:dir"), false);
+}
 for (const invalid of ["0", "-1", "NaN", "1.5"]) {
   assert.equal(makePage(`/books?page=${invalid}`).context.currentPage, 1);
+}
+{
+  const page = makePage("/books?lib=old-library&dir=old-folder&page=3#list");
+  assert.deepEqual(Array.from(vm.runInContext(compile(`(${libraryInitializer})()`), page.context)), ["old-library"]);
+  page.context.selectedLibraryIds = ["new-library"];
+  page.context.effectiveDirectoryPath = "新目录";
+  page.context.currentPage = 1;
+  vm.runInContext(compile(`(${pageEffect})()`), page.context);
+  assert.equal(page.location.searchParams.get("lib"), "new-library");
+  assert.equal(page.location.searchParams.get("dir"), "新目录");
+  assert.equal(page.location.hash, "#list");
+  assert.equal(page.history.state, page.state);
+  assert.deepEqual(Array.from(vm.runInContext(compile(`(${libraryInitializer})()`), page.context)), ["new-library"], "Reload and reader return select the current library");
+  for (const selection of [[], ["first", "second"]]) {
+    page.context.selectedLibraryIds = selection;
+    page.context.effectiveDirectoryPath = "";
+    vm.runInContext(compile(`(${pageEffect})()`), page.context);
+    assert.equal(page.location.searchParams.has("lib"), false, "All/multiple libraries clear the stale single-library URL");
+  }
 }
 console.log("Reader return history, direct-entry fallback, and list pagination restoration tests passed.");

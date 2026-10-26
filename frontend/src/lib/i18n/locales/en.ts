@@ -119,11 +119,22 @@ const en: Translations = {
   // Comic Card
   comicCard: {
     detail: "Details",
-    series: "Series",
+    series: "Work",
     itemUnit: "items",
     gridView: "Grid view",
     listView: "List view",
     select: "Select book",
+  },
+
+  // Directory Classification Navigation
+  directoryNav: {
+    label: "Directory Categories",
+    allWorks: "All Works",
+    workCountUnit: "works",
+    subDirectories: "Has subfolders",
+    upOneLevel: "Up one level",
+    selectSingleLibraryHint: "Select a single multi-depth comic library to browse directory categories",
+    emptySubDirectories: "No deeper directory categories at this level",
   },
 
   // Context Menu (Right-click)

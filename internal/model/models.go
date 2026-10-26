@@ -53,20 +53,21 @@ type APIKey struct {
 
 // Library 代表一个可扫描的书库/目录
 type Library struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"` // "comic" | "novel" | "mixed"
-	RootPath  string    `json:"rootPath"`
-	RootPaths []string  `json:"rootPaths,omitempty"` // 多目录支持，包含主路径和额外路径
-	Enabled   bool      `json:"enabled"`
-	SortOrder int       `json:"sortOrder"`
-	DefaultAccess string    `json:"defaultAccess"` // "public" | "private"
-	LastScanAt    *time.Time `json:"lastScanAt"`   // 上次扫描时间
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	Type          string     `json:"type"` // "comic" | "novel" | "mixed"
+	SeriesDepth   int        `json:"seriesDepth"`
+	RootPath      string     `json:"rootPath"`
+	RootPaths     []string   `json:"rootPaths,omitempty"` // 多目录支持，包含主路径和额外路径
+	Enabled       bool       `json:"enabled"`
+	SortOrder     int        `json:"sortOrder"`
+	DefaultAccess string     `json:"defaultAccess"` // "public" | "private"
+	LastScanAt    *time.Time `json:"lastScanAt"`    // 上次扫描时间
 	LastScanAdded int        `json:"lastScanAdded"` // 上次扫描新增数
 	LastScanTotal int        `json:"lastScanTotal"` // 上次扫描文件总数
 	ScanEnabled   bool       `json:"scanEnabled"`   // 是否参与自动扫描
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
 // UserLibraryAccess 保存用户对特定书库的访问权限

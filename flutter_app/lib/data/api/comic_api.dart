@@ -21,6 +21,8 @@ class ComicApi {
     String? readingStatus,
     bool? favoritesOnly,
     bool seriesView = false,
+    String? libraryId,
+    String? directoryPath,
   }) async {
     final params = <String, dynamic>{
       'page': page,
@@ -37,6 +39,12 @@ class ComicApi {
     }
     if (favoritesOnly == true) params['favorites'] = 'true';
     if (seriesView) params['seriesView'] = 'true';
+    if (libraryId != null && libraryId.isNotEmpty) {
+      params['libraryIds'] = libraryId;
+      if (directoryPath != null && directoryPath.isNotEmpty) {
+        params['directoryPath'] = directoryPath;
+      }
+    }
 
     final res = await _dio.get('/comics', queryParameters: params);
     return res.data;
@@ -107,6 +115,65 @@ class ComicApi {
   Future<List<dynamic>> getCategories() async {
     final res = await _dio.get('/categories');
     return res.data['categories'] ?? [];
+  }
+
+  /// 获取当前用户可访问的书库列表（旧版服务端无此接口时回退为空列表）
+  Future<List<dynamic>> getAccessibleLibraries() async {
+    try {
+      final res = await _dio.get('/libraries/accessible');
+      final data = res.data;
+      if (data is Map && data['libraries'] is List) {
+        return data['libraries'] as List<dynamic>;
+      }
+      return const [];
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return const [];
+      }
+      rethrow;
+    }
+  }
+
+  /// 获取书库物理目录派生的目录分类节点（仅展开至 d-1 层，独立于人工 Category）
+  Future<Map<String, dynamic>> getLibraryDirectories(
+    String libraryId, {
+    String parent = '',
+    int page = 1,
+    int pageSize = 100,
+  }) async {
+    final params = <String, dynamic>{
+      'page': page,
+      'pageSize': pageSize,
+    };
+    if (parent.isNotEmpty) {
+      params['parent'] = parent;
+    }
+    try {
+      final res = await _dio.get(
+        '/libraries/${Uri.encodeComponent(libraryId)}/directories',
+        queryParameters: params,
+      );
+      if (res.data is Map<String, dynamic>) {
+        return res.data as Map<String, dynamic>;
+      }
+      if (res.data is Map) {
+        return Map<String, dynamic>.from(res.data as Map);
+      }
+      return {
+        'libraryId': libraryId,
+        'directories': const [],
+        'breadcrumbs': const [],
+      };
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return {
+          'libraryId': libraryId,
+          'directories': const [],
+          'breadcrumbs': const [],
+        };
+      }
+      rethrow;
+    }
   }
 
   /// 获取阅读统计

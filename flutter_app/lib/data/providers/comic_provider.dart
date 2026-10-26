@@ -28,6 +28,8 @@ class ComicListParams {
   final String? readingStatus;
   final bool? favoritesOnly;
   final bool seriesView;
+  final String? libraryId;
+  final String? directoryPath;
 
   const ComicListParams({
     this.page = 1,
@@ -41,6 +43,8 @@ class ComicListParams {
     this.readingStatus,
     this.favoritesOnly,
     this.seriesView = true,
+    this.libraryId,
+    this.directoryPath,
   });
 
   ComicListParams copyWith({
@@ -54,11 +58,19 @@ class ComicListParams {
     String? readingStatus,
     bool? favoritesOnly,
     bool? seriesView,
+    String? libraryId,
+    String? directoryPath,
     bool clearSearch = false,
     bool clearTag = false,
     bool clearCategory = false,
     bool clearType = false,
+    bool clearLibraryId = false,
+    bool clearDirectoryPath = false,
   }) {
+    final nextLibraryId = clearLibraryId ? null : (libraryId ?? this.libraryId);
+    final nextDirectoryPath = (clearLibraryId || clearDirectoryPath)
+        ? null
+        : (directoryPath ?? this.directoryPath);
     return ComicListParams(
       page: page ?? this.page,
       limit: limit,
@@ -71,6 +83,8 @@ class ComicListParams {
       readingStatus: readingStatus ?? this.readingStatus,
       favoritesOnly: favoritesOnly ?? this.favoritesOnly,
       seriesView: seriesView ?? this.seriesView,
+      libraryId: nextLibraryId,
+      directoryPath: nextDirectoryPath,
     );
   }
 }
@@ -147,6 +161,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         readingStatus: p.readingStatus,
         favoritesOnly: p.favoritesOnly,
         seriesView: p.seriesView,
+        libraryId: p.libraryId,
+        directoryPath: p.directoryPath,
       );
       if (!mounted || version != _requestVersion) return;
       final list = (data['comics'] as List<dynamic>?)
@@ -188,6 +204,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
             readingStatus: p.readingStatus,
             favoritesOnly: p.favoritesOnly,
             seriesView: p.seriesView,
+            libraryId: p.libraryId,
+            directoryPath: p.directoryPath,
           );
       if (!mounted || version != _requestVersion) return;
       final list = (data['comics'] as List<dynamic>?)
@@ -207,6 +225,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       if (error is DioException &&
           (error.response?.statusCode == 401 ||
               error.response?.statusCode == 403)) {
+        _ref.invalidate(accessibleLibrariesProvider);
+        _ref.invalidate(libraryDirectoriesProvider);
         state = ComicListState(
             params: p.copyWith(page: 1),
             hasLoaded: true,
@@ -238,6 +258,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         readingStatus: p.readingStatus,
         favoritesOnly: p.favoritesOnly,
         seriesView: p.seriesView,
+        libraryId: p.libraryId,
+        directoryPath: p.directoryPath,
       );
       if (!mounted || version != _requestVersion) return;
       final newList = (data['comics'] as List<dynamic>?)
@@ -318,6 +340,61 @@ final categoriesProvider = FutureProvider<List<Category>>((ref) async {
   final api = ref.read(comicApiProvider);
   final data = await api.getCategories();
   return data.map((e) => Category.fromJson(e)).toList();
+});
+
+/// 当前用户可访问书库 Provider（随服务器/账号/角色切换自动隔离失效）
+final accessibleLibrariesProvider =
+    FutureProvider<List<AccessibleLibrary>>((ref) async {
+  ref.watch(comicListScopeProvider);
+  ref.watch(readingProgressRevisionProvider);
+  final api = ref.read(comicApiProvider);
+  final list = await api.getAccessibleLibraries();
+  return list
+      .whereType<Map>()
+      .map(
+        (item) => AccessibleLibrary.fromJson(Map<String, dynamic>.from(item)),
+      )
+      .toList();
+});
+
+/// 书库目录分类查询参数键（值语义相等以支持 Riverpod family 稳定缓存）
+class LibraryDirectoryQueryKey {
+  final String libraryId;
+  final String parent;
+  final int page;
+
+  const LibraryDirectoryQueryKey({
+    required this.libraryId,
+    this.parent = '',
+    this.page = 1,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LibraryDirectoryQueryKey &&
+          libraryId == other.libraryId &&
+          parent == other.parent &&
+          page == other.page;
+
+  @override
+  int get hashCode => Object.hash(libraryId, parent, page);
+}
+
+/// 书库目录分类节点 Provider（阅读返回保留节点缓存，账号或权限变更自动失效）
+final libraryDirectoriesProvider = FutureProvider.family<
+    LibraryDirectoryListResponse, LibraryDirectoryQueryKey>((ref, key) async {
+  ref.watch(comicListScopeProvider);
+  if (key.libraryId.isEmpty) {
+    return const LibraryDirectoryListResponse(libraryId: '');
+  }
+  final api = ref.read(comicApiProvider);
+  final data = await api.getLibraryDirectories(
+    key.libraryId,
+    parent: key.parent,
+    page: key.page,
+  );
+  return LibraryDirectoryListResponse.fromJson(data);
 });
 
 /// 阅读统计 Provider

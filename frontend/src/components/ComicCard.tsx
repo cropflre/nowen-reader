@@ -183,6 +183,9 @@ const ComicCard = memo(function ComicCard({
 
   if (viewMode === "list") {
     const shelfState = appearance === "shelf" ? libraryCardState(comic) : undefined;
+    const listReaderUrl = shelfState ? shelfState.readerUrl : getReaderUrl(comic);
+    const listDetailUrl = shelfState ? shelfState.detailUrl : `/comic/${comic.id}`;
+    const listProgressPct = shelfState ? shelfState.progress : (comic.progress ?? 0);
     const shelfProgress = shelfState?.finished ? t.home.statusFinished : shelfState?.started ? `${shelfState.progress}%` : t.dashboard.unread;
     const shelfColumns = shelfState && <>
       <span className="library-list-format">{shelfState.seriesId ? t.comicCard.series : shelfState.format}</span>
@@ -272,7 +275,8 @@ const ComicCard = memo(function ComicCard({
               </div>
             )}
             <Link
-              href={getReaderUrl(comic)}
+              href={listReaderUrl}
+              onClick={() => onClick?.(comic)}
               className="flex flex-1 min-w-0 items-center gap-3 sm:gap-4 rounded-xl bg-card/70 backdrop-blur-sm border border-white/[0.04] p-2.5 sm:p-3 transition-all duration-200 group-hover:bg-card-hover group-hover:border-white/[0.08] group-hover:shadow-lg group-hover:shadow-accent/5"
             >
               {/* Thumbnail */}
@@ -284,9 +288,9 @@ const ComicCard = memo(function ComicCard({
                   </div>
                 )}
                 {/* 阅读进度条（移动端） */}
-                {comic.progress !== undefined && comic.progress > 0 && (
+                {listProgressPct > 0 && (
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 sm:hidden">
-                    <div className="h-full bg-accent" style={{ width: `${comic.progress}%` }} />
+                    <div className="h-full bg-accent" style={{ width: `${listProgressPct}%` }} />
                   </div>
                 )}
               </div>
@@ -347,7 +351,7 @@ const ComicCard = memo(function ComicCard({
             {/* Detail link — 移动端始终显示 */}
             {isReal && (
               <Link
-                href={`/comic/${comic.id}`}
+                href={listDetailUrl}
                 className="flex-shrink-0 rounded-lg p-2 text-muted/60 sm:text-muted/40 transition-colors hover:bg-card hover:text-muted"
                 title={t.comicCard.detail}
                 onClick={(e) => e.stopPropagation()}

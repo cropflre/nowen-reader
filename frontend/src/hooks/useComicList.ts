@@ -54,6 +54,11 @@ export function invalidateComicsCache() {
   comicsCache.clear();
 }
 
+/** 读取当前漫画缓存的用户作用域与修订号（供目录分类缓存共享权限隔离与失效时机） */
+export function getComicCacheState(): { scope: string; revision: number } {
+  return { scope: currentUserScope, revision: cacheRevision };
+}
+
 /** 通知当前页面里的漫画列表刷新权限敏感数据。 */
 export function notifyLibraryAccessChanged() {
   invalidateComicsCache();
@@ -101,6 +106,7 @@ export function useComics(options?: {
   uncategorized?: boolean;
   untagged?: boolean;
   libraryIds?: string[]; // 书库筛选：只返回这些书库的内容（空=不过滤）
+  directoryPath?: string; // 单书库目录分类路径前缀（按段边界匹配）
   seriesView?: boolean; // 将目录成员折叠为逻辑作品
 }) {
   const [comics, setComics] = useState<ApiComic[]>([]);
@@ -135,6 +141,9 @@ export function useComics(options?: {
     if (options?.uncategorized) params.set("uncategorized", "true");
     if (options?.untagged) params.set("untagged", "true");
     if (options?.libraryIds && options.libraryIds.length > 0) params.set("libraryIds", options.libraryIds.join(","));
+    if (options?.directoryPath && options?.libraryIds && options.libraryIds.length === 1) {
+      params.set("directoryPath", options.directoryPath);
+    }
 
     const qs = params.toString();
     // 缓存 key 包含用户作用域，防止不同用户间缓存串用
@@ -203,7 +212,7 @@ export function useComics(options?: {
         setFetching(false);
       }
     }
-  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped, options?.seriesView, options?.readingStatus, options?.uncategorized, options?.untagged, JSON.stringify(options?.libraryIds ?? [])]);
+  }, [options?.search, JSON.stringify(options?.tags), options?.favoritesOnly, options?.sortBy, options?.sortOrder, options?.page, options?.pageSize, options?.category, options?.contentType, options?.excludeGrouped, options?.seriesView, options?.readingStatus, options?.uncategorized, options?.untagged, JSON.stringify(options?.libraryIds ?? []), options?.directoryPath]);
 
   useEffect(() => {
     fetchComics();

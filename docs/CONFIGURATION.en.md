@@ -120,15 +120,47 @@ Open **Settings → AI**, select a provider, enter API Key, choose a model, clic
 
 ## Library Management & Multi-Directory Setup (Recommended)
 
-The new version supports creating independent libraries (manga, novel, mixed) in **Admin Panel → Library Management**, each with:
+Create independent libraries (manga, novel) in **Admin Panel → Library Management**, each with:
 
 | Setting | Description |
 |:---|:---|
-| `rootPath` | Library root directory (with directory browser) |
+| `rootPath` / `rootPaths` | Library root directory / directories (with directory browser) |
+| `seriesDepth` | Work directory depth for comic libraries (`1..8`, default `1`; fixed to `1` for novel libraries) |
 | `defaultAccess` | Access control: `public` (all logged-in users) / `private` (authorized users only) |
 | `scanEnabled` | Whether to include in automatic scanning |
 
 Admins can also assign per-user or per-group library access for **multi-user resource isolation**.
+
+### Work Directory Depth (`seriesDepth`) & Directory Navigation
+
+If your manga files are organized under category folders on disk or NAS, configure **`seriesDepth`** per comic library without moving any source files:
+
+- **`seriesDepth = 1` (Default, backward-compatible)**: Level-1 folders under the library root represent works when they contain at least 2 reading units; single-file folders remain standalone comics.
+  ```text
+  /mnt/manga/
+  └── Frieren/
+      ├── Vol.01.cbz
+      └── Vol.02.cbz
+  ```
+- **`seriesDepth = 2` (1 Category Level + Work Folder)**: Level-1 folders become read-only **Directory Categories** on Web & Flutter shelves, Level-2 folders become works, and deeper folders become sections/seasons inside the work:
+  ```text
+  /mnt/manga/
+  ├── Webtoon/               # Level 1: Directory Category (Web / Flutter directory bar)
+  │   ├── Solo Leveling/     # Level 2: Multi-chapter work
+  │   │   ├── Season 1/      # Level 3: Section inside work
+  │   │   │   └── Ch.001.cbz
+  │   │   └── Season 2/
+  │   │       └── Ch.111.cbz
+  │   ├── One-Shot Story/    # Level 2: Single-chapter work (keeps folder title even with 1 file)
+  │   │   └── Chapter 1.cbz
+  │   └── Standalone.cbz     # Shallower than seriesDepth: kept as standalone comic
+  └── Manga/
+      └── Dungeon Meshi/
+          └── Vol.01.cbz
+  ```
+- **`seriesDepth = 3..8` (Multi-level Categories + Work Folder)**: Levels `1 .. (seriesDepth - 1)` are browsable via breadcrumbs on Web & Flutter (e.g. `Webtoon → Ongoing`) without altering manual Categories or Collections.
+- **Safe Switching & Snapshot Recovery**: Changing `seriesDepth` in Library Management runs a dry-run preview first, then atomically archives a full pre-change snapshot (preserving scraped metadata, tags, categories, and collection links) with JSON export and one-click restore. Source files and user reading progress are never modified.
+- **Multi-root Note**: When a comic library configures multiple `rootPaths`, identical relative paths across roots (e.g., `Webtoon/TitleA` in two roots) map to the same library-relative work; use separate libraries if you want them isolated.
 
 ### Legacy Directory Configuration
 

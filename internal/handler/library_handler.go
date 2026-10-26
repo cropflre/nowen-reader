@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +19,40 @@ import (
 	"github.com/nowen-reader/nowen-reader/internal/service"
 	"github.com/nowen-reader/nowen-reader/internal/store"
 )
+
+type optionalSeriesDepth struct {
+	Set   bool
+	Valid bool
+	Value int
+	Err   string
+}
+
+func (o *optionalSeriesDepth) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	trimmed := bytes.TrimSpace(data)
+	const invalidMsg = "seriesDepth must be an integer between 1 and 8"
+	if bytes.Equal(trimmed, []byte("null")) || len(trimmed) == 0 {
+		o.Err = invalidMsg
+		return nil
+	}
+	if trimmed[0] == '"' || trimmed[0] == '{' || trimmed[0] == '[' ||
+		bytes.Equal(trimmed, []byte("true")) || bytes.Equal(trimmed, []byte("false")) {
+		o.Err = invalidMsg
+		return nil
+	}
+	if bytes.ContainsAny(trimmed, ".eE") {
+		o.Err = invalidMsg
+		return nil
+	}
+	val, err := strconv.Atoi(string(trimmed))
+	if err != nil || val < store.MinLibrarySeriesDepth || val > store.MaxLibrarySeriesDepth {
+		o.Err = invalidMsg
+		return nil
+	}
+	o.Valid = true
+	o.Value = val
+	return nil
+}
 
 // LibraryHandler handles library management API endpoints.
 type LibraryHandler struct{}
@@ -30,24 +67,29 @@ func NewLibraryHandler() *LibraryHandler {
 // ============================================================
 
 func (h *LibraryHandler) ListLibraries(c *gin.Context) {
+	_ = service.EnsureComicSeriesFresh()
 	libraries, err := store.GetAllLibraries()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch libraries"})
 		return
 	}
 
-	// Add comic count for each library
+	counts, _ := store.GetAllLibraryCounts()
+
+	// Add physical comic count and logical shelf/work count for each library
 	type libraryWithCount struct {
 		model.Library
 		ComicCount int `json:"comicCount"`
+		ShelfCount int `json:"shelfCount"`
 	}
 
 	result := make([]libraryWithCount, len(libraries))
 	for i, lib := range libraries {
-		count, _ := store.GetLibraryComicCount(lib.ID)
+		stat := counts[lib.ID]
 		result[i] = libraryWithCount{
 			Library:    lib,
-			ComicCount: count,
+			ComicCount: stat.ComicCount,
+			ShelfCount: stat.ShelfCount,
 		}
 	}
 
@@ -60,14 +102,15 @@ func (h *LibraryHandler) ListLibraries(c *gin.Context) {
 
 func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	var req struct {
-		Name          string   `json:"name" binding:"required"`
-		Type          string   `json:"type" binding:"required"`
-		RootPath      string   `json:"rootPath"`
-		RootPaths     []string `json:"rootPaths"`
-		Enabled       *bool    `json:"enabled"`
-		SortOrder     *int     `json:"sortOrder"`
-		DefaultAccess *string  `json:"defaultAccess"`
-		ScanEnabled   *bool    `json:"scanEnabled"`
+		Name          string              `json:"name" binding:"required"`
+		Type          string              `json:"type" binding:"required"`
+		SeriesDepth   optionalSeriesDepth `json:"seriesDepth"`
+		RootPath      string              `json:"rootPath"`
+		RootPaths     []string            `json:"rootPaths"`
+		Enabled       *bool               `json:"enabled"`
+		SortOrder     *int                `json:"sortOrder"`
+		DefaultAccess *string             `json:"defaultAccess"`
+		ScanEnabled   *bool               `json:"scanEnabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -78,6 +121,19 @@ func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	// Validate type
 	if req.Type != "comic" && req.Type != "novel" && req.Type != "mixed" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Type must be comic, novel, or mixed"})
+		return
+	}
+
+	seriesDepth := store.DefaultLibrarySeriesDepth
+	if req.SeriesDepth.Set {
+		if !req.SeriesDepth.Valid {
+			c.JSON(http.StatusBadRequest, gin.H{"error": req.SeriesDepth.Err})
+			return
+		}
+		seriesDepth = req.SeriesDepth.Value
+	}
+	if req.Type == "novel" && seriesDepth != store.DefaultLibrarySeriesDepth {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Novel libraries only support seriesDepth = 1"})
 		return
 	}
 
@@ -150,6 +206,7 @@ func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	lib := &model.Library{
 		Name:          req.Name,
 		Type:          req.Type,
+		SeriesDepth:   seriesDepth,
 		RootPath:      rootPath,
 		RootPaths:     allPaths,
 		Enabled:       enabled,
@@ -184,20 +241,30 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 	}
 
 	var req struct {
-		Name          *string  `json:"name"`
-		Type          *string  `json:"type"`
-		RootPath      *string  `json:"rootPath"`
-		RootPaths     []string `json:"rootPaths"`
-		Enabled       *bool    `json:"enabled"`
-		SortOrder     *int     `json:"sortOrder"`
-		DefaultAccess *string  `json:"defaultAccess"`
-		ScanEnabled   *bool    `json:"scanEnabled"`
+		Name                   *string             `json:"name"`
+		Type                   *string             `json:"type"`
+		SeriesDepth            optionalSeriesDepth `json:"seriesDepth"`
+		ExpectedSourceRevision *string             `json:"expectedSourceRevision"`
+		RootPath               *string             `json:"rootPath"`
+		RootPaths              []string            `json:"rootPaths"`
+		Enabled                *bool               `json:"enabled"`
+		SortOrder              *int                `json:"sortOrder"`
+		DefaultAccess          *string             `json:"defaultAccess"`
+		ScanEnabled            *bool               `json:"scanEnabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
+
+	if req.SeriesDepth.Set && !req.SeriesDepth.Valid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": req.SeriesDepth.Err})
+		return
+	}
+
+	previousDepth := store.NormalizeSeriesDepth(existing.SeriesDepth)
+	previousType := existing.Type
 
 	if req.Name != nil {
 		existing.Name = *req.Name
@@ -208,6 +275,13 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 			return
 		}
 		existing.Type = *req.Type
+	}
+	if req.SeriesDepth.Set {
+		existing.SeriesDepth = req.SeriesDepth.Value
+	}
+	if existing.Type == "novel" && existing.SeriesDepth != store.DefaultLibrarySeriesDepth {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Novel libraries only support seriesDepth = 1"})
+		return
 	}
 	if req.RootPath != nil {
 		cleanedRoot := strings.TrimSpace(*req.RootPath)
@@ -268,6 +342,31 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 	}
 	if req.ScanEnabled != nil {
 		existing.ScanEnabled = *req.ScanEnabled
+	}
+
+	if existing.Type == "comic" && (existing.SeriesDepth != previousDepth || previousType != "comic") {
+		expectedRev := ""
+		if req.ExpectedSourceRevision != nil {
+			expectedRev = strings.TrimSpace(*req.ExpectedSourceRevision)
+		}
+		res, applyErr := service.ApplyLibrarySeriesDepthUpdate(existing, expectedRev, getUserID(c))
+		if applyErr != nil {
+			var conflictErr *store.SeriesLayoutConflictError
+			if errors.As(applyErr, &conflictErr) {
+				writeSeriesLayoutConflictResponse(c, conflictErr)
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to apply library series depth update"})
+			return
+		}
+		if req.RootPath != nil || req.RootPaths != nil {
+			service.InvalidateAllCaches()
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"library":  res.Library,
+			"snapshot": res.Snapshot,
+		})
+		return
 	}
 
 	if err := store.UpdateLibrary(existing); err != nil {
@@ -354,6 +453,7 @@ func (h *LibraryHandler) ListAccessibleLibraries(c *gin.Context) {
 		return
 	}
 
+	_ = service.EnsureComicSeriesFresh()
 	queryStarted := time.Now()
 	libraries, err := store.GetAccessibleLibrariesWithCount(uid)
 	if err != nil {

@@ -94,23 +94,42 @@ func RebuildComicSeriesForLibrary(libraryID string) error {
 }
 
 func rebuildComicSeriesForLibraryLocked(libraryID string) error {
+	lib, err := store.GetLibraryByID(libraryID)
+	if err != nil {
+		return err
+	}
+	seriesDepth := store.DefaultLibrarySeriesDepth
+	if lib != nil {
+		seriesDepth = store.NormalizeSeriesDepth(lib.SeriesDepth)
+	}
 	items, err := store.GetSeriesSourceItems(libraryID)
 	if err != nil {
 		return err
 	}
-	detected := DetectComicSeries(libraryID, items)
+	detected := DetectComicSeriesWithDepth(libraryID, seriesDepth, items)
 	return store.ReplaceDetectedSeries(libraryID, detected)
 }
 
-// DetectComicSeries turns flat readable items into the V1 hierarchy:
+// DetectComicSeries turns flat readable items into the default depth=1 hierarchy:
 // Series -> optional Section -> Item. Root-level and single-item directories
-// remain standalone; a series is only created when it can actually collapse
-// at least two shelf entries.
+// remain standalone; at depth 1 a series requires at least two members.
 func DetectComicSeries(libraryID string, items []store.SeriesSourceItem) []store.DetectedSeries {
+	return DetectComicSeriesWithDepth(libraryID, store.DefaultLibrarySeriesDepth, items)
+}
+
+// DetectComicSeriesWithDepth groups readable comic items using library-configured
+// seriesDepth d (1..8). Only items with at least d+1 path segments enter a work
+// at rootRelativePath = join(parts[:d], "/"). Shallow items stay standalone and
+// never fall back to depth-1 grouping. At depth >= 2, single-chapter works are kept.
+func DetectComicSeriesWithDepth(libraryID string, seriesDepth int, items []store.SeriesSourceItem) []store.DetectedSeries {
+	depth := store.NormalizeSeriesDepth(seriesDepth)
+	minMembers := store.MinEffectiveSeriesMembers(depth)
+
 	type candidateItem struct {
-		source  store.SeriesSourceItem
-		parts   []string
-		cleaned string
+		source    store.SeriesSourceItem
+		parts     []string
+		cleaned   string
+		innerPath string
 	}
 	groups := make(map[string][]candidateItem)
 	for _, item := range items {
@@ -119,12 +138,20 @@ func DetectComicSeries(libraryID string, items []store.SeriesSourceItem) []store
 			continue
 		}
 		parts := strings.Split(cleaned, "/")
-		if len(parts) < 2 {
-			// A file at the library root or a directory that is itself a single
-			// image-folder comic stays as a standalone shelf item.
+		if len(parts) < depth+1 {
+			// Paths shallower than seriesDepth + 1 (including root files, shallow
+			// files inside category folders, or standalone image-folder comics at
+			// depth d) remain standalone shelf items without falling back to parts[0].
 			continue
 		}
-		groups[parts[0]] = append(groups[parts[0]], candidateItem{source: item, parts: parts, cleaned: cleaned})
+		root := strings.Join(parts[:depth], "/")
+		innerPath := strings.Join(parts[depth:], "/")
+		groups[root] = append(groups[root], candidateItem{
+			source:    item,
+			parts:     parts,
+			cleaned:   cleaned,
+			innerPath: innerPath,
+		})
 	}
 
 	roots := make([]string, 0, len(groups))
@@ -136,18 +163,20 @@ func DetectComicSeries(libraryID string, items []store.SeriesSourceItem) []store
 	result := make([]store.DetectedSeries, 0, len(roots))
 	for _, root := range roots {
 		members := groups[root]
-		if len(members) < 2 {
+		if len(members) < minMembers {
 			continue
 		}
 
-		sort.SliceStable(members, func(i, j int) bool { return naturalLess(members[i].cleaned, members[j].cleaned) })
+		sort.SliceStable(members, func(i, j int) bool { return naturalLess(members[i].innerPath, members[j].innerPath) })
+		rootParts := strings.Split(root, "/")
+		seriesTitle := rootParts[len(rootParts)-1]
 		seriesID := stableSeriesID("series", libraryID, root)
 		series := store.DetectedSeries{
 			ID:               seriesID,
 			LibraryID:        libraryID,
 			RootRelativePath: root,
-			Title:            root,
-			SortTitle:        store.BuildTitleSortKey(root),
+			Title:            seriesTitle,
+			SortTitle:        store.BuildTitleSortKey(seriesTitle),
 			CoverComicID:     members[0].source.ID,
 		}
 
@@ -155,10 +184,11 @@ func DetectComicSeries(libraryID string, items []store.SeriesSourceItem) []store
 		sectionOrder := make([]string, 0)
 		for _, member := range members {
 			sectionID := ""
-			if len(member.parts) >= 3 {
-				sectionTitle, kind, number, ok := classifySection(member.parts[1])
+			if len(member.parts) >= depth+2 {
+				sectionSeg := member.parts[depth]
+				sectionTitle, kind, number, ok := classifySection(sectionSeg)
 				if ok {
-					relativePath := path.Join(root, member.parts[1])
+					relativePath := path.Join(root, sectionSeg)
 					section, exists := sectionByPath[relativePath]
 					if !exists {
 						section = store.DetectedSeriesSection{
@@ -178,7 +208,7 @@ func DetectComicSeries(libraryID string, items []store.SeriesSourceItem) []store
 			series.Items = append(series.Items, store.DetectedSeriesItem{
 				ComicID:      member.source.ID,
 				SectionID:    sectionID,
-				DisplayLabel: itemDisplayLabel(root, member.parts, member.source),
+				DisplayLabel: itemDisplayLabel(seriesTitle, member.parts[depth:], member.source),
 			})
 		}
 
@@ -310,19 +340,32 @@ func parseLooseNumber(value string) *int {
 	return &total
 }
 
-func itemDisplayLabel(root string, parts []string, item store.SeriesSourceItem) string {
-	name := item.Title
-	if len(parts) > 0 {
-		name = parts[len(parts)-1]
+func itemDisplayLabel(seriesTitle string, innerParts []string, item store.SeriesSourceItem) string {
+	isDir := strings.HasSuffix(strings.TrimSpace(strings.ReplaceAll(item.RelativePath, "\\", "/")), "/")
+	rawLeaf := ""
+	if len(innerParts) > 0 {
+		rawLeaf = innerParts[len(innerParts)-1]
+		if !isDir {
+			rawLeaf = strings.TrimSuffix(rawLeaf, path.Ext(rawLeaf))
+		}
+		rawLeaf = strings.TrimSpace(rawLeaf)
 	}
-	name = strings.TrimSuffix(name, path.Ext(name))
-	name = strings.TrimSpace(name)
-	lowerRoot := strings.ToLower(root)
-	if strings.HasPrefix(strings.ToLower(name), lowerRoot) {
-		name = cleanSeriesItemSuffix(name[len(root):])
+	name := rawLeaf
+	if name == "" {
+		name = strings.TrimSpace(item.Title)
+	}
+	nameRunes := []rune(name)
+	titleRunes := []rune(seriesTitle)
+	if len(titleRunes) > 0 && len(nameRunes) >= len(titleRunes) &&
+		strings.EqualFold(string(nameRunes[:len(titleRunes)]), seriesTitle) {
+		name = cleanSeriesItemSuffix(string(nameRunes[len(titleRunes):]))
 	}
 	if name == "" {
-		name = item.Title
+		if rawLeaf != "" {
+			name = rawLeaf
+		} else {
+			name = item.Title
+		}
 	}
 	return name
 }
