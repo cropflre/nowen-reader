@@ -60,6 +60,7 @@ type ComicListOptions struct {
 	UserID                string   // 当前用户ID — 用于按用户取 lastReadAt/lastReadPage/isFavorite
 	LibraryIDs            []string // 书库过滤 — 只返回这些书库下的漫画（空=不过滤）
 	FilterLibraryIDs      bool     // 如果启用，即使 LibraryIDs 为空也强制过滤（此时返回空）
+	DirectoryPath         string   // 单书库目录分类前缀过滤（按路径段边界匹配）
 	Uncategorized         bool     // 筛选没有分类关联的作品
 	Untagged              bool     // 筛选没有标签关联的作品
 	SeriesView            bool     // 是否开启目录折叠混合视图
@@ -274,6 +275,17 @@ func comicListFilter(opts ComicListOptions) (joinClause, whereClause string, joi
 			args = append(args, id)
 		}
 		conditions = append(conditions, fmt.Sprintf(`c."libraryId" IN (%s)`, strings.Join(placeholders, ",")))
+	}
+
+	if opts.DirectoryPath != "" {
+		cleanDir, err := ValidateDirectoryRelativePath(opts.DirectoryPath)
+		if err != nil {
+			conditions = append(conditions, "1=0")
+		} else if cleanDir != "" {
+			lower, upper := DirectoryPrefixRange(cleanDir)
+			conditions = append(conditions, `c."libraryId" != '' AND c."relativePath" != '' AND c."relativePath" > ? AND c."relativePath" < ?`)
+			args = append(args, lower, upper)
+		}
 	}
 
 	if len(opts.comicIDs) > 0 {
@@ -1224,10 +1236,11 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 			SELECT csi2."seriesId"
 			FROM "ComicSeriesItem" csi2
 			JOIN "ComicSeries" cs2 ON cs2."id" = csi2."seriesId"
+			JOIN "Library" l2 ON l2."id" = cs2."libraryId"
 			JOIN "Comic" c2 ON c2."id" = csi2."comicId" AND c2."libraryId" = cs2."libraryId"
 			WHERE ` + opdsPublicationFormatCondition("c2") + `
 			GROUP BY csi2."seriesId"
-			HAVING COUNT(DISTINCT c2."id") >= 2
+			HAVING COUNT(DISTINCT c2."id") >= ` + effectiveSeriesMinMembersSQL("l2") + `
 		) publishable_series ON publishable_series."seriesId" = csi."seriesId"
 		LEFT JOIN "ComicSeries" cs ON cs."id" = publishable_series."seriesId" AND cs."libraryId" = c."libraryId"
 		LEFT JOIN "ComicSeriesSection" css ON css."id" = csi."sectionId" AND css."seriesId" = cs."id"
@@ -1430,7 +1443,7 @@ func GetOPDSSeries(opts OPDSSeriesQueryOptions) ([]OPDSSeriesRow, int, error) {
 		JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
 		JOIN "Comic" c ON c."id" = si."comicId"
 		WHERE ` + strings.Join(conditions, " AND ")
-	groupHaving := ` GROUP BY s."id" HAVING COUNT(DISTINCT c."id") >= 2`
+	groupHaving := ` GROUP BY s."id" HAVING COUNT(DISTINCT c."id") >= ` + effectiveSeriesMinMembersSQL("l")
 
 	var total int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM (SELECT s."id" `+fromWhere+groupHaving+`)`, args...).Scan(&total); err != nil {

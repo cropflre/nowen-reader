@@ -21,7 +21,7 @@ import {
 } from "@/hooks/useComics";
 import { Comic } from "@/types/comic";
 import { useTranslation, useLocale } from "@/lib/i18n";
-import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpen, Brain, Loader2, Eye, EyeOff, Settings2 } from "lucide-react";
+import { CheckSquare, CheckCheck, LayoutGrid, List, Copy, Upload, Image, BookOpen, Brain, Loader2, Eye, EyeOff, Settings2, FolderTree, Folder, ChevronRight, ArrowLeft } from "lucide-react";
 import DuplicateDetector from "@/components/DuplicateDetector";
 import MergeGroupDialog from "@/components/MergeGroupDialog";
 import UploadDialog from "@/components/UploadDialog";
@@ -34,7 +34,17 @@ import { useToast } from "@/components/Toast";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { createGroup } from "@/api/groups";
 import { toggleComicFavorite, deleteComicById } from "@/api/comics";
-import { fetchLibraries, fetchAccessibleLibraries, type Library } from "@/api/libraries";
+import {
+  fetchLibraries,
+  fetchAccessibleLibraries,
+  fetchLibraryDirectories,
+  getCachedLibraryDirectories,
+  clearLibraryDirectoriesCache,
+  LibraryApiError,
+  type Library,
+  type LibraryDirectoryBreadcrumb,
+  type LibraryDirectoryListResponse,
+} from "@/api/libraries";
 import { useAuth } from "@/lib/auth-context";
 import { calculateStoredReadingProgress } from "@/lib/progress";
 import { seriesIdFromShelfId } from "@/lib/series-id";
@@ -53,6 +63,16 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 // Convert API comic to display comic
 function apiToComic(api: ApiComic): Comic {
+  const isSeriesItem = seriesIdFromShelfId(api.id) !== null;
+  const progress = isSeriesItem
+    ? api.readingStatus === "finished" || (api.pageCount > 0 && api.lastReadPage >= api.pageCount)
+      ? 100
+      : api.pageCount > 0
+        ? Math.min(100, Math.max(0, Math.round((api.lastReadPage / api.pageCount) * 100)))
+        : 0
+    : api.pageCount > 0
+      ? calculateStoredReadingProgress(api.lastReadPage, api.pageCount, api.lastReadAt, api.readingStatus)
+      : 0;
   return {
     id: api.id,
     title: api.title,
@@ -64,10 +84,7 @@ function apiToComic(api: ApiComic): Comic {
     pageCount: api.pageCount,
     fileSize: api.fileSize,
     addedAt: api.addedAt || undefined,
-    progress:
-      api.pageCount > 0
-        ? calculateStoredReadingProgress(api.lastReadPage, api.pageCount, api.lastReadAt, api.readingStatus)
-        : 0,
+    progress,
     lastRead: api.lastReadAt || undefined,
     lastReadAt: api.lastReadAt,
     isFavorite: api.isFavorite,
@@ -134,9 +151,27 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     }
     return "grid";
   });
-  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() =>
-    readStringArrayFromLocalStorage("home:selectedLibraryIds")
-  );
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const urlLib = new URLSearchParams(window.location.search).get("lib");
+      if (urlLib && urlLib.trim()) return [urlLib.trim()];
+    }
+    return readStringArrayFromLocalStorage("home:selectedLibraryIds");
+  });
+  const [directoryPath, setDirectoryPath] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("dir")) return params.get("dir") || "";
+      return sessionStorage.getItem("homeFilter:dir") || "";
+    }
+    return "";
+  });
+  const [directoryLibraryHint, setDirectoryLibraryHint] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("homeFilter:dirLibId") || "";
+    }
+    return "";
+  });
   const [uploading, setUploading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
@@ -144,6 +179,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
   // Accessible libraries for homepage tabs (all logged-in users)
   const [accessibleLibraries, setAccessibleLibraries] = useState<Library[]>([]);
+  const [accessibleLibrariesLoaded, setAccessibleLibrariesLoaded] = useState(false);
+  const [directoryRefreshTick, setDirectoryRefreshTick] = useState(0);
 
   const hasManageableLibrary = useMemo(() => {
     return isAdmin || (accessibleLibraries?.some(lib => lib.canManage) ?? false);
@@ -158,6 +195,10 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   }, [hasManageableLibrary]);
 
   useEffect(() => {
+    clearLibraryDirectoriesCache();
+  }, [user?.id]);
+
+  useEffect(() => {
     let disposed = false;
     let requestVersion = 0;
     const loadLibraries = () => {
@@ -166,6 +207,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
         .then((libs) => {
           if (disposed || version !== requestVersion) return;
           setAccessibleLibraries(libs);
+          setAccessibleLibrariesLoaded(true);
+          setDirectoryRefreshTick((n) => n + 1);
           const validIds = new Set(libs.map((l) => l.id));
           // 清理 selectedLibraryIds 中失效的 ID
           setSelectedLibraryIds((prev) => {
@@ -204,6 +247,9 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   const handleLibraryTabsChange = useCallback((ids: string[]) => {
     setSelectedLibraryIds(ids);
     localStorage.setItem("home:selectedLibraryIds", JSON.stringify(ids));
+    setDirectoryPath("");
+    sessionStorage.removeItem("homeFilter:dir");
+    sessionStorage.removeItem("homeFilter:dirLibId");
     setCurrentPage(1);
   }, []);
 
@@ -351,11 +397,11 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   // 删除动画状态
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
 
-  // Explicit page/search URLs take precedence over the saved list page.
+  // Explicit page/search/dir URLs take precedence over the saved list page.
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.has("page") || params.has("search")) {
+      if (params.has("page") || params.has("search") || params.has("dir")) {
         const page = Number(params.get("page") || 1);
         return Number.isInteger(page) && page > 0 ? page : 1;
       }
@@ -369,6 +415,164 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     return 1;
   });
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  // 单书库目录分类解析：显式选中单书库，或用户仅拥有 1 个可访问书库时自动启用目录分类视图
+  const activeSingleLibrary = useMemo(() => {
+    if (selectedLibraryIds.length === 1) {
+      return accessibleLibraries.find((lib) => lib.id === selectedLibraryIds[0]) ?? null;
+    }
+    if (selectedLibraryIds.length === 0 && accessibleLibraries.length === 1) {
+      return accessibleLibraries[0];
+    }
+    return null;
+  }, [accessibleLibraries, selectedLibraryIds]);
+
+  const activeDirectoryLibraryId = useMemo(() => {
+    if (selectedLibraryIds.length === 1) return selectedLibraryIds[0];
+    if (activeSingleLibrary) return activeSingleLibrary.id;
+    if (selectedLibraryIds.length === 0 && !accessibleLibrariesLoaded && directoryPath && directoryLibraryHint) {
+      return directoryLibraryHint;
+    }
+    return "";
+  }, [selectedLibraryIds, activeSingleLibrary, accessibleLibrariesLoaded, directoryPath, directoryLibraryHint]);
+
+  const supportsDirectoryNav = useMemo(() => {
+    if (!activeSingleLibrary) return false;
+    return activeSingleLibrary.type === "comic" && (activeSingleLibrary.seriesDepth ?? 1) > 1;
+  }, [activeSingleLibrary]);
+
+  const multiDepthComicLibraries = useMemo(
+    () => accessibleLibraries.filter((lib) => lib.type === "comic" && (lib.seriesDepth ?? 1) > 1),
+    [accessibleLibraries]
+  );
+
+  // 当可访问书库加载完成后，自动校验并裁剪失效或超出深度的 directoryPath
+  useEffect(() => {
+    if (!accessibleLibrariesLoaded || !directoryPath) return;
+    if (!activeSingleLibrary || activeSingleLibrary.type !== "comic" || (activeSingleLibrary.seriesDepth ?? 1) <= 1) {
+      setDirectoryPath("");
+      return;
+    }
+    const maxDirDepth = (activeSingleLibrary.seriesDepth ?? 1) - 1;
+    const segments = directoryPath.split("/").filter(Boolean);
+    if (segments.length > maxDirDepth) {
+      setDirectoryPath(segments.slice(0, maxDirDepth).join("/"));
+    }
+  }, [accessibleLibrariesLoaded, activeSingleLibrary, directoryPath]);
+
+  const effectiveDirectoryPath = activeDirectoryLibraryId ? directoryPath : "";
+  const effectiveLibraryIds = useMemo(() => {
+    if (effectiveDirectoryPath && activeDirectoryLibraryId) {
+      return [activeDirectoryLibraryId];
+    }
+    return selectedLibraryIds.length > 0 ? selectedLibraryIds : undefined;
+  }, [effectiveDirectoryPath, activeDirectoryLibraryId, selectedLibraryIds]);
+
+  const directoryQueryKey = JSON.stringify([user?.id, user?.role, activeDirectoryLibraryId, effectiveDirectoryPath]);
+  const [directoryPagination, setDirectoryPagination] = useState<{ key: string; page: number } | null>(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("homeFilter:directoryPagination") || "null");
+      return saved && typeof saved.key === "string" && Number.isInteger(saved.page) && saved.page > 0 ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  const directoryPage = directoryPagination?.key === directoryQueryKey ? directoryPagination.page : 1;
+  useEffect(() => {
+    if (directoryPagination) {
+      sessionStorage.setItem("homeFilter:directoryPagination", JSON.stringify(directoryPagination));
+    }
+  }, [directoryPagination]);
+
+  const [directoryListingResult, setDirectoryListing] = useState<LibraryDirectoryListResponse | null>(() => {
+    const initialLibId =
+      selectedLibraryIds.length === 1
+        ? selectedLibraryIds[0]
+        : directoryLibraryHint;
+    if (!initialLibId) return null;
+    return getCachedLibraryDirectories(initialLibId, { parent: directoryPath, page: directoryPage });
+  });
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryListingKey, setDirectoryListingKey] = useState(directoryQueryKey);
+  const directoryListing = directoryListingKey === directoryQueryKey
+    && directoryListingResult?.libraryId === activeDirectoryLibraryId
+    && directoryListingResult.parent === effectiveDirectoryPath
+    && directoryListingResult.page === directoryPage ? directoryListingResult : null;
+
+  const handleNavigateDirectory = useCallback(
+    (nextPath: string) => {
+      setDirectoryPath(nextPath);
+      if (nextPath && activeDirectoryLibraryId) {
+        setDirectoryLibraryHint(activeDirectoryLibraryId);
+        sessionStorage.setItem("homeFilter:dirLibId", activeDirectoryLibraryId);
+      } else if (!nextPath) {
+        sessionStorage.removeItem("homeFilter:dirLibId");
+      }
+      setCurrentPage(1);
+    },
+    [activeDirectoryLibraryId]
+  );
+
+  useEffect(() => {
+    setDirectoryListingKey(directoryQueryKey);
+    if (!supportsDirectoryNav || !activeSingleLibrary) {
+      if (accessibleLibrariesLoaded) {
+        setDirectoryListing(null);
+        setDirectoryLoading(false);
+      }
+      return;
+    }
+    const targetLibId = activeSingleLibrary.id;
+    const cached = getCachedLibraryDirectories(targetLibId, { parent: effectiveDirectoryPath, page: directoryPage });
+    if (cached) {
+      setDirectoryListing(cached);
+      setDirectoryLoading(false);
+    } else {
+      setDirectoryListing(null);
+      setDirectoryLoading(true);
+    }
+    const controller = new AbortController();
+    fetchLibraryDirectories(targetLibId, {
+      parent: effectiveDirectoryPath,
+      page: directoryPage,
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        const lastPage = Math.max(1, res.totalPages);
+        if (directoryPage > lastPage) {
+          setDirectoryPagination({ key: directoryQueryKey, page: lastPage });
+          return;
+        }
+        setDirectoryListing(res);
+        setDirectoryLoading(false);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        if (err instanceof LibraryApiError) {
+          if (err.status === 400 && effectiveDirectoryPath) {
+            setDirectoryPath("");
+          } else if (err.status === 401 || err.status === 403) {
+            setDirectoryListing(null);
+            setDirectoryPath("");
+          }
+        }
+        setDirectoryLoading(false);
+      });
+    return () => controller.abort();
+  }, [supportsDirectoryNav, activeSingleLibrary, accessibleLibrariesLoaded, effectiveDirectoryPath, directoryRefreshTick, user?.id, directoryPage, directoryQueryKey]);
+
+  const activeDirectoryBreadcrumbs = useMemo<LibraryDirectoryBreadcrumb[]>(() => {
+    if (!effectiveDirectoryPath) return [];
+    if (directoryListing && directoryListing.parent === effectiveDirectoryPath && directoryListing.breadcrumbs.length > 0) {
+      return directoryListing.breadcrumbs;
+    }
+    const parts = effectiveDirectoryPath.split("/").filter(Boolean);
+    return parts.map((name, idx) => ({
+      name,
+      path: parts.slice(0, idx + 1).join("/"),
+    }));
+  }, [effectiveDirectoryPath, directoryListing]);
 
   // viewMode 持久化
   useEffect(() => {
@@ -385,7 +589,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     return () => clearTimeout(timer);
   }, []);
 
-  // 分页变化时同步 URL 并持久化到 sessionStorage（确保从其他页面返回时可恢复）
+  // 分页与目录路径变化时同步 URL 并持久化到 sessionStorage（确保从阅读页/详情页返回时可恢复）
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (currentPage > 1) {
@@ -395,10 +599,23 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       params.delete("page");
       sessionStorage.removeItem(favoritesView ? "favoritesPage" : "homePage");
     }
+    if (selectedLibraryIds.length === 1) {
+      params.set("lib", selectedLibraryIds[0]);
+    } else {
+      params.delete("lib");
+    }
+    const activeDir = typeof effectiveDirectoryPath !== "undefined" ? effectiveDirectoryPath : "";
+    if (activeDir) {
+      params.set("dir", activeDir);
+      sessionStorage.setItem("homeFilter:dir", activeDir);
+    } else {
+      params.delete("dir");
+      sessionStorage.removeItem("homeFilter:dir");
+    }
     const query = params.toString();
     const newUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
     window.history.replaceState(window.history.state, "", newUrl);
-  }, [currentPage, favoritesView]);
+  }, [currentPage, favoritesView, effectiveDirectoryPath, selectedLibraryIds]);
 
   // Load pageSize from site settings
   useEffect(() => {
@@ -424,7 +641,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     readingStatus: readingStatusFilter || undefined,
     uncategorized: uncategorized || undefined,
     untagged: untagged || undefined,
-    libraryIds: selectedLibraryIds.length > 0 ? selectedLibraryIds : undefined,
+    libraryIds: effectiveLibraryIds,
+    directoryPath: effectiveDirectoryPath || undefined,
   });
 
   const favoriteRequests = useRef(new Set<string>());
@@ -455,14 +673,14 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
   // Reset to page 1 when filters change（使用受保护的 setter，在挂载保护期内不会重置页码）
   const filterKeyRef = useRef(
-    JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds])
+    JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, effectiveDirectoryPath])
   );
   useEffect(() => {
-    const newKey = JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds]);
+    const newKey = JSON.stringify([debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, effectiveDirectoryPath]);
     if (filterKeyRef.current === newKey) return; // 值没变，不重置
     filterKeyRef.current = newKey;
     safeSetCurrentPage(1);
-  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, safeSetCurrentPage]);
+  }, [debouncedSearch, selectedTags, favoritesOnly, selectedCategory, sortBy, sortOrder, readingStatusFilter, uncategorized, untagged, selectedLibraryIds, effectiveDirectoryPath, safeSetCurrentPage]);
 
   // Use real comics if API has been initialized (even if current page is empty due to filters)
   const useRealData = apiTotal > 0 || apiComics.length > 0 || initializedRef.current;
@@ -900,7 +1118,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     [sortedComics]
   );
   const hasActiveFilters = !!searchQuery || !!readingStatusFilter
-    || uncategorized || untagged || !!selectedCategory || selectedTags.length > 0 || selectedLibraryIds.length > 0;
+    || uncategorized || untagged || !!selectedCategory || selectedTags.length > 0 || selectedLibraryIds.length > 0 || !!effectiveDirectoryPath;
   const libraryIsEmpty = apiTotal === 0 && !favoritesOnly && !hasActiveFilters;
 
   return (
@@ -1196,6 +1414,9 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                       setSelectedCategory(null);
                       setSelectedTags([]);
                       setSelectedLibraryIds([]);
+                      setDirectoryPath("");
+                      sessionStorage.removeItem("homeFilter:dir");
+                      sessionStorage.removeItem("homeFilter:dirLibId");
                     }}
                     className="motion-button flex h-8 items-center gap-1.5 rounded-lg border border-border/40 px-3 text-xs font-medium text-muted transition-colors hover:text-foreground hover:border-border"
                   >
@@ -1204,6 +1425,177 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                 </div>
               )}
             </section>
+
+            {/* Directory Classification Navigation (derived from physical directory prefixes, separate from manual Categories) */}
+            {!favoritesOnly && !supportsDirectoryNav && selectedLibraryIds.length !== 1 && accessibleLibraries.length > 1 && multiDepthComicLibraries.length > 0 && (
+              <section
+                aria-label={t.directoryNav?.label || "目录分类"}
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-border/40 bg-card/40 px-3.5 py-2.5 text-xs"
+              >
+                <span className="inline-flex items-center gap-1.5 font-medium text-muted">
+                  <FolderTree className="h-3.5 w-3.5 text-accent" />
+                  {t.directoryNav?.label || "目录分类"}：
+                </span>
+                <span className="text-muted/80">
+                  {t.directoryNav?.selectSingleLibraryHint || "选择单个开启多层深度的漫画书库后可按目录分类浏览"}
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {multiDepthComicLibraries.map((lib) => (
+                    <button
+                      key={lib.id}
+                      type="button"
+                      onClick={() => handleLibraryTabsChange([lib.id])}
+                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-accent/30 bg-accent/10 px-2.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+                    >
+                      <Folder className="h-3 w-3" />
+                      <span>{lib.name}</span>
+                      <ChevronRight className="h-3 w-3 opacity-70" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {supportsDirectoryNav && ((directoryListing?.directories.length ?? 0) > 0 || !!effectiveDirectoryPath || directoryLoading || directoryPage > 1) && (
+              <section
+                aria-label={t.directoryNav?.label || "目录分类"}
+                className="rounded-xl dashboard-glass px-3.5 py-3 sm:px-4 sm:py-3.5 space-y-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <nav aria-label={t.directoryNav?.label || "目录分类"} className="flex flex-wrap items-center gap-1 text-xs min-w-0">
+                    <span className="mr-1 inline-flex items-center gap-1 rounded-md bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent">
+                      <FolderTree className="h-3 w-3" />
+                      {t.directoryNav?.label || "目录分类"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigateDirectory("")}
+                      className={`rounded-md px-2 py-1 font-medium transition-colors ${
+                        !effectiveDirectoryPath
+                          ? "bg-accent text-white shadow-sm"
+                          : "text-muted hover:bg-card hover:text-foreground"
+                      }`}
+                    >
+                      {t.directoryNav?.allWorks || "全部作品"}
+                    </button>
+                    {activeDirectoryBreadcrumbs.map((crumb, idx) => {
+                      const isCurrent = idx === activeDirectoryBreadcrumbs.length - 1;
+                      return (
+                        <span key={crumb.path} className="inline-flex items-center gap-1 min-w-0">
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted/60" />
+                          <button
+                            type="button"
+                            onClick={() => handleNavigateDirectory(crumb.path)}
+                            className={`max-w-[180px] truncate rounded-md px-2 py-1 font-medium transition-colors ${
+                              isCurrent
+                                ? "bg-accent/15 text-accent"
+                                : "text-muted hover:bg-card hover:text-foreground"
+                            }`}
+                            title={crumb.name}
+                          >
+                            {crumb.name}
+                          </button>
+                        </span>
+                      );
+                    })}
+                    {directoryLoading && (
+                      <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-muted" />
+                    )}
+                  </nav>
+
+                  {effectiveDirectoryPath && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parentCrumb =
+                            activeDirectoryBreadcrumbs.length > 1
+                              ? activeDirectoryBreadcrumbs[activeDirectoryBreadcrumbs.length - 2].path
+                              : "";
+                          handleNavigateDirectory(parentCrumb);
+                        }}
+                        className="inline-flex h-7 items-center gap-1 rounded-lg border border-border/50 bg-card px-2.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+                      >
+                        <ArrowLeft className="h-3 w-3" />
+                        <span>{t.directoryNav?.upOneLevel || "返回上级"}</span>
+                      </button>
+                      {activeDirectoryBreadcrumbs.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigateDirectory("")}
+                          className="inline-flex h-7 items-center rounded-lg border border-border/50 bg-card px-2.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+                        >
+                          {t.directoryNav?.allWorks || "全部作品"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {(directoryListing?.directories.length ?? 0) > 0 && (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                    {directoryListing!.directories.map((node) => (
+                      <button
+                        key={node.path}
+                        type="button"
+                        onClick={() => handleNavigateDirectory(node.path)}
+                        className="group flex items-center gap-2.5 rounded-xl border border-border/40 bg-card/70 p-2 text-left transition-all hover:border-accent/40 hover:bg-card"
+                      >
+                        <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded-lg bg-muted/20 flex items-center justify-center">
+                          {node.coverUrl ? (
+                            <img
+                              src={apiPath(node.coverUrl)}
+                              alt={node.name}
+                              loading="lazy"
+                              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                            />
+                          ) : (
+                            <Folder className="h-4 w-4 text-accent/80" />
+                          )}
+                          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/65 p-0.5 text-white">
+                            <Folder className="h-2.5 w-2.5" />
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-foreground group-hover:text-accent" title={node.name}>
+                            {node.name}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
+                            <span>
+                              {node.workCount} {t.directoryNav?.workCountUnit || "部作品"}
+                            </span>
+                            {node.hasChildren && (
+                              <ChevronRight className="h-3 w-3 shrink-0 opacity-70" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {((directoryListing?.totalPages ?? 1) > 1 || directoryPage > 1) && (
+                  <div className="flex items-center justify-end gap-3 text-xs text-muted">
+                    <button
+                      type="button"
+                      disabled={directoryLoading || directoryPage <= 1}
+                      onClick={() => setDirectoryPagination({ key: directoryQueryKey, page: directoryPage - 1 })}
+                      className="rounded-lg border border-border/50 px-3 py-1.5 enabled:hover:text-foreground disabled:opacity-40"
+                    >
+                      {t.home.prevPage}
+                    </button>
+                    <span aria-live="polite">{directoryPage} / {Math.max(directoryPage, directoryListing?.totalPages ?? 1)}</span>
+                    <button
+                      type="button"
+                      disabled={directoryLoading || !directoryListing || directoryPage >= directoryListing.totalPages}
+                      onClick={() => setDirectoryPagination({ key: directoryQueryKey, page: directoryPage + 1 })}
+                      className="rounded-lg border border-border/50 px-3 py-1.5 enabled:hover:text-foreground disabled:opacity-40"
+                    >
+                      {t.home.nextPage}
+                    </button>
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* AI Semantic Search Results (Phase 4) */}
             {aiSearchMode && debouncedSearch && (
@@ -1256,7 +1648,11 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
             <div className="mt-6 mb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-1">
               <div>
                 <h2 className="text-base font-semibold text-foreground text-balance">
-                  {favoritesOnly ? "我的收藏" : "全部作品"}
+                  {favoritesOnly
+                    ? "我的收藏"
+                    : activeDirectoryBreadcrumbs.length > 0
+                      ? `${t.directoryNav?.allWorks || "全部作品"} / ${activeDirectoryBreadcrumbs.map((c) => c.name).join(" / ")}`
+                      : t.directoryNav?.allWorks || "全部作品"}
                 </h2>
                 <p className="text-[11px] text-muted mt-0.5">
                   {`${apiTotal} 项作品`}
@@ -1572,13 +1968,21 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
           canDelete={!seriesIdFromShelfId(contextMenu.comic.id)}
           onClose={() => setContextMenu(null)}
           onRead={(id) => {
+            const seriesId = seriesIdFromShelfId(id);
+            if (seriesId) {
+              router.push(`/series/${seriesId}`);
+              return;
+            }
             const c = sortedComics.find((c) => c.id === id);
             if (c) {
               const isNovel = c.type === "novel" || (!c.type && c.filename && /\.(txt|epub|mobi|azw3|html|htm)$/i.test(c.filename));
               router.push(isNovel ? `/novel/${id}` : `/reader/${id}`);
             }
           }}
-          onDetail={(id) => router.push(`/comic/${id}`)}
+          onDetail={(id) => {
+            const seriesId = seriesIdFromShelfId(id);
+            router.push(seriesId ? `/series/${seriesId}` : `/comic/${id}`);
+          }}
           onToggleFavorite={handleToggleFavorite}
           onAddToGroup={(id) => {
             setContextAddToGroupIds([id]);

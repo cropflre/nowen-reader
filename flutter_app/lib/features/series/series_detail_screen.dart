@@ -7,6 +7,7 @@ import '../../data/api/comic_api.dart';
 import '../../data/api/tag_api.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/comic_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/work_tags.dart';
 import '../../widgets/work_categories.dart';
@@ -82,11 +83,27 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     final unsectioned = _items(detail['unsectioned']);
     if (unsectioned.isNotEmpty) {
       result.add(_SeriesSectionView(
-        title: result.isEmpty ? '单册' : '未分篇',
+        title: result.isEmpty ? '章节 / 卷' : '未分篇',
         items: unsectioned,
       ));
     }
     return result;
+  }
+
+  _SeriesItemView? _resolveContinueItem(List<_SeriesSectionView> sections) {
+    final all = sections.expand((s) => s.items).toList();
+    if (all.isEmpty) return null;
+    for (final item in all) {
+      if (item.comic.progress > 0 && !item.comic.isFinished) {
+        return item;
+      }
+    }
+    for (final item in all) {
+      if (!item.comic.isFinished) {
+        return item;
+      }
+    }
+    return all.first;
   }
 
   List<_SeriesItemView> _items(dynamic rawItems) {
@@ -108,6 +125,9 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(readingProgressRevisionProvider, (_, __) {
+      _load();
+    });
     final cs = Theme.of(context).colorScheme;
     final serverUrl = ref.watch(authProvider).serverUrl;
 
@@ -130,7 +150,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
               children: [
                 Icon(Icons.error_outline_rounded, size: 48, color: cs.error),
                 const SizedBox(height: 12),
-                const Text('系列加载失败'),
+                const Text('作品加载失败'),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -160,9 +180,10 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
         ? Map<String, dynamic>.from(summaryRaw)
         : <String, dynamic>{};
     final sections = _sections(detail);
+    final continueItem = _resolveContinueItem(sections);
     final title = summary['title']?.toString().trim().isNotEmpty == true
         ? summary['title'].toString()
-        : '系列';
+        : '作品';
 
     return Scaffold(
       body: RefreshIndicator(
@@ -183,12 +204,12 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
               ],
             ),
             SliverToBoxAdapter(
-              child: _overview(summary, serverUrl, cs),
+              child: _overview(summary, continueItem, serverUrl, cs),
             ),
             if (sections.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: Text('此系列暂无可显示单册')),
+                child: Center(child: Text('此作品暂无可阅读章节')),
               )
             else
               for (final section in sections)
@@ -202,11 +223,12 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
 
   Widget _overview(
     Map<String, dynamic> summary,
+    _SeriesItemView? continueItem,
     String serverUrl,
     ColorScheme cs,
   ) {
     final textTheme = Theme.of(context).textTheme;
-    final title = summary['title']?.toString() ?? '系列';
+    final title = summary['title']?.toString() ?? '作品';
     final author = summary['author']?.toString() ?? '';
     final publisher = summary['publisher']?.toString() ?? '';
     final description = summary['description']?.toString() ?? '';
@@ -278,13 +300,30 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        _chip('$itemCount 册', cs),
+                        _chip('$itemCount 项', cs),
                         if (sectionCount > 0) _chip('$sectionCount 篇', cs),
                         if (status.isNotEmpty) _chip(status, cs),
                         if (year != null) _chip('$year 年', cs),
                         if (language.isNotEmpty) _chip(language, cs),
                       ],
                     ),
+                    if (continueItem != null) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => context.push(
+                          continueItem.comic.readerRoute(),
+                        ),
+                        icon: const Icon(Icons.menu_book_rounded, size: 18),
+                        label: Text(
+                          continueItem.comic.progress > 0 &&
+                                  !continueItem.comic.isFinished
+                              ? '继续阅读 · ${continueItem.title}'
+                              : '开始阅读${itemCount == 1 ? '' : ' · ${continueItem.title}'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                     if (publisher.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       Text(
@@ -559,6 +598,12 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                tooltip: '直接阅读',
+                icon: Icon(Icons.menu_book_outlined,
+                    size: 19, color: cs.primary),
+                onPressed: () => context.push(comic.readerRoute()),
               ),
               Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
             ],

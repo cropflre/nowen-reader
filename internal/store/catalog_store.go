@@ -91,11 +91,12 @@ func getComicCatalogItems(opts CatalogItemQueryOptions, page, pageSize int, sort
 		       ) AS "coverComicId",
 		       COUNT(DISTINCT c_series."id") AS "itemCount"
 		FROM "ComicSeries" s
+		JOIN "Library" l ON l."id" = s."libraryId"
 		JOIN "ComicSeriesItem" csi_series ON csi_series."seriesId" = s."id"
 		JOIN "Comic" c_series ON c_series."id" = csi_series."comicId"
 		WHERE ` + strings.Join(seriesConditions, " AND ") + `
 		GROUP BY s."id"
-		HAVING COUNT(DISTINCT c_series."id") >= 2
+		HAVING COUNT(DISTINCT c_series."id") >= ` + effectiveSeriesMinMembersSQL("l") + `
 	), "CatalogItems" AS (`
 
 	catalogArgs := append([]interface{}{}, seriesArgs...)

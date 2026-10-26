@@ -22,6 +22,10 @@ func registerLibraryRoutes(api *gin.RouterGroup) {
 		libraryGroup.DELETE("/:id", library.DeleteLibrary)
 		libraryGroup.POST("/:id/scan", reconcileOwnershipAfterScan(), rebuildSeriesAfterScan(), library.ScanLibrary)
 		libraryGroup.POST("/:id/delete-preview", library.DeletePreview)
+		libraryGroup.POST("/:id/series-layout-preview", library.SeriesLayoutPreview)
+		libraryGroup.GET("/:id/series-layout-snapshots", library.ListSeriesLayoutSnapshots)
+		libraryGroup.GET("/:id/series-layout-snapshots/:snapshotId/export", library.ExportSeriesLayoutSnapshot)
+		libraryGroup.POST("/:id/series-layout-snapshots/:snapshotId/restore", library.RestoreSeriesLayoutSnapshot)
 	}
 
 	// Accessible libraries for the current user (any logged-in user)
@@ -29,6 +33,7 @@ func registerLibraryRoutes(api *gin.RouterGroup) {
 	accessibleGroup.Use(middleware.AuthRequired())
 	{
 		accessibleGroup.GET("/accessible", reconcileOwnershipBeforeList(), library.ListAccessibleLibraries)
+		accessibleGroup.GET("/:id/directories", library.ListLibraryDirectories)
 		accessibleGroup.POST("/:id/scan", reconcileOwnershipAfterScan(), rebuildSeriesAfterScan(), library.ScanLibrary)
 	}
 

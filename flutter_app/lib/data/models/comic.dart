@@ -57,12 +57,23 @@ class Comic {
       ? id.substring(seriesShelfIdPrefix.length)
       : null;
 
-  /// 系列卡片展示的单册数量。
+  /// 系列卡片展示的章节/卷数量。
   int get seriesItemCount =>
       comicCount > 0 ? comicCount : (pageCount > 0 ? pageCount : 0);
 
   /// 阅读进度百分比 (0-100)，与 Web 的持久化进度规则一致。
+  /// 目录作品虚拟项的 lastReadPage 表示已完成条目数，而非 0-based 页码，
+  /// 因此单章节作品未读完时不会误判为 100%。
   int get progress {
+    if (isSeriesShelfItem) {
+      if (isFinished) return 100;
+      final total = seriesItemCount;
+      if (total <= 0 || lastReadPage <= 0) return 0;
+      final percent = ((lastReadPage / total) * 100).round();
+      if (percent < 0) return 0;
+      if (percent > 100) return 100;
+      return percent;
+    }
     if (pageCount <= 0 || !hasReadingProgress) return 0;
     final percent = ((displayPage / pageCount) * 100).round();
     if (percent < 1) return 1;
@@ -86,11 +97,17 @@ class Comic {
       readingStatus == 'reading' ||
       readingStatus == 'finished';
 
-  bool get isFinished =>
-      readingStatus == 'finished' ||
-      (hasReadingProgress &&
-          pageCount > 0 &&
-          lastReadPage >= pageCount - 1);
+  bool get isFinished {
+    if (isSeriesShelfItem) {
+      final total = seriesItemCount;
+      return readingStatus == 'finished' ||
+          (total > 0 && lastReadPage >= total);
+    }
+    return readingStatus == 'finished' ||
+        (hasReadingProgress &&
+            pageCount > 0 &&
+            lastReadPage >= pageCount - 1);
+  }
 
   Comic({
     required this.id,
@@ -556,6 +573,151 @@ class ComicListResponse {
       total: _asInt(json['total']),
       page: _asInt(json['page'], 1),
       pageSize: _asInt(json['pageSize'], 20),
+      totalPages: _asInt(json['totalPages'], 1),
+    );
+  }
+}
+
+/// 当前用户可访问书库信息（兼容旧服务端缺失 seriesDepth / shelfCount 字段）
+class AccessibleLibrary {
+  final String id;
+  final String name;
+  final String type; // comic | novel | mixed
+  final int seriesDepth;
+  final int comicCount;
+  final int? shelfCount;
+  final bool canManage;
+
+  const AccessibleLibrary({
+    required this.id,
+    required this.name,
+    this.type = 'comic',
+    this.seriesDepth = 1,
+    this.comicCount = 0,
+    this.shelfCount,
+    this.canManage = false,
+  });
+
+  int get logicalCount => shelfCount ?? comicCount;
+
+  bool get supportsDirectoryCategories =>
+      type == 'comic' && seriesDepth > 1;
+
+  factory AccessibleLibrary.fromJson(Map<String, dynamic> json) {
+    final rawDepth = _asInt(json['seriesDepth'], 1);
+    final normalizedDepth = rawDepth < 1 ? 1 : (rawDepth > 8 ? 8 : rawDepth);
+    return AccessibleLibrary(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      type: json['type']?.toString() ?? 'comic',
+      seriesDepth: normalizedDepth,
+      comicCount: _asInt(json['comicCount']),
+      shelfCount: json['shelfCount'] == null ? null : _asInt(json['shelfCount']),
+      canManage: json['canManage'] == true,
+    );
+  }
+}
+
+/// 目录分类面包屑节点
+class LibraryDirectoryBreadcrumb {
+  final String name;
+  final String path;
+
+  const LibraryDirectoryBreadcrumb({
+    required this.name,
+    required this.path,
+  });
+
+  factory LibraryDirectoryBreadcrumb.fromJson(Map<String, dynamic> json) {
+    return LibraryDirectoryBreadcrumb(
+      name: json['name']?.toString() ?? '',
+      path: json['path']?.toString() ?? '',
+    );
+  }
+}
+
+/// 书库目录分类节点（由物理目录前缀派生，独立于人工 Category）
+class LibraryDirectoryNode {
+  final String name;
+  final String path;
+  final int depth;
+  final int workCount;
+  final bool hasChildren;
+  final String coverUrl;
+
+  const LibraryDirectoryNode({
+    required this.name,
+    required this.path,
+    required this.depth,
+    required this.workCount,
+    this.hasChildren = false,
+    this.coverUrl = '',
+  });
+
+  factory LibraryDirectoryNode.fromJson(Map<String, dynamic> json) {
+    return LibraryDirectoryNode(
+      name: json['name']?.toString() ?? '',
+      path: json['path']?.toString() ?? '',
+      depth: _asInt(json['depth'], 1),
+      workCount: _asInt(json['workCount']),
+      hasChildren: json['hasChildren'] == true,
+      coverUrl: json['coverUrl']?.toString() ?? '',
+    );
+  }
+}
+
+/// 书库目录分类查询响应
+class LibraryDirectoryListResponse {
+  final String libraryId;
+  final int seriesDepth;
+  final int maxDirectoryDepth;
+  final String parent;
+  final List<LibraryDirectoryBreadcrumb> breadcrumbs;
+  final List<LibraryDirectoryNode> directories;
+  final int total;
+  final int page;
+  final int pageSize;
+  final int totalPages;
+
+  const LibraryDirectoryListResponse({
+    required this.libraryId,
+    this.seriesDepth = 1,
+    this.maxDirectoryDepth = 0,
+    this.parent = '',
+    this.breadcrumbs = const [],
+    this.directories = const [],
+    this.total = 0,
+    this.page = 1,
+    this.pageSize = 50,
+    this.totalPages = 1,
+  });
+
+  factory LibraryDirectoryListResponse.fromJson(Map<String, dynamic> json) {
+    final rawDepth = _asInt(json['seriesDepth'], 1);
+    final normalizedDepth = rawDepth < 1 ? 1 : (rawDepth > 8 ? 8 : rawDepth);
+    return LibraryDirectoryListResponse(
+      libraryId: json['libraryId']?.toString() ?? '',
+      seriesDepth: normalizedDepth,
+      maxDirectoryDepth: _asInt(
+        json['maxDirectoryDepth'],
+        normalizedDepth > 1 ? normalizedDepth - 1 : 0,
+      ),
+      parent: json['parent']?.toString() ?? '',
+      breadcrumbs: (json['breadcrumbs'] as List?)
+              ?.whereType<Map>()
+              .map((item) => LibraryDirectoryBreadcrumb.fromJson(
+                  Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
+      directories: (json['directories'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  LibraryDirectoryNode.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
+      total: _asInt(json['total']),
+      page: _asInt(json['page'], 1),
+      pageSize: _asInt(json['pageSize'], 50),
       totalPages: _asInt(json['totalPages'], 1),
     );
   }

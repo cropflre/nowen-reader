@@ -8,7 +8,37 @@ import (
 	"time"
 )
 
-const SeriesShelfIDPrefix = "series-"
+const (
+	SeriesShelfIDPrefix       = "series-"
+	MinLibrarySeriesDepth     = 1
+	MaxLibrarySeriesDepth     = 8
+	DefaultLibrarySeriesDepth = 1
+)
+
+func NormalizeSeriesDepth(depth int) int {
+	if depth < MinLibrarySeriesDepth {
+		return DefaultLibrarySeriesDepth
+	}
+	if depth > MaxLibrarySeriesDepth {
+		return MaxLibrarySeriesDepth
+	}
+	return depth
+}
+
+func MinEffectiveSeriesMembers(seriesDepth int) int {
+	if NormalizeSeriesDepth(seriesDepth) > 1 {
+		return 1
+	}
+	return 2
+}
+
+func IsEffectiveSeriesCount(itemCount int, seriesDepth int) bool {
+	return itemCount >= MinEffectiveSeriesMembers(seriesDepth)
+}
+
+func effectiveSeriesMinMembersSQL(libAlias string) string {
+	return fmt.Sprintf(`CASE WHEN COALESCE(MAX(%s."seriesDepth"), 1) > 1 THEN 1 ELSE 2 END`, libAlias)
+}
 
 type SeriesSourceItem struct {
 	ID           string
@@ -48,6 +78,7 @@ type DetectedSeriesItem struct {
 type SeriesSummary struct {
 	ID                      string              `json:"id"`
 	LibraryID               string              `json:"libraryId"`
+	SeriesDepth             int                 `json:"seriesDepth"`
 	ContentType             string              `json:"contentType"`
 	RootRelativePath        string              `json:"rootRelativePath"`
 	Title                   string              `json:"title"`
@@ -149,152 +180,221 @@ func GetSeriesSourceItems(libraryID string) ([]SeriesSourceItem, error) {
 }
 
 func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	locked := make(map[string]bool)
-	rows, err := tx.Query(`SELECT "rootRelativePath" FROM "ComicSeries" WHERE "libraryId" = ? AND "manualLocked" = 1`, libraryID)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var root string
-		if rows.Scan(&root) == nil {
-			locked[root] = true
+	return runSerializedDBWrite("replace-detected-series", func() error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
 		}
-	}
-	rows.Close()
+		defer tx.Rollback()
 
-	// Clear only automatically detected memberships before rebuilding. This
-	// prevents the unique comicId membership index from blocking a safe
-	// directory rename while preserving all manually locked structures.
-	if _, err := tx.Exec(`
-		DELETE FROM "ComicSeriesItem"
-		WHERE "seriesId" IN (
-			SELECT "id" FROM "ComicSeries"
-			WHERE "libraryId" = ? AND "manualLocked" = 0
-		)
-	`, libraryID); err != nil {
-		return err
-	}
+		seriesDepth := DefaultLibrarySeriesDepth
+		_ = tx.QueryRow(`SELECT COALESCE("seriesDepth", 1) FROM "Library" WHERE "id" = ?`, libraryID).Scan(&seriesDepth)
+		minMembers := MinEffectiveSeriesMembers(seriesDepth)
 
-	seen := make(map[string]struct{}, len(detected))
-	for _, series := range detected {
-		seen[series.RootRelativePath] = struct{}{}
-		if locked[series.RootRelativePath] {
-			continue
+		locked := make(map[string]bool)
+		rows, err := tx.Query(`SELECT "rootRelativePath" FROM "ComicSeries" WHERE "libraryId" = ? AND "manualLocked" = 1`, libraryID)
+		if err != nil {
+			return err
 		}
-		sortTitle := BuildTitleSortKey(series.Title)
+		for rows.Next() {
+			var root string
+			if rows.Scan(&root) == nil {
+				locked[root] = true
+			}
+		}
+		rows.Close()
+
+		lockedComicIDs := make(map[string]bool)
+		lockedItemRows, err := tx.Query(`
+			SELECT si."comicId"
+			FROM "ComicSeriesItem" si
+			JOIN "ComicSeries" s ON s."id" = si."seriesId"
+			WHERE s."libraryId" = ? AND s."manualLocked" = 1
+		`, libraryID)
+		if err != nil {
+			return err
+		}
+		for lockedItemRows.Next() {
+			var comicID string
+			if lockedItemRows.Scan(&comicID) == nil {
+				lockedComicIDs[comicID] = true
+			}
+		}
+		lockedItemRows.Close()
+
+		// Clear only automatically detected memberships before rebuilding. This
+		// prevents the unique comicId membership index from blocking a safe
+		// directory rename while preserving all manually locked structures.
 		if _, err := tx.Exec(`
-			INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "detectionSource", "manualLocked", "createdAt", "updatedAt")
-			VALUES (?, ?, ?, ?, ?, ?, 'directory', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-			ON CONFLICT("libraryId", "rootRelativePath") DO UPDATE SET
-				"title" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."title" ELSE excluded."title" END,
-				"sortTitle" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."sortTitle" ELSE excluded."sortTitle" END,
-				"coverComicId" = CASE WHEN "ComicSeries"."coverComicId" = '' THEN excluded."coverComicId" ELSE "ComicSeries"."coverComicId" END,
-				"updatedAt" = CURRENT_TIMESTAMP
-		`, series.ID, series.LibraryID, series.RootRelativePath, series.Title, sortTitle, series.CoverComicID); err != nil {
+			DELETE FROM "ComicSeriesItem"
+			WHERE "seriesId" IN (
+				SELECT "id" FROM "ComicSeries"
+				WHERE "libraryId" = ? AND "manualLocked" = 0
+			)
+		`, libraryID); err != nil {
 			return err
 		}
 
-		var persistedID string
-		if err := tx.QueryRow(`SELECT "id" FROM "ComicSeries" WHERE "libraryId" = ? AND "rootRelativePath" = ?`, series.LibraryID, series.RootRelativePath).Scan(&persistedID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`DELETE FROM "ComicSeriesItem" WHERE "seriesId" = ?`, persistedID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`DELETE FROM "ComicSeriesSection" WHERE "seriesId" = ? AND "manualLocked" = 0`, persistedID); err != nil {
-			return err
-		}
+		seen := make(map[string]struct{}, len(detected))
+		for _, series := range detected {
+			if locked[series.RootRelativePath] {
+				seen[series.RootRelativePath] = struct{}{}
+				continue
+			}
 
-		sectionIDMap := make(map[string]string, len(series.Sections))
-		for _, section := range series.Sections {
-			sectionID := section.ID
-			sectionIDMap[section.ID] = sectionID
+			filteredItems := make([]DetectedSeriesItem, 0, len(series.Items))
+			for _, item := range series.Items {
+				if lockedComicIDs[item.ComicID] {
+					continue
+				}
+				item.SortIndex = len(filteredItems)
+				filteredItems = append(filteredItems, item)
+			}
+			if len(filteredItems) < minMembers {
+				continue
+			}
+			seen[series.RootRelativePath] = struct{}{}
+
+			coverComicID := series.CoverComicID
+			if coverComicID == "" || lockedComicIDs[coverComicID] {
+				coverComicID = filteredItems[0].ComicID
+			}
+
+			sortTitle := BuildTitleSortKey(series.Title)
 			if _, err := tx.Exec(`
-				INSERT INTO "ComicSeriesSection" ("id", "seriesId", "title", "relativePath", "kind", "seasonNumber", "sortIndex", "detectionSource", "manualLocked")
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-				ON CONFLICT("seriesId", "relativePath") DO UPDATE SET
-					"title" = excluded."title", "kind" = excluded."kind", "seasonNumber" = excluded."seasonNumber",
-					"sortIndex" = excluded."sortIndex", "detectionSource" = excluded."detectionSource"
-			`, sectionID, persistedID, section.Title, section.RelativePath, section.Kind, section.SeasonNumber, section.SortIndex, section.DetectionSource); err != nil {
+				INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "detectionSource", "manualLocked", "createdAt", "updatedAt")
+				VALUES (?, ?, ?, ?, ?, ?, 'directory', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				ON CONFLICT("libraryId", "rootRelativePath") DO UPDATE SET
+					"title" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."title" ELSE excluded."title" END,
+					"sortTitle" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."sortTitle" ELSE excluded."sortTitle" END,
+					"coverComicId" = CASE WHEN "ComicSeries"."coverComicId" = '' THEN excluded."coverComicId" ELSE "ComicSeries"."coverComicId" END,
+					"updatedAt" = CURRENT_TIMESTAMP
+			`, series.ID, series.LibraryID, series.RootRelativePath, series.Title, sortTitle, coverComicID); err != nil {
+				return err
+			}
+
+			var persistedID string
+			if err := tx.QueryRow(`SELECT "id" FROM "ComicSeries" WHERE "libraryId" = ? AND "rootRelativePath" = ?`, series.LibraryID, series.RootRelativePath).Scan(&persistedID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DELETE FROM "ComicSeriesItem" WHERE "seriesId" = ?`, persistedID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DELETE FROM "ComicSeriesSection" WHERE "seriesId" = ? AND "manualLocked" = 0`, persistedID); err != nil {
+				return err
+			}
+
+			type existingSection struct {
+				id           string
+				manualLocked bool
+			}
+			existingSectionsByRelPath := make(map[string]existingSection)
+			existingSecRows, err := tx.Query(`SELECT "id", "relativePath", "manualLocked" FROM "ComicSeriesSection" WHERE "seriesId" = ?`, persistedID)
+			if err != nil {
+				return err
+			}
+			for existingSecRows.Next() {
+				var secID, relPath string
+				var secLocked bool
+				if existingSecRows.Scan(&secID, &relPath, &secLocked) == nil {
+					existingSectionsByRelPath[relPath] = existingSection{id: secID, manualLocked: secLocked}
+				}
+			}
+			existingSecRows.Close()
+
+			sectionIDMap := make(map[string]string, len(series.Sections))
+			for _, section := range series.Sections {
+				if existingSec, ok := existingSectionsByRelPath[section.RelativePath]; ok && existingSec.manualLocked {
+					sectionIDMap[section.ID] = existingSec.id
+					continue
+				}
+				if _, err := tx.Exec(`
+					INSERT INTO "ComicSeriesSection" ("id", "seriesId", "title", "relativePath", "kind", "seasonNumber", "sortIndex", "detectionSource", "manualLocked")
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+					ON CONFLICT("seriesId", "relativePath") DO UPDATE SET
+						"title" = excluded."title", "kind" = excluded."kind", "seasonNumber" = excluded."seasonNumber",
+						"sortIndex" = excluded."sortIndex", "detectionSource" = excluded."detectionSource"
+				`, section.ID, persistedID, section.Title, section.RelativePath, section.Kind, section.SeasonNumber, section.SortIndex, section.DetectionSource); err != nil {
+					return err
+				}
+				var persistedSecID string
+				if err := tx.QueryRow(`SELECT "id" FROM "ComicSeriesSection" WHERE "seriesId" = ? AND "relativePath" = ?`, persistedID, section.RelativePath).Scan(&persistedSecID); err != nil {
+					return err
+				}
+				sectionIDMap[section.ID] = persistedSecID
+			}
+			for _, item := range filteredItems {
+				var sectionID interface{}
+				if item.SectionID != "" {
+					if mapped, ok := sectionIDMap[item.SectionID]; ok && mapped != "" {
+						sectionID = mapped
+					}
+				}
+				if _, err := tx.Exec(`
+					INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel")
+					VALUES (?, ?, ?, ?, ?)
+					ON CONFLICT("seriesId", "comicId") DO UPDATE SET
+						"sectionId" = excluded."sectionId", "sortIndex" = excluded."sortIndex", "displayLabel" = excluded."displayLabel"
+				`, persistedID, sectionID, item.ComicID, item.SortIndex, item.DisplayLabel); err != nil {
+					return err
+				}
+			}
+		}
+
+		staleRows, err := tx.Query(`
+			SELECT "id", "rootRelativePath"
+			FROM "ComicSeries"
+			WHERE "libraryId" = ? AND "manualLocked" = 0
+		`, libraryID)
+		if err != nil {
+			return err
+		}
+		var staleIDs []string
+		for staleRows.Next() {
+			var id, root string
+			if staleRows.Scan(&id, &root) == nil {
+				if _, ok := seen[root]; !ok {
+					staleIDs = append(staleIDs, id)
+				}
+			}
+		}
+		staleRows.Close()
+		for _, id := range staleIDs {
+			if _, err := tx.Exec(`DELETE FROM "ComicSeries" WHERE "id" = ?`, id); err != nil {
 				return err
 			}
 		}
-		for _, item := range series.Items {
-			var sectionID interface{}
-			if item.SectionID != "" {
-				mapped := sectionIDMap[item.SectionID]
-				sectionID = mapped
-			}
-			if _, err := tx.Exec(`
-				INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel")
-				VALUES (?, ?, ?, ?, ?)
-				ON CONFLICT("seriesId", "comicId") DO UPDATE SET
-					"sectionId" = excluded."sectionId", "sortIndex" = excluded."sortIndex", "displayLabel" = excluded."displayLabel"
-			`, persistedID, sectionID, item.ComicID, item.SortIndex, item.DisplayLabel); err != nil {
-				return err
-			}
-		}
-	}
 
-	staleRows, err := tx.Query(`
-		SELECT "id", "rootRelativePath"
-		FROM "ComicSeries"
-		WHERE "libraryId" = ? AND "manualLocked" = 0
-	`, libraryID)
-	if err != nil {
-		return err
-	}
-	var staleIDs []string
-	for staleRows.Next() {
-		var id, root string
-		if staleRows.Scan(&id, &root) == nil {
-			if _, ok := seen[root]; !ok {
-				staleIDs = append(staleIDs, id)
-			}
-		}
-	}
-	staleRows.Close()
-	for _, id := range staleIDs {
-		if _, err := tx.Exec(`DELETE FROM "ComicSeries" WHERE "id" = ?`, id); err != nil {
+		// Directory-created ComicGroup rows represented the old flat workaround.
+		// Remove only groups fully covered by the new series model and scoped to
+		// this library. User-created collections are never touched.
+		if _, err := tx.Exec(`
+			DELETE FROM "ComicGroup"
+			WHERE COALESCE("autoCreated", 0) = 1
+			  AND COALESCE("classifyMode", '') = 'directory'
+			  AND EXISTS (
+				SELECT 1 FROM "ComicGroupItem" gi
+				JOIN "Comic" c ON c."id" = gi."comicId"
+				WHERE gi."groupId" = "ComicGroup"."id" AND c."libraryId" = ?
+			  )
+			  AND NOT EXISTS (
+				SELECT 1 FROM "ComicGroupItem" gi
+				JOIN "Comic" c ON c."id" = gi."comicId"
+				WHERE gi."groupId" = "ComicGroup"."id" AND c."libraryId" <> ?
+			  )
+			  AND NOT EXISTS (
+				SELECT 1 FROM "ComicGroupItem" gi
+				JOIN "Comic" c ON c."id" = gi."comicId"
+				WHERE gi."groupId" = "ComicGroup"."id"
+				  AND c."libraryId" = ?
+				  AND NOT EXISTS (SELECT 1 FROM "ComicSeriesItem" si WHERE si."comicId" = gi."comicId")
+			  )
+		`, libraryID, libraryID, libraryID); err != nil {
 			return err
 		}
-	}
 
-	// Directory-created ComicGroup rows represented the old flat workaround.
-	// Remove only groups fully covered by the new series model and scoped to
-	// this library. User-created collections are never touched.
-	if _, err := tx.Exec(`
-		DELETE FROM "ComicGroup"
-		WHERE COALESCE("autoCreated", 0) = 1
-		  AND COALESCE("classifyMode", '') = 'directory'
-		  AND EXISTS (
-			SELECT 1 FROM "ComicGroupItem" gi
-			JOIN "Comic" c ON c."id" = gi."comicId"
-			WHERE gi."groupId" = "ComicGroup"."id" AND c."libraryId" = ?
-		  )
-		  AND NOT EXISTS (
-			SELECT 1 FROM "ComicGroupItem" gi
-			JOIN "Comic" c ON c."id" = gi."comicId"
-			WHERE gi."groupId" = "ComicGroup"."id" AND c."libraryId" <> ?
-		  )
-		  AND NOT EXISTS (
-			SELECT 1 FROM "ComicGroupItem" gi
-			JOIN "Comic" c ON c."id" = gi."comicId"
-			WHERE gi."groupId" = "ComicGroup"."id"
-			  AND c."libraryId" = ?
-			  AND NOT EXISTS (SELECT 1 FROM "ComicSeriesItem" si WHERE si."comicId" = gi."comicId")
-		  )
-	`, libraryID, libraryID, libraryID); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+		return tx.Commit()
+	})
 }
 
 func seriesSummaryByID(id, userID string) (*SeriesSummary, error) {
@@ -344,7 +444,7 @@ func seriesSummariesByIDs(ids []string, userID string) (map[string]SeriesSummary
 			stateReadTime = `COALESCE(ucs."totalReadTime", 0)`
 		}
 		query := fmt.Sprintf(`
-		SELECT s."id", s."libraryId",
+		SELECT s."id", s."libraryId", COALESCE(MAX(l."seriesDepth"), 1),
 		       CASE
 		         WHEN MAX(l."type") = 'novel' THEN 'novel'
 		         WHEN MAX(l."type") = 'comic' THEN 'comic'
@@ -380,7 +480,7 @@ func seriesSummariesByIDs(ids []string, userID string) (map[string]SeriesSummary
 			var storedCoverURL string
 			var createdAt, updatedAt time.Time
 			if err := rows.Scan(
-				&summary.ID, &summary.LibraryID, &summary.ContentType, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
+				&summary.ID, &summary.LibraryID, &summary.SeriesDepth, &summary.ContentType, &summary.RootRelativePath, &summary.Title, &summary.SortTitle,
 				&summary.CoverComicID, &storedCoverURL, &summary.Author, &summary.Description, &summary.Year,
 				&summary.Publisher, &summary.Language, &summary.Genre, &summary.Status,
 				&summary.ExternalRating, &summary.ExternalRatingMax, &summary.ExternalRatingSource, &summary.ExternalRatingUpdatedAt,
@@ -391,6 +491,7 @@ func seriesSummariesByIDs(ids []string, userID string) (map[string]SeriesSummary
 				rows.Close()
 				return nil, err
 			}
+			summary.SeriesDepth = NormalizeSeriesDepth(summary.SeriesDepth)
 			summary.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
 			summary.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
 			if lastRead.Valid && lastRead.String != "" {
@@ -496,47 +597,40 @@ func CollapseComicListIntoSeries(items []ComicListItem, userID string) ([]ComicL
 		return items, nil
 	}
 
-	collapsed := make([]ComicListItem, 0, len(items)-len(memberToSeries)+len(seriesIDs))
-	for _, item := range items {
-		if _, grouped := memberToSeries[item.ID]; !grouped {
-			collapsed = append(collapsed, item)
+	seriesIDList := make([]string, 0, len(seriesIDs))
+	for seriesID := range seriesIDs {
+		seriesIDList = append(seriesIDList, seriesID)
+	}
+	summaries, err := seriesSummariesByIDs(seriesIDList, userID)
+	if err != nil {
+		return nil, err
+	}
+	effectiveSeries := make(map[string]SeriesSummary, len(summaries))
+	for seriesID, summary := range summaries {
+		if summary.ContentType == "comic" && IsEffectiveSeriesCount(summary.ItemCount, summary.SeriesDepth) {
+			effectiveSeries[seriesID] = summary
 		}
 	}
-	for seriesID := range seriesIDs {
-		summary, err := seriesSummaryByID(seriesID, userID)
-		if err != nil {
-			return nil, err
+	if len(effectiveSeries) == 0 {
+		return items, nil
+	}
+
+	collapsed := make([]ComicListItem, 0, len(items))
+	for _, item := range items {
+		seriesID, grouped := memberToSeries[item.ID]
+		if grouped {
+			if summary, ok := effectiveSeries[seriesID]; ok && item.ComicType != "novel" && (item.LibraryID == "" || item.LibraryID == summary.LibraryID) {
+				continue
+			}
 		}
-		if summary == nil || summary.ItemCount < 2 {
+		collapsed = append(collapsed, item)
+	}
+	for _, seriesID := range seriesIDList {
+		summary, ok := effectiveSeries[seriesID]
+		if !ok {
 			continue
 		}
-		tags := []ComicTagInfo{{Name: fmt.Sprintf("%d 项", summary.ItemCount), Color: ""}}
-		if summary.SectionCount > 0 {
-			tags = append(tags, ComicTagInfo{Name: fmt.Sprintf("%d 季/篇", summary.SectionCount), Color: ""})
-		}
-		for _, tag := range summary.Tags {
-			tags = append(tags, ComicTagInfo{Name: tag.Name, Color: tag.Color})
-		}
-		collapsed = append(collapsed, ComicListItem{
-			ID:            SeriesShelfIDPrefix + summary.ID,
-			Filename:      "__series__.cbz",
-			Title:         summary.Title,
-			TitleSortKey:  BuildTitleSortKey(summary.Title),
-			PageCount:     summary.ItemCount,
-			FileSize:      summary.FileSize,
-			AddedAt:       summary.CreatedAt,
-			UpdatedAt:     summary.UpdatedAt,
-			LastReadPage:  summary.CompletedItemCount,
-			LastReadAt:    summary.LastReadAt,
-			IsFavorite:    summary.IsFavorite,
-			TotalReadTime: summary.TotalReadTime,
-			CoverURL:      summary.CoverURL,
-			ComicType:     "comic",
-			LibraryID:     summary.LibraryID,
-			ComicCount:    summary.ItemCount,
-			Tags:          tags,
-			Categories:    summary.Categories,
-		})
+		collapsed = append(collapsed, seriesShelfItem(summary))
 	}
 	return collapsed, nil
 }
@@ -846,7 +940,7 @@ func ListSeriesSummaries(libraryIDs []string, userID, search string) ([]SeriesSu
 	}
 	result := make([]SeriesSummary, 0, len(ids))
 	for _, id := range ids {
-		if summary, ok := summaries[id]; ok && summary.ItemCount >= 2 {
+		if summary, ok := summaries[id]; ok && IsEffectiveSeriesCount(summary.ItemCount, summary.SeriesDepth) {
 			result = append(result, summary)
 		}
 	}

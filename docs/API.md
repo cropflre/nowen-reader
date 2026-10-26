@@ -1,4 +1,4 @@
-﻿# API 文档
+# API 文档
 
 NowenReader 提供完整的 RESTful API，所有功能均可通过 API 调用。
 
@@ -153,6 +153,7 @@ Authorization: Bearer <token>
 | `contentType` | string | 否 | `comic` / `novel` |
 | `readingStatus` | string | 否 | `want` / `reading` / `finished` / `shelved` |
 | `libraryIds` | string | 否 | 逗号分隔的书库 ID。管理员按传入书库过滤；普通用户会与自身可访问书库取交集，不会越权 |
+| `directoryPath` | string | 否 | 书库内相对分类目录路径（如 `韩漫` 或 `韩漫/连载`），按目录段边界严格匹配该目录及其子目录下的作品与浅层文件。非空时 `libraryIds` 必须且只能指定单个可访问的启用书库；路径越界/包含 `..`/反斜杠或未指定单书库返回 `400`，无书库权限返回 `403` |
 | `excludeGrouped` | string | 否 | `true` 时排除已加入分组的作品 |
 | `uncategorized` | string | 否 | `true` 时仅返回无分类作品 |
 | `untagged` | string | 否 | `true` 时仅返回无标签作品 |
@@ -164,8 +165,9 @@ Authorization: Bearer <token>
 - 普通用户即使不传 `libraryIds`，也只返回自己可访问书库中的作品。
 - 普通用户传入无权限书库 ID 时会被过滤掉；交集为空时返回空列表。
 - 没有任何书库访问权限的普通用户返回空列表，不会退化成全库查询。
+- `directoryPath` 按精确目录段边界匹配（例如 `directoryPath=韩漫` 只匹配 `韩漫/...`，不会误匹配同级目录 `韩漫备份/...` 或根目录图片文件夹漫画 `韩漫/`，且 `%`、`_` 按字面字符处理）。
 - `sortBy=title` 时会按服务端维护的 `titleSortKey` 排序，效果上 `第2卷` 在 `第10卷` 前，常见中文标题按拼音顺序排列。
-- `seriesView=true` 专供统一书架展示：服务端先执行当前列表的权限和筛选条件，再把命中的目录作品成员折叠为一个虚拟条目。虚拟条目的 ID 为 `series-<seriesId>`，不是真实漫画 ID；`comicCount` 表示目录作品包含的阅读单元数。客户端应从该条目进入 `/api/series/:id`，不要把虚拟 ID 传给漫画详情、阅读或下载接口。
+- `seriesView=true` 专供统一书架展示：服务端先执行当前列表的权限和筛选条件，再把命中的目录作品成员折叠为一个虚拟条目。虚拟条目的 ID 为 `series-<seriesId>`，不是真实漫画 ID；`comicCount` 表示目录作品包含的阅读单元数（当书库配置 `seriesDepth >= 2` 时，单话作品目录同样折叠为 `comicCount=1` 的 `series-<seriesId>` 作品卡片，而层级不足 `seriesDepth` 的浅层文件保持独立漫画卡片）。客户端应从该条目进入 `/api/series/:id`，不要把虚拟 ID 传给漫画详情、阅读或下载接口。
 - 当 `seriesView=true&sortBy=title` 时，标记为书架系列的合集会作为一个连续排序块：合集名称决定该块在全局标题顺序中的位置，合集成员按 `shelfSortMode` 排列。`sortOrder=desc` 只反转排序块之间的顺序，不反转系列内部顺序。
 - 折叠在分页之前完成，响应中的 `total`、`pageSize` 和 `totalPages` 均按折叠后的逻辑作品计算。需要明确区分散本和目录作品的选择器应优先使用 `/api/catalog/items`，避免解析虚拟 ID。
 
@@ -178,8 +180,7 @@ Authorization: Bearer <token>
 
 该接口用于合集创建等“选择作品”场景，在数据库中先生成逻辑作品，再执行计数、排序和分页：
 
-- 至少包含两个有效漫画阅读单元的目录作品返回一条 `kind=series` 记录，成员不会重复作为散本返回。
-- 单成员目录关系退回普通 `kind=comic` 记录，不会导致作品消失。
+- 默认 `seriesDepth=1` 的书库中，至少包含两个有效漫画阅读单元的目录作品返回一条 `kind=series` 记录，单成员目录退回普通 `kind=comic` 记录；配置 `seriesDepth >= 2` 的漫画书库中，达到作品层级的单话目录作品同样返回 `kind=series`（`itemCount=1`），浅层文件返回 `kind=comic`，成员均不会重复作为散本返回。
 - 小说始终逐本返回 `kind=comic`，不接入目录作品。
 - 搜索目录作品标题或任一成员标题/文件名时，返回对应目录作品。
 - 普通用户始终按当前 `canView` 权限过滤；传入的 `libraryIds` 会与可访问书库取交集，交集为空时返回空列表。
@@ -1087,15 +1088,20 @@ Content-Type: application/json
 
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
-| GET | `/api/admin/libraries` | 获取所有书库列表 |
-| POST | `/api/admin/libraries` | 创建书库 |
-| PUT | `/api/admin/libraries/:id` | 更新书库 |
+| GET | `/api/admin/libraries` | 获取所有书库列表（含物理文件数 `comicCount` 与逻辑作品数 `shelfCount`） |
+| POST | `/api/admin/libraries` | 创建书库（漫画书库可指定 `seriesDepth` 1..8） |
+| PUT | `/api/admin/libraries/:id` | 更新书库（变更漫画书库 `seriesDepth` 时自动拍照并原子应用） |
 | DELETE | `/api/admin/libraries/:id` | 删除书库 |
 | POST | `/api/admin/libraries/:id/scan` | 扫描指定书库 |
 | GET | `/api/admin/libraries/ownership-preview` | 预览目录归属与重复记录 |
 | POST | `/api/admin/libraries/ownership-reconcile` | 合并重复记录并修复书库归属 |
 | POST | `/api/admin/libraries/:id/delete-preview` | 删除书库预览（不删除源文件） |
+| POST | `/api/admin/libraries/:id/series-layout-preview` | 预览漫画书库切换 `seriesDepth` 的结构与锁冲突影响 |
+| GET | `/api/admin/libraries/:id/series-layout-snapshots` | 获取漫画书库作品目录层级快照摘要列表 |
+| GET | `/api/admin/libraries/:id/series-layout-snapshots/:snapshotId/export` | 导出指定快照的完整版本化 JSON 备份 |
+| POST | `/api/admin/libraries/:id/series-layout-snapshots/:snapshotId/restore` | 原子恢复指定快照的书库深度与目录作品结构 |
 | GET | `/api/libraries/accessible` | 获取当前用户可访问书库 🔒 |
+| GET | `/api/libraries/:id/directories` | 获取可访问漫画书库的目录分类导航节点、作品计数与面包屑 🔒 |
 | POST | `/api/libraries/:id/scan` | 扫描当前用户可管理的书库 🔒（需要 canManage） |
 | GET | `/api/admin/users/:id/library-access` | 获取用户书库访问权限 |
 | PUT | `/api/admin/users/:id/library-access` | 设置用户书库访问权限 |
@@ -1108,13 +1114,14 @@ Content-Type: application/json
 
 ### 书库字段
 
-书库对象包含多目录和权限相关字段：
+书库对象包含多目录、作品层级深度和权限相关字段：
 
 ```json
 {
   "id": "string",
   "name": "string",
-  "type": "comic|novel|mixed",
+  "type": "comic|novel",
+  "seriesDepth": 1,
   "rootPath": "string",
   "rootPaths": ["string"],
   "enabled": true,
@@ -1124,16 +1131,125 @@ Content-Type: application/json
   "lastScanAt": null,
   "lastScanAdded": 0,
   "lastScanTotal": 0,
-  "comicCount": 0
+  "comicCount": 0,
+  "shelfCount": 0
 }
 ```
 
 - `rootPath` 是主目录；`rootPaths` 包含主目录和额外目录。
+- `seriesDepth`：漫画书库的作品目录层级，整数范围 `1..8`，缺省为 `1`（兼容旧结构：`书名/章节`）。`seriesDepth=2` 对应 `分类/书名/章节`，`seriesDepth=3` 对应 `一级分类/二级分类/书名/章节`，以此类推；小说书库固定为 `1`（传其他值返回 `400`）。
+- `comicCount` 为书库内物理文件/阅读单元总数；`shelfCount` 为按当前 `seriesDepth` 折叠后的书架作品与浅层文件总数。
 - 文件解析按漫画记录的 `libraryId + relativePath` 在该书库所有根目录内查找，不再按全局文件名唯一定位。
 - 书库内通过 `libraryId + relativePath` 去重，不同书库允许相同文件名。
 - 不同书库不能配置完全相同的物理根目录；创建或更新时返回 `409 Conflict` 和 `conflicts` 数组。
 - 父子根目录可以共存，文件归属于匹配路径最深的书库；父书库扫描时自动跳过子书库目录。
 - 禁用或关闭自动扫描的子书库仍保留目录所有权，防止内容被父书库以不同权限重新收录。
+
+### 作品目录层级预览、原子切换与快照恢复
+
+#### 1. 预览层级变更影响
+
+在保存漫画书库的新 `seriesDepth` 前，可先预览新旧作品数量、单话作品数量、浅层独立文件数、元数据归档数及人工结构锁冲突（返回有界样例，不会一次性下发全量作品列表）：
+
+```http
+POST /api/admin/libraries/:id/series-layout-preview
+Content-Type: application/json
+
+{
+  "seriesDepth": 2
+}
+```
+
+响应示例（`200 OK`）：
+
+```json
+{
+  "libraryId": "lib_xxx",
+  "libraryName": "主力漫画库",
+  "currentSeriesDepth": 1,
+  "targetSeriesDepth": 2,
+  "unchanged": false,
+  "sourceRevision": "12",
+  "totalComicFiles": 21441,
+  "oldSeriesCount": 6,
+  "newSeriesCount": 820,
+  "oldShelfCount": 6,
+  "newShelfCount": 861,
+  "singleChapterSeriesCount": 400,
+  "shallowStandaloneCount": 41,
+  "matchedSeriesCount": 0,
+  "restoredFromHistoryCount": 0,
+  "createdSeriesCount": 820,
+  "archivedSeriesCount": 6,
+  "archivedWithMetadataCount": 1,
+  "hasLockConflicts": false,
+  "lockConflicts": [],
+  "warnings": [],
+  "samples": {
+    "works": [
+      {
+        "title": "长篇作品_001",
+        "rootRelativePath": "韩漫/长篇作品_001",
+        "itemCount": 50,
+        "sectionCount": 2,
+        "singleChapter": false,
+        "matchKind": "created"
+      }
+    ],
+    "archivedSeries": [],
+    "shallowItems": []
+  }
+}
+```
+
+#### 2. 原子应用层级变更与冲突保护
+
+调用 `PUT /api/admin/libraries/:id` 修改漫画书库的 `seriesDepth` 时，可携带预览返回的 `expectedSourceRevision`：
+
+```http
+PUT /api/admin/libraries/:id
+Content-Type: application/json
+
+{
+  "seriesDepth": 2,
+  "expectedSourceRevision": "12"
+}
+```
+
+服务端在单事务内完成版本校验、人工结构锁检查、全量快照归档（含 `ComicSeries`、`ComicSeriesSection`、`ComicSeriesItem`、`ComicSeriesTag`、`ComicSeriesCategory`、`ComicGroupSeries`）、更新 `Library.seriesDepth` 以及写入新目录作品结构，绝不移动或删除磁盘源文件，也绝不修改用户阅读进度。成功返回 `200 OK`（附带本次生成的 `snapshot` 摘要）。每座书库保留最近 10 份快照（含 `depth_change` 与 `pre_restore`），创建快照时在同一事务内清理超额记录，事务失败时清理也会回滚。
+
+常见 `409 Conflict` 响应：
+
+- **源文件修订版本变化**（预览后扫描或上传改动了漫画文件）：
+  ```json
+  {
+    "error": "Library comic files changed since preview; please preview again before applying",
+    "code": "SOURCE_REVISION_CONFLICT",
+    "currentSourceRevision": "13"
+  }
+  ```
+- **人工结构锁冲突**（存在 `manualLocked=true` 的作品或分段将被拆分/合并；注：刮削产生的 `metadataLocked=true` 不会阻断切换，未一对一匹配时其元数据安全归档至快照）：
+  ```json
+  {
+    "error": "Cannot change seriesDepth while manualLocked series or sections would be structurally altered",
+    "code": "MANUAL_LOCK_CONFLICT",
+    "lockConflicts": [
+      {
+        "kind": "series",
+        "seriesId": "series_xxx",
+        "title": "锁定作品",
+        "rootRelativePath": "韩漫",
+        "reason": "作品「锁定作品」已开启人工结构锁，切换至深度 2 将拆分、合并或改写其目录与章节结构"
+      }
+    ]
+  }
+  ```
+
+#### 3. 快照列表、导出与原子恢复
+
+- **获取快照列表**：`GET /api/admin/libraries/:id/series-layout-snapshots?limit=20`，返回 `{ "libraryId": "...", "snapshots": [SeriesLayoutSnapshotSummary] }`（不含大体积 payload）。
+- **导出完整快照 JSON**：`GET /api/admin/libraries/:id/series-layout-snapshots/:snapshotId/export`，带 `Content-Disposition: attachment` 下载完整版本化 `{ "snapshot": ..., "payload": ... }`。
+- **从快照恢复**：`POST /api/admin/libraries/:id/series-layout-snapshots/:snapshotId/restore`。恢复前会校验书库 ID、快照版本、源文件摘要及切换后状态摘要：若快照创建后书库源文件或作品状态已被外部修改，返回 `409 Conflict`（`"code": "SNAPSHOT_STATE_CONFLICT"`），防止用过期快照静默覆盖最新数据（包括评分数值、评分制、来源及评分更新时间）。校验范围仅限目标书库，其他书库的文件变化不会阻止恢复，用户阅读进度也不参与冲突判断。旧版或缺失的状态摘要无法验证时同样返回冲突，可导出快照进行人工恢复；校验通过时先为当前状态生成一份 `pre_restore` 备份快照，再原子恢复旧深度、作品元数据、标签、分类及合集关联。
 
 ### 书库归属巡检与修复
 
@@ -1182,11 +1298,11 @@ Content-Type: application/json
 
 ### 当前用户可访问书库
 
-```
+```http
 GET /api/libraries/accessible
 ```
 
-响应中仅包含当前用户可查看的启用书库，并附带该用户是否可管理：
+响应中仅包含当前用户可查看的启用书库，并附带 `seriesDepth`、物理文件数 `comicCount`、逻辑作品数 `shelfCount` 及是否可管理 `canManage`：
 
 ```json
 {
@@ -1194,15 +1310,65 @@ GET /api/libraries/accessible
     {
       "id": "string",
       "name": "string",
-      "type": "comic|novel|mixed",
+      "type": "comic|novel",
+      "seriesDepth": 2,
       "enabled": true,
       "defaultAccess": "public|private",
-      "comicCount": 0,
+      "comicCount": 21441,
+      "shelfCount": 861,
       "canManage": true
     }
   ]
 }
 ```
+
+### 书库目录分类导航
+
+当漫画书库配置 `seriesDepth >= 2` 时，作品层级之上的 `1 .. (seriesDepth - 1)` 层目录自动作为只读“目录分类”导航暴露，不会改写用户手动维护的 `Category` 或 `ComicGroup`：
+
+```http
+GET /api/libraries/:id/directories?parent=韩漫&page=1&pageSize=100
+Authorization: Bearer <token>
+```
+
+| 查询参数 | 类型 | 必填 | 说明 |
+|:---|:---|:---:|:---|
+| `parent` | string | 否 | 父分类相对路径（如 `韩漫`）；空字符串或省略表示查询顶级分类目录 |
+| `page` | int | 否 | 页码，从 `1` 开始，默认 `1` |
+| `pageSize` | int | 否 | 每页分类数，默认 `100`，最大 `500` |
+
+响应示例（`200 OK`）：
+
+```json
+{
+  "libraryId": "lib_xxx",
+  "seriesDepth": 3,
+  "maxDirectoryDepth": 2,
+  "parent": "韩漫",
+  "breadcrumbs": [
+    { "name": "韩漫", "path": "韩漫" }
+  ],
+  "directories": [
+    {
+      "name": "连载",
+      "path": "韩漫/连载",
+      "depth": 2,
+      "workCount": 128,
+      "hasChildren": false,
+      "coverUrl": "/api/comics/comic_001/thumbnail"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 100,
+  "totalPages": 1
+}
+```
+
+- 需要当前用户对该书库拥有 `canView` 权限，且书库处于启用状态；否则统一返回 `403`（不泄露私有书库目录名）。
+- `maxDirectoryDepth = max(seriesDepth - 1, 0)`：当 `seriesDepth = 1` 或书库类型为 `novel` 时，`maxDirectoryDepth = 0` 且返回空的 `directories` 数组；请求的 `parent` 深度达到或超过 `maxDirectoryDepth` 时返回 `400`。
+- `parent` 禁止前导/尾随 `/`、`\`、空路径段、`.`、`..` 或盘符前缀，校验完全基于规范化相对路径，不触碰宿主机文件系统。
+- `workCount` 与 `GET /api/comics?seriesView=true&libraryIds=:id&directoryPath=<path>` 的 `total` 完全一致；`hasChildren=true` 表示继续请求 `?parent=<path>` 至少存在一个更深层级的子分类目录。
 
 ### 用户/权限组书库权限
 

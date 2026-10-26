@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -227,7 +228,7 @@ export default function SeriesDetailPage() {
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
         <Layers3 className="h-12 w-12 text-muted/40" />
         <p className="text-sm text-muted">{error || "作品不存在"}</p>
-        <button onClick={() => router.push("/books")} className="rounded-lg bg-accent px-4 py-2 text-sm text-white">返回书架</button>
+        <button onClick={() => router.back("/books")} className="rounded-lg bg-accent px-4 py-2 text-sm text-white">返回书架</button>
       </main>
     );
   }
@@ -239,7 +240,7 @@ export default function SeriesDetailPage() {
       <DetailAmbientBackdrop cover={series} />
       <header className="ambient-topbar sticky top-0 z-30 border-b border-border/50 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-          <button onClick={() => router.push("/books")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted hover:text-foreground">
+          <button onClick={() => router.back("/books")} className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0 flex-1">
@@ -289,7 +290,7 @@ export default function SeriesDetailPage() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                {continueItem && <a href={readerURL(continueItem)} className="flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-white shadow-lg shadow-accent/20"><BookOpen className="h-4 w-4" />{itemProgress(continueItem) > 0 ? "继续阅读" : "开始阅读"}</a>}
+                {continueItem && <Link href={readerURL(continueItem)} className="flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-white shadow-lg shadow-accent/20"><BookOpen className="h-4 w-4" />{itemProgress(continueItem) > 0 ? "继续阅读" : "开始阅读"}</Link>}
                 {series.canManage && <button onClick={() => setManageStructure((value) => !value)} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-foreground hover:bg-background"><Layers3 className="h-4 w-4" />调整结构</button>}
                 {isAdmin && <button onClick={() => setShowScraper(true)} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-foreground hover:bg-background"><Sparkles className="h-4 w-4 text-purple-400" />刮削元数据</button>}
                 {series.canManage && <button onClick={toggleLock} disabled={busy} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-muted hover:text-foreground">{series.manualLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}{series.manualLocked ? "恢复自动" : "锁定结构"}</button>}
@@ -363,23 +364,23 @@ export default function SeriesDetailPage() {
               if (viewMode === "grid") {
                 return (
                   <div key={item.comic.id} className="overflow-hidden rounded-2xl border border-border/50 bg-card/65">
-                    <a href={readerURL(item)} className="group block">
+                    <Link href={readerURL(item)} className="group block">
                       <div className="relative aspect-[5/7] overflow-hidden bg-background">
                         <img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                         <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-[10px] text-white">{finished ? "已读" : progress > 0 ? `${Math.round(progress)}%` : "未读"}</span>
                         <div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div>
                       </div>
                       <div className="p-3"><p className="line-clamp-2 text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p><p className="mt-1 text-[11px] text-muted">{item.comic.pageCount || 0} 页</p></div>
-                    </a>
+                    </Link>
                     {manageStructure && <div className="border-t border-border/50 p-2"><select value={draft.sectionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDraftItems((previous) => ({ ...previous, [item.comic.id]: { ...draft, sectionId: event.target.value } }))} className="h-8 w-full rounded-lg bg-background px-2 text-xs"><option value="">未分季</option>{detail.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select></div>}
                   </div>
                 );
               }
               return (
                 <div key={item.comic.id} className="flex items-center gap-3 rounded-2xl border border-border/50 bg-card/60 p-2.5 sm:p-3">
-                  <a href={readerURL(item)} className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-background"><img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></a>
-                  <a href={readerURL(item)} className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p><p className="mt-1 text-xs text-muted">{item.comic.pageCount || 0} 页 · {formatFileSize(item.comic.fileSize || 0)} · {finished ? "已读" : progress > 0 ? `阅读至 ${Math.round(progress)}%` : "未读"}</p></a>
-                  {manageStructure ? <div className="flex items-center gap-1"><select value={draft.sectionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDraftItems((previous) => ({ ...previous, [item.comic.id]: { ...draft, sectionId: event.target.value } }))} className="h-8 max-w-32 rounded-lg bg-background px-2 text-xs"><option value="">未分季</option>{detail.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><button onClick={() => moveDraft(item.comic.id, -1)} disabled={index === 0} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button><button onClick={() => moveDraft(item.comic.id, 1)} disabled={index === visibleItems.length - 1} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button></div> : <a href={readerURL(item)} className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">阅读</a>}
+                  <Link href={readerURL(item)} className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-background"><img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></Link>
+                  <Link href={readerURL(item)} className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p><p className="mt-1 text-xs text-muted">{item.comic.pageCount || 0} 页 · {formatFileSize(item.comic.fileSize || 0)} · {finished ? "已读" : progress > 0 ? `阅读至 ${Math.round(progress)}%` : "未读"}</p></Link>
+                  {manageStructure ? <div className="flex items-center gap-1"><select value={draft.sectionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDraftItems((previous) => ({ ...previous, [item.comic.id]: { ...draft, sectionId: event.target.value } }))} className="h-8 max-w-32 rounded-lg bg-background px-2 text-xs"><option value="">未分季</option>{detail.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><button onClick={() => moveDraft(item.comic.id, -1)} disabled={index === 0} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button><button onClick={() => moveDraft(item.comic.id, 1)} disabled={index === visibleItems.length - 1} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button></div> : <Link href={readerURL(item)} className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">阅读</Link>}
                 </div>
               );
             })}

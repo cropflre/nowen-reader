@@ -13,12 +13,24 @@ func shelfKeysSQL(opts ComicListOptions) (string, []interface{}) {
 	opts.MatchSeriesTags = true
 	opts.MatchSeriesCategories = true
 	join, where, joinArgs, args := comicListFilter(opts)
+	vsWhere := ""
+	var vsArgs []interface{}
+	if len(opts.LibraryIDs) > 0 && len(opts.LibraryIDs) <= seriesMembershipBatchSize {
+		placeholders := make([]string, len(opts.LibraryIDs))
+		for i, id := range opts.LibraryIDs {
+			placeholders[i] = "?"
+			vsArgs = append(vsArgs, id)
+		}
+		vsWhere = fmt.Sprintf(` AND s."libraryId" IN (%s)`, strings.Join(placeholders, ","))
+	}
 	return `WITH valid_series AS (
         SELECT s."id", s."libraryId"
         FROM "ComicSeries" s
+        JOIN "Library" l ON l."id" = s."libraryId"
         JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
         CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
-        GROUP BY s."id" HAVING COUNT(*) >= 2
+        WHERE c."type" = 'comic'` + vsWhere + `
+        GROUP BY s."id" HAVING COUNT(*) >= ` + effectiveSeriesMinMembersSQL("l") + `
     ), matched AS (
         SELECT c."id", vs."id" AS "seriesId"
         FROM "Comic" c ` + join + `
@@ -28,7 +40,7 @@ func shelfKeysSQL(opts ComicListOptions) (string, []interface{}) {
     ), shelf_keys AS (
         SELECT DISTINCT CASE WHEN "seriesId" IS NULL THEN "id" ELSE 'series-' || "seriesId" END AS "id", "seriesId"
         FROM matched
-    )`, append(joinArgs, args...)
+    )`, append(append(vsArgs, joinArgs...), args...)
 }
 
 // getAllComicsSeriesPage queries only lightweight sort keys before LIMIT/OFFSET.

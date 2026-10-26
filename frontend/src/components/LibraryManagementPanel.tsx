@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import {
@@ -23,6 +23,8 @@ import {
   Activity,
   ShieldAlert,
   Copy,
+  Layers,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -32,9 +34,13 @@ import {
   deleteLibrary,
   previewLibraryOwnership,
   reconcileLibraryOwnership,
+  previewLibrarySeriesLayout,
   scanLibrary,
+  LibraryApiError,
   type Library as LibraryType,
   type LibraryOwnershipPreview,
+  type SeriesLayoutPreview,
+  type SeriesLayoutLockConflict,
 } from "@/api/libraries";
 import { FolderBrowser } from "@/components/FolderBrowser";
 
@@ -148,6 +154,242 @@ function useTypePalette(type: string) {
   const key: LibraryTypeKey = type in typePalette ? (type as LibraryTypeKey) : "default";
   return typePalette[key];
 }
+
+const SERIES_DEPTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+
+function getSeriesDepthOptionLabel(depth: number): string {
+  if (depth === 1) return "1（默认：作品名 / 章节文件）";
+  if (depth === 2) return "2（单层分类：分类目录 / 作品名 / 章节文件）";
+  return `${depth}（${depth - 1} 层分类 / 作品名 / 章节文件）`;
+}
+
+function getSeriesDepthExample(depth: number): { path: string; hint: string } {
+  if (depth <= 1) {
+    return {
+      path: "<书库根目录> / 作品名 / 第01话.cbz",
+      hint: "同作品目录下至少 2 个可读文件（或章节目录）聚合为一部作品；单个文件保持独立条目。",
+    };
+  }
+  if (depth === 2) {
+    return {
+      path: "<书库根目录> / 分类目录（如：韩漫） / 作品名 / 第01话.cbz",
+      hint: "第 1 层作为“目录分类”导航，第 2 层作为作品目录（即使只有 1 话也生成作品）；浅于第 2 层的文件保持独立可读。",
+    };
+  }
+  const categories = Array.from({ length: depth - 1 }, (_, idx) => `分类${idx + 1}`).join(" / ");
+  return {
+    path: `<书库根目录> / ${categories} / 作品名 / 第01话.cbz`,
+    hint: `前 ${depth - 1} 层作为“目录分类”逐层导航，第 ${depth} 层作为作品目录（支持单章节作品）；路径层数不足的文件保持独立可读。`,
+  };
+}
+
+function SeriesDepthSelector({
+  libraryType,
+  value,
+  onChange,
+}: {
+  libraryType: "comic" | "novel" | "mixed";
+  value: number;
+  onChange: (depth: number) => void;
+}) {
+  if (libraryType !== "comic") {
+    return (
+      <div className="md:col-span-2 rounded-xl border border-border/60 bg-card/50 px-3.5 py-3 text-xs text-muted">
+        <span className="font-medium text-foreground">作品目录深度：</span>
+        小说与非漫画书库保持默认深度 1，作品目录深度与目录分类仅对漫画书库生效。
+      </div>
+    );
+  }
+  const example = getSeriesDepthExample(value);
+  return (
+    <div className="md:col-span-2 space-y-2">
+      <label className="block text-sm font-medium text-muted">
+        作品目录深度（seriesDepth）
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground shadow-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+      >
+        {SERIES_DEPTH_OPTIONS.map((d) => (
+          <option key={d} value={d}>
+            {getSeriesDepthOptionLabel(d)}
+          </option>
+        ))}
+      </select>
+      <div className="rounded-xl border border-border/60 bg-background/60 px-3.5 py-2.5 text-xs">
+        <div className="font-mono text-foreground">{example.path}</div>
+        <p className="mt-1 text-muted">{example.hint}</p>
+      </div>
+    </div>
+  );
+}
+
+function SeriesLayoutPreviewCard({
+  preview,
+  loading,
+  error,
+  overrideLockConflicts,
+  onRetry,
+}: {
+  preview: SeriesLayoutPreview | null;
+  loading: boolean;
+  error: string;
+  overrideLockConflicts?: SeriesLayoutLockConflict[];
+  onRetry: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-border/70 bg-background/60 p-4 text-sm text-muted">
+        <RefreshCw className="h-4 w-4 animate-spin text-accent" />
+        正在计算作品目录深度变更预览...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-600 dark:text-rose-400">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>预览加载失败：{error}</span>
+        </div>
+        <InlineButton variant="ghost" type="button" onClick={onRetry}>
+          <RefreshCw className="h-3.5 w-3.5" /> 重试预览
+        </InlineButton>
+      </div>
+    );
+  }
+  if (!preview) return null;
+
+  const lockConflicts =
+    overrideLockConflicts && overrideLockConflicts.length > 0
+      ? overrideLockConflicts
+      : preview.lockConflicts || [];
+
+  return (
+    <div className="mt-4 space-y-3 rounded-2xl border border-accent/25 bg-accent/5 p-4 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Layers className="h-4 w-4 text-accent" />
+          深度变更预览（{preview.currentSeriesDepth} → {preview.targetSeriesDepth}）
+        </div>
+        <span className="text-[11px] text-muted">
+          扫描文件 {preview.totalComicFiles} · 保存时自动创建可恢复快照
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="rounded-xl border border-border/50 bg-card/80 p-2.5">
+          <div className="text-muted">聚合作品数</div>
+          <div className="mt-0.5 text-sm font-semibold text-foreground">
+            {preview.oldSeriesCount} → {preview.newSeriesCount}
+          </div>
+          <div className="text-[11px] text-muted">
+            书架总项 {preview.oldShelfCount} → {preview.newShelfCount}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 p-2.5">
+          <div className="text-muted">单章节作品 / 浅层文件</div>
+          <div className="mt-0.5 text-sm font-semibold text-foreground">
+            {preview.singleChapterSeriesCount} / {preview.shallowStandaloneCount}
+          </div>
+          <div className="text-[11px] text-muted">浅层文件保持独立可读</div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 p-2.5">
+          <div className="text-muted">身份保留 / 历史恢复</div>
+          <div className="mt-0.5 text-sm font-semibold text-foreground">
+            {preview.matchedSeriesCount} / {preview.restoredFromHistoryCount}
+          </div>
+          <div className="text-[11px] text-muted">新建作品 {preview.createdSeriesCount}</div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 p-2.5">
+          <div className="text-muted">归档旧系列</div>
+          <div className="mt-0.5 text-sm font-semibold text-foreground">
+            {preview.archivedSeriesCount}
+          </div>
+          <div className="text-[11px] text-muted">
+            含人工信息 {preview.archivedWithMetadataCount} 项
+          </div>
+        </div>
+      </div>
+
+      {preview.warnings && preview.warnings.length > 0 && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300">
+          {preview.warnings.map((warning, idx) => (
+            <div key={idx} className="flex items-start gap-1.5">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{warning}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {lockConflicts.length > 0 && (
+        <div className="space-y-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5 text-rose-600 dark:text-rose-400">
+          <div className="flex items-center gap-1.5 font-semibold">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            存在 {lockConflicts.length} 个人工结构锁冲突，需先解锁对应作品/分季后再调整深度：
+          </div>
+          <ul className="space-y-1 pl-5 list-disc">
+            {lockConflicts.slice(0, 6).map((conflict, idx) => (
+              <li key={`${conflict.seriesId}-${conflict.sectionId || idx}`}>
+                <span className="font-medium">{conflict.title}</span>
+                {conflict.rootRelativePath ? `（${conflict.rootRelativePath}）` : ""}：{conflict.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(preview.samples.works.length > 0 ||
+        preview.samples.archivedSeries.length > 0 ||
+        preview.samples.shallowItems.length > 0) && (
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+          {preview.samples.works.length > 0 && (
+            <div className="rounded-xl border border-border/50 bg-card/70 p-2.5">
+              <div className="font-medium text-foreground">新作品示例</div>
+              <ul className="mt-1 space-y-1 text-muted">
+                {preview.samples.works.slice(0, 4).map((w) => (
+                  <li key={w.rootRelativePath} className="truncate" title={`${w.title} (${w.rootRelativePath})`}>
+                    <span className="text-foreground">{w.title}</span> · {w.itemCount} 项
+                    {w.sectionCount > 0 ? ` / ${w.sectionCount} 季` : ""}
+                    <span className="ml-1 opacity-75">({w.rootRelativePath})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {preview.samples.archivedSeries.length > 0 && (
+            <div className="rounded-xl border border-border/50 bg-card/70 p-2.5">
+              <div className="font-medium text-foreground">将归档的旧系列示例</div>
+              <ul className="mt-1 space-y-1 text-muted">
+                {preview.samples.archivedSeries.slice(0, 4).map((s) => (
+                  <li key={s.id} className="truncate" title={`${s.title} (${s.rootRelativePath})`}>
+                    <span className="text-foreground">{s.title}</span> · {s.itemCount} 项
+                    {s.hasManualMetadata ? " · 含元数据" : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {preview.samples.shallowItems.length > 0 && (
+            <div className="rounded-xl border border-border/50 bg-card/70 p-2.5">
+              <div className="font-medium text-foreground">保持独立的浅层条目示例</div>
+              <ul className="mt-1 space-y-1 text-muted">
+                {preview.samples.shallowItems.slice(0, 4).map((item) => (
+                  <li key={item.comicId} className="truncate" title={item.relativePath}>
+                    {item.relativePath}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LibraryManagementPanel() {
   const { user: currentUser } = useAuth();
   const [libraries, setLibraries] = useState<LibraryType[]>([]);
@@ -159,16 +401,24 @@ export function LibraryManagementPanel() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<"comic" | "novel" | "mixed">("comic");
+  const [newSeriesDepth, setNewSeriesDepth] = useState<number>(1);
   const [newRootPaths, setNewRootPaths] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<"comic" | "novel" | "mixed">("comic");
+  const [editSeriesDepth, setEditSeriesDepth] = useState<number>(1);
   const [editRootPaths, setEditRootPaths] = useState<string[]>([]);
   const [editScanEnabled, setEditScanEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [scanningId, setScanningId] = useState<string | null>(null);
+
+  const [layoutPreview, setLayoutPreview] = useState<SeriesLayoutPreview | null>(null);
+  const [layoutPreviewLoading, setLayoutPreviewLoading] = useState(false);
+  const [layoutPreviewError, setLayoutPreviewError] = useState("");
+  const [saveLockConflicts, setSaveLockConflicts] = useState<SeriesLayoutLockConflict[]>([]);
+  const [previewNonce, setPreviewNonce] = useState(0);
 
   const [deletingTarget, setDeletingTarget] = useState<LibraryType | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -183,7 +433,7 @@ export function LibraryManagementPanel() {
   const [newDefaultAccess, setNewDefaultAccess] = useState<"public" | "private">("private");
   const [newScanEnabled, setNewScanEnabled] = useState(true);
   const [editDefaultAccess, setEditDefaultAccess] = useState<"public" | "private">("private");
-  const [editScanEnabledState, setEditScanEnabledState] = useState(true);
+  const [editEnabledState, setEditEnabledState] = useState(true);
 
   const showMessage = useCallback((msg: string, isError = false) => {
     if (isError) {
@@ -196,7 +446,7 @@ export function LibraryManagementPanel() {
     setTimeout(() => {
       setError("");
       setSuccess("");
-    }, 3000);
+    }, 4000);
   }, []);
 
   const fetchLibraryList = useCallback(async () => {
@@ -231,6 +481,54 @@ export function LibraryManagementPanel() {
     return () => window.removeEventListener("click", close);
   }, [openMenuId]);
 
+  const editingLib = useMemo(
+    () => (editingId ? libraries.find((item) => item.id === editingId) || null : null),
+    [editingId, libraries]
+  );
+
+  // 自动预览：仅在编辑已有漫画书库且目标深度与当前配置不同时请求预览
+  useEffect(() => {
+    if (!editingLib || editingLib.type !== "comic" || editType !== "comic") {
+      setLayoutPreview(null);
+      setLayoutPreviewLoading(false);
+      setLayoutPreviewError("");
+      setSaveLockConflicts([]);
+      return;
+    }
+    const currentDepth = editingLib.seriesDepth ?? 1;
+    if (editSeriesDepth === currentDepth) {
+      setLayoutPreview(null);
+      setLayoutPreviewLoading(false);
+      setLayoutPreviewError("");
+      setSaveLockConflicts([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLayoutPreviewLoading(true);
+    setLayoutPreviewError("");
+    setSaveLockConflicts([]);
+
+    previewLibrarySeriesLayout(editingLib.id, editSeriesDepth, controller.signal)
+      .then((preview) => {
+        if (controller.signal.aborted) return;
+        setLayoutPreview(preview);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        if (err instanceof Error && err.name === "AbortError") return;
+        setLayoutPreview(null);
+        setLayoutPreviewError(err instanceof Error ? err.message : "预览请求失败");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLayoutPreviewLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [editingLib, editType, editSeriesDepth, previewNonce]);
+
   const filteredLibraries = useMemo(() => {
     if (!searchQuery.trim()) return libraries;
     const q = searchQuery.toLowerCase();
@@ -246,6 +544,7 @@ export function LibraryManagementPanel() {
   const summary = useMemo(() => {
     return {
       total: libraries.length,
+      works: libraries.reduce((sum, item) => sum + (item.shelfCount ?? item.comicCount ?? 0), 0),
       content: libraries.reduce((sum, item) => sum + (item.comicCount ?? 0), 0),
       scanEnabledCount: libraries.filter((item) => item.scanEnabled).length,
       alerts: libraries.filter((item) => !item.enabled || !item.lastScanAt).length,
@@ -278,6 +577,7 @@ export function LibraryManagementPanel() {
       const lib = await createLibrary({
         name: newName.trim(),
         type: newType,
+        seriesDepth: newType === "comic" ? newSeriesDepth : 1,
         rootPaths: validPaths,
         defaultAccess: newDefaultAccess,
         scanEnabled: newScanEnabled,
@@ -285,6 +585,7 @@ export function LibraryManagementPanel() {
       showMessage("书库创建成功");
       setShowCreateForm(false);
       setNewName("");
+      setNewSeriesDepth(1);
       setNewRootPaths([]);
       fetchLibraryList();
       fetchOwnershipPreview();
@@ -313,15 +614,22 @@ export function LibraryManagementPanel() {
     setEditingId(lib.id);
     setEditName(lib.name);
     setEditType(lib.type);
+    setEditSeriesDepth(lib.type === "comic" ? (lib.seriesDepth ?? 1) : 1);
     // 优先使用 rootPaths，如果没有则使用 [rootPath]
     setEditRootPaths(lib.rootPaths && lib.rootPaths.length > 0 ? lib.rootPaths : [lib.rootPath]);
     setEditScanEnabled(lib.scanEnabled);
     setEditDefaultAccess(lib.defaultAccess || "private");
-    setEditScanEnabledState(lib.scanEnabled);
+    setEditEnabledState(lib.enabled);
+    setLayoutPreview(null);
+    setLayoutPreviewError("");
+    setSaveLockConflicts([]);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
+    setLayoutPreview(null);
+    setLayoutPreviewError("");
+    setSaveLockConflicts([]);
   };
 
   const handleSave = async (id: string) => {
@@ -331,21 +639,50 @@ export function LibraryManagementPanel() {
       return;
     }
 
+    const currentLib = libraries.find((item) => item.id === id);
+    const targetDepth = editType === "comic" ? editSeriesDepth : 1;
+    const currentDepth = currentLib?.seriesDepth ?? 1;
+    const isComicDepthChange =
+      currentLib?.type === "comic" && editType === "comic" && targetDepth !== currentDepth;
+
+    if (isComicDepthChange && (layoutPreview?.hasLockConflicts || saveLockConflicts.length > 0)) {
+      showMessage("存在人工结构锁冲突，请先解锁对应作品或分季后再保存深度变更", true);
+      return;
+    }
+
     setSaving(true);
     try {
       await updateLibrary(id, {
         name: editName.trim(),
         type: editType,
+        seriesDepth: targetDepth,
+        expectedSourceRevision: isComicDepthChange ? layoutPreview?.sourceRevision : undefined,
         rootPaths: validPaths,
         scanEnabled: editScanEnabled,
         defaultAccess: editDefaultAccess,
-        enabled: editScanEnabledState,
+        enabled: editEnabledState,
       });
-      showMessage("书库更新成功");
+      showMessage(isComicDepthChange ? "书库及作品结构已原子更新，旧结构快照已归档" : "书库更新成功");
       setEditingId(null);
+      setLayoutPreview(null);
+      setSaveLockConflicts([]);
       fetchLibraryList();
       fetchOwnershipPreview();
     } catch (err) {
+      if (err instanceof LibraryApiError && err.status === 409) {
+        if (err.code === "SOURCE_REVISION_CONFLICT") {
+          setPreviewNonce((n) => n + 1);
+          showMessage("书库内容在预览后发生了变化，已自动刷新预览，请确认后再次保存", true);
+          return;
+        }
+        if (err.code === "MANUAL_LOCK_CONFLICT") {
+          if (err.lockConflicts?.length) {
+            setSaveLockConflicts(err.lockConflicts);
+          }
+          showMessage(err.message || "存在人工结构锁冲突，未修改原书库深度与结构", true);
+          return;
+        }
+      }
       showMessage(err instanceof Error ? err.message : "更新失败", true);
     } finally {
       setSaving(false);
@@ -508,7 +845,7 @@ export function LibraryManagementPanel() {
 
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4">
             <VaultMetric icon={<Database className="h-4 w-4" />} label="书库数量" value={summary.total} />
-            <VaultMetric icon={<BookOpen className="h-4 w-4" />} label="总内容" value={summary.content} />
+            <VaultMetric icon={<BookOpen className="h-4 w-4" />} label="作品 / 文件" value={`${summary.works} / ${summary.content}`} />
             <VaultMetric icon={<Activity className="h-4 w-4" />} label="自动扫描" value={`${summary.scanEnabledCount} 个开启`} />
             <VaultMetric icon={<ShieldAlert className="h-4 w-4" />} label="待关注" value={`${summary.alerts} 项`} />
           </div>
@@ -611,7 +948,11 @@ export function LibraryManagementPanel() {
                 <label className="block text-sm font-medium text-muted">书库类型</label>
                 <select
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value as "comic" | "novel" | "mixed")}
+                  onChange={(e) => {
+                    const nextType = e.target.value as "comic" | "novel" | "mixed";
+                    setNewType(nextType);
+                    if (nextType !== "comic") setNewSeriesDepth(1);
+                  }}
                   className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground shadow-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 >
                   <option value="comic">漫画</option>
@@ -619,6 +960,11 @@ export function LibraryManagementPanel() {
                   <option value="mixed">混合</option>
                 </select>
               </div>
+              <SeriesDepthSelector
+                libraryType={newType}
+                value={newSeriesDepth}
+                onChange={setNewSeriesDepth}
+              />
               <div>
                 <label className="block text-sm font-medium text-muted">默认可见性</label>
                 <select
@@ -819,7 +1165,11 @@ export function LibraryManagementPanel() {
                         <label className="block text-sm font-medium text-muted">书库类型</label>
                         <select
                           value={editType}
-                          onChange={(e) => setEditType(e.target.value as "comic" | "novel" | "mixed")}
+                          onChange={(e) => {
+                            const nextType = e.target.value as "comic" | "novel" | "mixed";
+                            setEditType(nextType);
+                            if (nextType !== "comic") setEditSeriesDepth(1);
+                          }}
                           className="mt-2 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground shadow-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                         >
                           <option value="comic">漫画</option>
@@ -827,6 +1177,11 @@ export function LibraryManagementPanel() {
                           <option value="mixed">混合</option>
                         </select>
                       </div>
+                      <SeriesDepthSelector
+                        libraryType={editType}
+                        value={editSeriesDepth}
+                        onChange={setEditSeriesDepth}
+                      />
                       <div>
                         <label className="block text-sm font-medium text-muted">默认可见性</label>
                         <select
@@ -890,8 +1245,30 @@ export function LibraryManagementPanel() {
                       </div>
                     </div>
 
+                    {lib.type === "comic" && editType === "comic" && editSeriesDepth !== (lib.seriesDepth ?? 1) && (
+                      <SeriesLayoutPreviewCard
+                        preview={layoutPreview}
+                        loading={layoutPreviewLoading}
+                        error={layoutPreviewError}
+                        overrideLockConflicts={saveLockConflicts}
+                        onRetry={() => setPreviewNonce((n) => n + 1)}
+                      />
+                    )}
+
                     <div className="mt-6 flex flex-wrap items-center gap-2">
-                      <InlineButton variant="primary" onClick={() => handleSave(lib.id)} disabled={saving}>
+                      <InlineButton
+                        variant="primary"
+                        onClick={() => handleSave(lib.id)}
+                        disabled={
+                          saving ||
+                          (lib.type === "comic" &&
+                            editType === "comic" &&
+                            editSeriesDepth !== (lib.seriesDepth ?? 1) &&
+                            (layoutPreviewLoading ||
+                              Boolean(layoutPreview?.hasLockConflicts) ||
+                              saveLockConflicts.length > 0))
+                        }
+                      >
                         {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {saving ? "保存中..." : "保存修改"}
                       </InlineButton>
@@ -910,6 +1287,12 @@ export function LibraryManagementPanel() {
                           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${useTypePalette(lib.type).tag}`}>
                             {getTypeName(lib.type)}
                           </span>
+                          {lib.type === "comic" && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2.5 py-0.5 text-xs font-medium text-muted">
+                              <Layers className="h-3 w-3 text-accent" />
+                              作品深度 {lib.seriesDepth ?? 1}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 text-sm text-slate-500">
                           {(lib.rootPaths && lib.rootPaths.length > 0 ? lib.rootPaths : [lib.rootPath]).map((path, index) => (
@@ -932,7 +1315,11 @@ export function LibraryManagementPanel() {
 
                     <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm text-muted sm:grid-cols-4">
                       <div className="space-y-0.5">
-                        <div className="text-[11px] uppercase tracking-wide text-muted/70">内容数</div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted/70">作品数</div>
+                        <div className="text-base font-semibold text-foreground">{lib.shelfCount ?? lib.comicCount ?? 0}</div>
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="text-[11px] uppercase tracking-wide text-muted/70">可读文件数</div>
                         <div className="text-base font-semibold text-foreground">{lib.comicCount ?? 0}</div>
                       </div>
                       <div className="space-y-0.5">
@@ -942,10 +1329,6 @@ export function LibraryManagementPanel() {
                       <div className="space-y-0.5">
                         <div className="text-[11px] uppercase tracking-wide text-muted/70">上次新增</div>
                         <div className="text-base font-semibold text-foreground">{lib.lastScanAdded ?? 0}</div>
-                      </div>
-                      <div className="space-y-0.5">
-                        <div className="text-[11px] uppercase tracking-wide text-muted/70">文件数</div>
-                        <div className="text-base font-semibold text-foreground">{lib.lastScanTotal ?? 0}</div>
                       </div>
                     </div>
 

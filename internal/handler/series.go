@@ -124,14 +124,24 @@ func (h *SeriesHandler) Preview(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "No permission to manage this library"})
 		return
 	}
+	lib, err := store.GetLibraryByID(libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch library"})
+		return
+	}
+	seriesDepth := store.DefaultLibrarySeriesDepth
+	if lib != nil {
+		seriesDepth = store.NormalizeSeriesDepth(lib.SeriesDepth)
+	}
 	items, err := store.GetSeriesSourceItems(libraryID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to inspect library"})
 		return
 	}
-	candidates := service.DetectComicSeries(libraryID, items)
+	candidates := service.DetectComicSeriesWithDepth(libraryID, seriesDepth, items)
 	c.JSON(http.StatusOK, gin.H{
 		"libraryId":   libraryID,
+		"seriesDepth": seriesDepth,
 		"seriesCount": len(candidates),
 		"candidates":  candidates,
 	})

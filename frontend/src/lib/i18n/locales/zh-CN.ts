@@ -115,11 +115,22 @@ const zhCN = {
   // Comic Card
   comicCard: {
     detail: "详情",
-    series: "系列",
+    series: "作品",
     itemUnit: "项",
     gridView: "网格视图",
     listView: "列表视图",
     select: "选择作品",
+  },
+
+  // Directory Classification Navigation
+  directoryNav: {
+    label: "目录分类",
+    allWorks: "全部作品",
+    workCountUnit: "部作品",
+    subDirectories: "含下级目录",
+    upOneLevel: "返回上级",
+    selectSingleLibraryHint: "选择单个开启多层深度的漫画书库后可按目录分类浏览",
+    emptySubDirectories: "当前目录层级无下级分类目录",
   },
 
   // Context Menu (右键菜单)
@@ -1464,6 +1475,15 @@ export interface Translations {
     gridView: string;
     listView: string;
     select: string;
+  };
+  directoryNav?: {
+    label: string;
+    allWorks: string;
+    workCountUnit: string;
+    subDirectories: string;
+    upOneLevel: string;
+    selectSingleLibraryHint: string;
+    emptySubDirectories: string;
   };
   contextMenu?: {
     read: string;

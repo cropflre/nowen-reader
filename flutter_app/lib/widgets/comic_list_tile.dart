@@ -119,7 +119,7 @@ class ComicListTile extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(5),
                               ),
                               child: Text(
-                                '系列',
+                                '作品',
                                 style: TextStyle(
                                   color: cs.onPrimaryContainer,
                                   fontSize: 10,
@@ -200,7 +200,7 @@ class ComicListTile extends StatelessWidget {
                           if (comic.pageCount > 0)
                             Text(
                               comic.isSeriesShelfItem
-                                  ? '${comic.seriesItemCount}册'
+                                  ? '${comic.seriesItemCount}项'
                                   : comic.isNovel
                                       ? '${comic.pageCount}章'
                                       : '${comic.pageCount}页',

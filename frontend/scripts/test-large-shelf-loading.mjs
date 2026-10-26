@@ -92,16 +92,84 @@ now += 16 * 60_000;
 const expired = mount(); expired.snapshot();
 assert.equal(expired.snapshot().loading, true, "Cache retention is bounded"); expired.unmount();
 
-// The accessible-libraries request must never load full work details for counts.
+// Directory-scoped shelf queries keep separate cache entries per directoryPath and isolate across user scopes.
+api.setUserScope("alice", "user");
+const krDir = mount({ page: 1, pageSize: 24, seriesView: true, libraryIds: ["lib-1"], directoryPath: "韩漫" });
+assert.equal(krDir.snapshot().loading, true);
+assert.ok(requests.at(-1).url.includes("libraryIds=lib-1") && requests.at(-1).url.includes("directoryPath=%E9%9F%A9%E6%BC%AB"));
+requests.at(-1).resolve(response("series-kr-a", 1));
+await tick();
+assert.equal(krDir.snapshot().comics[0].id, "series-kr-a");
+krDir.unmount();
+
+const jpDir = mount({ page: 1, pageSize: 24, seriesView: true, libraryIds: ["lib-1"], directoryPath: "日漫" });
+assert.equal(jpDir.snapshot().loading, true, "Different directoryPath must not reuse another directory's cached shelf");
+requests.at(-1).resolve(response("series-jp-a", 0));
+await tick();
+assert.equal(jpDir.snapshot().comics[0].id, "series-jp-a");
+jpDir.unmount();
+
+const krReturned = mount({ page: 1, pageSize: 24, seriesView: true, libraryIds: ["lib-1"], directoryPath: "韩漫" });
+krReturned.snapshot();
+const krReturnedState = krReturned.snapshot();
+assert.equal(krReturnedState.loading, false, "Returning to previous directoryPath restores cached works immediately");
+assert.equal(krReturnedState.comics[0].id, "series-kr-a");
+requests.at(-1).resolve(response("series-kr-a", 2));
+await tick();
+assert.equal(krReturned.snapshot().comics[0].lastReadPage, 2);
+krReturned.unmount();
+
+// The accessible-libraries request must never load full work details for counts,
+// and directory node cache must isolate across user/permission changes.
 const librariesModule = { exports: {} };
 const urls = [];
+let nextDirStatus = 200;
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL("../src/api/libraries.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText, {
-  module: librariesModule, exports: librariesModule.exports,
-  fetch: async (url) => { urls.push(url); return { ok: true, json: async () => ({ libraries: [{ id: "lib", comicCount: 5000, shelfCount: 1000 }] }) }; },
-  require: (name) => name === "@/lib/base-path" ? { apiPath: (p) => p } : { notifyLibraryAccessChanged() {} },
+  module: librariesModule, exports: librariesModule.exports, URL,
+  Date: { now: () => now },
+  fetch: async (url) => {
+    urls.push(url);
+    if (url.includes("/directories")) {
+      if (nextDirStatus !== 200) {
+        return { ok: false, status: nextDirStatus, json: async () => ({ error: "Forbidden" }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          libraryId: "lib",
+          seriesDepth: 2,
+          maxDirectoryDepth: 1,
+          parent: "",
+          breadcrumbs: [],
+          directories: [{ name: new URL(url, "http://localhost").searchParams.get("page") === "2" ? "分类101" : "韩漫", path: "韩漫", depth: 1, workCount: 12, hasChildren: false, coverUrl: "/api/comics/c1/thumbnail" }],
+          total: 101,
+          page: Number(new URL(url, "http://localhost").searchParams.get("page") || 1),
+          pageSize: 100,
+          totalPages: 2,
+        }),
+      };
+    }
+    return { ok: true, json: async () => ({ libraries: [{ id: "lib", comicCount: 5000, shelfCount: 1000, seriesDepth: 2 }] }) };
+  },
+  require: (name) => name === "@/lib/base-path" ? { apiPath: (p) => p } : api,
 });
 assert.equal((await librariesModule.exports.fetchAccessibleLibraries())[0].comicCount, 1000);
 assert.deepEqual(urls, ["/api/libraries/accessible"]);
+const dirList = await librariesModule.exports.fetchLibraryDirectories("lib", { parent: "" });
+assert.equal(dirList.directories[0].workCount, 12);
+assert.equal(librariesModule.exports.getCachedLibraryDirectories("lib", { parent: "" })?.directories[0].name, "韩漫");
+api.setUserScope("mallory", "user");
+assert.equal(librariesModule.exports.getCachedLibraryDirectories("lib", { parent: "" }), null, "Account change invalidates directory node cache");
+await librariesModule.exports.fetchLibraryDirectories("lib", { parent: "" });
+assert.ok(librariesModule.exports.getCachedLibraryDirectories("lib", { parent: "" }));
+const secondDirPage = await librariesModule.exports.fetchLibraryDirectories("lib", { parent: "", page: 2 });
+assert.equal(secondDirPage.directories[0].name, "分类101");
+assert.equal(librariesModule.exports.getCachedLibraryDirectories("lib", { parent: "", page: 2 }).page, 2);
+assert.equal(librariesModule.exports.getCachedLibraryDirectories("lib", { parent: "" }).page, 1, "Directory cache separates pages");
+assert.equal(new URL(urls.at(-1), "http://localhost").searchParams.get("page"), "2");
+nextDirStatus = 403;
+await assert.rejects(() => librariesModule.exports.fetchLibraryDirectories("lib", { parent: "" }));
+assert.equal(librariesModule.exports.getCachedLibraryDirectories("lib", { parent: "" }), null, "403 permission revocation clears directory cache");
 console.log("Large shelf cache restoration, background refresh, permissions, and request-count tests passed.");

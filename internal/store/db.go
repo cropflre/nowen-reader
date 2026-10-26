@@ -474,6 +474,7 @@ func createTables() error {
 			"id"            TEXT NOT NULL PRIMARY KEY,
 			"name"          TEXT NOT NULL,
 			"type"          TEXT NOT NULL DEFAULT "comic",
+			"seriesDepth"   INTEGER NOT NULL DEFAULT 1,
 			"rootPath"      TEXT NOT NULL,
 			"enabled"       BOOLEAN NOT NULL DEFAULT 1,
 			"sortOrder"     INTEGER NOT NULL DEFAULT 0,

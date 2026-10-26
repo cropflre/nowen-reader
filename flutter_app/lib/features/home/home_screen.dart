@@ -27,6 +27,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _scrollController = ScrollController();
   bool _seriesView = true;
   bool _shelfModeReady = false;
+  String? _directoryPageContext;
+  int _directoryPage = 1;
 
   @override
   void initState() {
@@ -112,12 +114,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final state = ref.watch(comicListProvider);
     final authState = ref.watch(authProvider);
     final viewMode = ref.watch(viewModeProvider);
+    final librariesAsync = ref.watch(accessibleLibrariesProvider);
+    final libraries = librariesAsync.valueOrNull ?? const <AccessibleLibrary>[];
     final cs = Theme.of(context).colorScheme;
+
+    final selectedLibId = state.params.libraryId;
+    AccessibleLibrary? activeLibrary;
+    if (selectedLibId != null && selectedLibId.isNotEmpty) {
+      for (final lib in libraries) {
+        if (lib.id == selectedLibId) {
+          activeLibrary = lib;
+          break;
+        }
+      }
+    } else if (libraries.length == 1) {
+      activeLibrary = libraries.first;
+    }
+
+    final currentDir = state.params.directoryPath ?? '';
+    final supportsDirNav =
+        activeLibrary != null && activeLibrary.supportsDirectoryCategories;
+    final directoryContext =
+        '${ref.watch(comicListScopeProvider)}\u0000${activeLibrary?.id}\u0000$currentDir';
+    final directoryPage =
+        _directoryPageContext == directoryContext ? _directoryPage : 1;
+    final dirAsync = supportsDirNav
+        ? ref.watch(
+            libraryDirectoriesProvider(
+              LibraryDirectoryQueryKey(
+                libraryId: activeLibrary.id,
+                parent: currentDir,
+                page: directoryPage,
+              ),
+            ),
+          )
+        : null;
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
           ref.read(readingProgressRevisionProvider.notifier).state++;
+          ref.invalidate(accessibleLibrariesProvider);
+          ref.invalidate(libraryDirectoriesProvider);
           await ref.read(comicListProvider.notifier).loadComics();
         },
         color: cs.primary,
@@ -146,7 +184,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onTap: () {
                     HapticFeedback.lightImpact();
                     ref.read(viewModeProvider.notifier).state =
-                        viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid;
+                        viewMode == ViewMode.grid
+                            ? ViewMode.list
+                            : ViewMode.grid;
                   },
                 ),
                 // 排序
@@ -163,19 +203,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         );
                   },
                   itemBuilder: (_) => [
-                    _buildSortItem('addedAt', '最近添加', Icons.schedule_rounded, state.params.sort),
-                    _buildSortItem('title', '标题', Icons.sort_by_alpha_rounded, state.params.sort),
-                    _buildSortItem('lastReadAt', '最近阅读', Icons.auto_stories_outlined, state.params.sort),
-                    _buildSortItem('rating', '评分', Icons.star_outline_rounded, state.params.sort),
+                    _buildSortItem('addedAt', '最近添加', Icons.schedule_rounded,
+                        state.params.sort),
+                    _buildSortItem('title', '标题', Icons.sort_by_alpha_rounded,
+                        state.params.sort),
+                    _buildSortItem('lastReadAt', '最近阅读',
+                        Icons.auto_stories_outlined, state.params.sort),
+                    _buildSortItem('rating', '评分', Icons.star_outline_rounded,
+                        state.params.sort),
                     if (!_seriesView)
-                      _buildSortItem('pageCount', '页数', Icons.description_outlined, state.params.sort),
+                      _buildSortItem('pageCount', '页数',
+                          Icons.description_outlined, state.params.sort),
                   ],
                 ),
                 // 筛选
                 PopupMenuButton<String>(
                   icon: Icon(
                     Icons.tune_rounded,
-                    color: (state.params.type != null || (state.params.favoritesOnly == true))
+                    color: (state.params.type != null ||
+                            (state.params.favoritesOnly == true))
                         ? cs.primary
                         : null,
                   ),
@@ -197,15 +243,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           );
                     } else {
                       ref.read(comicListProvider.notifier).updateParams(
-                            current.copyWith(type: filter, favoritesOnly: false, page: 1),
+                            current.copyWith(
+                                type: filter, favoritesOnly: false, page: 1),
                           );
                     }
                   },
                   itemBuilder: (_) => [
-                    _buildFilterItem('all', '全部', Icons.apps_rounded, state.params),
-                    _buildFilterItem('comic', '漫画', Icons.photo_library_outlined, state.params),
-                    _buildFilterItem('novel', '小说', Icons.menu_book_outlined, state.params),
-                    _buildFilterItem('favorites', '收藏', Icons.favorite_rounded, state.params),
+                    _buildFilterItem(
+                        'all', '全部', Icons.apps_rounded, state.params),
+                    _buildFilterItem('comic', '漫画',
+                        Icons.photo_library_outlined, state.params),
+                    _buildFilterItem(
+                        'novel', '小说', Icons.menu_book_outlined, state.params),
+                    _buildFilterItem('favorites', '收藏', Icons.favorite_rounded,
+                        state.params),
                   ],
                 ),
                 const SizedBox(width: 4),
@@ -217,13 +268,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ContinueReading(),
             ),
 
-            // ─── 书架模式：系列 / 单册 ───
+            // ─── 书架模式：作品 / 文件 ───
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: _buildShelfModeToggle(cs),
               ),
             ),
+
+            // ─── 多书库切换栏 ───
+            if (libraries.length > 1)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: _buildLibrarySelector(
+                      cs, libraries, selectedLibId, state.params),
+                ),
+              ),
+
+            // ─── 物理目录分类导航（独立于人工 Category） ───
+            if (supportsDirNav && dirAsync != null)
+              SliverToBoxAdapter(
+                child: _buildDirectoryNavigation(
+                  cs: cs,
+                  serverUrl: authState.serverUrl,
+                  library: activeLibrary,
+                  currentDir: currentDir,
+                  params: state.params,
+                  dirAsync: dirAsync,
+                  directoryContext: directoryContext,
+                  directoryPage: directoryPage,
+                ),
+              ),
 
             // ─── 内容区域 ───
             if (!_shelfModeReady || (state.comics.isEmpty && state.isLoading))
@@ -262,7 +338,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               cs: cs,
               selected: _seriesView,
               icon: Icons.auto_stories_outlined,
-              label: '系列',
+              label: '作品',
               onTap: () => _setSeriesView(true),
             ),
           ),
@@ -271,7 +347,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               cs: cs,
               selected: !_seriesView,
               icon: Icons.view_module_outlined,
-              label: '单册',
+              label: '文件',
               onTap: () => _setSeriesView(false),
             ),
           ),
@@ -341,6 +417,431 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     context.push('/comic/${comic.id}');
   }
 
+  Widget _buildLibrarySelector(
+    ColorScheme cs,
+    List<AccessibleLibrary> libraries,
+    String? selectedLibId,
+    ComicListParams params,
+  ) {
+    return SizedBox(
+      height: 34,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('全部书库'),
+              selected: selectedLibId == null || selectedLibId.isEmpty,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) {
+                HapticFeedback.selectionClick();
+                ref.read(comicListProvider.notifier).updateParams(
+                      params.copyWith(
+                        clearLibraryId: true,
+                        clearDirectoryPath: true,
+                        page: 1,
+                      ),
+                    );
+              },
+            ),
+          ),
+          for (final lib in libraries)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text('${lib.name} (${lib.logicalCount})'),
+                selected: selectedLibId == lib.id,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) {
+                  HapticFeedback.selectionClick();
+                  ref.read(comicListProvider.notifier).updateParams(
+                        params.copyWith(
+                          libraryId: lib.id,
+                          clearDirectoryPath: true,
+                          page: 1,
+                        ),
+                      );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToDirectory(
+    AccessibleLibrary library,
+    String nextPath,
+    ComicListParams currentParams,
+    bool isExplicitSingleLibrary,
+  ) {
+    HapticFeedback.selectionClick();
+    if (nextPath.isEmpty) {
+      ref.read(comicListProvider.notifier).updateParams(
+            currentParams.copyWith(
+              libraryId: isExplicitSingleLibrary ? library.id : null,
+              clearLibraryId: !isExplicitSingleLibrary,
+              clearDirectoryPath: true,
+              page: 1,
+            ),
+          );
+      return;
+    }
+    ref.read(comicListProvider.notifier).updateParams(
+          currentParams.copyWith(
+            libraryId: library.id,
+            directoryPath: nextPath,
+            page: 1,
+          ),
+        );
+  }
+
+  void _setDirectoryPage(String directoryContext, int page) {
+    setState(() {
+      _directoryPageContext = directoryContext;
+      _directoryPage = page;
+    });
+  }
+
+  Widget _buildDirectoryNavigation({
+    required ColorScheme cs,
+    required String serverUrl,
+    required AccessibleLibrary library,
+    required String currentDir,
+    required ComicListParams params,
+    required AsyncValue<LibraryDirectoryListResponse> dirAsync,
+    required String directoryContext,
+    required int directoryPage,
+  }) {
+    final isExplicitSingleLibrary =
+        params.libraryId != null && params.libraryId!.isNotEmpty;
+    final dirData = dirAsync.valueOrNull;
+    final nodes = dirData?.directories ?? const <LibraryDirectoryNode>[];
+
+    List<LibraryDirectoryBreadcrumb> breadcrumbs;
+    if (currentDir.isEmpty) {
+      breadcrumbs = const [];
+    } else if (dirData != null &&
+        dirData.parent == currentDir &&
+        dirData.breadcrumbs.isNotEmpty) {
+      breadcrumbs = dirData.breadcrumbs;
+    } else {
+      final parts =
+          currentDir.split('/').where((seg) => seg.isNotEmpty).toList();
+      breadcrumbs = [
+        for (var i = 0; i < parts.length; i++)
+          LibraryDirectoryBreadcrumb(
+            name: parts[i],
+            path: parts.sublist(0, i + 1).join('/'),
+          ),
+      ];
+    }
+
+    if (nodes.isEmpty &&
+        currentDir.isEmpty &&
+        !dirAsync.isLoading &&
+        directoryPage <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    final cleanServerUrl = serverUrl.endsWith('/')
+        ? serverUrl.substring(0, serverUrl.length - 1)
+        : serverUrl;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.account_tree_outlined,
+                          size: 13,
+                          color: cs.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '目录分类',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _navigateToDirectory(
+                      library,
+                      '',
+                      params,
+                      isExplicitSingleLibrary,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: currentDir.isEmpty
+                            ? cs.primary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '全部作品',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: currentDir.isEmpty
+                              ? cs.onPrimary
+                              : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (var i = 0; i < breadcrumbs.length; i++) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: cs.onSurfaceVariant.withOpacity(0.6),
+                      ),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () => _navigateToDirectory(
+                        library,
+                        breadcrumbs[i].path,
+                        params,
+                        isExplicitSingleLibrary,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: i == breadcrumbs.length - 1
+                              ? cs.primaryContainer.withOpacity(0.6)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          breadcrumbs[i].name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: i == breadcrumbs.length - 1
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: i == breadcrumbs.length - 1
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (currentDir.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        final parentPath = breadcrumbs.length > 1
+                            ? breadcrumbs[breadcrumbs.length - 2].path
+                            : '';
+                        _navigateToDirectory(
+                          library,
+                          parentPath,
+                          params,
+                          isExplicitSingleLibrary,
+                        );
+                      },
+                      icon: const Icon(Icons.arrow_upward_rounded, size: 13),
+                      label: const Text('返回上级', style: TextStyle(fontSize: 11)),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (nodes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 56,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: nodes.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final node = nodes[index];
+                    final rawCover = node.coverUrl.trim();
+                    final coverUrl = rawCover.isEmpty
+                        ? ''
+                        : (rawCover.startsWith('http://') ||
+                                rawCover.startsWith('https://')
+                            ? rawCover
+                            : '$cleanServerUrl${rawCover.startsWith('/') ? rawCover : '/$rawCover'}');
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _navigateToDirectory(
+                        library,
+                        node.path,
+                        params,
+                        isExplicitSingleLibrary,
+                      ),
+                      child: Container(
+                        width: 156,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: cs.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: cs.outlineVariant.withOpacity(0.35),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                width: 34,
+                                height: 42,
+                                child: coverUrl.isNotEmpty
+                                    ? AuthenticatedImage(
+                                        imageUrl: coverUrl,
+                                        fit: BoxFit.cover,
+                                        placeholder: Container(
+                                          color: cs.surfaceContainerHighest,
+                                          child: Icon(
+                                            Icons.folder_outlined,
+                                            size: 16,
+                                            color: cs.primary,
+                                          ),
+                                        ),
+                                        errorWidget: Container(
+                                          color: cs.surfaceContainerHighest,
+                                          child: Icon(
+                                            Icons.folder_outlined,
+                                            size: 16,
+                                            color: cs.primary,
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: cs.surfaceContainerHighest,
+                                        child: Icon(
+                                          Icons.folder_outlined,
+                                          size: 18,
+                                          color: cs.primary,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    node.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${node.workCount} 部作品',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (node.hasChildren)
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 16,
+                                color: cs.onSurfaceVariant.withOpacity(0.7),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if ((dirData?.totalPages ?? 1) > 1 || directoryPage > 1) ...[
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: dirAsync.isLoading || directoryPage <= 1
+                        ? null
+                        : () => _setDirectoryPage(
+                            directoryContext, directoryPage - 1),
+                    child: const Text('上一页'),
+                  ),
+                  Text(
+                      '$directoryPage / ${dirData == null || dirData.totalPages < directoryPage ? directoryPage : dirData.totalPages}'),
+                  TextButton(
+                    onPressed: dirAsync.isLoading ||
+                            dirData == null ||
+                            directoryPage >= dirData.totalPages
+                        ? null
+                        : () => _setDirectoryPage(
+                            directoryContext, directoryPage + 1),
+                    child: const Text('下一页'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   PopupMenuItem<String> _buildSortItem(
       String value, String label, IconData icon, String? currentSort) {
     final isSelected = currentSort == value;
@@ -349,7 +850,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       value: value,
       child: Row(
         children: [
-          Icon(icon, size: 20, color: isSelected ? cs.primary : cs.onSurfaceVariant),
+          Icon(icon,
+              size: 20, color: isSelected ? cs.primary : cs.onSurfaceVariant),
           const SizedBox(width: 12),
           Text(
             label,
@@ -369,7 +871,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   PopupMenuItem<String> _buildFilterItem(
       String value, String label, IconData icon, ComicListParams params) {
-    final isSelected = (value == 'all' && params.type == null && params.favoritesOnly != true) ||
+    final isSelected = (value == 'all' &&
+            params.type == null &&
+            params.favoritesOnly != true) ||
         (value == 'favorites' && params.favoritesOnly == true) ||
         (value != 'all' && value != 'favorites' && params.type == value);
     final cs = Theme.of(context).colorScheme;
@@ -590,8 +1094,9 @@ class _ComicCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final rawCover = comic.coverImageUrl?.trim() ?? '';
-    final cleanServerUrl =
-        serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final cleanServerUrl = serverUrl.endsWith('/')
+        ? serverUrl.substring(0, serverUrl.length - 1)
+        : serverUrl;
     final thumbUrl = rawCover.isNotEmpty
         ? (rawCover.startsWith('http://') || rawCover.startsWith('https://')
             ? rawCover
@@ -630,14 +1135,16 @@ class _ComicCard extends StatelessWidget {
                         color: cs.surfaceContainerHighest,
                         child: Center(
                           child: Icon(Icons.image_outlined,
-                              size: 24, color: cs.onSurfaceVariant.withOpacity(0.3)),
+                              size: 24,
+                              color: cs.onSurfaceVariant.withOpacity(0.3)),
                         ),
                       ),
                       errorWidget: Container(
                         color: cs.surfaceContainerHighest,
                         child: Center(
                           child: Icon(Icons.broken_image_outlined,
-                              size: 24, color: cs.onSurfaceVariant.withOpacity(0.3)),
+                              size: 24,
+                              color: cs.onSurfaceVariant.withOpacity(0.3)),
                         ),
                       ),
                     ),
@@ -718,7 +1225,7 @@ class _ComicCard extends StatelessWidget {
                         ),
                       ),
 
-                    // 系列 / 类型标识
+                    // 作品 / 类型标识
                     if (comic.isSeriesShelfItem)
                       Positioned(
                         top: 4,
@@ -731,7 +1238,7 @@ class _ComicCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            '${comic.seriesItemCount} 册',
+                            '${comic.seriesItemCount} 项',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 9,

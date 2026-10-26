@@ -72,6 +72,8 @@ class _ReaderApi extends ComicApi {
     String? readingStatus,
     bool? favoritesOnly,
     bool seriesView = false,
+    String? libraryId,
+    String? directoryPath,
   }) async {
     if (sort == 'lastReadAt') recentFetches++;
     return {
