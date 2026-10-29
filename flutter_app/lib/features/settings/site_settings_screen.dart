@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/api/comic_api.dart';
+import '../../data/providers/server_branding_provider.dart';
 import '../../widgets/animations.dart';
 
 /// 站点设置页面（电子书类型识别策略等）
@@ -20,7 +21,7 @@ class _SiteSettingsScreenState extends ConsumerState<SiteSettingsScreen> {
 
   // 配置项
   String _ebookTypeAutoDetect = 'comics'; // off | comics | all
-  String _siteName = '';
+  final _siteNameController = TextEditingController();
   bool _scraperEnabled = true;
 
   @override
@@ -33,13 +34,15 @@ class _SiteSettingsScreenState extends ConsumerState<SiteSettingsScreen> {
     try {
       final api = ref.read(comicApiProvider);
       final data = await api.getSiteSettings();
+      if (!mounted) return;
       setState(() {
-        _siteName = data['siteName'] ?? 'NowenReader';
+        _siteNameController.text = data['siteName'] ?? 'NowenReader';
         _ebookTypeAutoDetect = data['ebookTypeAutoDetect'] ?? 'comics';
         _scraperEnabled = data['scraperEnabled'] ?? true;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _loading = false; _message = '加载失败: $e'; _isError = true; });
     }
   }
@@ -49,17 +52,26 @@ class _SiteSettingsScreenState extends ConsumerState<SiteSettingsScreen> {
     try {
       final api = ref.read(comicApiProvider);
       await api.updateSiteSettings({
-        'siteName': _siteName,
+        'siteName': _siteNameController.text.trim(),
         'ebookTypeAutoDetect': _ebookTypeAutoDetect,
         'scraperEnabled': _scraperEnabled,
       });
+      if (!mounted) return;
+      ref.read(serverBrandingProvider.notifier).refresh(force: true);
       setState(() { _saving = false; _message = '已保存'; _isError = false; });
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _message = null);
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _saving = false; _message = '保存失败: $e'; _isError = true; });
     }
+  }
+
+  @override
+  void dispose() {
+    _siteNameController.dispose();
+    super.dispose();
   }
 
   @override
@@ -85,8 +97,7 @@ class _SiteSettingsScreenState extends ConsumerState<SiteSettingsScreen> {
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: TextField(
-                  controller: TextEditingController(text: _siteName),
-                  onChanged: (v) => _siteName = v,
+                  controller: _siteNameController,
                   decoration: InputDecoration(
                     hintText: 'NowenReader',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),

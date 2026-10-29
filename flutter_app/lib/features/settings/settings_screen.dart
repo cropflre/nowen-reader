@@ -11,6 +11,8 @@ import '../../l10n/app_localizations.dart';
 import '../metadata/metadata_screen.dart';
 import '../../widgets/animations.dart';
 import '../../data/providers/server_route_provider.dart';
+import '../../data/providers/server_branding_provider.dart';
+import '../../widgets/server_logo.dart';
 
 /// 设置页面 — 极简优雅风格
 class SettingsScreen extends ConsumerWidget {
@@ -24,6 +26,7 @@ class SettingsScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final isAdmin = user?.isAdmin ?? false;
     final routes = ref.watch(serverRouteProvider);
+    final branding = ref.watch(currentServerBrandingProvider);
     final latency = routes.latencies[routes.activeUrl];
     final routeLabel = routes.activeUrl == routes.config.backupUrl
         ? '备用线路'
@@ -132,8 +135,11 @@ class SettingsScreen extends ConsumerWidget {
                 _SettingsTile(
                   icon: Icons.dns_outlined,
                   iconColor: cs.primary,
-                  title: '服务器设置',
-                  subtitle: serverSubtitle,
+                  leading: ServerLogo(branding: branding, size: 34),
+                  title: branding.name,
+                  subtitle: routes.activeUrl.isEmpty
+                      ? serverSubtitle
+                      : '${routes.activeUrl} · $serverSubtitle',
                   onTap: () => context.push('/settings/server'),
                 ),
               ],
@@ -367,6 +373,7 @@ class _SettingsTile extends StatelessWidget {
   final Color? titleColor;
   final VoidCallback? onTap;
   final bool showArrow;
+  final Widget? leading;
 
   const _SettingsTile({
     required this.icon,
@@ -376,6 +383,7 @@ class _SettingsTile extends StatelessWidget {
     this.titleColor,
     this.onTap,
     this.showArrow = true,
+    this.leading,
   });
 
   @override
@@ -391,7 +399,7 @@ class _SettingsTile extends StatelessWidget {
           child: Row(
             children: [
               // 图标
-              Container(
+              leading ?? Container(
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
@@ -408,6 +416,8 @@ class _SettingsTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,

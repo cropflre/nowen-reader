@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../data/api/api_client.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/server_route_provider.dart';
+import '../../data/providers/server_branding_provider.dart';
+import '../../widgets/server_logo.dart';
 
 /// 服务器配置页面 —— 首次启动或切换服务器时显示。
 class ServerConfigScreen extends ConsumerStatefulWidget {
@@ -46,6 +48,10 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
 
     final savedUrl = results[0] as String;
     final history = results[1] as List<ServerRecord>;
+    await ref
+        .read(serverBrandingProvider.notifier)
+        .loadCached(history.map((record) => record.url));
+    if (!mounted) return;
     final primary = savedUrl.isNotEmpty
         ? savedUrl
         : history.isNotEmpty
@@ -312,22 +318,27 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      ..._history.map(
-                        (record) => Card(
+                      ..._history.map((record) {
+                        final branding =
+                            ref.watch(cachedServerBrandingProvider(record.url));
+                        return Card(
                           margin: const EdgeInsets.symmetric(vertical: 4),
                           child: ListTile(
-                            leading: const Icon(Icons.history_rounded),
+                            leading: ServerLogo(branding: branding),
                             title: Text(
-                              record.url,
+                              branding.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: record.username != null
-                                ? Text(
-                                    '用户：'
-                                    '${record.nickname ?? record.username}',
-                                  )
-                                : null,
+                            subtitle: Text(
+                              [
+                                record.url,
+                                if (record.username != null)
+                                  '用户：${record.nickname ?? record.username}',
+                              ].join('\n'),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             trailing: IconButton(
                               icon: const Icon(Icons.close_rounded),
                               tooltip: '从历史中移除',
@@ -349,8 +360,8 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
                                     });
                                   },
                           ),
-                        ),
-                      ),
+                        );
+                      }),
                     ],
                   ],
                 ),

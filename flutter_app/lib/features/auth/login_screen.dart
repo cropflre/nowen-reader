@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers/auth_provider.dart';
+import '../../data/providers/server_branding_provider.dart';
 import '../../widgets/animations.dart';
+import '../../widgets/server_logo.dart';
 
 /// 登录 & 注册页面 — 极简优雅风格
 class LoginScreen extends ConsumerStatefulWidget {
@@ -163,6 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   // ─── Logo 区域 ───
   Widget _buildLogoSection(ColorScheme cs, AuthState authState) {
+    final branding = ref.watch(currentServerBrandingProvider);
     return SlideAndFade(
       duration: const Duration(milliseconds: 600),
       child: Column(
@@ -193,14 +196,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.auto_stories_rounded,
-                size: 36,
-                color: Colors.white,
-              ),
+              child: ServerLogo(branding: branding, size: 80),
             ),
           ),
           const SizedBox(height: 28),
+
+          Text(
+            branding.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
 
           Text(
             authState.needsSetup

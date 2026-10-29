@@ -9,6 +9,8 @@ import 'package:nowen_reader/data/api/api_client.dart';
 import 'package:nowen_reader/data/api/comic_api.dart';
 import 'package:nowen_reader/data/models/comic.dart';
 import 'package:nowen_reader/data/providers/comic_provider.dart';
+import 'package:nowen_reader/data/models/server_branding.dart';
+import 'package:nowen_reader/data/providers/server_branding_provider.dart';
 import 'package:nowen_reader/features/home/home_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -72,6 +74,37 @@ void main() {
   });
   tearDownAll(() => cookies.delete(recursive: true));
 
+  testWidgets('server title fits narrow shelves with large text',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(320, 760);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        comicApiProvider.overrideWithValue(_DirectoryApi()),
+        comicListScopeProvider.overrideWithValue('server:alice:user'),
+        accessibleLibrariesProvider.overrideWith((ref) async => const []),
+        currentServerBrandingProvider
+            .overrideWithValue(const ServerBranding(name: '这是一个很长的漫画服务器名称')),
+      ],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: const HomeScreen(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('这是一个很长的漫画服务器名称'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
       'directory controls reach category 101 and retain page on reader return',
       (tester) async {
@@ -79,6 +112,8 @@ void main() {
     final api = _DirectoryApi();
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        currentServerBrandingProvider
+            .overrideWithValue(const ServerBranding(name: '我的漫画服务器')),
         comicApiProvider.overrideWithValue(api),
         comicListScopeProvider.overrideWithValue('server:alice:user'),
         accessibleLibrariesProvider.overrideWith((ref) async => const [
@@ -88,6 +123,7 @@ void main() {
       child: const MaterialApp(home: HomeScreen()),
     ));
     await tester.pumpAndSettle();
+    expect(find.text('我的漫画服务器'), findsOneWidget);
     expect(find.text('1 / 2'), findsOneWidget);
     expect(
         tester

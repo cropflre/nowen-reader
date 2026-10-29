@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../data/api/comic_api.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/server_route_provider.dart';
+import '../../data/providers/server_branding_provider.dart';
+import '../../widgets/server_logo.dart';
 import '../../data/providers/cache_provider.dart';
 import '../../data/services/cache_service.dart';
 import '../../data/services/offline_library_service.dart';
@@ -45,6 +47,7 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    final branding = ref.watch(currentServerBrandingProvider);
     final entries = ref.watch(cacheEntriesProvider);
     final totalSize = ref.watch(totalCacheSizeProvider);
     final completed = entries.where((entry) => entry.isComplete).length;
@@ -54,7 +57,12 @@ class _CacheScreenState extends ConsumerState<CacheScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('离线书架'),
+        title: Row(children: [
+          ServerLogo(branding: branding, size: 30),
+          const SizedBox(width: 8),
+          Expanded(child: Text('${branding.name} · 离线书架',
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+        ]),
         actions: [
           IconButton(
             tooltip: '服务器设置',

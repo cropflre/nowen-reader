@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/app_localizations.dart';
 import '../data/providers/server_route_provider.dart';
+import '../data/providers/server_branding_provider.dart';
 import 'router.dart';
 import 'theme.dart';
 
@@ -27,6 +28,9 @@ class _NowenReaderAppState extends ConsumerState<NowenReaderApp>
     ref
         .read(serverRouteProvider.notifier)
         .setForeground(state == AppLifecycleState.resumed);
+    if (state == AppLifecycleState.resumed) {
+      ref.read(serverBrandingProvider.notifier).refresh();
+    }
   }
 
   @override
@@ -38,9 +42,10 @@ class _NowenReaderAppState extends ConsumerState<NowenReaderApp>
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+    final branding = ref.watch(currentServerBrandingProvider);
 
     return MaterialApp.router(
-      title: 'NowenReader',
+      title: branding.name,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,

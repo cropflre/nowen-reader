@@ -10,7 +10,9 @@ import '../../widgets/comic_list_tile.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/comic_provider.dart';
+import '../../data/providers/server_branding_provider.dart';
 import '../../widgets/animations.dart';
+import '../../widgets/server_logo.dart';
 
 /// 首页 — 极简优雅的书库浏览，支持合集优先展示
 class HomeScreen extends ConsumerStatefulWidget {
@@ -118,6 +120,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final libraries = librariesAsync.valueOrNull ?? const <AccessibleLibrary>[];
     final cs = Theme.of(context).colorScheme;
 
+    final branding = ref.watch(currentServerBrandingProvider);
+
     final selectedLibId = state.params.libraryId;
     AccessibleLibrary? activeLibrary;
     if (selectedLibId != null && selectedLibId.isNotEmpty) {
@@ -153,10 +157,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
+          final brandingRefresh =
+              ref.read(serverBrandingProvider.notifier).refresh(force: true);
           ref.read(readingProgressRevisionProvider.notifier).state++;
           ref.invalidate(accessibleLibrariesProvider);
           ref.invalidate(libraryDirectoriesProvider);
           await ref.read(comicListProvider.notifier).loadComics();
+          await brandingRefresh;
         },
         color: cs.primary,
         child: CustomScrollView(
@@ -167,7 +174,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverAppBar(
               floating: true,
               snap: true,
-              title: const Text('书库'),
+              toolbarHeight:
+                  56 + (MediaQuery.textScalerOf(context).scale(16) - 16) * 2,
+              title: Row(
+                children: [
+                  ServerLogo(branding: branding, size: 30),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(branding.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16)),
+                        Text(activeLibrary?.name ?? '书库',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11, color: cs.onSurfaceVariant)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               actions: [
                 // 合集入口
                 _ActionIcon(

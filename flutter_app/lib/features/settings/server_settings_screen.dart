@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../data/api/api_client.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/server_route_provider.dart';
+import '../../data/providers/server_branding_provider.dart';
+import '../../widgets/server_logo.dart';
 import '../../l10n/app_localizations.dart';
 import 'server_route_settings.dart';
 
@@ -15,12 +17,22 @@ class ServerSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
+    final branding = ref.watch(currentServerBrandingProvider);
+    final activeUrl = ref.watch(serverUrlProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('服务器设置')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: ServerLogo(branding: branding),
+            title: Text(branding.name,
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle:
+                Text(activeUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
           const ServerRouteSettings(),
           const SizedBox(height: 16),
           Card(
@@ -82,6 +94,10 @@ class _ServerHistorySheetState extends ConsumerState<_ServerHistorySheet> {
 
   Future<void> _loadHistory() async {
     final history = await loadServerHistory();
+    if (!mounted) return;
+    await ref
+        .read(serverBrandingProvider.notifier)
+        .loadCached(history.map((record) => record.url));
     if (mounted) {
       setState(() {
         _history = history;
@@ -212,7 +228,7 @@ class _ServerHistorySheetState extends ConsumerState<_ServerHistorySheet> {
 }
 
 /// 服务器记录列表项
-class _ServerRecordTile extends StatelessWidget {
+class _ServerRecordTile extends ConsumerWidget {
   final ServerRecord record;
   final bool isCurrent;
   final bool switching;
@@ -228,8 +244,9 @@ class _ServerRecordTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final branding = ref.watch(cachedServerBrandingProvider(record.url));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -252,13 +269,7 @@ class _ServerRecordTile extends StatelessWidget {
                         : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    isCurrent ? Icons.check_rounded : Icons.dns_outlined,
-                    color: isCurrent
-                        ? cs.primary
-                        : cs.onSurfaceVariant.withOpacity(0.5),
-                    size: 18,
-                  ),
+                  child: ServerLogo(branding: branding, size: 38),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -266,7 +277,9 @@ class _ServerRecordTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        record.url,
+                        branding.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontWeight:
                               isCurrent ? FontWeight.w600 : FontWeight.w500,
@@ -274,6 +287,12 @@ class _ServerRecordTile extends StatelessWidget {
                           fontSize: 14,
                         ),
                       ),
+                      const SizedBox(height: 2),
+                      Text(record.url,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant)),
                       const SizedBox(height: 2),
                       Text(
                         [
