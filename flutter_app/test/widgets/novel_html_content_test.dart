@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nowen_reader/data/api/api_client.dart';
 import 'package:nowen_reader/data/api/comic_api.dart';
 import 'package:nowen_reader/features/reader/novel_html_content.dart';
+import 'package:nowen_reader/features/reader/novel_html_pages.dart';
 import 'package:nowen_reader/features/reader/novel_reader_screen.dart';
 import 'package:nowen_reader/widgets/authenticated_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -198,33 +199,24 @@ void main() {
       expect(find.byType(NovelHtmlContent), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
       if (swipe) {
-        final scroll = tester
-            .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
-        final controller = scroll.controller!;
-        expect(controller.position.maxScrollExtent, greaterThan(600));
-        final pages = ((controller.position.maxScrollExtent +
-                    controller.position.viewportDimension) /
-                controller.position.viewportDimension)
-            .ceil();
+        final view = find.byType(NovelHtmlPages);
+        final viewport = tester.renderObject<RenderNovelHtmlPages>(view);
+        expect(viewport.child!.size.height, greaterThan(600));
+        final pages = viewport.metrics!.pages.length;
         expect(find.text('1 / $pages'), findsOneWidget);
-        await tester.drag(
-            find.byType(SingleChildScrollView), const Offset(-250, 0));
+        await tester.drag(view, const Offset(-250, 0));
         await tester.pumpAndSettle();
-        expect(controller.offset, greaterThan(0));
+        expect(viewport.visibleSlice.start, greaterThan(0));
         expect(tester.takeException(), isNull);
-        await tester.drag(
-            find.byType(SingleChildScrollView), const Offset(250, 0));
+        await tester.drag(view, const Offset(250, 0));
         await tester.pumpAndSettle();
-        expect(controller.offset, 0);
+        expect(viewport.visibleSlice.start, 0);
         // 视口变化后，图文章节必须按新布局重算页数。
         tester.view.physicalSize =
             const Size(390, 844) * tester.view.devicePixelRatio;
         addTearDown(tester.view.resetPhysicalSize);
         await tester.pumpAndSettle();
-        final resizedPages = ((controller.position.maxScrollExtent +
-                    controller.position.viewportDimension) /
-                controller.position.viewportDimension)
-            .ceil();
+        final resizedPages = viewport.metrics!.pages.length;
         expect(find.text('1 / $resizedPages'), findsOneWidget);
         for (var page = 0; page < resizedPages; page++) {
           await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);

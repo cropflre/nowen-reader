@@ -19,6 +19,7 @@ import 'novel_panels.dart';
 import 'novel_tap_zone_settings.dart';
 import 'novel_content.dart';
 import 'novel_html_content.dart';
+import 'novel_html_pages.dart';
 
 /// 小说阅读器
 class NovelReaderScreen extends ConsumerStatefulWidget {
@@ -46,7 +47,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   String _chapterTitle = '';
   String? _chapterMimeType;
   bool get _isHtml => isNovelHtml(_chapterContent, _chapterMimeType);
-  bool _htmlMetricsScheduled = false;
   double _htmlDragDistance = 0;
   late final AnimationController _htmlPageAnimation;
   Animation<Offset> _htmlPageSlide = const AlwaysStoppedAnimation(Offset.zero);
@@ -625,8 +625,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
           }
         }
       }
-      if (pages.isNotEmpty)
+      if (pages.isNotEmpty) {
         startChapter = startChapter.clamp(0, pages.length - 1);
+      }
 
       setState(() {
         _title = data['title'] ?? '';
@@ -725,7 +726,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   void _computeSwipePages() {
     if (_settings.pageMode != NovelPageMode.swipe) return;
     if (_isHtml) {
-      _scheduleHtmlPageMetrics();
+      // The HTML viewport publishes page boundaries after its actual layout.
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -836,8 +837,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       final targetPage = _swipePage;
       final generation = _chapterLoadGeneration;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _chapterLoading || generation != _chapterLoadGeneration)
+        if (!mounted ||
+            _chapterLoading ||
+            generation != _chapterLoadGeneration) {
           return;
+        }
         // 页数更新并完成布局后再同步 PageController，避免被旧的单页范围截断。
         if (_swipePageController.hasClients &&
             _swipePageController.page?.round() != targetPage) {
@@ -854,15 +858,17 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     if (_swipePage > 0) {
       _goToSwipePage(_swipePage - 1);
     } else if (_currentChapter > 0) {
-      _loadChapter(_currentChapter - 1).then((_) {
-        // 跳到上一章最后一页
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            final lastPage = max(0, _swipeTotalPages - 1);
-            _goToSwipePage(lastPage, animate: false);
-          }
-        });
-      });
+      final chapter = _currentChapter - 1;
+      // Resolve the last page only after the new chapter has been laid out.
+      _loadChapter(chapter,
+          position: NovelReadingPosition(
+            chapter: chapter,
+            page: 0,
+            totalPages: 1,
+            swipe: true,
+            ratio: 1,
+            updatedAt: DateTime.now(),
+          ));
     }
   }
 
@@ -881,13 +887,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     _positionToRestore = null;
     setState(() => _swipePage = targetPage);
     if (_isHtml) {
-      if (!_scrollController.hasClients) return;
-      final position = _scrollController.position;
-      final offset = min(
-          targetPage * position.viewportDimension, position.maxScrollExtent);
-      // HTML 只布局一份，直接定位内容切片，再做横向入场动画。
-      // 不再用纵向 animateTo 模拟左右翻页，也不会重复解析整章 HTML。
-      _scrollController.jumpTo(offset);
       if (animate && direction != 0) {
         setState(() {
           _htmlPageSlide = Tween<Offset>(
@@ -910,39 +909,27 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     _schedulePositionSave();
   }
 
-  // 实际布局变化（包括图片异步加载、旋转和字号变化）后重算图文章节页数。
-  void _scheduleHtmlPageMetrics() {
-    if (_htmlMetricsScheduled) return;
-    _htmlMetricsScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _htmlMetricsScheduled = false;
-      if (!mounted ||
-          !_isHtml ||
-          _settings.pageMode != NovelPageMode.swipe ||
-          !_scrollController.hasClients) {
-        return;
-      }
-      final position = _scrollController.position;
-      if (!position.hasContentDimensions || position.viewportDimension <= 0)
-        return;
-      final pages = max(
-          1,
-          ((position.maxScrollExtent + position.viewportDimension) /
-                  position.viewportDimension)
-              .ceil());
-      final page =
-          _positionToRestore?.pageFor(pages) ?? _swipePage.clamp(0, pages - 1);
-      if (_swipeTotalPages != pages || _swipePage != page) {
-        setState(() {
-          _swipeTotalPages = pages;
-          _swipePage = page;
-        });
-      }
-      final offset =
-          min(page * position.viewportDimension, position.maxScrollExtent);
-      if ((position.pixels - offset).abs() > 1)
-        _scrollController.jumpTo(offset);
-    });
+  // 保留同一排版的精确页码；图片加载、旋转等改变页数时按章内比例定位。
+  void _onHtmlPageMetrics(NovelHtmlPageMetrics metrics) {
+    if (!mounted ||
+        _chapterLoading ||
+        !_isHtml ||
+        _settings.pageMode != NovelPageMode.swipe) {
+      return;
+    }
+    final pages = metrics.pages.length;
+    final ratio =
+        _swipeTotalPages > 1 ? _swipePage / (_swipeTotalPages - 1) : 0.0;
+    final page = _positionToRestore?.pageFor(pages) ??
+        (ratio * (pages - 1)).round().clamp(0, pages - 1);
+    _positionToRestore = null;
+    if (_swipeTotalPages != pages || _swipePage != page) {
+      setState(() {
+        _swipeTotalPages = pages;
+        _swipePage = page;
+      });
+    }
+    _schedulePositionSave();
   }
 
   void _restoreScrollPosition() {
@@ -1570,49 +1557,53 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
 
   /// 底部状态栏（沉浸式微弱显示）
   Widget _buildStatusBar() {
-    if (_showTOC || _showSettings || _showTapSettings || _showSearch) {
-      return const SizedBox.shrink();
-    }
     final progress = _totalChapters > 0
         ? ((_currentChapter + 1) / _totalChapters * 100).round()
         : 0;
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        2,
-        16,
-        MediaQuery.of(context).padding.bottom + 2,
-      ),
-      color: _settings.backgroundColor,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            _chapterTitle.isNotEmpty
-                ? _chapterTitle
-                : '第${_currentChapter + 1}章',
-            style: TextStyle(
-                color: _settings.secondaryTextColor.withAlpha(120),
-                fontSize: 10),
-          ),
-          Row(
-            children: [
-              Text(
-                '$progress%',
-                style: TextStyle(
-                    color: _settings.secondaryTextColor.withAlpha(120),
-                    fontSize: 10),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                _currentTime,
-                style: TextStyle(
-                    color: _settings.secondaryTextColor.withAlpha(120),
-                    fontSize: 10),
-              ),
-            ],
-          ),
-        ],
+    // Opening a panel must not change the page height or its reading position.
+    return Visibility(
+      visible: !(_showTOC || _showSettings || _showTapSettings || _showSearch),
+      maintainSize: true,
+      maintainAnimation: true,
+      maintainState: true,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          2,
+          16,
+          MediaQuery.of(context).padding.bottom + 2,
+        ),
+        color: _settings.backgroundColor,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _chapterTitle.isNotEmpty
+                  ? _chapterTitle
+                  : '第${_currentChapter + 1}章',
+              style: TextStyle(
+                  color: _settings.secondaryTextColor.withAlpha(120),
+                  fontSize: 10),
+            ),
+            Row(
+              children: [
+                Text(
+                  '$progress%',
+                  style: TextStyle(
+                      color: _settings.secondaryTextColor.withAlpha(120),
+                      fontSize: 10),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _currentTime,
+                  style: TextStyle(
+                      color: _settings.secondaryTextColor.withAlpha(120),
+                      fontSize: 10),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1662,126 +1653,136 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
         .where((line) => line.trim().isNotEmpty)
         .toList();
 
-    final contentWidgets = <Widget>[
-      // 章节标题
-      Padding(
-        padding: const EdgeInsets.only(bottom: 24),
-        child: Text(
-          _chapterTitle,
-          style: TextStyle(
-            color: _settings.textColor,
-            fontSize: _settings.fontSize + 4,
-            fontWeight: FontWeight.bold,
-            height: 1.4,
-            fontFamily: _settings.fontFamily,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ),
-      // 章节正文（段落）
-      if (_isHtml)
-        _buildHtmlContent()
-      else
-        ...paragraphs.map((p) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: SelectableText(
-                '　　${p.trim()}',
-                style: TextStyle(
-                  color: _settings.textColor,
-                  fontSize: _settings.fontSize,
-                  height: _settings.lineHeight,
-                  fontFamily: _settings.fontFamily,
-                ),
+    List<Widget> contentWidgets({double? maxImageHeight}) => <Widget>[
+          // 章节标题
+          NovelPageAtomic(
+              child: Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Text(
+              _chapterTitle,
+              style: TextStyle(
+                color: _settings.textColor,
+                fontSize: _settings.fontSize + 4,
+                fontWeight: FontWeight.bold,
+                height: 1.4,
+                fontFamily: _settings.fontFamily,
               ),
-            )),
-      // 上/下一章按钮
-      const SizedBox(height: 20),
-      Divider(color: _settings.secondaryTextColor.withAlpha(40)),
-      const SizedBox(height: 12),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          if (_currentChapter > 0)
-            TextButton.icon(
-              onPressed: _prevChapter,
-              icon:
-                  Icon(Icons.chevron_left, color: _settings.secondaryTextColor),
-              label: Text('上一章',
-                  style: TextStyle(color: _settings.secondaryTextColor)),
+              textAlign: TextAlign.center,
             ),
-          Text(
-            '${_currentChapter + 1} / $_totalChapters',
-            style: TextStyle(fontSize: 12, color: _settings.secondaryTextColor),
-          ),
-          if (_currentChapter < _totalChapters - 1)
-            TextButton.icon(
-              onPressed: _nextChapter,
-              icon: Icon(Icons.chevron_right,
-                  color: _settings.secondaryTextColor),
-              label: Text('下一章',
-                  style: TextStyle(color: _settings.secondaryTextColor)),
-            ),
-        ],
-      ),
-      const SizedBox(height: 20),
-    ];
+          )),
+          // 章节正文（段落）
+          if (_isHtml)
+            _buildHtmlContent(maxImageHeight: maxImageHeight)
+          else
+            ...paragraphs.map((p) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: SelectableText(
+                    '　　${p.trim()}',
+                    style: TextStyle(
+                      color: _settings.textColor,
+                      fontSize: _settings.fontSize,
+                      height: _settings.lineHeight,
+                      fontFamily: _settings.fontFamily,
+                    ),
+                  ),
+                )),
+          // 上/下一章按钮
+          const SizedBox(height: 20),
+          Divider(color: _settings.secondaryTextColor.withAlpha(40)),
+          const SizedBox(height: 12),
+          NovelPageAtomic(
+              child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (_currentChapter > 0)
+                TextButton.icon(
+                  onPressed: _prevChapter,
+                  icon: Icon(Icons.chevron_left,
+                      color: _settings.secondaryTextColor),
+                  label: Text('上一章',
+                      style: TextStyle(color: _settings.secondaryTextColor)),
+                ),
+              Text(
+                '${_currentChapter + 1} / $_totalChapters',
+                style: TextStyle(
+                    fontSize: 12, color: _settings.secondaryTextColor),
+              ),
+              if (_currentChapter < _totalChapters - 1)
+                TextButton.icon(
+                  onPressed: _nextChapter,
+                  icon: Icon(Icons.chevron_right,
+                      color: _settings.secondaryTextColor),
+                  label: Text('下一章',
+                      style: TextStyle(color: _settings.secondaryTextColor)),
+                ),
+            ],
+          )),
+          const SizedBox(height: 20),
+        ];
 
     // ====== 左右翻页(swipe)模式 ======
     if (_isHtml && _settings.pageMode == NovelPageMode.swipe) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (_) => _htmlDragDistance = 0,
-        onHorizontalDragUpdate: (details) =>
-            _htmlDragDistance += details.delta.dx,
-        onHorizontalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (_htmlDragDistance < -40 || velocity < -300) {
-            _swipeNextPage();
-          } else if (_htmlDragDistance > 40 || velocity > 300) {
-            _swipePrevPage();
-          }
-        },
-        child: NotificationListener<ScrollMetricsNotification>(
-          onNotification: (notification) {
-            if (notification.depth == 0) _scheduleHtmlPageMetrics();
-            return false;
+      return LayoutBuilder(builder: (context, constraints) {
+        final generation = _chapterLoadGeneration;
+        final pageHeight = max(1.0, constraints.maxHeight - 16 - 40);
+        final pageView = KeyedSubtree(
+          key: const ValueKey('novel-html-pages'),
+          child: NovelHtmlPages(
+            key: ValueKey(generation),
+            page: _swipePage,
+            onMetrics: (metrics) {
+              if (generation == _chapterLoadGeneration) {
+                _onHtmlPageMetrics(metrics);
+              }
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: contentWidgets(maxImageHeight: pageHeight),
+            ),
+          ),
+        );
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (_) => _htmlDragDistance = 0,
+          onHorizontalDragUpdate: (details) =>
+              _htmlDragDistance += details.delta.dx,
+          onHorizontalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0;
+            if (_htmlDragDistance < -40 || velocity < -300) {
+              _swipeNextPage();
+            } else if (_htmlDragDistance > 40 || velocity > 300) {
+              _swipePrevPage();
+            }
           },
-          child: Stack(
-            children: [
-              ClipRect(
-                  child: SlideTransition(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(_settings.horizontalPadding, 16,
+                _settings.horizontalPadding, 0),
+            child: Column(
+              children: [
+                Expanded(
+                  child: ClipRect(
+                    child: SlideTransition(
                       position: _htmlPageSlide,
-                      child: SingleChildScrollView(
-                        key: const ValueKey('novel-html-pages'),
-                        controller: _scrollController,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                              _settings.horizontalPadding,
-                              16,
-                              _settings.horizontalPadding,
-                              40),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: contentWidgets,
-                          ),
-                        ),
-                      ))),
-              if (_swipeTotalPages > 1)
-                Positioned(
-                  bottom: 8,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Text('${_swipePage + 1} / $_swipeTotalPages',
-                        style: TextStyle(
-                            fontSize: 10, color: _settings.secondaryTextColor)),
+                      child: pageView,
+                    ),
                   ),
                 ),
-            ],
+                SizedBox(
+                  height: 40,
+                  child: _swipeTotalPages > 1
+                      ? Center(
+                          child: Text('${_swipePage + 1} / $_swipeTotalPages',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: _settings.secondaryTextColor)),
+                        )
+                      : null,
+                ),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      });
     }
     if (_settings.pageMode == NovelPageMode.swipe) {
       return Stack(
@@ -1844,14 +1845,15 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
         _settings.horizontalPadding,
         80,
       ),
-      children: contentWidgets,
+      children: contentWidgets(),
     );
   }
 
-  Widget _buildHtmlContent() {
+  Widget _buildHtmlContent({double? maxImageHeight}) {
     final content = NovelHtmlContent(
       content: _chapterContent,
       serverUrl: ref.read(apiClientProvider).baseUrl,
+      maxImageHeight: maxImageHeight,
       textStyle: TextStyle(
         color: _settings.textColor,
         fontSize: _settings.fontSize,

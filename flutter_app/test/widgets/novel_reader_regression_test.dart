@@ -12,6 +12,7 @@ import 'package:nowen_reader/data/api/comic_api.dart';
 import 'package:nowen_reader/data/providers/app_version_provider.dart';
 import 'package:nowen_reader/data/services/novel_reading_position.dart';
 import 'package:nowen_reader/features/reader/novel_panels.dart';
+import 'package:nowen_reader/features/reader/novel_html_pages.dart';
 import 'package:nowen_reader/features/reader/novel_reader_screen.dart';
 import 'package:nowen_reader/features/reader/novel_settings.dart';
 import 'package:nowen_reader/widgets/continue_reading.dart';
@@ -21,9 +22,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _server = 'https://reader.example/nowen';
 
 class _ReaderApi extends ComicApi {
-  _ReaderApi({this.html = false, this.lastChapter = 999}) : super(Dio());
+  _ReaderApi({this.html = false, this.lastChapter = 999, this.htmlContent})
+      : super(Dio());
 
   final bool html;
+  final String? htmlContent;
   int lastChapter;
   String? lastReadAt;
   final requests = <int>[];
@@ -46,11 +49,12 @@ class _ReaderApi extends ComicApi {
   Map<String, dynamic> chapter(int index) => {
         'title': '第${index + 1}章',
         'mimeType': html ? 'text/html' : 'text/plain',
-        'content': List.generate(
-            100,
-            (i) => html
-                ? '<p>章节${index + 1}，第$i段正文。</p>'
-                : '章节${index + 1}，第$i段正文。').join('\n'),
+        'content': htmlContent ??
+            List.generate(
+                100,
+                (i) => html
+                    ? '<p>章节${index + 1}，第$i段正文。</p>'
+                    : '章节${index + 1}，第$i段正文。').join('\n'),
       };
 
   @override
@@ -246,11 +250,12 @@ void main() {
     await _mount(tester, _ReaderApi(html: true));
     await _open(tester);
     final view = find.byKey(const ValueKey('novel-html-pages'));
-    final scroll = tester.widget<SingleChildScrollView>(view).controller!;
-    final viewportHeight = scroll.position.viewportDimension;
+    final viewport = tester.renderObject<RenderNovelHtmlPages>(view);
+    final nextStart = viewport.metrics!.pages[1].start;
     await tester.drag(view, const Offset(-250, 0));
     await tester.pump(const Duration(milliseconds: 60));
-    expect(scroll.offset, closeTo(viewportHeight, 1));
+    // The page content changes immediately; only the horizontal slide animates.
+    expect(viewport.visibleSlice.start, nextStart);
     final transition = tester.widget<SlideTransition>(
         find.ancestor(of: view, matching: find.byType(SlideTransition)).first);
     expect(transition.position.value.dx, greaterThan(0));
@@ -258,6 +263,104 @@ void main() {
     await tester.pumpAndSettle();
     await _cleanup(tester);
   });
+
+  testWidgets('HTML reserves a footer and preserves progress after relayout',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _mount(tester, _ReaderApi(html: true));
+    await _open(tester);
+    final view = find.byType(NovelHtmlPages);
+    for (var i = 0; i < 5; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+    }
+    var viewport = tester.renderObject<RenderNovelHtmlPages>(view);
+    final oldPages = viewport.metrics!.pages.length;
+    final ratio = 5 / (oldPages - 1);
+    expect(tester.getRect(find.text('6 / $oldPages')).top,
+        greaterThan(tester.getRect(view).bottom));
+    await tester.binding.setSurfaceSize(const Size(800, 400));
+    await tester.pumpAndSettle();
+    viewport = tester.renderObject<RenderNovelHtmlPages>(view);
+    var pages = viewport.metrics!.pages.length;
+    final page = (ratio * (pages - 1)).round();
+    expect(find.text('${page + 1} / $pages'), findsOneWidget);
+    expect(viewport.visibleSlice, viewport.metrics!.pages[page]);
+    // Reflowing font size, line height and padding keeps the chapter ratio.
+    final beforeSettingsRatio = page / (pages - 1);
+    await tester.tap(find.byIcon(Icons.text_fields));
+    await tester.pumpAndSettle();
+    final panel = tester.widget<SettingsPanel>(find.byType(SettingsPanel));
+    panel.onChanged(panel.settings
+        .copyWith(fontSize: 25, lineHeight: 2.0, padding: NovelPadding.wide));
+    panel.onClose();
+    await tester.pumpAndSettle();
+    viewport = tester.renderObject<RenderNovelHtmlPages>(view);
+    pages = viewport.metrics!.pages.length;
+    final resizedPage = (beforeSettingsRatio * (pages - 1)).round();
+    expect(find.text('${resizedPage + 1} / $pages'), findsOneWidget);
+    await _close(tester);
+    expect((await _store().load())!.page, resizedPage);
+    await _open(tester);
+    expect(find.text('${resizedPage + 1} / $pages'), findsOneWidget);
+    await _cleanup(tester);
+  });
+
+  testWidgets('long HTML restores page 22 without using loading metrics',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final html = List.generate(
+        180, (i) => '<p>第$i段，${'长章节的分页必须保留完整的文字行，并正确恢复阅读位置。' * 8}</p>').join();
+    expect(html.length, greaterThan(10000));
+    final api = _ReaderApi(html: true, htmlContent: html);
+    await _mount(tester, api);
+    await _open(tester);
+    final pages = tester
+        .renderObject<RenderNovelHtmlPages>(find.byType(NovelHtmlPages))
+        .metrics!
+        .pages
+        .length;
+    expect(pages, greaterThan(22));
+    await _close(tester);
+    await _store().save(NovelReadingPosition(
+        chapter: 999,
+        page: 21,
+        totalPages: pages,
+        swipe: true,
+        ratio: 21 / (pages - 1),
+        updatedAt: DateTime.now()));
+    await _open(tester);
+    expect(find.text('22 / $pages'), findsOneWidget);
+    await _close(tester);
+    expect((await _store().load())!.page, 21);
+    await _cleanup(tester);
+  });
+
+  for (final html in [false, true]) {
+    testWidgets(
+        '${html ? 'HTML' : 'text'} previous chapter opens at its last page',
+        (tester) async {
+      await _mount(tester, _ReaderApi(html: html));
+      await _open(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(find.text('第999章'), findsWidgets);
+      await _close(tester);
+      final saved = (await _store().load())!;
+      expect(saved.chapter, 998);
+      expect(saved.page, saved.totalPages - 1);
+      expect(saved.totalPages, greaterThan(1));
+      await _open(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(find.text('第1000章'), findsWidgets);
+      await _close(tester);
+      expect((await _store().load())!.page, 0);
+      await _cleanup(tester);
+    });
+  }
 
   testWidgets('backgrounding persists the current page before debounce',
       (tester) async {
