@@ -708,6 +708,22 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     fetchTags();
   }, [fetchTags]);
 
+  // 服务端的标签会变（外部脚本写入 / 刮削 / 改名 / 合并 / 删除），
+  // 窗口重新获得焦点或标签页重新可见时刷新一次，避免筛选条里残留旧标签名。
+  useEffect(() => {
+    const refresh = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") fetchTags();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("nowen:tags-updated", refresh as EventListener);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("nowen:tags-updated", refresh as EventListener);
+    };
+  }, [fetchTags]);
+
   // Filter comics (server-side filtering is primary)
   const filteredComics = useMemo(() => {
     return displayComics;
