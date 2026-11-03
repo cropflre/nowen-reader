@@ -325,6 +325,17 @@ export default function ComicDetailPage() {
     [comicId, refetch]
   );
 
+  // 点击标签 → 跳到书库并按该标签筛选（书库页从 sessionStorage["homeFilter:tags"] 读筛选状态）
+  const goToTagFilter = useCallback(
+    (tagName: string) => {
+      try {
+        sessionStorage.setItem("homeFilter:tags", JSON.stringify([tagName]));
+      } catch {}
+      router.push("/books");
+    },
+    [router]
+  );
+
   const handleAddCategory = useCallback(async (slug: string) => {
     await addComicCategories(comicId, [slug]);
     setShowCategoryPicker(false);
@@ -1354,12 +1365,11 @@ export default function ComicDetailPage() {
               );
             })}
 
-            {/* Tags — 仅管理员可编辑 */}
-            {canManage && (
+            {/* Tags — 展示对所有能看到该作品的用户开放；增删改仍仅管理员（canManage） */}
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t.comicDetail.tagsLabel}</h3>
-                {(comic.tags || []).length > 0 && (
+                {canManage && (comic.tags || []).length > 0 && (
                   <button
                     onClick={handleClearAllTags}
                     className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-muted transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -1375,10 +1385,23 @@ export default function ComicDetailPage() {
                   const sourceInfo = tagsWithSource.find(t => t.name === tag.name);
                   const isFromSeries = sourceInfo?.source === "series";
                   const isExcluded = sourceInfo?.source === "excluded";
+                  const tagColor = (tag as { color?: string }).color;
+                  const useTagColor = !!tagColor && tagColor !== "default" && !isExcluded;
                   return (
                     <span
                       key={tag.name}
-                      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      role="button"
+                      tabIndex={0}
+                      title={tag.name}
+                      onClick={() => goToTagFilter(tag.name)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          goToTagFilter(tag.name);
+                        }
+                      }}
+                      style={useTagColor ? { backgroundColor: `${tagColor}26`, color: tagColor } : undefined}
+                      className={`cursor-pointer transition-colors hover:brightness-110 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
                         isExcluded
                           ? "bg-muted/10 text-muted/50 line-through"
                           : isFromSeries
@@ -1398,12 +1421,17 @@ export default function ComicDetailPage() {
                           已排除
                         </span>
                       )}
-                      <button
-                        onClick={() => handleRemoveTag(tag.name)}
-                        className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                      {canManage && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveTag(tag.name);
+                          }}
+                          className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                     </span>
                   );
                 })}
@@ -1411,6 +1439,8 @@ export default function ComicDetailPage() {
                   <span className="text-xs text-muted">{t.comicDetail.noTags}</span>
                 )}
               </div>
+              {canManage && (
+                <>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -1489,8 +1519,9 @@ export default function ComicDetailPage() {
                   </div>
                 </div>
               )}
+                </>
+              )}
             </div>
-            )}
 
             {/* Categories — 仅管理员可编辑 */}
             {canManage && (
