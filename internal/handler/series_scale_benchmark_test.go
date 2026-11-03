@@ -88,6 +88,9 @@ func seedScale21441Library(tb testing.TB, libraryID string) {
 }
 
 func TestIssue43Scale21441FilesEndToEnd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping 21,441-file scale regression test in short mode")
+	}
 	r := setupTestRouter(t)
 	cookie := registerAndLogin(t, r)
 

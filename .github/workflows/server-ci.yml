@@ -45,4 +45,5 @@ jobs:
       - run: npm run build:all
         working-directory: frontend
       - run: go vet ./...
-      - run: go test ./... -race -timeout 600s
+      - run: go test ./... -short -race -timeout 600s
+      - run: go test ./internal/handler -run '^TestIssue43Scale21441FilesEndToEnd$' -timeout 120s

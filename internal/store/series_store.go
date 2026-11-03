@@ -235,6 +235,43 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 			return err
 		}
 
+		upsertSeriesStmt, err := tx.Prepare(`
+			INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "detectionSource", "manualLocked", "createdAt", "updatedAt")
+			VALUES (?, ?, ?, ?, ?, ?, 'directory', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT("libraryId", "rootRelativePath") DO UPDATE SET
+				"title" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."title" ELSE excluded."title" END,
+				"sortTitle" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."sortTitle" ELSE excluded."sortTitle" END,
+				"coverComicId" = CASE WHEN "ComicSeries"."coverComicId" = '' THEN excluded."coverComicId" ELSE "ComicSeries"."coverComicId" END,
+				"updatedAt" = CURRENT_TIMESTAMP
+		`)
+		if err != nil {
+			return err
+		}
+		defer upsertSeriesStmt.Close()
+
+		upsertSectionStmt, err := tx.Prepare(`
+			INSERT INTO "ComicSeriesSection" ("id", "seriesId", "title", "relativePath", "kind", "seasonNumber", "sortIndex", "detectionSource", "manualLocked")
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+			ON CONFLICT("seriesId", "relativePath") DO UPDATE SET
+				"title" = excluded."title", "kind" = excluded."kind", "seasonNumber" = excluded."seasonNumber",
+				"sortIndex" = excluded."sortIndex", "detectionSource" = excluded."detectionSource"
+		`)
+		if err != nil {
+			return err
+		}
+		defer upsertSectionStmt.Close()
+
+		upsertItemStmt, err := tx.Prepare(`
+			INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel")
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT("seriesId", "comicId") DO UPDATE SET
+				"sectionId" = excluded."sectionId", "sortIndex" = excluded."sortIndex", "displayLabel" = excluded."displayLabel"
+		`)
+		if err != nil {
+			return err
+		}
+		defer upsertItemStmt.Close()
+
 		seen := make(map[string]struct{}, len(detected))
 		for _, series := range detected {
 			if locked[series.RootRelativePath] {
@@ -261,15 +298,7 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 			}
 
 			sortTitle := BuildTitleSortKey(series.Title)
-			if _, err := tx.Exec(`
-				INSERT INTO "ComicSeries" ("id", "libraryId", "rootRelativePath", "title", "sortTitle", "coverComicId", "detectionSource", "manualLocked", "createdAt", "updatedAt")
-				VALUES (?, ?, ?, ?, ?, ?, 'directory', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-				ON CONFLICT("libraryId", "rootRelativePath") DO UPDATE SET
-					"title" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."title" ELSE excluded."title" END,
-					"sortTitle" = CASE WHEN "ComicSeries"."metadataLocked" = 1 THEN "ComicSeries"."sortTitle" ELSE excluded."sortTitle" END,
-					"coverComicId" = CASE WHEN "ComicSeries"."coverComicId" = '' THEN excluded."coverComicId" ELSE "ComicSeries"."coverComicId" END,
-					"updatedAt" = CURRENT_TIMESTAMP
-			`, series.ID, series.LibraryID, series.RootRelativePath, series.Title, sortTitle, coverComicID); err != nil {
+			if _, err := upsertSeriesStmt.Exec(series.ID, series.LibraryID, series.RootRelativePath, series.Title, sortTitle, coverComicID); err != nil {
 				return err
 			}
 
@@ -308,13 +337,7 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 					sectionIDMap[section.ID] = existingSec.id
 					continue
 				}
-				if _, err := tx.Exec(`
-					INSERT INTO "ComicSeriesSection" ("id", "seriesId", "title", "relativePath", "kind", "seasonNumber", "sortIndex", "detectionSource", "manualLocked")
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-					ON CONFLICT("seriesId", "relativePath") DO UPDATE SET
-						"title" = excluded."title", "kind" = excluded."kind", "seasonNumber" = excluded."seasonNumber",
-						"sortIndex" = excluded."sortIndex", "detectionSource" = excluded."detectionSource"
-				`, section.ID, persistedID, section.Title, section.RelativePath, section.Kind, section.SeasonNumber, section.SortIndex, section.DetectionSource); err != nil {
+				if _, err := upsertSectionStmt.Exec(section.ID, persistedID, section.Title, section.RelativePath, section.Kind, section.SeasonNumber, section.SortIndex, section.DetectionSource); err != nil {
 					return err
 				}
 				var persistedSecID string
@@ -330,12 +353,7 @@ func ReplaceDetectedSeries(libraryID string, detected []DetectedSeries) error {
 						sectionID = mapped
 					}
 				}
-				if _, err := tx.Exec(`
-					INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel")
-					VALUES (?, ?, ?, ?, ?)
-					ON CONFLICT("seriesId", "comicId") DO UPDATE SET
-						"sectionId" = excluded."sectionId", "sortIndex" = excluded."sortIndex", "displayLabel" = excluded."displayLabel"
-				`, persistedID, sectionID, item.ComicID, item.SortIndex, item.DisplayLabel); err != nil {
+				if _, err := upsertItemStmt.Exec(persistedID, sectionID, item.ComicID, item.SortIndex, item.DisplayLabel); err != nil {
 					return err
 				}
 			}

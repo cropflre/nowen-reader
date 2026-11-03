@@ -617,6 +617,40 @@ func applyArchivedSeriesSetTx(tx *sql.Tx, libraryID string, nextRecords []Archiv
 		return err
 	}
 
+	insertSeriesStmt, err := tx.Prepare(`
+		INSERT INTO "ComicSeries" (
+			"id", "libraryId", "rootRelativePath", "title", "sortTitle",
+			"coverComicId", "coverUrl", "detectionSource",
+			"author", "description", "tags", "year", "publisher", "language", "genre", "status",
+			"externalRating", "externalRatingMax", "externalRatingSource", "externalRatingUpdatedAt",
+			"metadataLocked", "manualLocked", "createdAt", "updatedAt"
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer insertSeriesStmt.Close()
+
+	insertSectionStmt, err := tx.Prepare(`
+		INSERT INTO "ComicSeriesSection" (
+			"id", "seriesId", "title", "relativePath", "kind", "seasonNumber",
+			"sortIndex", "detectionSource", "manualLocked"
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer insertSectionStmt.Close()
+
+	insertItemStmt, err := tx.Prepare(`
+		INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel")
+		VALUES (?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer insertItemStmt.Close()
+
 	now := time.Now().UTC()
 	for _, rec := range nextRecords {
 		createdAt := rec.CreatedAt
@@ -635,15 +669,7 @@ func applyArchivedSeriesSetTx(tx *sql.Tx, libraryID string, nextRecords []Archiv
 		if detectionSource == "" {
 			detectionSource = "directory"
 		}
-		if _, err := tx.Exec(`
-			INSERT INTO "ComicSeries" (
-				"id", "libraryId", "rootRelativePath", "title", "sortTitle",
-				"coverComicId", "coverUrl", "detectionSource",
-				"author", "description", "tags", "year", "publisher", "language", "genre", "status",
-				"externalRating", "externalRatingMax", "externalRatingSource", "externalRatingUpdatedAt",
-				"metadataLocked", "manualLocked", "createdAt", "updatedAt"
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`,
+		if _, err := insertSeriesStmt.Exec(
 			rec.ID, libraryID, rec.RootRelativePath, rec.Title, sortTitle,
 			rec.CoverComicID, rec.CoverURL, detectionSource,
 			rec.Author, rec.Description, rec.TagsText, rec.Year, rec.Publisher, rec.Language, rec.Genre, rec.Status,
@@ -659,12 +685,9 @@ func applyArchivedSeriesSetTx(tx *sql.Tx, libraryID string, nextRecords []Archiv
 			if secSource == "" {
 				secSource = "directory"
 			}
-			if _, err := tx.Exec(`
-				INSERT INTO "ComicSeriesSection" (
-					"id", "seriesId", "title", "relativePath", "kind", "seasonNumber",
-					"sortIndex", "detectionSource", "manualLocked"
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`, sec.ID, rec.ID, sec.Title, sec.RelativePath, sec.Kind, sec.SeasonNumber, sec.SortIndex, secSource, sec.ManualLocked); err != nil {
+			if _, err := insertSectionStmt.Exec(
+				sec.ID, rec.ID, sec.Title, sec.RelativePath, sec.Kind, sec.SeasonNumber, sec.SortIndex, secSource, sec.ManualLocked,
+			); err != nil {
 				return fmt.Errorf("insert section %s: %w", sec.ID, err)
 			}
 			validSections[sec.ID] = true
@@ -675,10 +698,9 @@ func applyArchivedSeriesSetTx(tx *sql.Tx, libraryID string, nextRecords []Archiv
 			if item.SectionID != "" && validSections[item.SectionID] {
 				secID = item.SectionID
 			}
-			if _, err := tx.Exec(`
-				INSERT INTO "ComicSeriesItem" ("seriesId", "sectionId", "comicId", "sortIndex", "displayLabel")
-				VALUES (?, ?, ?, ?, ?)
-			`, rec.ID, secID, item.ComicID, item.SortIndex, item.DisplayLabel); err != nil {
+			if _, err := insertItemStmt.Exec(
+				rec.ID, secID, item.ComicID, item.SortIndex, item.DisplayLabel,
+			); err != nil {
 				return fmt.Errorf("insert item %s into series %s: %w", item.ComicID, rec.ID, err)
 			}
 		}
