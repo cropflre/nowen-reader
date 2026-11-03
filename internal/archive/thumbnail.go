@@ -12,11 +12,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
-	// Register decoders for common image formats
+	// Register decoders for common image formats (used by DecodeConfig / Go native fallback)
 	_ "image/gif"
+
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/tiff"
+	_ "golang.org/x/image/webp"
 
 	"github.com/nowen-reader/nowen-reader/internal/config"
 )
@@ -314,15 +319,30 @@ func resizeToWebP(imgData []byte, width, height, quality int) ([]byte, string, e
 // resizeWithCwebp uses cwebp to resize and convert to WebP.
 // cwebp 原生支持 JPEG/PNG/WebP 输入，直接流式传入源数据，避免先在 Go 中把超大
 // JPEG 完整解码并转成 PNG 所造成的数百 MB 内存峰值。
+// 先通过 image.DecodeConfig 仅读取图片头部获取原图宽高并追加 -crop 参数，
+// 防止 cwebp 的 -resize 将长条漫或横版跨页直接非等比拉伸压扁。
 func resizeWithCwebp(cwebpPath string, imgData []byte, width, height, quality int) ([]byte, error) {
-	cmd := exec.Command(cwebpPath,
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(imgData))
+	if err != nil {
+		return nil, fmt.Errorf("cwebp decode header: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return nil, fmt.Errorf("cwebp invalid source dimensions: %dx%d", cfg.Width, cfg.Height)
+	}
+
+	args := []string{
 		"-quiet",
 		"-mt",
 		"-low_memory",
-		"-resize", fmt.Sprintf("%d", width), fmt.Sprintf("%d", height),
-		"-q", fmt.Sprintf("%d", quality),
+	}
+	args = append(args, buildCwebpCropArgs(cfg.Width, cfg.Height, width, height)...)
+	args = append(args,
+		"-resize", strconv.Itoa(width), strconv.Itoa(height),
+		"-q", strconv.Itoa(quality),
 		"-o", "-", "--", "-",
 	)
+
+	cmd := exec.Command(cwebpPath, args...)
 	cmd.Stdin = bytes.NewReader(imgData)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -334,6 +354,65 @@ func resizeWithCwebp(cwebpPath string, imgData []byte, width, height, quality in
 		return nil, fmt.Errorf("cwebp returned empty output")
 	}
 	return out, nil
+}
+
+// buildCwebpCropArgs 计算与 ffmpeg / Go 原生兜底一致的 cover 裁剪参数：
+//   - 源图更宽（srcW/srcH > dstW/dstH）：保留全部高度，水平居中裁剪
+//   - 源图更高（srcW/srcH < dstW/dstH，如条漫长图）：保留全部宽度，从顶部 y=0 裁剪
+//
+// 坐标与裁剪边尽量对齐到偶数，避免 YUV420 色度子采样取整偏差，并保证不越界。
+func buildCwebpCropArgs(srcW, srcH, dstW, dstH int) []string {
+	if srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0 {
+		return nil
+	}
+	lhs := int64(srcW) * int64(dstH)
+	rhs := int64(dstW) * int64(srcH)
+	if lhs == rhs {
+		return nil
+	}
+
+	cropX, cropY, cropW, cropH := 0, 0, srcW, srcH
+	if lhs > rhs {
+		cropW = int(rhs / int64(dstH))
+		if cropW >= 2 {
+			cropW &^= 1
+		}
+		if cropW < 1 {
+			cropW = 1
+		}
+		if cropW > srcW {
+			cropW = srcW
+		}
+		cropX = ((srcW - cropW) / 2) &^ 1
+		if cropX < 0 {
+			cropX = 0
+		}
+		if cropX+cropW > srcW {
+			cropX = srcW - cropW
+		}
+	} else {
+		cropH = int(lhs / int64(dstW))
+		if cropH >= 2 {
+			cropH &^= 1
+		}
+		if cropH < 1 {
+			cropH = 1
+		}
+		if cropH > srcH {
+			cropH = srcH
+		}
+	}
+
+	if cropW >= srcW && cropH >= srcH {
+		return nil
+	}
+	return []string{
+		"-crop",
+		strconv.Itoa(cropX),
+		strconv.Itoa(cropY),
+		strconv.Itoa(cropW),
+		strconv.Itoa(cropH),
+	}
 }
 
 // resizeWithFfmpeg uses ffmpeg to resize and convert to WebP.
