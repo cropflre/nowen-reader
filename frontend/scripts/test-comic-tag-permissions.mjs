@@ -19,6 +19,8 @@ vm.runInNewContext(compile("../src/lib/i18n/locales/en.ts"), { module: translati
 const t = translationModule.exports.default;
 const colorModule = { exports: {} };
 vm.runInNewContext(compile("../src/lib/tag-color.ts"), { module: colorModule, exports: colorModule.exports });
+const navigationModule = { exports: {} };
+vm.runInNewContext(compile("../src/lib/tag-navigation.ts"), { module: navigationModule, exports: navigationModule.exports, URLSearchParams });
 const source = compile("../src/app/comic/[id]/page.tsx", true);
 const noop = () => {};
 const Empty = () => null;
@@ -103,6 +105,7 @@ function mount({ role = "user", canManage = false, tags = baseComic.tags, tagSou
     },
     "@/lib/base-path": { apiPath: (path) => `/reader${path}` },
     "@/lib/tag-color": colorModule.exports,
+    "@/lib/tag-navigation": navigationModule.exports,
   };
   const module = { exports: {} };
   vm.runInNewContext(source, {
@@ -158,6 +161,8 @@ const buttonWithText = (tree, label) => buttons(tree).find((button) => text(butt
 function assertReadOnlyTags(tree) {
   const section = tagSection(tree);
   assert.ok(section, "Readers can find the labeled tags section");
+  const links = elements(section, (node) => node.props.href?.startsWith("/books?tags="));
+  assert.ok(links.every((link) => buttons(link).length === 0), "Navigation links never contain management buttons");
   assert.equal(input(section), undefined, "Readers cannot add tags");
   assert.equal(buttons(section).length, 0, "Readers have no remove, clear, add, AI suggestion or AI apply controls");
   for (const label of [t.comicDetail.clearAllTags, t.comicDetail.aiSuggestTags, t.comicDetail.aiAddSelected, t.comicDetail.aiAddAll]) {
@@ -170,6 +175,8 @@ const reader = mount();
 let rendered = reader.render();
 let section = assertReadOnlyTags(rendered.tree);
 assert.ok(text(section).includes("Adventure"));
+assert.ok(rendered.html.includes('href="/books?tags=Adventure"'), "Reader tags are native filter links");
+assert.ok(rendered.html.includes('href="/books?tags=%E5%86%92%E9%99%A9+%26+Mystery"'), "Tag links safely encode punctuation and Unicode");
 assert.ok(text(section).includes("冒险 & Mystery"));
 assert.ok(rendered.html.includes("冒险 &amp; Mystery"), "Tag names are rendered through React escaping");
 

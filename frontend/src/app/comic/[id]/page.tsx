@@ -79,6 +79,7 @@ import {
 import { formatFileSize, isNovelFile, getReaderUrl, getDetailUrl, isNovelComic } from "@/lib/comic-utils";
 import { apiPath } from "@/lib/base-path";
 import { getTagColorStyle } from "@/lib/tag-color";
+import { tagFilterHref } from "@/lib/tag-navigation";
 
 export default function ComicDetailPage() {
   const params = useParams();
@@ -1387,8 +1388,14 @@ export default function ComicDetailPage() {
                           : "bg-accent/15 text-accent"
                       }`}
                     >
-                      <Tag className="h-3 w-3" />
-                      {tag.name}
+                      <Link
+                        href={tagFilterHref(tag.name)}
+                        title={tag.name}
+                        className="inline-flex items-center gap-1.5 rounded-sm transition-opacity hover:opacity-75 focus-visible:outline-2 focus-visible:outline-offset-2"
+                      >
+                        <Tag className="h-3 w-3" />
+                        {tag.name}
+                      </Link>
                       {isFromSeries && (
                         <span className="ml-0.5 rounded bg-blue-500/20 px-1 py-0 text-[9px] text-blue-400/80">
                           系列

@@ -71,7 +71,7 @@ function visit(node) {
     const callback = node.arguments[0].getText(ast);
     if (callback.includes("history.replaceState")) {
       if (callback.includes('params.set("page"')) pageEffect = callback;
-      else searchEffect = callback;
+      else if (callback.includes('params.set("search"')) searchEffect = callback;
     }
   }
   ts.forEachChild(node, visit);
@@ -93,7 +93,7 @@ function makePage(url, savedPage = "18", favoritesView = false) {
   };
   const context = vm.createContext({
     URLSearchParams, window: { location, history }, favoritesView,
-    selectedLibraryIds: [],
+    initialTags: null, selectedLibraryIds: [],
     readStringArrayFromLocalStorage: () => [],
     sessionStorage: {
       getItem: (name) => storage.get(name) ?? null,

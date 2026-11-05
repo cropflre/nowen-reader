@@ -50,6 +50,7 @@ import { calculateStoredReadingProgress } from "@/lib/progress";
 import { seriesIdFromShelfId } from "@/lib/series-id";
 import { useLibraryTags } from "@/hooks/useLibraryTags";
 import { emitTagsUpdated } from "@/lib/sync-event";
+import { readTagFilters } from "@/lib/tag-navigation";
 
 const DEFAULT_PAGE_SIZE = 24;
 
@@ -126,22 +127,27 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   const toast = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [initialTags] = useState(() => readTagFilters(window.location.search));
 
   // 会话筛选条件保持（sessionStorage）
   const [searchQuery, setSearchQuery] = useState(() => {
     if (typeof window !== "undefined") {
       const search = new URLSearchParams(window.location.search).get("search");
       if (search !== null) return search;
-      return sessionStorage.getItem("homeFilter:search") || "";
+      return initialTags !== null ? "" : sessionStorage.getItem("homeFilter:search") || "";
     }
     return "";
   });
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [selectedTags, setSelectedTags] = useState<string[]>(() => {
+    if (initialTags !== null) return initialTags;
     if (typeof window !== "undefined") {
       try {
         const saved = sessionStorage.getItem("homeFilter:tags");
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const tags = JSON.parse(saved);
+          return Array.isArray(tags) ? tags.filter((tag): tag is string => typeof tag === "string") : [];
+        }
       } catch {}
     }
     return [];
@@ -158,19 +164,19 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       const urlLib = new URLSearchParams(window.location.search).get("lib");
       if (urlLib && urlLib.trim()) return [urlLib.trim()];
     }
-    return readStringArrayFromLocalStorage("home:selectedLibraryIds");
+    return initialTags !== null ? [] : readStringArrayFromLocalStorage("home:selectedLibraryIds");
   });
   const [directoryPath, setDirectoryPath] = useState<string>(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.has("dir")) return params.get("dir") || "";
-      return sessionStorage.getItem("homeFilter:dir") || "";
+      return initialTags !== null ? "" : sessionStorage.getItem("homeFilter:dir") || "";
     }
     return "";
   });
   const [directoryLibraryHint, setDirectoryLibraryHint] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      return sessionStorage.getItem("homeFilter:dirLibId") || "";
+      return initialTags !== null ? "" : sessionStorage.getItem("homeFilter:dirLibId") || "";
     }
     return "";
   });
@@ -271,7 +277,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
-      return sessionStorage.getItem("homeFilter:category") || null;
+      return initialTags !== null ? null : sessionStorage.getItem("homeFilter:category") || null;
     }
     return null;
   });
@@ -319,10 +325,10 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
   // 内容类型 Tab
   const [readingStatusFilter, setReadingStatusFilter] = useState<string>(() => {
-    return sessionStorage.getItem("homeFilter:readingStatus") || "";
+    return initialTags !== null ? "" : sessionStorage.getItem("homeFilter:readingStatus") || "";
   });
-  const [uncategorized, setUncategorized] = useState(() => sessionStorage.getItem("homeFilter:uncategorized") === "true");
-  const [untagged, setUntagged] = useState(() => sessionStorage.getItem("homeFilter:untagged") === "true");
+  const [uncategorized, setUncategorized] = useState(() => initialTags === null && sessionStorage.getItem("homeFilter:uncategorized") === "true");
+  const [untagged, setUntagged] = useState(() => initialTags === null && sessionStorage.getItem("homeFilter:untagged") === "true");
 
   // 筛选条件变更时同步到 sessionStorage
   useEffect(() => {
@@ -335,6 +341,11 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   }, [searchQuery]);
   useEffect(() => {
     sessionStorage.setItem("homeFilter:tags", JSON.stringify(selectedTags));
+    const params = new URLSearchParams(window.location.search);
+    params.delete("tags");
+    selectedTags.forEach((tag) => params.append("tags", tag));
+    const query = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
   }, [selectedTags]);
   useEffect(() => {
     sessionStorage.setItem("homeFilter:sortBy", sortBy);
@@ -403,7 +414,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.has("page") || params.has("search") || params.has("dir")) {
+      if (params.has("page") || params.has("search") || params.has("dir") || params.has("tags")) {
         const page = Number(params.get("page") || 1);
         return Number.isInteger(page) && page > 0 ? page : 1;
       }
@@ -741,7 +752,9 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     if (loading) return;
     // 缓存已可渲染时即恢复位置，不等待后台刷新
     // 数据已加载完成，尝试恢复滚动位置
-    const savedY = sessionStorage.getItem("homeScrollY");
+    const savedY = initialTags !== null && !new URLSearchParams(window.location.search).has("page")
+      ? null : sessionStorage.getItem("homeScrollY");
+    if (savedY === null && initialTags !== null) window.scrollTo(0, 0);
     if (savedY) {
       const y = parseInt(savedY, 10);
       if (!isNaN(y) && y > 0) {
