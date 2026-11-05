@@ -32,6 +32,7 @@ import type { SeriesDetail, SeriesItem } from "@/types/series";
 import { useAuth } from "@/lib/auth-context";
 import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/progress";
 import { formatDuration, formatFileSize, isNovelFile } from "@/lib/comic-utils";
+import { getTagColorStyle } from "@/lib/tag-color";
 
 function readerURL(item: SeriesItem): string {
   if (item.comic.type === "novel" || isNovelFile(item.comic.filename || "")) {
@@ -323,7 +324,7 @@ export default function SeriesDetailPage() {
                 <h2 className="flex items-center gap-1.5 text-xs font-medium text-muted"><Tag className="h-3.5 w-3.5" />标签</h2>
                 <div className="flex flex-wrap gap-1.5">
                   {series.tags.map((tag) => (
-                    <span key={tag.id} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">
+                    <span key={tag.id} style={getTagColorStyle(tag.color)} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">
                       {tag.name}
                       {series.canManage && <button type="button" disabled={tagSaving} aria-label={`移除标签 ${tag.name}`} onClick={() => void saveTags(series.tags.filter((item) => item.id !== tag.id).map((item) => item.name))} className="rounded-full p-0.5 hover:bg-accent/15 disabled:opacity-40"><X className="h-3 w-3" /></button>}
                     </span>

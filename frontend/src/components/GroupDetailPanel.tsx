@@ -53,6 +53,7 @@ import { useToast } from "@/components/Toast";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { useLocale } from "@/lib/i18n/context";
 import { useTranslation } from "@/lib/i18n";
+import { getTagColorStyle } from "@/lib/tag-color";
 
 /* ── 可编辑字段定义 ── */
 interface EditableField {
@@ -1009,6 +1010,7 @@ export default function GroupDetailPanel({
             {groupTags.map((tag) => (
               <span
                 key={tag.id}
+                style={getTagColorStyle(tag.color)}
                 className="group/tag inline-flex items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] font-medium bg-accent/15 text-accent"
               >
                 {tag.name}

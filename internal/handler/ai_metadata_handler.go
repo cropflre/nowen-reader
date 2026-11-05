@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"strings"
@@ -195,6 +195,11 @@ func (h *AIHandler) SuggestTags(c *gin.Context) {
 		Apply      bool   `json:"apply"` // 是否自动添加到标签
 	}
 	_ = c.ShouldBindJSON(&body)
+	if body.Apply {
+		if err := checkComicManageAccess(c, comicID); err != nil {
+			return
+		}
+	}
 	if body.TargetLang == "" {
 		body.TargetLang = "zh"
 	}

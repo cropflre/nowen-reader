@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
+import { emitTagsUpdated } from "@/lib/sync-event";
 import { PageContent, PageHeader } from "@/components/PageHeader";
 
 interface TagItem {
@@ -438,10 +439,12 @@ export default function TagManagerPage() {
       return;
     }
     renamingRef.current = true;
-    const result = await apiRenameTag(oldName, editValue.trim());
+    const newName = editValue.trim();
+    const result = await apiRenameTag(oldName, newName);
     renamingRef.current = false;
     setEditingTag(null);
     if (result.ok) {
+      emitTagsUpdated("*", "tag-manager", { action: "rename", oldName, newName });
       showToast(t.tagManager?.rename || "重命名成功", "success");
       await loadData();
     } else {
@@ -457,6 +460,7 @@ export default function TagManagerPage() {
         setConfirmAction(null);
         const result = await apiDeleteTag(name);
         if (result.ok) {
+          emitTagsUpdated("*", "tag-manager", { action: "delete", name });
           setSelectedTags((prev) => { const next = new Set(prev); next.delete(name); return next; });
           showToast(`${t.common?.delete || "删除"}成功`, "success");
           await loadData();
@@ -477,10 +481,16 @@ export default function TagManagerPage() {
         setBatchLoading(true);
         let successCount = 0;
         let failCount = 0;
+        const deletedNames: string[] = [];
         for (const name of selectedTags) {
           const result = await apiDeleteTag(name);
-          if (result.ok) successCount++;
-          else failCount++;
+          if (result.ok) {
+            successCount++;
+            deletedNames.push(name);
+          } else failCount++;
+        }
+        if (deletedNames.length > 0) {
+          emitTagsUpdated("*", "tag-manager", { action: "delete", names: deletedNames });
         }
         setBatchLoading(false);
         setSelectedTags(new Set());
@@ -499,9 +509,16 @@ export default function TagManagerPage() {
     setBatchColorPicker(false);
     setBatchLoading(true);
     let successCount = 0;
+    const updatedNames: string[] = [];
     for (const name of selectedTags) {
       const result = await apiUpdateTagColor(name, color);
-      if (result.ok) successCount++;
+      if (result.ok) {
+        successCount++;
+        updatedNames.push(name);
+      }
+    }
+    if (updatedNames.length > 0) {
+      emitTagsUpdated("*", "tag-manager", { action: "color", names: updatedNames, color });
     }
     setBatchLoading(false);
     showToast(`${t.tagManager?.colorChanged || "已更新"} ${successCount} ${t.tagManager?.tagsColor || "个标签颜色"}`, "success");
@@ -510,8 +527,11 @@ export default function TagManagerPage() {
 
   const handleMergeTags = async () => {
     if (!mergeTarget.trim() || selectedTags.size < 2) return;
-    const result = await apiMergeTags(Array.from(selectedTags), mergeTarget.trim());
+    const sourceNames = Array.from(selectedTags);
+    const targetName = mergeTarget.trim();
+    const result = await apiMergeTags(sourceNames, targetName);
     if (result.ok) {
+      emitTagsUpdated("*", "tag-manager", { action: "merge", sourceNames, targetName });
       setSelectedTags(new Set());
       setShowMerge(false);
       setMergeTarget("");
@@ -526,6 +546,7 @@ export default function TagManagerPage() {
     const result = await apiUpdateTagColor(name, color);
     setColorPickerTag(null);
     if (result.ok) {
+      emitTagsUpdated("*", "tag-manager", { action: "color", name, color });
       await loadData();
     } else {
       showToast(result.error || "操作失败", "error");
@@ -564,8 +585,10 @@ export default function TagManagerPage() {
 
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
-    const result = await apiCreateTag(newTagName.trim());
+    const name = newTagName.trim();
+    const result = await apiCreateTag(name);
     if (result.ok) {
+      emitTagsUpdated("*", "tag-manager", { action: "create", name });
       showToast(t.tagManager?.createSuccess || "标签已创建", "success");
       setNewTagName("");
       setShowNewTagInput(false);
@@ -644,6 +667,7 @@ export default function TagManagerPage() {
     setAiRunning(true);
     setAiResults([]);
     setAiProgress(null);
+    const appliedComicIds: string[] = [];
 
     try {
       const endpoint = aiMode === "tags"
@@ -701,6 +725,9 @@ export default function TagManagerPage() {
                 if (data.done) {
                   continue;
                 }
+                if (aiMode === "tags" && aiAutoApply && data.applied && !data.error && data.suggestedTags?.length > 0) {
+                  appliedComicIds.push(data.comicId);
+                }
                 results.push(data as AITagSuggestion | AICategorySuggestion);
                 setAiResults([...results]);
                 setAiProgress({ current: (data.index || 0) + 1, total: data.total || selectedCount });
@@ -725,6 +752,9 @@ export default function TagManagerPage() {
     } catch (e) {
       showToast(`AI 生成失败: ${String(e)}`, "error");
     } finally {
+      if (appliedComicIds.length > 0) {
+        emitTagsUpdated("*", "tag-manager", { action: "ai_add", comicIds: appliedComicIds });
+      }
       setAiRunning(false);
       setAiProgress(null);
     }

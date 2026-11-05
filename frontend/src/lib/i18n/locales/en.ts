@@ -24,7 +24,8 @@ const en: Translations = {
 
   // Navbar
   navbar: {
-    searchPlaceholder: "Search comics by title, tag or author...",
+    searchPlaceholder: "Search titles, authors or filenames...",
+    bookSearchPlaceholder: "Search titles or filenames...",
     selectAll: "Select All",
     batch: "Batch",
     exitBatch: "Exit Batch",
@@ -61,7 +62,7 @@ const en: Translations = {
     noMatchingNovels: "No matching novels found",
     emptyLibraryHint: "Click upload or place .zip/.cbz files in the comics/ directory",
     emptyNovelLibraryHint: "Click upload or place .epub/.mobi/.txt files in the comics/ directory",
-    noMatchingHint: "Try different keywords or clear tag filters",
+    noMatchingHint: "Try different keywords or clear filters. To filter by tags, use the tag filter bar.",
     noFavorites: "No favorites yet",
     noFavoritesHint: "Click the favorite button on comic details to add comics here",
     uploadFailed: "Upload failed, please retry",
@@ -88,6 +89,9 @@ const en: Translations = {
     translate: "Translate",
     translating: "Translating...",
     empty: "No tags yet. Add tags in the Tags & Categories management page.",
+    searchPlaceholder: "Search all tags...",
+    clearSearch: "Clear tag search",
+    noMatches: "No matching tags",
   },
 
 

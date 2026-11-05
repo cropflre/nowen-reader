@@ -78,6 +78,7 @@ import {
 } from "@/lib/sync-event";
 import { formatFileSize, isNovelFile, getReaderUrl, getDetailUrl, isNovelComic } from "@/lib/comic-utils";
 import { apiPath } from "@/lib/base-path";
+import { getTagColorStyle } from "@/lib/tag-color";
 
 export default function ComicDetailPage() {
   const params = useParams();
@@ -1354,12 +1355,11 @@ export default function ComicDetailPage() {
               );
             })}
 
-            {/* Tags — 仅管理员可编辑 */}
-            {canManage && (
-            <div>
+            {/* Tags — 所有可访问作品的用户可查看，管理者才可编辑 */}
+            <section aria-label={t.comicDetail.tagsLabel}>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t.comicDetail.tagsLabel}</h3>
-                {(comic.tags || []).length > 0 && (
+                {canManage && (comic.tags || []).length > 0 && (
                   <button
                     onClick={handleClearAllTags}
                     className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] text-muted transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -1378,6 +1378,7 @@ export default function ComicDetailPage() {
                   return (
                     <span
                       key={tag.name}
+                      style={getTagColorStyle(tag.color, isExcluded)}
                       className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
                         isExcluded
                           ? "bg-muted/10 text-muted/50 line-through"
@@ -1398,12 +1399,16 @@ export default function ComicDetailPage() {
                           已排除
                         </span>
                       )}
-                      <button
-                        onClick={() => handleRemoveTag(tag.name)}
-                        className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag.name)}
+                          aria-label={`${t.common.delete} ${tag.name}`}
+                          className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                     </span>
                   );
                 })}
@@ -1411,86 +1416,89 @@ export default function ComicDetailPage() {
                   <span className="text-xs text-muted">{t.comicDetail.noTags}</span>
                 )}
               </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                  placeholder={t.comicDetail.addTagPlaceholder}
-                  className="flex-1 rounded-lg bg-card px-3 py-2 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
-                />
-                <button
-                  onClick={handleAddTag}
-                  disabled={!newTag.trim()}
-                  className="motion-button rounded-lg bg-accent/20 px-3 py-2 text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-                {aiConfigured && (
-                  <button
-                    onClick={handleAiSuggestTags}
-                    disabled={aiSuggestLoading}
-                    className="motion-button flex items-center gap-1.5 rounded-lg bg-purple-500/15 px-3 py-2 text-xs font-medium text-purple-400 transition-colors hover:bg-purple-500/25 disabled:opacity-50"
-                    title={t.comicDetail.aiSuggestTags || "AI Suggest Tags"}
-                  >
-                    {aiSuggestLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
-                    <span className="hidden sm:inline">{aiSuggestLoading ? (t.comicDetail.aiSuggestTagsLoading || "Analyzing...") : (t.comicDetail.aiSuggestTags || "AI Tags")}</span>
-                  </button>
-                )}
-              </div>
-
-              {/* AI 建议标签展示 */}
-              {aiSuggestedTags.length > 0 && (
-                <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-400">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>{t.comicDetail.aiSuggestTags || "AI Suggested Tags"}</span>
-                  </div>
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    {aiSuggestedTags.map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => {
-                          const next = new Set(aiSelectedTags);
-                          if (next.has(tag)) next.delete(tag); else next.add(tag);
-                          setAiSelectedTags(next);
-                        }}
-                        className={`rounded-md px-2 py-1 text-xs transition-all ${
-                          aiSelectedTags.has(tag)
-                            ? "bg-purple-500/20 text-purple-300 ring-1 ring-purple-500/40"
-                            : "bg-card text-muted hover:text-foreground"
-                        }`}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+              {canManage && (
+                <>
                   <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
+                      placeholder={t.comicDetail.addTagPlaceholder}
+                      className="flex-1 rounded-lg bg-card px-3 py-2 text-sm text-foreground placeholder-muted/50 outline-none focus:ring-1 focus:ring-accent/50"
+                    />
                     <button
-                      onClick={() => handleAddAiTags(Array.from(aiSelectedTags))}
-                      disabled={aiSelectedTags.size === 0}
-                      className="rounded-md bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-40"
+                      onClick={handleAddTag}
+                      disabled={!newTag.trim()}
+                      className="motion-button rounded-lg bg-accent/20 px-3 py-2 text-accent transition-colors hover:bg-accent/30 disabled:opacity-30"
                     >
-                      {t.comicDetail.aiAddSelected || "Add Selected"} ({aiSelectedTags.size})
+                      <Plus className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => handleAddAiTags(aiSuggestedTags)}
-                      className="rounded-md bg-card px-3 py-1 text-xs text-muted transition-colors hover:text-foreground"
-                    >
-                      {t.comicDetail.aiAddAll || "Add All"}
-                    </button>
-                    <button
-                      onClick={() => { setAiSuggestedTags([]); setAiSelectedTags(new Set()); }}
-                      className="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    {aiConfigured && (
+                      <button
+                        onClick={handleAiSuggestTags}
+                        disabled={aiSuggestLoading}
+                        className="motion-button flex items-center gap-1.5 rounded-lg bg-purple-500/15 px-3 py-2 text-xs font-medium text-purple-400 transition-colors hover:bg-purple-500/25 disabled:opacity-50"
+                        title={t.comicDetail.aiSuggestTags || "AI Suggest Tags"}
+                      >
+                        {aiSuggestLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+                        <span className="hidden sm:inline">{aiSuggestLoading ? (t.comicDetail.aiSuggestTagsLoading || "Analyzing...") : (t.comicDetail.aiSuggestTags || "AI Tags")}</span>
+                      </button>
+                    )}
                   </div>
-                </div>
+
+                  {/* AI 建议标签展示 */}
+                  {aiSuggestedTags.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs text-purple-400">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>{t.comicDetail.aiSuggestTags || "AI Suggested Tags"}</span>
+                      </div>
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {aiSuggestedTags.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => {
+                              const next = new Set(aiSelectedTags);
+                              if (next.has(tag)) next.delete(tag); else next.add(tag);
+                              setAiSelectedTags(next);
+                            }}
+                            className={`rounded-md px-2 py-1 text-xs transition-all ${
+                              aiSelectedTags.has(tag)
+                                ? "bg-purple-500/20 text-purple-300 ring-1 ring-purple-500/40"
+                                : "bg-card text-muted hover:text-foreground"
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleAddAiTags(Array.from(aiSelectedTags))}
+                          disabled={aiSelectedTags.size === 0}
+                          className="rounded-md bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-40"
+                        >
+                          {t.comicDetail.aiAddSelected || "Add Selected"} ({aiSelectedTags.size})
+                        </button>
+                        <button
+                          onClick={() => handleAddAiTags(aiSuggestedTags)}
+                          className="rounded-md bg-card px-3 py-1 text-xs text-muted transition-colors hover:text-foreground"
+                        >
+                          {t.comicDetail.aiAddAll || "Add All"}
+                        </button>
+                        <button
+                          onClick={() => { setAiSuggestedTags([]); setAiSelectedTags(new Set()); }}
+                          className="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-            </div>
-            )}
+            </section>
 
             {/* Categories — 仅管理员可编辑 */}
             {canManage && (

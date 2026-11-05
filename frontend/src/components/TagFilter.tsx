@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { apiPath } from "@/lib/base-path";
-import { useRef, useState, useEffect, useCallback } from "react";
-import { Tag, ChevronLeft, ChevronRight, Languages } from "lucide-react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { Tag, ChevronLeft, ChevronRight, Languages, Search, X } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
+import { emitTagsUpdated } from "@/lib/sync-event";
 
 interface TagFilterProps {
   allTags: string[];
@@ -53,9 +54,18 @@ export default function TagFilter({
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedQuery.length > 0;
+  const matchingTags = useMemo(
+    () => allTags.filter((tag) => tag.toLowerCase().includes(normalizedQuery)),
+    [allTags, normalizedQuery]
+  );
 
   const MAX_VISIBLE_TAGS = 50;
-  const visibleTags = showAll ? allTags : allTags.slice(0, MAX_VISIBLE_TAGS);
+  // Search the full list, including tags beyond the default first 50.
+  const visibleTags = isSearching ? matchingTags : showAll ? allTags : allTags.slice(0, MAX_VISIBLE_TAGS);
   const hasMore = allTags.length > MAX_VISIBLE_TAGS;
 
   // 超过 10 个标签时默认折叠（仅首次渲染时）
@@ -80,7 +90,7 @@ export default function TagFilter({
       el.removeEventListener("scroll", checkScroll);
       ro.disconnect();
     };
-  }, [checkScroll, allTags]);
+  }, [checkScroll, allTags, collapsed, showAll, isSearching]);
 
   const scroll = (dir: "left" | "right") => {
     const el = scrollRef.current;
@@ -105,7 +115,9 @@ export default function TagFilter({
           if (data.renamed > 0) {
             onClearAll();
           }
-          // 无论是否有实际重命名，都刷新标签列表以确保显示最新数据
+          // 无论是否有实际重命名，都刷新标签列表以确保显示最新数据。
+          // 同时通知其他标签页，避免它们继续显示翻译前的标签名。
+          emitTagsUpdated("*", "tag-manager");
           onTagsTranslated?.();
         }
       }
@@ -117,8 +129,8 @@ export default function TagFilter({
   }, [translating, locale, onClearAll, onTagsTranslated]);
 
   return (
-    <div className="relative">
-      <div className={`flex gap-2 ${showAll ? "items-start" : "items-center"}`}>
+    <div className="relative space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Label + Translate + Fold Toggle */}
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
           <div className="flex items-center gap-1.5 text-muted">
@@ -137,9 +149,10 @@ export default function TagFilter({
             </button>
           )}
           {/* 折叠/展开切换 */}
-          {allTags.length > FOLD_THRESHOLD && (
+          {!isSearching && allTags.length > FOLD_THRESHOLD && (
             <button
               onClick={() => setCollapsed(!collapsed)}
+              aria-expanded={!collapsed}
               className="flex h-6 items-center gap-0.5 rounded-md border border-border/40 bg-card/50 px-1.5 text-[10px] font-medium text-muted transition-all hover:text-foreground hover:border-border"
             >
               <ChevronRight className={`h-3 w-3 transition-transform ${collapsed ? "" : "rotate-90"}`} />
@@ -147,13 +160,43 @@ export default function TagFilter({
             </button>
           )}
         </div>
+        <div className="relative ml-auto min-w-36 flex-1 sm:max-w-60">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+          <input
+            ref={searchRef}
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t.tagFilter.searchPlaceholder}
+            aria-label={t.tagFilter.searchPlaceholder}
+            className="h-8 w-full rounded-lg border border-border/50 bg-card/50 pl-7 pr-8 text-xs text-foreground placeholder:text-muted focus:border-accent/50 focus:outline-none"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              aria-label={t.tagFilter.clearSearch}
+              title={t.tagFilter.clearSearch}
+              onClick={() => {
+                setSearchQuery("");
+                searchRef.current?.focus();
+              }}
+              className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-accent/10 hover:text-foreground"
+            >
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
 
-        {allTags.length === 0 ? (
+      <div className="flex min-w-0 items-center gap-2">
+        {isSearching && visibleTags.length === 0 ? (
+          <span role="status" className="text-xs text-muted">{t.tagFilter.noMatches}</span>
+        ) : allTags.length === 0 ? (
           /* 无标签时：显示空状态提示 */
           <span className="text-[11px] text-muted/60 italic">
               {t.tagFilter.empty || "暂无标签"}
             </span>
-        ) : collapsed && allTags.length > FOLD_THRESHOLD ? (
+        ) : !isSearching && collapsed && allTags.length > FOLD_THRESHOLD ? (
           /* 折叠时：仅显示已选中标签 + 数量提示 */
           <div className="flex items-center gap-2 flex-wrap">
             {selectedTags.length > 0 ? (
@@ -174,8 +217,8 @@ export default function TagFilter({
               </span>
             )}
           </div>
-        ) : showAll ? (
-          /* Expanded: wrap mode with max height */
+        ) : showAll || isSearching ? (
+          /* Expanded/search results: wrap mode with max height */
           <div className="flex flex-wrap items-center gap-2 max-h-48 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
             {/* All Tag */}
             <button
@@ -207,7 +250,7 @@ export default function TagFilter({
             })}
 
             {/* Collapse button */}
-            {hasMore && (
+            {!isSearching && hasMore && (
               <button
                 onClick={() => setShowAll(false)}
                 className="shrink-0 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted transition-all hover:text-foreground hover:border-border"

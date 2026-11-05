@@ -67,6 +67,7 @@ import { useAIStatus } from "@/hooks/useAIStatus";
 import { useGlobalSyncEvent } from "@/hooks/useSyncEvent";
 import { formatFileSize, formatDuration, isNovelFile, getReaderUrl } from "@/lib/comic-utils";
 import { apiPath } from "@/lib/base-path";
+import { getTagColorStyle } from "@/lib/tag-color";
 
 export default function GroupDetailPage() {
   const params = useParams();
@@ -1147,6 +1148,7 @@ export default function GroupDetailPage() {
                     {groupTags.map((tag) => (
                       <span
                         key={tag.id}
+                        style={getTagColorStyle(tag.color)}
                         className="group flex items-center gap-1 rounded-lg bg-accent/10 px-2.5 py-1 text-xs text-accent"
                       >
                         <Tag className="h-3 w-3 flex-shrink-0" />
@@ -1923,7 +1925,7 @@ export default function GroupDetailPage() {
                   {groupTags.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {groupTags.map((tag) => (
-                        <span key={tag.id} className="flex items-center gap-1 rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                        <span key={tag.id} style={getTagColorStyle(tag.color)} className="flex items-center gap-1 rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
                           <Tag className="h-3 w-3" />
                           {tag.name}
                         </span>

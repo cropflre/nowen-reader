@@ -31,6 +31,7 @@ import { apiPath } from "@/lib/base-path";
 interface NavbarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  searchPlaceholder?: string;
   onUpload?: () => void;
   uploading?: boolean;
   aiSearchMode?: boolean;
@@ -44,6 +45,7 @@ interface NavbarProps {
 export default function Navbar({
   searchQuery,
   onSearchChange,
+  searchPlaceholder,
   onUpload,
   uploading,
   aiSearchMode = false,
@@ -92,6 +94,7 @@ export default function Navbar({
         {/* Right Actions */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <SearchIconButton query={searchQuery} onChange={onSearchChange}
+            placeholder={aiSearchMode ? undefined : searchPlaceholder}
             aiSearchMode={aiSearchMode} onAiSearchModeChange={onAiSearchModeChange} />
           {/* Upload */}
           {isAdmin && onUpload && (

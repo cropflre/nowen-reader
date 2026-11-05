@@ -48,6 +48,8 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { calculateStoredReadingProgress } from "@/lib/progress";
 import { seriesIdFromShelfId } from "@/lib/series-id";
+import { useLibraryTags } from "@/hooks/useLibraryTags";
+import { emitTagsUpdated } from "@/lib/sync-event";
 
 const DEFAULT_PAGE_SIZE = 24;
 
@@ -691,22 +693,19 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     return apiComics.map(apiToComic);
   }, [apiComics]);
 
-  // Extract all unique tags — fetch from API once on mount (not on every apiComics change)
-  const [allTags, setAllTags] = useState<string[]>([]);
-  const fetchTags = useCallback(() => {
-    fetch(apiPath("/api/tags"))
-      .then((r) => r.json())
-      .then((data) => {
-        const tags = Array.isArray(data) ? data : data.tags;
-        if (Array.isArray(tags)) {
-          setAllTags(tags.map((t: { name: string }) => t.name).sort());
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const { tags: allTags, loaded: tagsLoaded, refresh: fetchTags } = useLibraryTags(user?.id);
+
+  // Renamed, merged or deleted selections must not leave an invisible, empty filter.
+  // Only reconcile after a successful response, preserving filters while offline.
   useEffect(() => {
-    fetchTags();
-  }, [fetchTags]);
+    if (!tagsLoaded) return;
+    const validTags = new Set(allTags);
+    const remaining = selectedTags.filter((tag) => validTags.has(tag));
+    if (remaining.length !== selectedTags.length) {
+      setSelectedTags(remaining);
+      setCurrentPage(1);
+    }
+  }, [allTags, tagsLoaded, selectedTags]);
 
   // Filter comics (server-side filtering is primary)
   const filteredComics = useMemo(() => {
@@ -799,12 +798,13 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       // 等待一小段时间让后端完成扫描
       await new Promise(resolve => setTimeout(resolve, 2000));
       await refetch();
+      fetchTags();
     } catch {
       // 扫描失败不影响体验
     } finally {
       setScanningLibrary(false);
     }
-  }, [refetch]);
+  }, [refetch, fetchTags]);
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -823,6 +823,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
             // 扫描失败不影响提示
           }
           await refetch();
+          fetchTags();
           toast.success(
             `${t.home.uploadSuccess || "上传成功"}: ${result.successCount}/${result.totalCount}`
           );
@@ -836,7 +837,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [refetch, toast, t, selectedLibraryId]
+    [refetch, fetchTags, toast, t, selectedLibraryId]
   );
 
   // Batch selection handlers
@@ -891,7 +892,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
   const handleBatchAddTags = useCallback(
     async (tags: string[]) => {
-      await batchOperation("addTags", Array.from(selectedIds), { tags });
+      const result = await batchOperation("addTags", Array.from(selectedIds), { tags });
+      if (result.success) emitTagsUpdated("*", "batch");
       exitBatchMode();
       await refetch();
     },
@@ -952,6 +954,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "AI tags failed");
     } finally {
+      // A streamed batch can apply some tags before the connection fails.
+      emitTagsUpdated("*", "batch");
       setAiTagsLoading(false);
     }
   }, [selectedIds, exitBatchMode, refetch, toast, t, locale]);
@@ -1028,7 +1032,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
 
   const handleBatchRemoveTags = useCallback(
     async (tags: string[]) => {
-      await batchOperation("removeTags", Array.from(selectedIds), { tags });
+      const result = await batchOperation("removeTags", Array.from(selectedIds), { tags });
+      if (result.success) emitTagsUpdated("*", "batch");
       exitBatchMode();
       await refetch();
     },
@@ -1127,6 +1132,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
       <Navbar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        searchPlaceholder={t.navbar.bookSearchPlaceholder}
         onUpload={handleUpload}
         uploading={uploading}
         aiSearchMode={aiSearchMode}
@@ -2028,7 +2034,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
         open={uploadDialogOpen}
         onClose={() => setUploadDialogOpen(false)}
         defaultLibraryId={selectedLibraryId}
-        onUploaded={async () => { await refetch(); }}
+        onUploaded={async () => { await refetch(); fetchTags(); }}
       />
     </>
   );

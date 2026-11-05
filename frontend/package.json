@@ -8,10 +8,13 @@
     "build": "tsc -b && vite build",
     "build:all": "tsc -b && vite build && node scripts/copy-dist.mjs",
     "preview": "vite preview",
-    "lint": "tsc -b && npm run check:base-path && npm run test:base-path && npm run test:pwa",
+    "lint": "tsc -b && npm run check:base-path && npm run test:base-path && npm run test:pwa && npm run test:library-tags && npm run test:comic-tag-permissions && npm run test:tag-colors",
     "check:base-path": "node scripts/check-base-path.mjs",
     "test:base-path": "node scripts/test-base-path.mjs",
     "test:pwa": "node scripts/test-service-worker.mjs",
+    "test:library-tags": "node scripts/test-library-tags.mjs",
+    "test:comic-tag-permissions": "node scripts/test-comic-tag-permissions.mjs",
+    "test:tag-colors": "node scripts/test-tag-colors.mjs",
     "copy-dist": "node scripts/copy-dist.mjs"
   },
   "dependencies": {

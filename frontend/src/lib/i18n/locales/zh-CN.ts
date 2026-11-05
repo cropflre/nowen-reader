@@ -22,7 +22,8 @@ const zhCN = {
 
   // Navbar
   navbar: {
-    searchPlaceholder: "搜索漫画标题、标签或作者...",
+    searchPlaceholder: "搜索标题、作者或文件名…",
+    bookSearchPlaceholder: "搜索标题或文件名…",
     selectAll: "全选",
     batch: "批量",
     exitBatch: "退出批量",
@@ -57,7 +58,7 @@ const zhCN = {
     noMatchingNovels: "没有找到匹配的小说",
     emptyLibraryHint: "点击上传按钮或将 .zip/.cbz 文件放入 comics/ 目录",
     emptyNovelLibraryHint: "点击上传按钮或将 .epub/.mobi/.txt 文件放入 comics/ 目录",
-    noMatchingHint: "试试更换搜索关键词或清除标签筛选",
+    noMatchingHint: "试试更换关键词或清除筛选；按标签筛选请用标签筛选条",
     noFavorites: "暂无收藏",
     noFavoritesHint: "在漫画详情页点击收藏按钮，即可在这里查看",
     uploadFailed: "上传失败，请重试",
@@ -84,6 +85,9 @@ const zhCN = {
     translate: "翻译标签",
     translating: "翻译中...",
     empty: "暂无标签，可在标签与分类管理页面添加",
+    searchPlaceholder: "搜索全部标签…",
+    clearSearch: "清除标签搜索",
+    noMatches: "没有匹配的标签",
   },
 
 
@@ -1389,6 +1393,7 @@ export interface Translations {
   };
   navbar: {
     searchPlaceholder: string;
+    bookSearchPlaceholder: string;
     selectAll: string;
     batch: string;
     exitBatch: string;
@@ -1446,6 +1451,9 @@ export interface Translations {
     translate: string;
     translating: string;
     empty: string;
+    searchPlaceholder: string;
+    clearSearch: string;
+    noMatches: string;
   };
   categoryFilter: {
     label: string;
