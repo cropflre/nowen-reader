@@ -1,0 +1,102 @@
+name: Recover v1.2.4 GitHub Release (existing verified artifacts)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/recover-v1.2.4.yml
+
+permissions:
+  contents: write
+  actions: read
+  packages: write
+
+jobs:
+  recover:
+    if: github.repository == 'cropflre/nowen-reader' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v1.2.4
+      SOURCE_COMMIT: 47fcbcc9fe7072c0f95328fc1e44c2e2e7a95188
+    steps:
+      - name: Confirm original release commit and missing Release
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          test "$actual" = "$SOURCE_COMMIT" || { echo "Ref mismatch: $actual"; exit 1; }
+          if gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'A GitHub Release already exists. Refusing to overwrite.'; exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-android
+          run-id: 42493265692
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: artifacts/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          run-id: 42493265692
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: artifacts/metadata
+      - name: Verify v1.2.4 artifacts and metadata, without rebuilding
+        run: |
+          set -euo pipefail
+          (cd artifacts/android && sha256sum -c SHA256SUMS)
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('artifacts/metadata/release-info.json').read_text())
+          assert data['version'] == '1.2.4', data
+          assert data['tag'] == 'v1.2.4', data
+          assert data['commit'] == '47fcbcc9fe7072c0f95328fc1e44c2e2e7a95188', data
+          assert data['publish'] == 'true', data
+          required = [
+              'nowen-reader-v1.2.4-arm64-v8a.apk',
+              'nowen-reader-v1.2.4-armeabi-v7a.apk',
+              'nowen-reader-v1.2.4-x86_64.apk',
+              'android-signing-cert.sha256',
+              'SHA256SUMS',
+          ]
+          assert all((Path('artifacts/android') / f).is_file() for f in required)
+          print('Verified the original v1.2.4 release artifacts:', ', '.join(required))
+          PY
+      - name: Create GitHub Release for existing tag
+        run: |
+          # Do not specify --target: the existing immutable tag identifies the built
+          # commit. Explicit --target is blocked for GITHUB_TOKEN if the older tag
+          # contains workflows that differ from the current default branch.
+          gh release create "$RELEASE_TAG" artifacts/android/* \
+            --verify-tag --title "NowenReader v1.2.4" --generate-notes --latest
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Promote existing verified v1.2.4 Docker tags to latest
+        run: |
+          set -euo pipefail
+          ghcr_image="ghcr.io/${GH_REPO,,}"
+          docker buildx imagetools inspect "cropflre/nowen-reader:$RELEASE_TAG"
+          docker buildx imagetools inspect "$ghcr_image:$RELEASE_TAG"
+          docker buildx imagetools create \
+            --tag "cropflre/nowen-reader:latest" "cropflre/nowen-reader:$RELEASE_TAG"
+          docker buildx imagetools create \
+            --tag "$ghcr_image:latest" "$ghcr_image:$RELEASE_TAG"
+      - name: Verify published Release and latest tags
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json url,isDraft,isPrerelease,assets
+          ghcr_image="ghcr.io/${GH_REPO,,}"
+          docker buildx imagetools inspect "cropflre/nowen-reader:latest"
+          docker buildx imagetools inspect "$ghcr_image:latest"
