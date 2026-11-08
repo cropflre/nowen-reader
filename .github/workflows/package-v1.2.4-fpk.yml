@@ -1,0 +1,144 @@
+name: Package Nowen Reader v1.2.4 fnOS FPK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/package-v1.2.4-fpk.yml
+
+permissions:
+  contents: write
+
+jobs:
+  package-fpk:
+    if: github.repository == 'cropflre/nowen-reader' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v1.2.4
+      FNPACK_SHA256: 54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Verify existing Docker Hub image and immutable digest
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('scripts/fpk/release.json').read_text())
+          assert release['version'] == '1.2.4'
+          assert release['image'].startswith('cropflre/nowen-reader:v1.2.4@sha256:')
+          assert release['platforms'] == ['linux/amd64', 'linux/arm64']
+          PY
+          expected="$(python3 -c "import json; print(json.load(open('scripts/fpk/release.json'))['image'].split('@')[1])")"
+          actual="$(docker buildx imagetools inspect cropflre/nowen-reader:v1.2.4 | awk '$1=="Digest:" {print $2; exit}')"
+          echo "Docker Hub manifest digest: $actual"
+          test "$actual" = "$expected" || { echo "Pinned image digest is not current v1.2.4 image"; exit 1; }
+          docker buildx imagetools inspect --raw cropflre/nowen-reader:v1.2.4 > "$RUNNER_TEMP/docker-index.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          index = json.loads((root/'docker-index.json').read_text())
+          platforms = {
+            (m.get('platform',{}).get('os'),m.get('platform',{}).get('architecture'))
+            for m in index.get('manifests',[])
+          }
+          assert {('linux','amd64'),('linux','arm64')} <= platforms, platforms
+          print('Validated amd64 and arm64 images')
+          PY
+
+      - name: Download and hash-check official fnpack 1.2.3
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64 \
+            -o "$RUNNER_TEMP/fnpack"
+          printf '%s  %s\n' "$FNPACK_SHA256" "$RUNNER_TEMP/fnpack" | sha256sum --check
+          chmod 755 "$RUNNER_TEMP/fnpack"
+          "$RUNNER_TEMP/fnpack" --help | head -n 20
+
+      - name: Test fnOS installation and upgrade hooks
+        run: python3 -B scripts/fpk/test_lifecycle.py -v
+
+      - name: Build and inspect official FPK
+        run: |
+          set -euo pipefail
+          python3 -B scripts/fpk/build-fpk.py --fnpack "$RUNNER_TEMP/fnpack"
+          (cd dist/fpk && sha256sum -c SHA256SUMS)
+          cp dist/fpk/SHA256SUMS dist/fpk/nowen-reader-1.2.4.fpk.sha256
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('dist/fpk/package-info.json').read_text())
+          assert x['version']=='1.2.4' and x['package_contents_verified']
+          assert x['physical_fnos_acceptance']=='not performed'
+          assert x['package']=='nowen-reader-1.2.4.fpk'
+          print('FPK package verified:', x['package'], x['sha256'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nowen-reader-v1.2.4-fnos-fpk
+          path: |
+            dist/fpk/nowen-reader-1.2.4.fpk
+            dist/fpk/nowen-reader-1.2.4.fpk.sha256
+            dist/fpk/package-info.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach FPK to existing v1.2.4 Release without overwriting
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,assets > "$RUNNER_TEMP/release.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads((Path(os.environ['RUNNER_TEMP'])/'release.json').read_text())
+          assert not data['isDraft'] and not data['isPrerelease']
+          existing={a['name'] for a in data['assets']}
+          new={'nowen-reader-1.2.4.fpk','nowen-reader-1.2.4.fpk.sha256','package-info.json'}
+          assert not existing.intersection(new), f'Already attached, refusing overwrite: {existing.intersection(new)}'
+          PY
+          gh release upload "$RELEASE_TAG" \
+            dist/fpk/nowen-reader-1.2.4.fpk \
+            dist/fpk/nowen-reader-1.2.4.fpk.sha256 \
+            dist/fpk/package-info.json
+
+      - name: Update concise release notes
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## v1.2.4 更新内容
+
+          ### NAS / Web / 飞牛 FPK
+          - 优化大型书库的目录分页、子目录浏览及系列层级管理，提升书库导航体验。
+          - 改进作品详情中的标签点击筛选、标签颜色展示和书库标签更新。
+          - 改善作品详情、书架与目录管理的交互和数据一致性。
+
+          ### Android
+          - 修复小说阅读页底部最后一行文字被裁切的问题。
+          - 修复页码指示器覆盖小说正文的问题，并增加回归测试。
+
+          ## 下载和安装
+          - **飞牛 fnOS：** 下载 `nowen-reader-1.2.4.fpk`，在应用中心手动安装；升级前建议备份现有数据。需要 Docker，安装时联网拉取 amd64/arm64 镜像，默认端口 `6680`。
+          - **Docker：** `cropflre/nowen-reader:v1.2.4` 或 `ghcr.io/cropflre/nowen-reader:v1.2.4`。
+          - **Android：** 下载对应 CPU 架构的签名 APK（常见手机使用 `arm64-v8a`）。
+
+          飞牛 FPK 包含服务端与 Web 阅读界面，**不包含 Android APK**。
+
+          [查看 v1.2.3 → v1.2.4 完整代码变更](https://github.com/cropflre/nowen-reader/compare/v1.2.3...v1.2.4)
+          EOF
+          gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Verify final release assets
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name'
+          for name in nowen-reader-1.2.4.fpk nowen-reader-1.2.4.fpk.sha256 package-info.json; do
+            gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -qx "$name"
+          done
