@@ -27,8 +27,8 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          existing="$(gh api "repos/$GH_REPO/git/ref/tags/v1.2.4" --jq '.object.sha' 2>/dev/null || true)"
-          if [ -n "$existing" ]; then
+          if gh api "repos/$GH_REPO/git/ref/tags/v1.2.4" > "$RUNNER_TEMP/release-tag.json" 2>/dev/null; then
+            existing="$(jq -r '.object.sha // empty' "$RUNNER_TEMP/release-tag.json")"
             test "$existing" = "$COMMIT" || { echo 'Existing v1.2.4 tag points elsewhere'; exit 1; }
           else
             gh api --method POST "repos/$GH_REPO/git/refs" -f ref='refs/tags/v1.2.4' -f sha="$COMMIT"
