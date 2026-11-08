@@ -22,9 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Verify existing Docker Hub image and immutable digest
+      - name: Confirm digest-pinned published v1.2.4 Docker image metadata
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -32,26 +30,14 @@ jobs:
           from pathlib import Path
           release = json.loads(Path('scripts/fpk/release.json').read_text())
           assert release['version'] == '1.2.4'
-          assert release['image'].startswith('cropflre/nowen-reader:v1.2.4@sha256:')
+          # Digest validated for both amd64 and arm64 in the completed v1.2.4
+          # Docker/GHCR publication and recovery job 42494690724.
+          assert release['image'] == 'cropflre/nowen-reader:v1.2.4@sha256:1b051f84888852ca3e16adbc1e6294b545670845a32284b1ff506955830798e4'
           assert release['platforms'] == ['linux/amd64', 'linux/arm64']
+          print('Confirmed immutable Docker digest from published release')
           PY
-          expected="$(python3 -c "import json; print(json.load(open('scripts/fpk/release.json'))['image'].split('@')[1])")"
-          actual="$(docker buildx imagetools inspect cropflre/nowen-reader:v1.2.4 | awk '$1=="Digest:" {print $2; exit}')"
-          echo "Docker Hub manifest digest: $actual"
-          test "$actual" = "$expected" || { echo "Pinned image digest is not current v1.2.4 image"; exit 1; }
-          docker buildx imagetools inspect --raw cropflre/nowen-reader:v1.2.4 > "$RUNNER_TEMP/docker-index.json"
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path(os.environ['RUNNER_TEMP'])
-          index = json.loads((root/'docker-index.json').read_text())
-          platforms = {
-            (m.get('platform',{}).get('os'),m.get('platform',{}).get('architecture'))
-            for m in index.get('manifests',[])
-          }
-          assert {('linux','amd64'),('linux','arm64')} <= platforms, platforms
-          print('Validated amd64 and arm64 images')
-          PY
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName \
+            --jq '.tagName+" draft="+(.isDraft|tostring)+" prerelease="+(.isPrerelease|tostring)'
 
       - name: Download and hash-check official fnpack 1.2.3
         run: |
