@@ -275,8 +275,11 @@ jobs:
         run: |
           flags=(--latest)
           if [ "$PRERELEASE" = true ]; then flags=(--prerelease --latest=false); fi
+          # The verified existing tag already identifies the built commit.
+          # Avoid --target: GITHUB_TOKEN cannot create a release targeting a
+          # historical commit with workflow-file differences from main.
           gh release create "$RELEASE_TAG" artifacts/android/* \
-            --verify-tag --target "$COMMIT" --generate-notes "${flags[@]}"
+            --verify-tag --generate-notes "${flags[@]}"
       - uses: docker/setup-buildx-action@v3
         if: needs.metadata.outputs.prerelease == 'false'
       - name: Promote a completed stable release to latest
