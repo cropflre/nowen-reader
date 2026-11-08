@@ -62,12 +62,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   // 左右翻页(swipe)模式状态
   int _swipePage = 0;
   int _swipeTotalPages = 1;
-  final PageController _swipePageController = PageController();
-  // 预分页结果：每页包含的段落索引范围 [(startIdx, endIdx, startOffset)]
-  List<_SwipePageInfo> _swipePageInfos = [];
-  // 用于分页计算的缓存数据
-  List<String> _cachedParagraphs = [];
-  String _cachedChapterTitle = '';
 
   // 章节目录列表
   List<Map<String, dynamic>> _chapters = [];
@@ -155,7 +149,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _activity.dispose();
     _scrollController.dispose();
-    _swipePageController.dispose();
     super.dispose();
   }
 
@@ -663,7 +656,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       _loadError = null;
       _swipePage = 0;
       _swipeTotalPages = 1;
-      _swipePageInfos = [];
     });
     try {
       final data = await _chapterLoader.load(index);
@@ -684,11 +676,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(0);
       }
-      if (_swipePageController.hasClients) {
-        _swipePageController.jumpToPage(0);
-      }
-      // 延迟计算swipe总页数
-      _computeSwipePages();
       _activity.updatePage(index, _totalChapters);
       if (_settings.pageMode == NovelPageMode.scroll) {
         _restoreScrollPosition();
@@ -723,136 +710,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   // 左右翻页(swipe)分页逻辑
   // ============================================================
 
-  void _computeSwipePages() {
-    if (_settings.pageMode != NovelPageMode.swipe) return;
-    if (_isHtml) {
-      // The HTML viewport publishes page boundaries after its actual layout.
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final screenSize = MediaQuery.of(context).size;
-      final headerH = MediaQuery.of(context).padding.top + 4 + 16 + 4; // 顶部栏高度
-      final statusBarH =
-          MediaQuery.of(context).padding.bottom + 2 + 14 + 2; // 底部状态栏高度
-      final viewH = screenSize.height - headerH - statusBarH;
-      final viewW = screenSize.width - _settings.horizontalPadding * 2;
-      if (viewH <= 0 || viewW <= 0) {
-        setState(() => _swipeTotalPages = 1);
-        return;
-      }
-
-      final paragraphs = _chapterContent
-          .split('\n')
-          .where((line) => line.trim().isNotEmpty)
-          .toList();
-
-      _cachedParagraphs = paragraphs;
-      _cachedChapterTitle = _chapterTitle;
-
-      // 使用 TextPainter 精确计算每段高度
-      final pageInfos = <_SwipePageInfo>[];
-      // 可用高度（减去上下内边距和页码指示器）
-      final availH = viewH - 16 - 40; // 上padding 16, 下padding 40
-      double usedH = 0;
-
-      // 计算标题高度
-      final titlePainter = TextPainter(
-        text: TextSpan(
-          text: _chapterTitle,
-          style: TextStyle(
-            fontSize: _settings.fontSize + 4,
-            fontWeight: FontWeight.bold,
-            height: 1.4,
-            fontFamily: _settings.fontFamily,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: null,
-      );
-      titlePainter.layout(maxWidth: viewW);
-      final titleH = titlePainter.height + 24; // bottom padding 24
-
-      // 预计算每个段落的高度
-      final paragraphHeights = <double>[];
-      for (final p in paragraphs) {
-        final painter = TextPainter(
-          text: TextSpan(
-            text: '\u3000\u3000${p.trim()}',
-            style: TextStyle(
-              fontSize: _settings.fontSize,
-              height: _settings.lineHeight,
-              fontFamily: _settings.fontFamily,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-          maxLines: null,
-        );
-        painter.layout(maxWidth: viewW);
-        paragraphHeights.add(painter.height + 16); // bottom padding 16
-      }
-
-      // 分页算法
-      usedH = titleH;
-
-      // 第一页从标题开始
-      int firstParaOfPage = 0;
-      bool pageHasTitle = true;
-
-      for (int i = 0; i < paragraphs.length; i++) {
-        final pH = paragraphHeights[i];
-        if (usedH + pH > availH && usedH > 0) {
-          // 当前段落放不下，结束当前页
-          pageInfos.add(_SwipePageInfo(
-            startParagraph: firstParaOfPage,
-            endParagraph: i, // 不包含 i
-            hasTitle: pageHasTitle,
-          ));
-          // 新页
-          firstParaOfPage = i;
-          pageHasTitle = false;
-          usedH = pH;
-        } else {
-          usedH += pH;
-        }
-      }
-      // 最后一页
-      pageInfos.add(_SwipePageInfo(
-        startParagraph: firstParaOfPage,
-        endParagraph: paragraphs.length,
-        hasTitle: pageHasTitle,
-      ));
-
-      setState(() {
-        _swipePageInfos = pageInfos;
-        _swipeTotalPages = max(1, pageInfos.length);
-        if (_positionToRestore != null) {
-          _swipePage = _positionToRestore!.pageFor(_swipeTotalPages);
-          _positionToRestore = null;
-        }
-        if (_swipePage >= _swipeTotalPages) {
-          _swipePage = _swipeTotalPages - 1;
-        }
-      });
-      final targetPage = _swipePage;
-      final generation = _chapterLoadGeneration;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted ||
-            _chapterLoading ||
-            generation != _chapterLoadGeneration) {
-          return;
-        }
-        // 页数更新并完成布局后再同步 PageController，避免被旧的单页范围截断。
-        if (_swipePageController.hasClients &&
-            _swipePageController.page?.round() != targetPage) {
-          _swipePageController.jumpToPage(targetPage);
-        }
-        if (_swipePage != targetPage) setState(() => _swipePage = targetPage);
-        _schedulePositionSave();
-      });
-    });
-  }
-
   void _swipePrevPage() {
     if (_chapterLoading) return;
     if (_swipePage > 0) {
@@ -886,25 +743,16 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     final direction = targetPage.compareTo(_swipePage);
     _positionToRestore = null;
     setState(() => _swipePage = targetPage);
-    if (_isHtml) {
-      if (animate && direction != 0) {
-        setState(() {
-          _htmlPageSlide = Tween<Offset>(
-            begin: Offset(direction.toDouble(), 0),
-            end: Offset.zero,
-          )
-              .chain(CurveTween(curve: Curves.easeOutCubic))
-              .animate(_htmlPageAnimation);
-        });
-        _htmlPageAnimation.forward(from: 0);
-      }
-    } else if (_swipePageController.hasClients) {
-      if (animate) {
-        _swipePageController.animateToPage(targetPage,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-      } else {
-        _swipePageController.jumpToPage(targetPage);
-      }
+    if (animate && direction != 0) {
+      setState(() {
+        _htmlPageSlide = Tween<Offset>(
+          begin: Offset(direction.toDouble(), 0),
+          end: Offset.zero,
+        )
+            .chain(CurveTween(curve: Curves.easeOutCubic))
+            .animate(_htmlPageAnimation);
+      });
+      _htmlPageAnimation.forward(from: 0);
     }
     _schedulePositionSave();
   }
@@ -913,7 +761,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   void _onHtmlPageMetrics(NovelHtmlPageMetrics metrics) {
     if (!mounted ||
         _chapterLoading ||
-        !_isHtml ||
         _settings.pageMode != NovelPageMode.swipe) {
       return;
     }
@@ -1172,9 +1019,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     if (s.pageMode != oldPageMode) {
       _positionToRestore = position;
       _swipePage = 0;
-      if (s.pageMode == NovelPageMode.swipe) {
-        _computeSwipePages();
-      } else {
+      if (s.pageMode == NovelPageMode.scroll) {
         _restoreScrollPosition();
       }
     } else if (s.pageMode == NovelPageMode.swipe &&
@@ -1185,7 +1030,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       // 排版变化后按章内比例恢复，避免丢失正在阅读的位置。
       _positionToRestore = position;
       _swipePage = 0;
-      _computeSwipePages();
     }
   }
 
@@ -1676,15 +1520,25 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
           else
             ...paragraphs.map((p) => Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: SelectableText(
-                    '　　${p.trim()}',
-                    style: TextStyle(
-                      color: _settings.textColor,
-                      fontSize: _settings.fontSize,
-                      height: _settings.lineHeight,
-                      fontFamily: _settings.fontFamily,
-                    ),
-                  ),
+                  child: _settings.pageMode == NovelPageMode.swipe
+                      ? Text(
+                          '　　${p.trim()}',
+                          style: TextStyle(
+                            color: _settings.textColor,
+                            fontSize: _settings.fontSize,
+                            height: _settings.lineHeight,
+                            fontFamily: _settings.fontFamily,
+                          ),
+                        )
+                      : SelectableText(
+                          '　　${p.trim()}',
+                          style: TextStyle(
+                            color: _settings.textColor,
+                            fontSize: _settings.fontSize,
+                            height: _settings.lineHeight,
+                            fontFamily: _settings.fontFamily,
+                          ),
+                        ),
                 )),
           // 上/下一章按钮
           const SizedBox(height: 20),
@@ -1721,12 +1575,12 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
         ];
 
     // ====== 左右翻页(swipe)模式 ======
-    if (_isHtml && _settings.pageMode == NovelPageMode.swipe) {
+    if (_settings.pageMode == NovelPageMode.swipe) {
       return LayoutBuilder(builder: (context, constraints) {
         final generation = _chapterLoadGeneration;
         final pageHeight = max(1.0, constraints.maxHeight - 16 - 40);
         final pageView = KeyedSubtree(
-          key: const ValueKey('novel-html-pages'),
+          key: ValueKey(_isHtml ? 'novel-html-pages' : 'novel-text-pages'),
           child: NovelHtmlPages(
             key: ValueKey(generation),
             page: _swipePage,
@@ -1784,58 +1638,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
         );
       });
     }
-    if (_settings.pageMode == NovelPageMode.swipe) {
-      return Stack(
-        children: [
-          PageView.builder(
-            controller: _swipePageController,
-            itemCount: _swipeTotalPages,
-            onPageChanged: (page) {
-              setState(() => _swipePage = page);
-              _schedulePositionSave();
-            },
-            itemBuilder: (context, pageIndex) {
-              return Padding(
-                padding: EdgeInsets.fromLTRB(
-                  _settings.horizontalPadding,
-                  16,
-                  _settings.horizontalPadding,
-                  40,
-                ),
-                child: _buildSwipePageContent(pageIndex, paragraphs),
-              );
-            },
-          ),
-          // swipe 页码指示器
-          if (_swipeTotalPages > 1)
-            Positioned(
-              bottom: 8,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _settings.isDark
-                        ? Colors.white.withAlpha(20)
-                        : Colors.black.withAlpha(15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${_swipePage + 1} / $_swipeTotalPages',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: _settings.secondaryTextColor,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      );
-    }
-
     // ====== 上下滚动模式 ======
     return ListView(
       controller: _scrollController,
@@ -2119,145 +1921,6 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       ),
     );
   }
-
-  /// 构建 swipe 模式每页的内容
-  Widget _buildSwipePageContent(int pageIndex, List<String> paragraphs) {
-    if (_swipePageInfos.isEmpty || pageIndex >= _swipePageInfos.length) {
-      // 分页信息尚未就绪，显示所有内容
-      return SingleChildScrollView(
-        physics: const NeverScrollableScrollPhysics(),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _chapterTitle,
-              style: TextStyle(
-                color: _settings.textColor,
-                fontSize: _settings.fontSize + 4,
-                fontWeight: FontWeight.bold,
-                height: 1.4,
-                fontFamily: _settings.fontFamily,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ...paragraphs.map((p) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    '\u3000\u3000${p.trim()}',
-                    style: TextStyle(
-                      color: _settings.textColor,
-                      fontSize: _settings.fontSize,
-                      height: _settings.lineHeight,
-                      fontFamily: _settings.fontFamily,
-                    ),
-                  ),
-                )),
-          ],
-        ),
-      );
-    }
-
-    final info = _swipePageInfos[pageIndex];
-    final useParagraphs =
-        _cachedParagraphs.isNotEmpty ? _cachedParagraphs : paragraphs;
-    final isLastPage = pageIndex == _swipeTotalPages - 1;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 仅第一页显示章节标题
-        if (info.hasTitle)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: SizedBox(
-              width: double.infinity,
-              child: Text(
-                _cachedChapterTitle.isNotEmpty
-                    ? _cachedChapterTitle
-                    : _chapterTitle,
-                style: TextStyle(
-                  color: _settings.textColor,
-                  fontSize: _settings.fontSize + 4,
-                  fontWeight: FontWeight.bold,
-                  height: 1.4,
-                  fontFamily: _settings.fontFamily,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        // 该页对应的段落
-        ...List.generate(
-          (info.endParagraph - info.startParagraph)
-              .clamp(0, useParagraphs.length),
-          (i) {
-            final idx = info.startParagraph + i;
-            if (idx >= useParagraphs.length) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                '\u3000\u3000${useParagraphs[idx].trim()}',
-                style: TextStyle(
-                  color: _settings.textColor,
-                  fontSize: _settings.fontSize,
-                  height: _settings.lineHeight,
-                  fontFamily: _settings.fontFamily,
-                ),
-              ),
-            );
-          },
-        ),
-        // 最后一页显示上下章按钮
-        if (isLastPage) ...[
-          const Spacer(),
-          Divider(color: _settings.secondaryTextColor.withAlpha(40)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              if (_currentChapter > 0)
-                TextButton.icon(
-                  onPressed: _prevChapter,
-                  icon: Icon(Icons.chevron_left,
-                      color: _settings.secondaryTextColor),
-                  label: Text('上一章',
-                      style: TextStyle(color: _settings.secondaryTextColor)),
-                ),
-              Text(
-                '${_currentChapter + 1} / $_totalChapters',
-                style: TextStyle(
-                    fontSize: 12, color: _settings.secondaryTextColor),
-              ),
-              if (_currentChapter < _totalChapters - 1)
-                TextButton.icon(
-                  onPressed: _nextChapter,
-                  icon: Icon(Icons.chevron_right,
-                      color: _settings.secondaryTextColor),
-                  label: Text('下一章',
-                      style: TextStyle(color: _settings.secondaryTextColor)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
-      ],
-    );
-  }
-}
-
-/// Swipe 模式每页的分页信息
-class _SwipePageInfo {
-  final int startParagraph; // 起始段落索引（包含）
-  final int endParagraph; // 结束段落索引（不包含）
-  final bool hasTitle; // 该页是否包含章节标题
-
-  const _SwipePageInfo({
-    required this.startParagraph,
-    required this.endParagraph,
-    required this.hasTitle,
-  });
 }
 
 /// 底部工具按钮

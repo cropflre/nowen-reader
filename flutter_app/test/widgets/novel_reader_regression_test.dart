@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -179,7 +181,7 @@ void main() {
         await _open(tester);
         final view = html
             ? find.byKey(const ValueKey('novel-html-pages'))
-            : find.byType(PageView);
+            : find.byKey(const ValueKey('novel-text-pages'));
         expect(view, findsOneWidget);
         for (var i = 0; i < 5; i++) {
           await tester.drag(view, const Offset(-300, 0));
@@ -307,6 +309,49 @@ void main() {
     await _cleanup(tester);
   });
 
+  testWidgets('text pages keep long paragraphs and the footer separate',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final paragraph = '长段落的每一行文字都应该完整显示。' * 180;
+    await _mount(tester, _ReaderApi(htmlContent: paragraph));
+    await _open(tester);
+    final view = find.byType(NovelHtmlPages);
+
+    for (final fontSize in [20.0, 32.0]) {
+      await tester.tap(find.byIcon(Icons.text_fields));
+      await tester.pumpAndSettle();
+      final panel = tester.widget<SettingsPanel>(find.byType(SettingsPanel));
+      panel.onChanged(panel.settings.copyWith(fontSize: fontSize));
+      panel.onClose();
+      await tester.pumpAndSettle();
+
+      final viewport = tester.renderObject<RenderNovelHtmlPages>(view);
+      final pages = viewport.metrics!.pages;
+      expect(pages.length, greaterThan(2));
+      expect(tester.getRect(find.text('1 / ${pages.length}')).top,
+          greaterThanOrEqualTo(tester.getRect(view).bottom));
+      final text = tester.renderObject<RenderParagraph>(
+          find.descendant(of: view, matching: find.text('　　$paragraph')));
+      final boxes = text.getBoxesForSelection(
+        TextSelection(
+            baseOffset: 0, extentOffset: text.text.toPlainText().length),
+        boxHeightStyle: ui.BoxHeightStyle.tight,
+      );
+      final transform = text.getTransformTo(viewport.child);
+      for (final box in boxes) {
+        final rect = MatrixUtils.transformRect(transform, box.toRect());
+        expect(
+            pages.any((page) =>
+                rect.top >= page.start - 0.01 &&
+                rect.bottom <= page.end + 0.01),
+            isTrue,
+            reason: 'A text line must fit entirely inside one page');
+      }
+    }
+    await _cleanup(tester);
+  });
+
   testWidgets('long HTML restores page 22 without using loading metrics',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 800));
@@ -414,7 +459,8 @@ void main() {
     final api = _ReaderApi();
     await _mount(tester, api);
     await _open(tester);
-    await tester.tapAt(tester.getCenter(find.byType(PageView)));
+    await tester.tapAt(
+        tester.getCenter(find.byKey(const ValueKey('novel-text-pages'))));
     await tester.pumpAndSettle();
     final slider = find.byKey(const ValueKey('novel-chapter-slider'));
     expect(slider, findsOneWidget);
@@ -461,7 +507,8 @@ void main() {
     api.pendingChapters.addAll({1600: older, 1700: newer});
     await _mount(tester, api);
     await _open(tester);
-    await tester.tapAt(tester.getCenter(find.byType(PageView)));
+    await tester.tapAt(
+        tester.getCenter(find.byKey(const ValueKey('novel-text-pages'))));
     await tester.pumpAndSettle();
     final slider = find.byKey(const ValueKey('novel-chapter-slider'));
     for (final chapter in [1600, 1700]) {
