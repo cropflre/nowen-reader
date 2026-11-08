@@ -45,6 +45,15 @@
 
 使用内置 imagegen 生成。完整生成提示词见 `docs/assets/nowen-reader-fnos-icon-prompt.txt`。
 
+## v1.2.4 更新说明（相对 v1.2.3）
+
+- **书库管理与大书库性能**：增加书库子目录浏览、分页与系列层级管理能力，改进大规模图书列表的加载和定位。
+- **标签筛选与展示**：改善作品标签点击筛选、颜色显示及书库标签刷新体验。
+- **Web 阅读与管理**：优化作品详情、书架和目录导航相关交互与数据一致性。
+- **Android 客户端**：修复小说阅读页面底部文字裁切和页码遮挡；此修复属于单独的 Android APK，**不包含在飞牛 FPK 包体内**。
+
+飞牛 FPK 为 Docker 自托管服务端/Web 应用，安装时拉取固定的 `v1.2.4` 双架构镜像；已有数据目录不应在升级时被清空。首次升级前建议备份数据库和书库。
+
 ## 打包
 
 使用 Python 3 和官方 fnpack 1.2.3，无需安装前端或 Go 依赖：
@@ -53,7 +62,7 @@
 python3 scripts/fpk/build-fpk.py --fnpack /path/to/fnpack-1.2.3-linux-amd64
 ```
 
-输出：`dist/fpk/nowen-reader-1.2.3.fpk`、`SHA256SUMS` 与 `package-info.json`。
+输出：`dist/fpk/nowen-reader-1.2.4.fpk`、`SHA256SUMS` 与 `package-info.json`。
 
 版本及镜像摘要见 `scripts/fpk/release.json`；更新版本时应先确认对应镜像存在，并同步更新摘要。应用中心简介来自 `scripts/fpk/app-description.html`。打包脚本会检查归档中的配置、脚本权限和图标，并写入构建记录。
 
