@@ -298,6 +298,7 @@ const en: Translations = {
     bgTheme: "Background Theme",
     fontSize: "Font Size",
     lineSpacing: "Line Spacing",
+    letterSpacing: "Letter Spacing",
     margin: "Margin",
     marginCompact: "Compact",
     marginStandard: "Standard",

@@ -294,6 +294,7 @@ const zhCN = {
     bgTheme: "背景主题",
     fontSize: "字体大小",
     lineSpacing: "行间距",
+    letterSpacing: "字间距",
     margin: "页边距",
     marginCompact: "紧凑",
     marginStandard: "标准",
@@ -1643,6 +1644,7 @@ export interface Translations {
     bgTheme: string;
     fontSize: string;
     lineSpacing: string;
+    letterSpacing: string;
     margin: string;
     marginCompact: string;
     marginStandard: string;

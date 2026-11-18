@@ -114,9 +114,9 @@ export const themePreviewColorKeys: Record<string, { bg: string; labelKey: strin
 
 // 页边距档位
 export const paddingOptions = [
-  { value: "compact", labelKey: "marginCompact" as const, class: "px-2 sm:px-4 md:px-8" },
-  { value: "standard", labelKey: "marginStandard" as const, class: "px-4 sm:px-8 md:px-16 lg:px-32" },
-  { value: "wide", labelKey: "marginWide" as const, class: "px-8 sm:px-16 md:px-24 lg:px-40" },
+  { value: "compact", labelKey: "marginCompact" as const, class: "px-2 sm:px-4 md:px-8", maxWidthClass: "max-w-4xl" },
+  { value: "standard", labelKey: "marginStandard" as const, class: "px-4 sm:px-8 md:px-16 lg:px-32", maxWidthClass: "max-w-2xl" },
+  { value: "wide", labelKey: "marginWide" as const, class: "px-8 sm:px-16 md:px-24 lg:px-40", maxWidthClass: "max-w-xl" },
 ];
 
 // 翻页模式

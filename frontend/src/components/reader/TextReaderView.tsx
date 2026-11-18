@@ -45,6 +45,12 @@ export default function TextReaderView({
     }
     return 1.8;
   });
+  const [letterSpacing, setLetterSpacing] = useState(() => {
+    if (typeof window !== "undefined") {
+      return parseFloat(localStorage.getItem("textReaderLetterSpacing") || "0");
+    }
+    return 0;
+  });
   const [showTOC, setShowTOC] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [collapsedTOCIndexes, setCollapsedTOCIndexes] = useState<Set<number>>(() => new Set());
@@ -365,12 +371,12 @@ export default function TextReaderView({
       setSwipeTotalPages(Math.max(1, Math.ceil(contentH / viewH)));
     }, 100);
     return () => clearTimeout(timer);
-  }, [pageMode, loading, content, fontSize, lineHeight, fontFamily, currentPage]);
+  }, [pageMode, loading, content, fontSize, lineHeight, letterSpacing, fontFamily, paddingLevel, currentPage]);
 
   // 字体/行高等变化时重置 swipePage
   useEffect(() => {
     setSwipePage(0);
-  }, [fontSize, lineHeight, fontFamily, paddingLevel]);
+  }, [fontSize, lineHeight, letterSpacing, fontFamily, paddingLevel]);
 
   // swipePage 设置为 Infinity 时 clamp 到实际最后一页
   useEffect(() => {
@@ -402,6 +408,10 @@ export default function TextReaderView({
   useEffect(() => {
     localStorage.setItem("textReaderLineHeight", String(lineHeight));
   }, [lineHeight]);
+
+  useEffect(() => {
+    localStorage.setItem("textReaderLetterSpacing", String(letterSpacing));
+  }, [letterSpacing]);
 
   useEffect(() => {
     localStorage.setItem("textReaderFontFamily", fontFamily);
@@ -1260,7 +1270,7 @@ export default function TextReaderView({
         .split("\n")
         .filter((line) => line.trim().length > 0)
         .map((line, i) => (
-          <p key={i} className="mb-4 indent-8">
+          <p key={i} className="mb-4" style={{ textIndent: "2em" }}>
             {line.trim()}
           </p>
         ))
@@ -1268,6 +1278,10 @@ export default function TextReaderView({
 
   // EPUB HTML styles injected for rich rendering
   const epubStyles = `
+    .epub-content, .epub-content p, .epub-content li, .epub-content blockquote {
+      line-height: inherit;
+      letter-spacing: inherit;
+    }
     .epub-content p { margin-bottom: 1em; text-indent: 2em; }
     .epub-content h1, .epub-content h2, .epub-content h3,
     .epub-content h4, .epub-content h5, .epub-content h6 {
@@ -1519,10 +1533,11 @@ export default function TextReaderView({
       >
         <div
           ref={swipeInnerRef}
-          className="mx-auto max-w-prose px-4 sm:px-6"
+          className={`mx-auto ${currentPadding.maxWidthClass} px-4 sm:px-6`}
           style={{
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
+            letterSpacing: `${letterSpacing}px`,
             fontFamily: fontFamilyMap[fontFamily] || fontFamilyMap.system,
             ...(pageMode === 'swipe' ? {
               transform: `translateY(-${swipePage * (contentRef.current?.clientHeight || 0)}px)`,
@@ -1641,7 +1656,12 @@ export default function TextReaderView({
 
               {/* Text content */}
               <div
-                className={`leading-[1.85] tracking-wide ${theme.contentText}`}
+                className={theme.contentText}
+                style={{
+                  fontSize: `${fontSize}px`,
+                  lineHeight: lineHeight,
+                  letterSpacing: `${letterSpacing}px`,
+                }}
               >
                 {isHTML ? (
                   <>
@@ -1852,7 +1872,7 @@ export default function TextReaderView({
               </label>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setLineHeight((h) => Math.max(1.2, h - 0.2))}
+                  onClick={() => setLineHeight((h) => Math.round(Math.max(1.2, h - 0.2) * 10) / 10)}
                   className={`rounded-lg p-2 ${theme.settingsBtnBg} ${theme.settingsBtnText} ${theme.settingsBtnHoverBg}`}
                 >
                   <Minus className="h-4 w-4" />
@@ -1867,7 +1887,39 @@ export default function TextReaderView({
                   className="flex-1"
                 />
                 <button
-                  onClick={() => setLineHeight((h) => Math.min(3.0, h + 0.2))}
+                  onClick={() => setLineHeight((h) => Math.round(Math.min(3.0, h + 0.2) * 10) / 10)}
+                  className={`rounded-lg p-2 ${theme.settingsBtnBg} ${theme.settingsBtnText} ${theme.settingsBtnHoverBg}`}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Letter spacing */}
+            <div className="mb-4">
+              <label
+                className={`mb-2 block text-xs ${theme.settingsLabel}`}
+              >
+                {t.reader.letterSpacing}: {letterSpacing.toFixed(1)}px
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setLetterSpacing((s) => Math.round(Math.max(-1, s - 0.5) * 10) / 10)}
+                  className={`rounded-lg p-2 ${theme.settingsBtnBg} ${theme.settingsBtnText} ${theme.settingsBtnHoverBg}`}
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <input
+                  type="range"
+                  min={-1}
+                  max={6}
+                  step={0.5}
+                  value={letterSpacing}
+                  onChange={(e) => setLetterSpacing(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <button
+                  onClick={() => setLetterSpacing((s) => Math.round(Math.min(6, s + 0.5) * 10) / 10)}
                   className={`rounded-lg p-2 ${theme.settingsBtnBg} ${theme.settingsBtnText} ${theme.settingsBtnHoverBg}`}
                 >
                   <Plus className="h-4 w-4" />
