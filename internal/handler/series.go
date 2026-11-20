@@ -312,7 +312,11 @@ func (h *SeriesHandler) Redetect(c *gin.Context) {
 }
 
 func (h *SeriesHandler) Delete(c *gin.Context) {
-	detail, err := store.GetSeriesDetail(c.Param("id"), getUserID(c))
+	if _, ok := requireGlobalAdminForDelete(c); !ok {
+		return
+	}
+	seriesID := c.Param("id")
+	detail, err := store.GetSeriesDetail(seriesID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load comic series"})
 		return
@@ -321,14 +325,55 @@ func (h *SeriesHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Comic series not found"})
 		return
 	}
-	canManage, _ := store.UserCanManageLibrary(getUserID(c), detail.Series.LibraryID)
-	if !canManage {
-		c.JSON(http.StatusForbidden, gin.H{"error": "No permission to manage this series"})
+
+	deleteContent := c.Query("deleteContent") == "true"
+	if !deleteContent {
+		if err := store.DeleteSeriesRelationship(seriesID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove series relationship"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "filesDeleted": false, "comicsDeleted": false})
 		return
 	}
-	if err := store.DeleteSeriesRelationship(c.Param("id")); err != nil {
+
+	deleteFiles := c.Query("deleteFiles") == "true"
+	includeEditions := c.DefaultQuery("deleteEditions", "true") != "false"
+	expandedIDs, _, err := store.ExpandDeleteTargetComicIDs([]string{store.SeriesShelfIDPrefix + seriesID}, includeEditions)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve series members"})
+		return
+	}
+
+	if deleteFiles {
+		if _, ok := deletePhysicalFilesOrAbort(c, expandedIDs); !ok {
+			return
+		}
+	} else {
+		identities, err := store.GetComicSourceIdentities(expandedIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to preserve record-only deletion"})
+			return
+		}
+		if err := store.AddIgnoredLibraryContents(identities); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to preserve record-only deletion"})
+			return
+		}
+	}
+
+	deletedCount, err := store.BatchDeleteComics(expandedIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete series contents"})
+		return
+	}
+	if err := store.DeleteSeriesRelationship(seriesID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove series relationship"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "filesDeleted": false, "comicsDeleted": false})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"filesDeleted":  deleteFiles,
+		"comicsDeleted": true,
+		"deletedCount":  deletedCount,
+	})
 }

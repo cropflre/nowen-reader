@@ -11,6 +11,7 @@ import '../../data/providers/comic_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/work_tags.dart';
 import '../../widgets/work_categories.dart';
+import '../../widgets/delete_confirm_dialog.dart';
 
 /// 目录作品详情页。
 ///
@@ -31,6 +32,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
   bool _loading = true;
   bool _gridView = true;
   String? _error;
+  bool _batchMode = false;
+  final Set<String> _selectedIds = <String>{};
 
   @override
   void initState() {
@@ -132,9 +135,127 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
         formats: formats,
         editions: editions,
       ));
-      ));
     }
     return result;
+  }
+
+  List<String> _allItemIds(List<_SeriesSectionView> sections) {
+    final ids = <String>[];
+    for (final s in sections) {
+      for (final item in s.items) {
+        ids.add(item.comic.id);
+      }
+    }
+    return ids;
+  }
+
+  void _toggleSelect(String comicId) {
+    setState(() {
+      if (_selectedIds.contains(comicId)) {
+        _selectedIds.remove(comicId);
+      } else {
+        _selectedIds.add(comicId);
+      }
+    });
+  }
+
+  void _selectAll(List<_SeriesSectionView> sections) {
+    final allIds = _allItemIds(sections).toSet();
+    setState(() {
+      if (allIds.isNotEmpty && _selectedIds.length == allIds.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(allIds);
+      }
+    });
+  }
+
+  void _invertSelection(List<_SeriesSectionView> sections) {
+    final allIds = _allItemIds(sections);
+    setState(() {
+      final next = <String>{};
+      for (final id in allIds) {
+        if (!_selectedIds.contains(id)) next.add(id);
+      }
+      _selectedIds
+        ..clear()
+        ..addAll(next);
+    });
+  }
+
+  Future<void> _confirmDeleteSeries(
+    String title,
+    List<_SeriesSectionView> sections,
+  ) async {
+    final total = _allItemIds(sections).length;
+    final res = await showDeleteConfirmDialog(
+      context,
+      title: '删除整部作品',
+      description: '即将删除《$title》（共 $total 个阅读单元）。请选择删除方式：',
+    );
+    if (res == null || !res.confirmed || !mounted) return;
+    try {
+      await ref.read(comicApiProvider).deleteSeries(
+            widget.seriesId,
+            deleteContent: true,
+            deleteFiles: res.deleteFiles,
+            deleteEditions: true,
+          );
+      await ref.read(comicListProvider.notifier).loadComics();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已删除整部作品')),
+      );
+      if (context.canPop()) context.pop();
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败: ${extractDeleteErrorMessage(err)}')),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteSelectedChapters(
+    String title,
+    List<_SeriesSectionView> sections,
+  ) async {
+    if (_selectedIds.isEmpty) return;
+    final allCount = _allItemIds(sections).length;
+    final count = _selectedIds.length;
+    final res = await showDeleteConfirmDialog(
+      context,
+      title: '删除选中的 $count 个章节',
+      description: '即将从《$title》中删除已选中的 $count 个阅读单元。请选择删除方式：',
+    );
+    if (res == null || !res.confirmed || !mounted) return;
+    try {
+      await ref.read(comicApiProvider).batchDeleteComics(
+            _selectedIds.toList(),
+            deleteFiles: res.deleteFiles,
+            deleteEditions: true,
+          );
+      setState(() {
+        _batchMode = false;
+        _selectedIds.clear();
+      });
+      await ref.read(comicListProvider.notifier).loadComics();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 $count 个阅读单元')),
+      );
+      if (count >= allCount) {
+        if (context.canPop()) context.pop();
+      } else {
+        await _load();
+      }
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败: ${extractDeleteErrorMessage(err)}')),
+      );
+    }
   }
 
   @override
@@ -143,7 +264,9 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
       _load();
     });
     final cs = Theme.of(context).colorScheme;
-    final serverUrl = ref.watch(authProvider).serverUrl;
+    final authState = ref.watch(authProvider);
+    final serverUrl = authState.serverUrl;
+    final isAdmin = authState.user?.isAdmin == true;
 
     if (_loading) {
       return Scaffold(
@@ -206,16 +329,57 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
           slivers: [
             SliverAppBar(
               pinned: true,
-              title: Text(title),
-              actions: [
-                IconButton(
-                  tooltip: _gridView ? '列表视图' : '网格视图',
-                  icon: Icon(_gridView
-                      ? Icons.view_list_rounded
-                      : Icons.grid_view_rounded),
-                  onPressed: () => setState(() => _gridView = !_gridView),
-                ),
-              ],
+              title: Text(_batchMode ? '已选 ${_selectedIds.length} 项' : title),
+              actions: _batchMode && isAdmin
+                  ? [
+                      IconButton(
+                        tooltip: '全选',
+                        icon: const Icon(Icons.done_all_rounded),
+                        onPressed: () => _selectAll(sections),
+                      ),
+                      IconButton(
+                        tooltip: '反选',
+                        icon: const Icon(Icons.flip_rounded),
+                        onPressed: () => _invertSelection(sections),
+                      ),
+                      IconButton(
+                        tooltip: '删除选中',
+                        icon: Icon(Icons.delete_outline_rounded,
+                            color: _selectedIds.isNotEmpty ? cs.error : null),
+                        onPressed: _selectedIds.isEmpty
+                            ? null
+                            : () => _confirmDeleteSelectedChapters(title, sections),
+                      ),
+                      IconButton(
+                        tooltip: '退出多选',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => setState(() {
+                          _batchMode = false;
+                          _selectedIds.clear();
+                        }),
+                      ),
+                    ]
+                  : [
+                      if (isAdmin) ...[
+                        IconButton(
+                          tooltip: '批量管理删除章节',
+                          icon: const Icon(Icons.checklist_rounded),
+                          onPressed: () => setState(() => _batchMode = true),
+                        ),
+                        IconButton(
+                          tooltip: '删除整部作品',
+                          icon: Icon(Icons.delete_outline_rounded, color: cs.error),
+                          onPressed: () => _confirmDeleteSeries(title, sections),
+                        ),
+                      ],
+                      IconButton(
+                        tooltip: _gridView ? '列表视图' : '网格视图',
+                        icon: Icon(_gridView
+                            ? Icons.view_list_rounded
+                            : Icons.grid_view_rounded),
+                        onPressed: () => setState(() => _gridView = !_gridView),
+                      ),
+                    ],
             ),
             SliverToBoxAdapter(
               child: _overview(summary, continueItem, serverUrl, cs),
@@ -227,7 +391,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
               )
             else
               for (final section in sections)
-                ..._sectionSlivers(section, serverUrl, cs),
+                ..._sectionSlivers(section, serverUrl, cs, isAdmin),
             const SliverToBoxAdapter(child: SizedBox(height: 28)),
           ],
         ),
@@ -434,6 +598,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     _SeriesSectionView section,
     String serverUrl,
     ColorScheme cs,
+    bool isAdmin,
   ) {
     return [
       SliverToBoxAdapter(
@@ -482,7 +647,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
             ),
             delegate: SliverChildBuilderDelegate(
               (context, index) =>
-                  _gridItem(section.items[index], serverUrl, cs),
+                  _gridItem(section.items[index], serverUrl, cs, isAdmin),
               childCount: section.items.length,
             ),
           ),
@@ -493,7 +658,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) =>
-                  _listItem(section.items[index], serverUrl, cs),
+                  _listItem(section.items[index], serverUrl, cs, isAdmin),
               childCount: section.items.length,
             ),
           ),
@@ -506,11 +671,21 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     _SeriesItemView item,
     String serverUrl,
     ColorScheme cs,
+    bool isAdmin,
   ) {
     final comic = item.comic;
+    final isSelected = _selectedIds.contains(comic.id);
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => context.push('/comic/${comic.id}'),
+      onTap: () => _batchMode
+          ? _toggleSelect(comic.id)
+          : context.push('/comic/${comic.id}'),
+      onLongPress: isAdmin
+          ? () => setState(() {
+                _batchMode = true;
+                _selectedIds.add(comic.id);
+              })
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -525,6 +700,25 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                     fit: BoxFit.cover,
                     errorWidget: _placeholder(cs),
                   ),
+                  if (_batchMode)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: isSelected ? cs.primary : Colors.black54,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: isSelected ? Colors.white : Colors.transparent,
+                        ),
+                      ),
+                    ),
                   if (item.formats.length > 1)
                     Positioned(
                       top: 6,
@@ -585,17 +779,34 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     _SeriesItemView item,
     String serverUrl,
     ColorScheme cs,
+    bool isAdmin,
   ) {
     final comic = item.comic;
+    final isSelected = _selectedIds.contains(comic.id);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => context.push('/comic/${comic.id}'),
+        onTap: () => _batchMode
+            ? _toggleSelect(comic.id)
+            : context.push('/comic/${comic.id}'),
+        onLongPress: isAdmin
+            ? () => setState(() {
+                  _batchMode = true;
+                  _selectedIds.add(comic.id);
+                })
+            : null,
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Row(
             children: [
+              if (_batchMode) ...[
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => _toggleSelect(comic.id),
+                ),
+                const SizedBox(width: 4),
+              ],
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: SizedBox(

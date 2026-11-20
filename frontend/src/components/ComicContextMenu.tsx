@@ -55,8 +55,6 @@ export default function ComicContextMenu({
 }: ComicContextMenuProps) {
   const t = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  // 使用 state 管理最终位置，初始隐藏避免闪烁
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   // 点击外部关闭
@@ -126,12 +124,10 @@ export default function ComicContextMenu({
     },
     {
       key: "delete",
-      label: confirmDelete
-        ? (t.contextMenu?.confirmDelete || "确认删除？")
-        : (t.contextMenu?.delete || "删除"),
+      label: t.contextMenu?.delete || "删除...",
       icon: <Trash2 className="h-3.5 w-3.5" />,
       danger: true,
-      hidden: !isAdmin || !canDelete,
+      hidden: !canDelete,
     },
   ];
 
@@ -154,12 +150,6 @@ export default function ComicContextMenu({
         onClose();
         break;
       case "delete":
-        if (!confirmDelete) {
-          // 第一次点击，进入确认状态
-          setConfirmDelete(true);
-          return; // 不关闭菜单
-        }
-        // 第二次点击，执行删除
         onDelete(comicId);
         onClose();
         break;

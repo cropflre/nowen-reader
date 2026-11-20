@@ -1384,3 +1384,116 @@ func CheckBookEditionsExist(libraryIDs []string, filterLibraries bool) (bool, er
 	}
 	return false, nil
 }
+
+// ExpandDeleteTargetComicIDs expands mixed shelf/detail IDs (including `series-<id>`
+// and optionally sibling editions in the same BookEditionGroup) into deduplicated
+// physical Comic IDs plus any matched ComicSeries IDs.
+func ExpandDeleteTargetComicIDs(rawIDs []string, includeEditions bool) (expandedComicIDs []string, seriesIDs []string, err error) {
+	seenSeries := make(map[string]struct{})
+	seenComics := make(map[string]struct{})
+	var baseComicIDs []string
+
+	for _, raw := range rawIDs {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, SeriesShelfIDPrefix) {
+			sid := strings.TrimPrefix(trimmed, SeriesShelfIDPrefix)
+			if sid != "" {
+				if _, ok := seenSeries[sid]; !ok {
+					seenSeries[sid] = struct{}{}
+					seriesIDs = append(seriesIDs, sid)
+				}
+			}
+			continue
+		}
+		if _, ok := seenComics[trimmed]; !ok {
+			seenComics[trimmed] = struct{}{}
+			baseComicIDs = append(baseComicIDs, trimmed)
+		}
+	}
+
+	if len(seriesIDs) > 0 {
+		for start := 0; start < len(seriesIDs); start += batchSize {
+			end := start + batchSize
+			if end > len(seriesIDs) {
+				end = len(seriesIDs)
+			}
+			batch := seriesIDs[start:end]
+			ph := make([]string, len(batch))
+			args := make([]interface{}, len(batch))
+			for i, sid := range batch {
+				ph[i] = "?"
+				args[i] = sid
+			}
+			rows, qErr := db.Query(fmt.Sprintf(`
+				SELECT si."comicId"
+				FROM "ComicSeriesItem" si
+				JOIN "Comic" c ON c."id" = si."comicId"
+				WHERE si."seriesId" IN (%s)
+				ORDER BY si."sortIndex", si."comicId"
+			`, strings.Join(ph, ",")), args...)
+			if qErr != nil {
+				return nil, nil, qErr
+			}
+			for rows.Next() {
+				var cid string
+				if rows.Scan(&cid) == nil && cid != "" {
+					if _, ok := seenComics[cid]; !ok {
+						seenComics[cid] = struct{}{}
+						baseComicIDs = append(baseComicIDs, cid)
+					}
+				}
+			}
+			if rowsErr := rows.Err(); rowsErr != nil {
+				rows.Close()
+				return nil, nil, rowsErr
+			}
+			rows.Close()
+		}
+	}
+
+	expandedComicIDs = append([]string{}, baseComicIDs...)
+	if includeEditions && len(baseComicIDs) > 0 {
+		for start := 0; start < len(baseComicIDs); start += batchSize {
+			end := start + batchSize
+			if end > len(baseComicIDs) {
+				end = len(baseComicIDs)
+			}
+			batch := baseComicIDs[start:end]
+			ph := make([]string, len(batch))
+			args := make([]interface{}, len(batch))
+			for i, cid := range batch {
+				ph[i] = "?"
+				args[i] = cid
+			}
+			rows, qErr := db.Query(fmt.Sprintf(`
+				SELECT DISTINCT bei2."comicId"
+				FROM "BookEditionItem" bei1
+				JOIN "BookEditionItem" bei2 ON bei2."groupId" = bei1."groupId"
+				JOIN "Comic" c ON c."id" = bei2."comicId"
+				WHERE bei1."comicId" IN (%s)
+			`, strings.Join(ph, ",")), args...)
+			if qErr != nil {
+				return nil, nil, qErr
+			}
+			for rows.Next() {
+				var sibID string
+				if rows.Scan(&sibID) == nil && sibID != "" {
+					if _, ok := seenComics[sibID]; !ok {
+						seenComics[sibID] = struct{}{}
+						expandedComicIDs = append(expandedComicIDs, sibID)
+					}
+				}
+			}
+			if rowsErr := rows.Err(); rowsErr != nil {
+				rows.Close()
+				return nil, nil, rowsErr
+			}
+			rows.Close()
+		}
+	}
+
+	return expandedComicIDs, seriesIDs, nil
+}

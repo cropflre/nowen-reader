@@ -232,11 +232,16 @@ func (h *ComicHandler) UpdateProgress(c *gin.Context) {
 func (h *ComicHandler) DeleteComic(c *gin.Context) {
 	id := c.Param("id")
 	deleteFiles := c.Query("deleteFiles") == "true"
-	log.Printf("[API] DeleteComic: id=%s, deleteFiles=%v", id, deleteFiles)
+	deleteEditions := c.Query("deleteEditions") == "true"
+	log.Printf("[API] DeleteComic: id=%s, deleteFiles=%v, deleteEditions=%v", id, deleteFiles, deleteEditions)
 
 	user := middleware.GetCurrentUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if user.Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: Admin permission required to delete content"})
 		return
 	}
 
@@ -246,36 +251,54 @@ func (h *ComicHandler) DeleteComic(c *gin.Context) {
 		return
 	}
 
-	canManage, _ := store.UserCanManageLibrary(user.ID, comicData.LibraryID)
-	if !canManage {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: No manage permission for this library"})
-		return
-	}
-
-	var pathToDelete string
-	if deleteFiles {
-		if resolved, err := service.GlobalFileResolver.ResolveContentPath(id); err == nil && resolved.AbsolutePath != "" {
-			pathToDelete = resolved.AbsolutePath
+	targetIDs := []string{id}
+	if raw, ok := c.Get(contextKeyExpandedDeleteComicIDs); ok {
+		if expanded, valid := raw.([]string); valid && len(expanded) > 0 {
+			targetIDs = expanded
+		}
+	} else if deleteEditions {
+		if expanded, _, expErr := store.ExpandDeleteTargetComicIDs([]string{id}, true); expErr == nil && len(expanded) > 0 {
+			targetIDs = expanded
 		}
 	}
 
-	if err := store.DeleteComic(id); err != nil {
+	var pathsToDelete []struct {
+		comicID  string
+		absPath  string
+		rootPath string
+	}
+	if deleteFiles {
+		for _, tid := range targetIDs {
+			if resolved, rErr := service.GlobalFileResolver.ResolveContentPath(tid); rErr == nil && resolved.AbsolutePath != "" {
+				pathsToDelete = append(pathsToDelete, struct {
+					comicID  string
+					absPath  string
+					rootPath string
+				}{tid, resolved.AbsolutePath, resolved.RootPath})
+			}
+		}
+	}
+
+	deletedCount, err := store.BatchDeleteComics(targetIDs)
+	if err != nil {
 		log.Printf("[API] DeleteComic failed: id=%s, err=%v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comic: " + err.Error()})
 		return
 	}
 
-	if deleteFiles && pathToDelete != "" {
-		if err := os.RemoveAll(pathToDelete); err != nil {
-			log.Printf("[API] DeleteComic: failed to delete physical file %s: %v", pathToDelete, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database record deleted, but failed to delete physical file: " + err.Error()})
-			return
+	if deleteFiles {
+		for _, item := range pathsToDelete {
+			if err := service.RemoveContentFileAndPruneDirs(item.comicID, item.absPath, item.rootPath); err != nil {
+				log.Printf("[API] DeleteComic: failed to delete physical file %s: %v", item.absPath, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Database record deleted, but failed to delete physical file: " + err.Error()})
+				return
+			}
+			log.Printf("[API] DeleteComic: deleted physical file %s", item.absPath)
 		}
-		log.Printf("[API] DeleteComic: deleted physical file %s", pathToDelete)
 	}
 
-	log.Printf("[API] DeleteComic success: id=%s", id)
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	log.Printf("[API] DeleteComic success: id=%s (deletedCount=%d)", id, deletedCount)
+	c.JSON(http.StatusOK, gin.H{"success": true, "deletedCount": deletedCount})
 }
 
 // ============================================================
@@ -403,19 +426,26 @@ func (h *ComicHandler) RemoveCategory(c *gin.Context) {
 
 func (h *ComicHandler) BatchOperation(c *gin.Context) {
 	var body struct {
-		Action        string   `json:"action"`
-		ComicIDs      []string `json:"comicIds"`
-		IsFavorite    *bool    `json:"isFavorite"`
-		Tags          []string `json:"tags"`
-		CategorySlugs []string `json:"categorySlugs"`
-		DeleteFiles   bool     `json:"deleteFiles"`
-		ReadingStatus string   `json:"readingStatus"`
+		Action         string   `json:"action"`
+		ComicIDs       []string `json:"comicIds"`
+		IsFavorite     *bool    `json:"isFavorite"`
+		Tags           []string `json:"tags"`
+		CategorySlugs  []string `json:"categorySlugs"`
+		DeleteFiles    bool     `json:"deleteFiles"`
+		DeleteEditions *bool    `json:"deleteEditions"`
+		ReadingStatus  string   `json:"readingStatus"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
-	if len(body.ComicIDs) == 0 {
+	var expandedSeriesIDs []string
+	if rawSeries, ok := c.Get(contextKeyExpandedDeleteSeriesIDs); ok {
+		if sids, valid := rawSeries.([]string); valid {
+			expandedSeriesIDs = sids
+		}
+	}
+	if len(body.ComicIDs) == 0 && len(expandedSeriesIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "comicIds array required"})
 		return
 	}
@@ -428,33 +458,56 @@ func (h *ComicHandler) BatchOperation(c *gin.Context) {
 
 	switch body.Action {
 	case "delete":
-		if err := checkBatchManagePermission(user, body.ComicIDs); err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		if user.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: Admin permission required to delete content"})
 			return
 		}
-		var pathsToDelete []string
+		includeEditions := true
+		if body.DeleteEditions != nil {
+			includeEditions = *body.DeleteEditions
+		}
+		targetComicIDs := body.ComicIDs
+		if len(expandedSeriesIDs) == 0 {
+			if expIDs, sids, expErr := store.ExpandDeleteTargetComicIDs(body.ComicIDs, includeEditions); expErr == nil {
+				targetComicIDs = expIDs
+				expandedSeriesIDs = sids
+			}
+		}
+
+		var pathsToDelete []struct {
+			comicID  string
+			absPath  string
+			rootPath string
+		}
 		if body.DeleteFiles {
-			for _, cid := range body.ComicIDs {
+			for _, cid := range targetComicIDs {
 				if resolved, err := service.GlobalFileResolver.ResolveContentPath(cid); err == nil && resolved.AbsolutePath != "" {
-					pathsToDelete = append(pathsToDelete, resolved.AbsolutePath)
+					pathsToDelete = append(pathsToDelete, struct {
+						comicID  string
+						absPath  string
+						rootPath string
+					}{cid, resolved.AbsolutePath, resolved.RootPath})
 				}
 			}
 		}
 
-		n, err := store.BatchDeleteComics(body.ComicIDs)
+		n, err := store.BatchDeleteComics(targetComicIDs)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Batch delete failed"})
 			return
+		}
+		for _, sid := range expandedSeriesIDs {
+			_ = store.DeleteSeriesRelationship(sid)
 		}
 
 		if body.DeleteFiles {
 			var errs []string
 			for _, p := range pathsToDelete {
-				if err := os.RemoveAll(p); err != nil {
-					errs = append(errs, p)
-					log.Printf("[API] BatchDelete: failed to delete physical file %s: %v", p, err)
+				if err := service.RemoveContentFileAndPruneDirs(p.comicID, p.absPath, p.rootPath); err != nil {
+					errs = append(errs, p.absPath)
+					log.Printf("[API] BatchDelete: failed to delete physical file %s: %v", p.absPath, err)
 				} else {
-					log.Printf("[API] BatchDelete: deleted physical file %s", p)
+					log.Printf("[API] BatchDelete: deleted physical file %s", p.absPath)
 				}
 			}
 			if len(errs) > 0 {
@@ -465,7 +518,7 @@ func (h *ComicHandler) BatchOperation(c *gin.Context) {
 			}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "已删除 " + strconv.FormatInt(n, 10) + " 本漫画"})
+		c.JSON(http.StatusOK, gin.H{"success": true, "deletedCount": n, "message": "已删除 " + strconv.FormatInt(n, 10) + " 本书"})
 
 	case "favorite":
 		if err := checkBatchViewPermission(user, body.ComicIDs); err != nil {

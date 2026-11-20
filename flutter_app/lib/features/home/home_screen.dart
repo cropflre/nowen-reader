@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/api/api_client.dart';
+import '../../data/api/comic_api.dart';
 import '../../widgets/authenticated_image.dart';
 import '../../widgets/continue_reading.dart';
 import '../../widgets/comic_list_tile.dart';
+import '../../widgets/delete_confirm_dialog.dart';
 import '../../data/models/comic.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/comic_provider.dart';
@@ -31,6 +33,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _shelfModeReady = false;
   String? _directoryPageContext;
   int _directoryPage = 1;
+  bool _batchMode = false;
+  final Set<String> _selectedIds = <String>{};
 
   @override
   void initState() {
@@ -111,10 +115,100 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  void _toggleSelect(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _selectAll(List<Comic> comics) {
+    setState(() {
+      final allIds = comics.map((c) => c.id).toSet();
+      if (allIds.isNotEmpty && _selectedIds.length == allIds.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(allIds);
+      }
+    });
+  }
+
+  void _invertSelection(List<Comic> comics) {
+    setState(() {
+      final next = <String>{};
+      for (final c in comics) {
+        if (!_selectedIds.contains(c.id)) next.add(c.id);
+      }
+      _selectedIds
+        ..clear()
+        ..addAll(next);
+    });
+  }
+
+  void _exitBatchMode() {
+    setState(() {
+      _batchMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  Future<void> _confirmBatchDelete(List<Comic> comics) async {
+    if (_selectedIds.isEmpty) return;
+    final selectedItems =
+        comics.where((c) => _selectedIds.contains(c.id)).toList();
+    var seriesCount = 0;
+    var multiFormatCount = 0;
+    var estimatedFiles = 0;
+    for (final c in selectedItems) {
+      if (c.isSeriesShelfItem) {
+        seriesCount++;
+        estimatedFiles += c.comicCount > 0 ? c.comicCount : 1;
+      } else {
+        if (c.editionCount > 1) multiFormatCount++;
+        estimatedFiles += c.editionCount > 1 ? c.editionCount : 1;
+      }
+    }
+    final parts = <String>['共选中 ${selectedItems.length} 项'];
+    if (seriesCount > 0) parts.add('含 $seriesCount 个目录作品');
+    if (multiFormatCount > 0) parts.add('含 $multiFormatCount 部多格式合并作品');
+    final desc = '${parts.join("，")}，预计涉及 $estimatedFiles 个文件/章节。请选择删除方式：';
+    final res = await showDeleteConfirmDialog(
+      context,
+      title: '批量删除 (${selectedItems.length})',
+      description: desc,
+      showEditionOption: multiFormatCount > 0,
+    );
+    if (res == null || !res.confirmed || !mounted) return;
+    try {
+      await ref.read(comicApiProvider).batchDeleteComics(
+            _selectedIds.toList(),
+            deleteFiles: res.deleteFiles,
+            deleteEditions: res.deleteEditions,
+          );
+      _exitBatchMode();
+      await ref.read(comicListProvider.notifier).loadComics();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 ${selectedItems.length} 项')),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('批量删除失败: ${extractDeleteErrorMessage(err)}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(comicListProvider);
     final authState = ref.watch(authProvider);
+    final isAdmin = authState.user?.isAdmin == true;
     final viewMode = ref.watch(viewModeProvider);
     final librariesAsync = ref.watch(accessibleLibrariesProvider);
     final libraries = librariesAsync.valueOrNull ?? const <AccessibleLibrary>[];
@@ -176,30 +270,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               snap: true,
               toolbarHeight:
                   56 + (MediaQuery.textScalerOf(context).scale(16) - 16) * 2,
-              title: Row(
-                children: [
-                  ServerLogo(branding: branding, size: 30),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              title: _batchMode
+                  ? Text('已选 ${_selectedIds.length} 项',
+                      style: const TextStyle(fontSize: 16))
+                  : Row(
                       children: [
-                        Text(branding.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 16)),
-                        Text(activeLibrary?.name ?? '书库',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 11, color: cs.onSurfaceVariant)),
+                        ServerLogo(branding: branding, size: 30),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(branding.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 16)),
+                              Text(activeLibrary?.name ?? '书库',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
+              actions: _batchMode && isAdmin
+                  ? [
+                      _ActionIcon(
+                        icon: Icons.done_all_rounded,
+                        tooltip: '全选本页',
+                        onTap: () => _selectAll(state.comics),
+                      ),
+                      _ActionIcon(
+                        icon: Icons.flip_rounded,
+                        tooltip: '反选',
+                        onTap: () => _invertSelection(state.comics),
+                      ),
+                      IconButton(
+                        tooltip: '删除选中',
+                        icon: Icon(Icons.delete_outline_rounded,
+                            color: _selectedIds.isNotEmpty ? cs.error : null),
+                        onPressed: _selectedIds.isEmpty
+                            ? null
+                            : () => _confirmBatchDelete(state.comics),
+                      ),
+                      _ActionIcon(
+                        icon: Icons.close_rounded,
+                        tooltip: '退出多选',
+                        onTap: _exitBatchMode,
+                      ),
+                      const SizedBox(width: 4),
+                    ]
+                  : [
+                if (isAdmin)
+                  _ActionIcon(
+                    icon: Icons.checklist_rounded,
+                    tooltip: '批量删除管理',
+                    onTap: () => setState(() => _batchMode = true),
                   ),
-                ],
-              ),
-              actions: [
                 // 合集入口
                 _ActionIcon(
                   icon: Icons.collections_bookmark_outlined,
@@ -939,6 +1070,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildGrid(
       BuildContext context, ComicListState state, AuthState authState) {
     final serverUrl = authState.serverUrl;
+    final isAdmin = authState.user?.isAdmin == true;
+    final cs = Theme.of(context).colorScheme;
     final width = MediaQuery.of(context).size.width;
     // 更多列数，更小卡片
     final crossAxisCount = width > 900
@@ -968,17 +1101,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               );
             }
+            final item = state.comics[index];
+            final isSelected = _selectedIds.contains(item.id);
             return StaggeredFadeSlide(
               index: index,
-              child: _ComicCard(
-                comic: state.comics[index],
-                serverUrl: serverUrl,
-                onTap: () => _openShelfItem(context, state.comics[index]),
-                onFavoriteToggle: state.comics[index].isSeriesShelfItem
-                    ? null
-                    : () => ref
-                        .read(comicListProvider.notifier)
-                        .toggleFavorite(state.comics[index].id),
+              child: GestureDetector(
+                onLongPress: isAdmin
+                    ? () {
+                        HapticFeedback.mediumImpact();
+                        setState(() {
+                          _batchMode = true;
+                          _selectedIds.add(item.id);
+                        });
+                      }
+                    : null,
+                child: Stack(
+                  children: [
+                    _ComicCard(
+                      comic: item,
+                      serverUrl: serverUrl,
+                      onTap: () => _batchMode
+                          ? _toggleSelect(item.id)
+                          : _openShelfItem(context, item),
+                      onFavoriteToggle: item.isSeriesShelfItem || _batchMode
+                          ? null
+                          : () => ref
+                              .read(comicListProvider.notifier)
+                              .toggleFavorite(item.id),
+                    ),
+                    if (_batchMode)
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: isSelected ? cs.primary : Colors.black54,
+                              shape: BoxShape.circle,
+                              border:
+                                  Border.all(color: Colors.white, width: 1.5),
+                            ),
+                            child: Icon(
+                              Icons.check_rounded,
+                              size: 14,
+                              color:
+                                  isSelected ? Colors.white : Colors.transparent,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             );
           },
@@ -991,6 +1166,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildList(
       BuildContext context, ComicListState state, AuthState authState) {
     final serverUrl = authState.serverUrl;
+    final isAdmin = authState.user?.isAdmin == true;
 
     return SliverPadding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1005,15 +1181,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               );
             }
-            return ComicListTile(
-              comic: state.comics[index],
-              serverUrl: serverUrl,
-              onTap: () => _openShelfItem(context, state.comics[index]),
-              onFavoriteToggle: state.comics[index].isSeriesShelfItem
-                  ? null
-                  : () => ref
-                      .read(comicListProvider.notifier)
-                      .toggleFavorite(state.comics[index].id),
+            final item = state.comics[index];
+            final isSelected = _selectedIds.contains(item.id);
+            return GestureDetector(
+              onLongPress: isAdmin
+                  ? () {
+                      HapticFeedback.mediumImpact();
+                      setState(() {
+                        _batchMode = true;
+                        _selectedIds.add(item.id);
+                      });
+                    }
+                  : null,
+              child: Row(
+                children: [
+                  if (_batchMode)
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => _toggleSelect(item.id),
+                    ),
+                  Expanded(
+                    child: ComicListTile(
+                      comic: item,
+                      serverUrl: serverUrl,
+                      onTap: () => _batchMode
+                          ? _toggleSelect(item.id)
+                          : _openShelfItem(context, item),
+                      onFavoriteToggle: item.isSeriesShelfItem || _batchMode
+                          ? null
+                          : () => ref
+                              .read(comicListProvider.notifier)
+                              .toggleFavorite(item.id),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
           childCount: state.comics.length + (state.hasMore ? 1 : 0),

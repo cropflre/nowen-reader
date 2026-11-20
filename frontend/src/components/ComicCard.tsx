@@ -71,7 +71,7 @@ interface ComicCardProps {
   viewMode?: "grid" | "list";
   batchMode?: boolean;
   isSelected?: boolean;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string, shiftKey?: boolean) => void;
   draggable?: boolean;
   onDragStart?: (id: string) => void;
   onDragOver?: (id: string) => void;
@@ -168,7 +168,7 @@ const ComicCard = memo(function ComicCard({
     if (batchMode) {
       e.preventDefault();
       e.stopPropagation();
-      onSelect?.(comic.id);
+      onSelect?.(comic.id, e.shiftKey);
     }
     onClick?.(comic);
   };

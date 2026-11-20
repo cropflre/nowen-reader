@@ -47,6 +47,7 @@ export interface ApiComic {
 
   // Library & Multi-format Editions
   libraryId?: string;
+  comicCount?: number;
   canManage?: boolean;
   canDownload?: boolean;
   relativePath?: string;

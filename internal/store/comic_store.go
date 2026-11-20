@@ -388,10 +388,9 @@ func ClearReadingProgress(comicID string, userID ...string) error {
 	return SetUserReadingStatus(uid, comicID, "")
 }
 
-// DeleteComic 从数据库删除漫画（不涉及磁盘文件删除）。
+// DeleteComic 从数据库删除漫画（不涉及磁盘文件删除），并同步清理关联版本组与空系列。
 func DeleteComic(comicID string) error {
-	// Delete from DB (CASCADE handles relations)
-	_, err := db.Exec(`DELETE FROM "Comic" WHERE "id" = ?`, comicID)
+	_, err := BatchDeleteComics([]string{comicID})
 	return err
 }
 

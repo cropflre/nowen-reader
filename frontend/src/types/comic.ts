@@ -83,6 +83,7 @@ export interface Comic {
 
   // Library & Multi-format Editions
   libraryId?: string;
+  comicCount?: number;
   canManage?: boolean;
   canDownload?: boolean;
   relativePath?: string;

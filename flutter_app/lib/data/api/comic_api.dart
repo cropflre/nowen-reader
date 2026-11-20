@@ -252,6 +252,61 @@ class ComicApi {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
+  /// 删除单本作品（仅全局管理员，支持删除源文件及关联多格式版本）
+  Future<Map<String, dynamic>> deleteComic(
+    String comicId, {
+    bool deleteFiles = false,
+    bool deleteEditions = false,
+  }) async {
+    final res = await _dio.delete(
+      '/comics/${Uri.encodeComponent(comicId)}',
+      queryParameters: {
+        if (deleteFiles) 'deleteFiles': 'true',
+        if (deleteEditions) 'deleteEditions': 'true',
+      },
+    );
+    if (res.data is Map) return Map<String, dynamic>.from(res.data as Map);
+    return const {'success': true};
+  }
+
+  /// 批量删除作品/章节/目录系列（仅全局管理员）
+  Future<Map<String, dynamic>> batchDeleteComics(
+    List<String> comicIds, {
+    bool deleteFiles = false,
+    bool deleteEditions = true,
+  }) async {
+    final res = await _dio.post(
+      '/comics/batch',
+      data: {
+        'action': 'delete',
+        'comicIds': comicIds,
+        'deleteFiles': deleteFiles,
+        'deleteEditions': deleteEditions,
+      },
+    );
+    if (res.data is Map) return Map<String, dynamic>.from(res.data as Map);
+    return const {'success': true};
+  }
+
+  /// 删除目录系列（仅全局管理员）
+  Future<Map<String, dynamic>> deleteSeries(
+    String seriesId, {
+    bool deleteContent = true,
+    bool deleteFiles = false,
+    bool deleteEditions = true,
+  }) async {
+    final res = await _dio.delete(
+      '/series/${Uri.encodeComponent(seriesId)}',
+      queryParameters: {
+        'deleteContent': deleteContent ? 'true' : 'false',
+        if (deleteFiles) 'deleteFiles': 'true',
+        'deleteEditions': deleteEditions ? 'true' : 'false',
+      },
+    );
+    if (res.data is Map) return Map<String, dynamic>.from(res.data as Map);
+    return const {'success': true};
+  }
+
   /// 获取分组详情
   Future<Map<String, dynamic>> getGroupDetail(int groupId, {String? contentType}) async {
     final params = <String, dynamic>{};

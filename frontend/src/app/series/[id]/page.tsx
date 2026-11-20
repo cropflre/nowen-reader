@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   BookOpen,
   Check,
+  CheckCheck,
+  CheckSquare,
   ChevronDown,
   ChevronUp,
   Grid2X2,
@@ -20,10 +22,13 @@ import {
   Save,
   Sparkles,
   Tag,
+  Trash2,
   Unlock,
   X,
 } from "lucide-react";
-import { fetchSeriesDetail, redetectSeries, setSeriesTags, setSeriesCategories, updateSeries, updateSeriesStructure } from "@/api/series";
+import { deleteSeriesContent, fetchSeriesDetail, redetectSeries, setSeriesTags, setSeriesCategories, updateSeries, updateSeriesStructure } from "@/api/series";
+import { batchOperation } from "@/api/comics";
+import { invalidateComicsCache } from "@/hooks/useComics";
 import WorkCategories from "@/components/WorkCategories";
 import DetailAmbientBackdrop from "@/components/DetailAmbientBackdrop";
 import { useToast } from "@/components/Toast";
@@ -89,6 +94,12 @@ export default function SeriesDetailPage() {
   const [newTag, setNewTag] = useState("");
   const [tagSaving, setTagSaving] = useState(false);
   const [draftItems, setDraftItems] = useState<Record<string, { sectionId: string; sortIndex: number }>>({});
+  const [chapterBatchMode, setChapterBatchMode] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set());
+  const lastSelectedChapterIdRef = useRef<string | null>(null);
+  const [deleteConfirmMode, setDeleteConfirmMode] = useState<"series" | "chapters" | null>(null);
+  const [deleteFilesOption, setDeleteFilesOption] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -225,6 +236,103 @@ export default function SeriesDetailPage() {
     void saveTags([...new Set([...detail.series.tags.map((tag) => tag.name), ...names])], true);
   };
 
+  const toggleChapterSelect = useCallback((comicId: string, shiftKey?: boolean) => {
+    setSelectedChapterIds((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastSelectedChapterIdRef.current && lastSelectedChapterIdRef.current !== comicId) {
+        const anchorIdx = visibleItems.findIndex((i) => i.comic.id === lastSelectedChapterIdRef.current);
+        const targetIdx = visibleItems.findIndex((i) => i.comic.id === comicId);
+        if (anchorIdx !== -1 && targetIdx !== -1) {
+          const [start, end] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+          for (let i = start; i <= end; i++) {
+            next.add(visibleItems[i].comic.id);
+          }
+          return next;
+        }
+      }
+      if (next.has(comicId)) next.delete(comicId);
+      else next.add(comicId);
+      return next;
+    });
+    lastSelectedChapterIdRef.current = comicId;
+  }, [visibleItems]);
+
+  const selectAllVisibleChapters = () => {
+    const visibleIds = visibleItems.map((item) => item.comic.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((cid) => selectedChapterIds.has(cid));
+    setSelectedChapterIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        visibleIds.forEach((cid) => next.delete(cid));
+      } else {
+        visibleIds.forEach((cid) => next.add(cid));
+      }
+      return next;
+    });
+    lastSelectedChapterIdRef.current = null;
+  };
+
+  const invertVisibleChapters = () => {
+    const visibleIds = visibleItems.map((item) => item.comic.id);
+    setSelectedChapterIds((prev) => {
+      const next = new Set(prev);
+      visibleIds.forEach((cid) => {
+        if (next.has(cid)) next.delete(cid);
+        else next.add(cid);
+      });
+      return next;
+    });
+    lastSelectedChapterIdRef.current = null;
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!detail || !isAdmin || !deleteConfirmMode || deleting) return;
+    setDeleting(true);
+    try {
+      if (deleteConfirmMode === "series") {
+        const res = await deleteSeriesContent(detail.series.id, {
+          deleteContent: true,
+          deleteFiles: deleteFilesOption,
+          deleteEditions: true,
+        });
+        if (!res.success) {
+          toast.error(res.error || "删除作品失败");
+          return;
+        }
+        invalidateComicsCache();
+        setDeleteConfirmMode(null);
+        setDeleteFilesOption(false);
+        toast.success("已删除整部作品");
+        router.replace("/books");
+        return;
+      }
+
+      const ids = Array.from(selectedChapterIds);
+      if (ids.length === 0) return;
+      const res = await batchOperation("delete", ids, {
+        deleteFiles: deleteFilesOption,
+        deleteEditions: true,
+      });
+      if (!res.success) {
+        toast.error(res.error || "批量删除章节失败");
+        return;
+      }
+      invalidateComicsCache();
+      setDeleteConfirmMode(null);
+      setDeleteFilesOption(false);
+      setSelectedChapterIds(new Set());
+      setChapterBatchMode(false);
+      toast.success(`已删除 ${ids.length} 个阅读单元`);
+      if (ids.length >= allItems.length) {
+        router.replace("/books");
+      } else {
+        await load();
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <main className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-accent" /></main>;
   }
@@ -301,6 +409,18 @@ export default function SeriesDetailPage() {
                 {isAdmin && <button onClick={() => setShowScraper(true)} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-foreground hover:bg-background"><Sparkles className="h-4 w-4 text-purple-400" />刮削元数据</button>}
                 {series.canManage && <button onClick={toggleLock} disabled={busy} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-muted hover:text-foreground">{series.manualLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}{series.manualLocked ? "恢复自动" : "锁定结构"}</button>}
                 {series.canManage && <button onClick={handleRedetect} disabled={busy || series.manualLocked} className="flex h-10 items-center gap-2 rounded-xl border border-border px-4 text-sm text-muted hover:text-foreground disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />重新识别</button>}
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      setDeleteFilesOption(false);
+                      setDeleteConfirmMode("series");
+                    }}
+                    className="flex h-10 items-center gap-2 rounded-xl border border-red-500/30 px-4 text-sm text-red-400 transition-colors hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    删除整部作品
+                  </button>
+                )}
               </div>
 
               {(series.author || series.year || series.publisher || series.language || series.genre || series.description || series.externalRating != null) && (
@@ -361,11 +481,78 @@ export default function SeriesDetailPage() {
         )}
 
         <section className="mt-6">
-          <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-semibold">阅读单元</h2><span className="text-xs text-muted">{visibleItems.length} 项</span></div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold">阅读单元</h2>
+              <span className="text-xs text-muted">{visibleItems.length} 项</span>
+            </div>
+            {isAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                {chapterBatchMode ? (
+                  <>
+                    <span className="text-xs text-muted">
+                      已选 <span className="font-semibold text-accent">{selectedChapterIds.size}</span> 项（Shift+点击可连选）
+                    </span>
+                    <button
+                      type="button"
+                      onClick={selectAllVisibleChapters}
+                      className="flex h-8 items-center gap-1 rounded-lg bg-card px-2.5 text-xs text-foreground hover:bg-card-hover"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      全选本页
+                    </button>
+                    <button
+                      type="button"
+                      onClick={invertVisibleChapters}
+                      className="flex h-8 items-center gap-1 rounded-lg bg-card px-2.5 text-xs text-foreground hover:bg-card-hover"
+                    >
+                      反选
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedChapterIds.size === 0}
+                      onClick={() => {
+                        setDeleteFilesOption(false);
+                        setDeleteConfirmMode("chapters");
+                      }}
+                      className="flex h-8 items-center gap-1 rounded-lg bg-red-500/90 px-3 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      删除选中 ({selectedChapterIds.size})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChapterBatchMode(false);
+                        setSelectedChapterIds(new Set());
+                        lastSelectedChapterIdRef.current = null;
+                      }}
+                      className="flex h-8 items-center rounded-lg border border-border/60 px-2.5 text-xs text-muted hover:text-foreground"
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManageStructure(false);
+                      setChapterBatchMode(true);
+                    }}
+                    className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-3 text-xs text-muted hover:text-foreground"
+                  >
+                    <CheckSquare className="h-3.5 w-3.5" />
+                    批量管理删除
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className={viewMode === "grid" ? "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" : "space-y-2"}>
             {visibleItems.map((item, index) => {
               const progress = itemProgress(item);
               const finished = isFinished(item);
+              const isSelected = selectedChapterIds.has(item.comic.id);
               const draft = draftItems[item.comic.id] || { sectionId: item.sectionId || "", sortIndex: item.sortIndex };
               const editions = item.editions && item.editions.length > 1 ? item.editions : [];
               const formatSummary = item.formats && item.formats.length > 1
@@ -373,11 +560,33 @@ export default function SeriesDetailPage() {
                 : (item.format || "");
               if (viewMode === "grid") {
                 return (
-                  <div key={item.comic.id} className="overflow-hidden rounded-2xl border border-border/50 bg-card/65">
-                    <Link href={readerURL(item)} className="group block">
+                  <div
+                    key={item.comic.id}
+                    onClick={(e) => {
+                      if (!chapterBatchMode) return;
+                      e.preventDefault();
+                      toggleChapterSelect(item.comic.id, e.shiftKey);
+                    }}
+                    className={`overflow-hidden rounded-2xl border bg-card/65 transition-all ${
+                      chapterBatchMode ? "cursor-pointer select-none" : ""
+                    } ${isSelected ? "border-accent ring-2 ring-accent/60" : "border-border/50"}`}
+                  >
+                    <Link
+                      href={readerURL(item)}
+                      onClick={(e) => {
+                        if (chapterBatchMode) e.preventDefault();
+                      }}
+                      className="group block"
+                    >
                       <div className="relative aspect-[5/7] overflow-hidden bg-background">
                         <img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
-                        <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-[10px] text-white">{finished ? "已读" : progress > 0 ? `${Math.round(progress)}%` : "未读"}</span>
+                        {chapterBatchMode ? (
+                          <span className={`absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md border ${isSelected ? "border-accent bg-accent text-white" : "border-white/70 bg-black/50 text-transparent"}`}>
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        ) : (
+                          <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-[10px] text-white">{finished ? "已读" : progress > 0 ? `${Math.round(progress)}%` : "未读"}</span>
+                        )}
                         {formatSummary && (
                           <span className="absolute right-2 top-2 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
                             {formatSummary}
@@ -410,10 +619,39 @@ export default function SeriesDetailPage() {
                 );
               }
               return (
-                <div key={item.comic.id} className="flex items-center gap-3 rounded-2xl border border-border/50 bg-card/60 p-2.5 sm:p-3">
-                  <Link href={readerURL(item)} className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-background"><img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></Link>
+                <div
+                  key={item.comic.id}
+                  onClick={(e) => {
+                    if (!chapterBatchMode) return;
+                    e.preventDefault();
+                    toggleChapterSelect(item.comic.id, e.shiftKey);
+                  }}
+                  className={`flex items-center gap-3 rounded-2xl border bg-card/60 p-2.5 sm:p-3 transition-all ${
+                    chapterBatchMode ? "cursor-pointer select-none" : ""
+                  } ${isSelected ? "border-accent ring-2 ring-accent/60" : "border-border/50"}`}
+                >
+                  {chapterBatchMode && (
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${isSelected ? "border-accent bg-accent text-white" : "border-muted/60 bg-background text-transparent"}`}>
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                  <Link
+                    href={readerURL(item)}
+                    onClick={(e) => {
+                      if (chapterBatchMode) e.preventDefault();
+                    }}
+                    className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-background"
+                  >
+                    <img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div>
+                  </Link>
                   <div className="min-w-0 flex-1">
-                    <Link href={readerURL(item)} className="block">
+                    <Link
+                      href={readerURL(item)}
+                      onClick={(e) => {
+                        if (chapterBatchMode) e.preventDefault();
+                      }}
+                      className="block"
+                    >
                       <p className="truncate text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p>
                       <p className="mt-1 text-xs text-muted">{item.comic.pageCount || 0} 页 · {formatFileSize(item.comic.fileSize || 0)} · {finished ? "已读" : progress > 0 ? `阅读至 ${Math.round(progress)}%` : "未读"}</p>
                     </Link>
@@ -469,6 +707,74 @@ export default function SeriesDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {isAdmin && deleteConfirmMode && (
+        <>
+          <div
+            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm animate-backdrop-in"
+            onClick={() => {
+              if (!deleting) setDeleteConfirmMode(null);
+            }}
+          />
+          <div className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-2xl animate-modal-in">
+            <h3 className="text-lg font-semibold text-foreground">
+              {deleteConfirmMode === "series" ? "删除整部作品" : `删除选中的 ${selectedChapterIds.size} 个阅读单元`}
+            </h3>
+            <p className="mt-2 text-sm text-muted">
+              {deleteConfirmMode === "series"
+                ? `即将删除《${series.title}》（共 ${series.itemCount} 个阅读单元）。请选择删除方式：`
+                : `即将从《${series.title}》中删除已选中的 ${selectedChapterIds.size} 个文件/章节。请选择删除方式：`}
+            </p>
+            <div className="mt-4 space-y-2">
+              <label
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/60 p-3 transition-colors hover:bg-card/80"
+                onClick={() => setDeleteFilesOption(false)}
+              >
+                <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${!deleteFilesOption ? "border-accent" : "border-muted/50"}`}>
+                  {!deleteFilesOption && <div className="h-2 w-2 rounded-full bg-accent" />}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-foreground">仅移除记录</div>
+                  <div className="text-xs text-muted">从书库移除并忽略自动扫描，保留磁盘文件</div>
+                </div>
+              </label>
+              <label
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-red-500/30 p-3 transition-colors hover:bg-red-500/5"
+                onClick={() => setDeleteFilesOption(true)}
+              >
+                <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${deleteFilesOption ? "border-red-500" : "border-muted/50"}`}>
+                  {deleteFilesOption && <div className="h-2 w-2 rounded-full bg-red-500" />}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-red-400">同时删除磁盘源文件</div>
+                  <div className="text-xs text-muted">彻底删除对应磁盘源文件，并自动清理变空的子目录（不可恢复）</div>
+                </div>
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => {
+                  setDeleteConfirmMode(null);
+                  setDeleteFilesOption(false);
+                }}
+                className="rounded-lg bg-card px-4 py-2 text-sm text-foreground disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${deleteFilesOption ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"}`}
+              >
+                {deleting ? "删除中..." : deleteFilesOption ? "删除源文件" : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </main>
   );

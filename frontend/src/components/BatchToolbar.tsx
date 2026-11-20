@@ -19,10 +19,18 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { useCategories, ApiCategory } from "@/hooks/useComics";
 
+export interface BatchSelectedSummary {
+  totalWorks: number;
+  seriesCount: number;
+  multiFormatCount: number;
+  estimatedFileCount: number;
+}
+
 interface BatchToolbarProps {
   selectedCount: number;
   onCancel: () => void;
-  onDelete?: (deleteFiles?: boolean) => void;
+  onDelete?: (deleteFiles?: boolean, deleteEditions?: boolean) => void;
+  selectedSummary?: BatchSelectedSummary;
   onFavorite?: () => void;
   onUnfavorite?: () => void;
   onAddTags?: (tags: string[]) => void;
@@ -42,6 +50,7 @@ export default function BatchToolbar({
   selectedCount,
   onCancel,
   onDelete,
+  selectedSummary,
   onFavorite,
   onUnfavorite,
   onAddTags,
@@ -61,6 +70,7 @@ export default function BatchToolbar({
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [batchDeleteFiles, setBatchDeleteFiles] = useState(false);
+  const [batchDeleteEditions, setBatchDeleteEditions] = useState(true);
   const [showRemoveTagInput, setShowRemoveTagInput] = useState(false);
   const [removeTagInput, setRemoveTagInput] = useState("");
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -354,12 +364,30 @@ export default function BatchToolbar({
       {/* Delete Confirm Modal */}
       {showDeleteConfirm && onDelete && (
         <>
-          <div className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-2rem)] max-w-96 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal-in">
+          <div
+            className="fixed inset-0 z-[60] bg-black/60 animate-backdrop-in"
+            onClick={() => {
+              setShowDeleteConfirm(false);
+              setBatchDeleteFiles(false);
+              setBatchDeleteEditions(true);
+            }}
+          />
+          <div className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal-in">
             <h3 className="text-lg font-semibold text-foreground">{t.batch.confirmDelete}</h3>
             <p className="mt-2 text-sm text-muted">
               {t.batch.confirmDeleteMsg.replace("{count}", String(selectedCount))}
             </p>
+            {selectedSummary &&
+              (selectedSummary.seriesCount > 0 ||
+                selectedSummary.multiFormatCount > 0 ||
+                selectedSummary.estimatedFileCount > selectedSummary.totalWorks) && (
+                <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 leading-relaxed">
+                  共选中 <span className="font-semibold text-white">{selectedSummary.totalWorks}</span> 项
+                  {selectedSummary.seriesCount > 0 && `（含 ${selectedSummary.seriesCount} 个目录系列）`}
+                  {selectedSummary.multiFormatCount > 0 && `（含 ${selectedSummary.multiFormatCount} 部多格式合并作品）`}
+                  ，预计涉及 <span className="font-semibold text-white">{selectedSummary.estimatedFileCount}</span> 个文件/章节。
+                </div>
+              )}
             {/* Delete mode options */}
             <div className="mt-4 space-y-2">
               <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/60 p-3 transition-colors hover:bg-card/80" onClick={() => setBatchDeleteFiles(false)}>
@@ -377,22 +405,38 @@ export default function BatchToolbar({
                 </div>
                 <div>
                   <div className="text-sm font-medium text-red-400">{t.comicDetail?.deleteWithFiles || "同时删除文件"}</div>
-                  <div className="text-xs text-muted">{t.comicDetail?.deleteWithFilesDesc || "从书库移除并删除磁盘上的文件，不可恢复"}</div>
+                  <div className="text-xs text-muted">{t.comicDetail?.deleteWithFilesDesc || "从书库移除并删除磁盘上的文件（自动清理空子目录），不可恢复"}</div>
                 </div>
               </label>
             </div>
+            {(selectedSummary?.multiFormatCount ?? 0) > 0 && (
+              <label className="mt-3 flex cursor-pointer items-center gap-2.5 rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  checked={batchDeleteEditions}
+                  onChange={(e) => setBatchDeleteEditions(e.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-accent"
+                />
+                <span>多格式合并作品同时删除其关联的所有格式版本</span>
+              </label>
+            )}
             <div className="mt-5 flex justify-end gap-3">
               <button
-                onClick={() => { setShowDeleteConfirm(false); setBatchDeleteFiles(false); }}
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setBatchDeleteFiles(false);
+                  setBatchDeleteEditions(true);
+                }}
                 className="rounded-lg bg-card px-4 py-2 text-sm text-foreground"
               >
                 {t.common.cancel}
               </button>
               <button
                 onClick={() => {
-                  onDelete(batchDeleteFiles);
+                  onDelete(batchDeleteFiles, batchDeleteEditions);
                   setShowDeleteConfirm(false);
                   setBatchDeleteFiles(false);
+                  setBatchDeleteEditions(true);
                 }}
                 className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${batchDeleteFiles ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"}`}
               >

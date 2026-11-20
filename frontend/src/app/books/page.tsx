@@ -34,6 +34,7 @@ import { useToast } from "@/components/Toast";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { createGroup } from "@/api/groups";
 import { toggleComicFavorite, deleteComicById } from "@/api/comics";
+import { deleteSeriesContent } from "@/api/series";
 import {
   fetchLibraries,
   fetchAccessibleLibraries,
@@ -104,6 +105,7 @@ function apiToComic(api: ApiComic): Comic {
     externalRatingMax: api.externalRatingMax,
     externalRatingSource: api.externalRatingSource,
     libraryId: api.libraryId,
+    comicCount: api.comicCount,
     canManage: api.canManage,
     canDownload: api.canDownload,
     relativePath: api.relativePath,
@@ -305,6 +307,11 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
   // Batch selection
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastSelectedIdRef = useRef<string | null>(null);
+  const [contextDeleteTarget, setContextDeleteTarget] = useState<Comic | null>(null);
+  const [contextDeleteFiles, setContextDeleteFiles] = useState(false);
+  const [contextDeleteEditions, setContextDeleteEditions] = useState(true);
+  const [contextDeleting, setContextDeleting] = useState(false);
 
   // Duplicate detection
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -867,43 +874,77 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     [refetch, fetchTags, toast, t, selectedLibraryId]
   );
 
-  // Batch selection handlers
-  const toggleSelect = useCallback((id: string) => {
+  // Batch selection handlers (supports Shift+click range selection)
+  const toggleSelect = useCallback((id: string, shiftKey?: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
+      if (shiftKey && lastSelectedIdRef.current && lastSelectedIdRef.current !== id) {
+        const anchorIdx = sortedComics.findIndex((c) => c.id === lastSelectedIdRef.current);
+        const targetIdx = sortedComics.findIndex((c) => c.id === id);
+        if (anchorIdx !== -1 && targetIdx !== -1) {
+          const [start, end] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+          for (let i = start; i <= end; i++) {
+            next.add(sortedComics[i].id);
+          }
+          return next;
+        }
+      }
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }, []);
+    lastSelectedIdRef.current = id;
+  }, [sortedComics]);
 
   const handleSelectAll = useCallback(() => {
     const allComicIds = new Set(sortedComics.map((c) => c.id));
-    const allComicsSelected = selectedIds.size === allComicIds.size;
+    const allComicsSelected = allComicIds.size > 0 && selectedIds.size === allComicIds.size;
     if (allComicsSelected) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(allComicIds);
     }
+    lastSelectedIdRef.current = null;
   }, [sortedComics, selectedIds.size]);
+
+  const handleInvertSelection = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<string>();
+      for (const c of sortedComics) {
+        if (!prev.has(c.id)) next.add(c.id);
+      }
+      return next;
+    });
+    lastSelectedIdRef.current = null;
+  }, [sortedComics]);
 
   const exitBatchMode = useCallback(() => {
     setBatchMode(false);
     setSelectedIds(new Set());
+    lastSelectedIdRef.current = null;
   }, []);
 
-  const handleBatchDelete = useCallback(async (deleteFiles?: boolean) => {
+  const handleBatchDelete = useCallback(async (deleteFiles?: boolean, deleteEditions = true) => {
     const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
     // 先播放删除动画
     setRemovingIds(new Set(ids));
     // 等动画播完后再真正删除
     setTimeout(async () => {
-      await batchOperation("delete", ids, deleteFiles ? { deleteFiles: true } : undefined);
+      const res = await batchOperation("delete", ids, {
+        deleteFiles: Boolean(deleteFiles),
+        deleteEditions,
+      });
       setRemovingIds(new Set());
-      exitBatchMode();
-      await refetch();
+      if (res.success) {
+        exitBatchMode();
+        await refetch();
+        toast.success(t.comicDetail?.deleteSuccess || "已删除");
+      } else {
+        toast.error(res.error || "批量删除失败");
+      }
     }, 400);
-  }, [selectedIds, exitBatchMode, refetch]);
+  }, [selectedIds, exitBatchMode, refetch, toast, t]);
 
   const handleBatchFavorite = useCallback(async () => {
     await batchOperation("favorite", Array.from(selectedIds), { isFavorite: true });
@@ -1145,6 +1186,29 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     () => Array.from(selectedIds).some((id) => seriesIdFromShelfId(id) !== null),
     [selectedIds]
   );
+  const selectedSummary = useMemo(() => {
+    let seriesCount = 0;
+    let multiFormatCount = 0;
+    let estimatedFileCount = 0;
+    for (const c of sortedComics) {
+      if (!selectedIds.has(c.id)) continue;
+      const isSeries = seriesIdFromShelfId(c.id) !== null;
+      const edCount = c.editionCount ?? 1;
+      if (isSeries) {
+        seriesCount++;
+        estimatedFileCount += Math.max(1, c.comicCount || 1);
+      } else {
+        if (edCount > 1) multiFormatCount++;
+        estimatedFileCount += Math.max(1, edCount);
+      }
+    }
+    return {
+      totalWorks: selectedIds.size,
+      seriesCount,
+      multiFormatCount,
+      estimatedFileCount: Math.max(selectedIds.size, estimatedFileCount),
+    };
+  }, [sortedComics, selectedIds]);
   const pageHasSeries = useMemo(
     () => sortedComics.some((comic) => seriesIdFromShelfId(comic.id) !== null),
     [sortedComics]
@@ -1284,20 +1348,29 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                 </button>
                 )}
 
-                {/* Select All (only in batch mode) */}
+                {/* Select All & Invert Selection (only in batch mode) */}
                 {batchMode && (
-                  <button
-                    onClick={handleSelectAll}
-                    className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
-                      selectedIds.size === sortedComics.length && sortedComics.length > 0
-                        ? "bg-accent/20 text-accent"
-                        : "bg-card text-muted hover:text-foreground"
-                    }`}
-                    title={t.navbar.selectAll}
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">{t.navbar.selectAll}</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleSelectAll}
+                      className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-all ${
+                        selectedIds.size === sortedComics.length && sortedComics.length > 0
+                          ? "bg-accent/20 text-accent"
+                          : "bg-card text-muted hover:text-foreground"
+                      }`}
+                      title={`${t.navbar.selectAll}（支持 Shift+点击区间连选）`}
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">{t.navbar.selectAll}</span>
+                    </button>
+                    <button
+                      onClick={handleInvertSelection}
+                      className="flex h-8 items-center gap-1 rounded-lg bg-card px-2.5 text-xs font-medium text-muted transition-all hover:text-foreground"
+                      title="反选本页（支持 Shift+点击区间连选）"
+                    >
+                      <span>反选</span>
+                    </button>
+                  </>
                 )}
 
                 <div className="h-5 w-px bg-border/40" />
@@ -1947,7 +2020,8 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
         <BatchToolbar
           selectedCount={selectedIds.size}
           onCancel={exitBatchMode}
-          onDelete={selectedHasSeries ? undefined : handleBatchDelete}
+          onDelete={isAdmin ? handleBatchDelete : undefined}
+          selectedSummary={selectedSummary}
           onFavorite={selectedHasSeries ? undefined : handleBatchFavorite}
           onUnfavorite={selectedHasSeries ? undefined : handleBatchUnfavorite}
           onAddTags={selectedHasSeries ? undefined : handleBatchAddTags}
@@ -1998,7 +2072,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
           isFavorite={contextMenu.comic.isFavorite}
           isAdmin={hasManageableLibrary}
           canFavorite={!seriesIdFromShelfId(contextMenu.comic.id)}
-          canDelete={!seriesIdFromShelfId(contextMenu.comic.id)}
+          canDelete={isAdmin}
           onClose={() => setContextMenu(null)}
           onRead={(id) => {
             const seriesId = seriesIdFromShelfId(id);
@@ -2020,21 +2094,119 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
           onAddToGroup={(id) => {
             setContextAddToGroupIds([id]);
           }}
-          onDelete={async (id) => {
-            // 先播放删除动画
-            setRemovingIds(new Set([id]));
-            setTimeout(async () => {
-              const result = await deleteComicById(id);
-              setRemovingIds(new Set());
-              if (result.success) {
-                await refetch();
-                toast.success(t.comicDetail?.deleteSuccess || "已删除");
-              } else {
-                toast.error(result.error || "删除失败");
-              }
-            }, 400);
+          onDelete={(id) => {
+            const target = sortedComics.find((c) => c.id === id) || (contextMenu?.comic?.id === id ? contextMenu.comic : null);
+            if (!target) return;
+            setContextDeleteFiles(false);
+            setContextDeleteEditions(true);
+            setContextDeleteTarget(target);
           }}
         />
+      )}
+
+      {/* 右键菜单单本/单系列删除确认弹窗 */}
+      {contextDeleteTarget && (
+        <>
+          <div
+            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm animate-backdrop-in"
+            onClick={() => {
+              if (!contextDeleting) setContextDeleteTarget(null);
+            }}
+          />
+          <div className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-2xl animate-modal-in">
+            <h3 className="text-lg font-semibold text-foreground">
+              {seriesIdFromShelfId(contextDeleteTarget.id) ? "删除目录作品" : (t.comicDetail?.confirmDelete || "确认删除")}
+            </h3>
+            <p className="mt-2 text-sm text-muted">
+              即将删除 <span className="font-medium text-foreground">{contextDeleteTarget.title}</span>
+              {seriesIdFromShelfId(contextDeleteTarget.id)
+                ? `（目录系列，共 ${Math.max(1, contextDeleteTarget.comicCount || 1)} 个文件/章节）`
+                : (contextDeleteTarget.editionCount ?? 1) > 1
+                  ? `（多格式合并作品，共 ${contextDeleteTarget.editionCount} 个格式版本）`
+                  : ""}
+              。
+            </p>
+            <div className="mt-4 space-y-2">
+              <label
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/60 p-3 transition-colors hover:bg-card/80"
+                onClick={() => setContextDeleteFiles(false)}
+              >
+                <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${!contextDeleteFiles ? "border-accent" : "border-muted/50"}`}>
+                  {!contextDeleteFiles && <div className="h-2 w-2 rounded-full bg-accent" />}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-foreground">{t.comicDetail?.deleteRecordOnly || "仅移除记录"}</div>
+                  <div className="text-xs text-muted">{t.comicDetail?.deleteRecordOnlyDesc || "从书库移除，保留磁盘源文件"}</div>
+                </div>
+              </label>
+              <label
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-red-500/30 p-3 transition-colors hover:bg-red-500/5"
+                onClick={() => setContextDeleteFiles(true)}
+              >
+                <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${contextDeleteFiles ? "border-red-500" : "border-muted/50"}`}>
+                  {contextDeleteFiles && <div className="h-2 w-2 rounded-full bg-red-500" />}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-red-400">{t.comicDetail?.deleteWithFiles || "同时删除磁盘源文件"}</div>
+                  <div className="text-xs text-muted">{t.comicDetail?.deleteWithFilesDesc || "从书库移除并删除磁盘源文件（自动清理空子目录），不可恢复"}</div>
+                </div>
+              </label>
+            </div>
+            {(contextDeleteTarget.editionCount ?? 1) > 1 && !seriesIdFromShelfId(contextDeleteTarget.id) && (
+              <label className="mt-3 flex cursor-pointer items-center gap-2.5 rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  checked={contextDeleteEditions}
+                  onChange={(e) => setContextDeleteEditions(e.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-accent"
+                />
+                <span>同时删除该书关联的全部 {contextDeleteTarget.editionCount} 个格式版本</span>
+              </label>
+            )}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                disabled={contextDeleting}
+                onClick={() => setContextDeleteTarget(null)}
+                className="rounded-lg bg-card px-4 py-2 text-sm text-foreground disabled:opacity-50"
+              >
+                {t.common.cancel}
+              </button>
+              <button
+                disabled={contextDeleting}
+                onClick={async () => {
+                  const target = contextDeleteTarget;
+                  if (!target) return;
+                  setContextDeleting(true);
+                  setRemovingIds(new Set([target.id]));
+                  const seriesId = seriesIdFromShelfId(target.id);
+                  const res = seriesId
+                    ? await deleteSeriesContent(seriesId, {
+                        deleteContent: true,
+                        deleteFiles: contextDeleteFiles,
+                        deleteEditions: contextDeleteEditions,
+                      })
+                    : await deleteComicById(target.id, contextDeleteFiles, contextDeleteEditions);
+                  setContextDeleting(false);
+                  setRemovingIds(new Set());
+                  setContextDeleteTarget(null);
+                  if (res.success) {
+                    await refetch();
+                    toast.success(t.comicDetail?.deleteSuccess || "已删除");
+                  } else {
+                    toast.error(res.error || "删除失败");
+                  }
+                }}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${contextDeleteFiles ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"}`}
+              >
+                {contextDeleting
+                  ? "删除中..."
+                  : contextDeleteFiles
+                    ? (t.comicDetail?.deleteWithFiles || "删除源文件")
+                    : (t.common.delete || "确认删除")}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* 右键菜单"加入合集"弹窗 */}

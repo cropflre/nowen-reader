@@ -103,6 +103,84 @@ func RemoveContentFile(comicID, absolutePath string) error {
 	return fmt.Errorf("remove content file %s after cache release and retries: %w", cleaned, lastErr)
 }
 
+// IsReadOnlyOrPermissionError reports whether a filesystem failure is caused by
+// a read-only mount (e.g. Docker :ro volume) or insufficient filesystem write permission.
+func IsReadOnlyOrPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if os.IsPermission(err) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "read-only file system") ||
+		strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "access is denied") ||
+		strings.Contains(lower, "erofs")
+}
+
+// PruneEmptyParentDirs walks upward from the deleted content's parent directory
+// and removes subdirectories that became completely empty (ignoring OS thumbnail
+///metadata junk such as .DS_Store or Thumbs.db), stopping strictly before rootPath.
+func PruneEmptyParentDirs(deletedContentPath, rootPath string) {
+	deletedClean := canonicalContentFilePath(deletedContentPath)
+	rootClean := canonicalContentFilePath(rootPath)
+	if deletedClean == "." || rootClean == "." || rootPath == "" {
+		return
+	}
+
+	dir := filepath.Dir(deletedClean)
+	for {
+		if sameContentFilePath(dir, rootClean) {
+			break
+		}
+		rel, err := filepath.Rel(rootClean, dir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			break
+		}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			break
+		}
+		var blockers int
+		var junkFiles []string
+		for _, entry := range entries {
+			name := entry.Name()
+			if !entry.IsDir() && (name == ".DS_Store" || strings.EqualFold(name, "Thumbs.db") || strings.EqualFold(name, "desktop.ini")) {
+				junkFiles = append(junkFiles, filepath.Join(dir, name))
+				continue
+			}
+			blockers++
+			break
+		}
+		if blockers > 0 {
+			break
+		}
+		for _, jf := range junkFiles {
+			_ = os.Remove(jf)
+		}
+		if err := os.Remove(dir); err != nil {
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
+}
+
+// RemoveContentFileAndPruneDirs deletes the source file/folder and prunes any
+// empty parent subdirectories inside rootPath, wrapping permission/read-only
+// mount failures with a human-friendly Chinese diagnostic.
+func RemoveContentFileAndPruneDirs(comicID, absolutePath, rootPath string) error {
+	if err := RemoveContentFile(comicID, absolutePath); err != nil {
+		if IsReadOnlyOrPermissionError(err) {
+			return fmt.Errorf("书库目录为只读挂载或无写入权限，无法删除磁盘源文件: %w", err)
+		}
+		return err
+	}
+	PruneEmptyParentDirs(absolutePath, rootPath)
+	return nil
+}
+
 func sameContentFilePath(left, right string) bool {
 	left = canonicalContentFilePath(left)
 	right = canonicalContentFilePath(right)

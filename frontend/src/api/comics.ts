@@ -222,14 +222,20 @@ export function batchOperation(action: string, comicIds: string[], params?: Reco
   return batchComicAction(comicIds, action, params);
 }
 
-// Delete a single comic
-export async function deleteComicById(comicId: string, deleteFiles = false): Promise<{ success: boolean; error?: string }> {
+// Delete a single comic (optionally deleting source files and all multi-format editions)
+export async function deleteComicById(
+  comicId: string,
+  deleteFiles = false,
+  deleteEditions = false,
+): Promise<{ success: boolean; deletedCount?: number; error?: string }> {
   try {
-    const url = deleteFiles
-      ? `/api/comics/${comicId}?deleteFiles=true`
-      : `/api/comics/${comicId}`;
-    await apiClient.delete(url);
-    return { success: true };
+    const params = new URLSearchParams();
+    if (deleteFiles) params.set("deleteFiles", "true");
+    if (deleteEditions) params.set("deleteEditions", "true");
+    const qs = params.toString();
+    const url = qs ? `/api/comics/${comicId}?${qs}` : `/api/comics/${comicId}`;
+    const res = await apiClient.delete<{ deletedCount?: number }>(url);
+    return { success: true, deletedCount: res?.deletedCount };
   } catch (e: unknown) {
     const err = e as { status?: number; message?: string };
     return { success: false, error: err?.message || `HTTP ${err?.status ?? "unknown"}` };

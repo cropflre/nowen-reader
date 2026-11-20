@@ -12,6 +12,7 @@ import '../../data/providers/cache_provider.dart';
 import '../../data/services/cache_service.dart';
 import '../reader/novel_reader_screen.dart';
 import '../../widgets/animations.dart';
+import '../../widgets/delete_confirm_dialog.dart';
 
 /// 漫画详情页 — 沉浸式优雅设计
 class ComicDetailScreen extends ConsumerStatefulWidget {
@@ -83,10 +84,92 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     } catch (_) {}
   }
 
+  Future<void> _deleteComic(Comic comic) async {
+    final res = await showDeleteConfirmDialog(
+      context,
+      title: '删除作品',
+      description: comic.editions.length > 1
+          ? '《${comic.title}》包含 ${comic.editions.length} 个格式版本，请选择删除方式。'
+          : '即将删除《${comic.title}》，请选择删除方式。',
+      showEditionOption: comic.editions.length > 1,
+      editionCount: comic.editions.length,
+    );
+    if (res == null || !res.confirmed || !mounted) return;
+    final includeEditions = comic.editions.length > 1 ? res.deleteEditions : false;
+    try {
+      await ref.read(comicApiProvider).deleteComic(
+            comic.id,
+            deleteFiles: res.deleteFiles,
+            deleteEditions: includeEditions,
+          );
+      await ref.read(comicListProvider.notifier).loadComics();
+      if (!mounted) return;
+      if (!includeEditions && comic.editions.length > 1) {
+        final remaining =
+            comic.editions.where((e) => e.comicId != comic.id).toList();
+        if (remaining.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已删除当前格式版本')),
+          );
+          context.pushReplacement('/comic/${remaining.first.comicId}');
+          return;
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已删除作品')),
+      );
+      if (context.canPop()) context.pop();
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败: ${extractDeleteErrorMessage(err)}')),
+      );
+    }
+  }
+
+  Future<void> _deleteSingleEdition(Comic comic, ComicEditionInfo ed) async {
+    final res = await showDeleteConfirmDialog(
+      context,
+      title: '删除单个格式版本',
+      description: '仅删除 ${ed.format.isNotEmpty ? ed.format : "当前"} 格式版本，保留《${comic.title}》的其他格式。',
+    );
+    if (res == null || !res.confirmed || !mounted) return;
+    try {
+      await ref.read(comicApiProvider).deleteComic(
+            ed.comicId,
+            deleteFiles: res.deleteFiles,
+            deleteEditions: false,
+          );
+      await ref.read(comicListProvider.notifier).loadComics();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 ${ed.format} 版本')),
+      );
+      if (ed.comicId == comic.id) {
+        final remaining =
+            comic.editions.where((item) => item.comicId != ed.comicId).toList();
+        if (remaining.isNotEmpty) {
+          context.pushReplacement('/comic/${remaining.first.comicId}');
+        } else if (context.canPop()) {
+          context.pop();
+        }
+      } else {
+        await _loadDetail();
+      }
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败: ${extractDeleteErrorMessage(err)}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(readingProgressRevisionProvider, (_, __) => _loadDetail());
-    final serverUrl = ref.watch(authProvider).serverUrl;
+    final authState = ref.watch(authProvider);
+    final serverUrl = authState.serverUrl;
+    final isAdmin = authState.user?.isAdmin == true;
     final cs = Theme.of(context).colorScheme;
 
     if (_loading) {
@@ -145,6 +228,22 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               ),
             ),
             actions: [
+              if (isAdmin)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 8, right: 4),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      tooltip: '删除作品',
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          color: Colors.redAccent, size: 20),
+                      onPressed: () => _deleteComic(comic),
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: Container(
@@ -716,6 +815,18 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     context.push(ed.readerRoute(comic.comicType)),
                 child: const Text('阅读', style: TextStyle(fontSize: 12)),
               ),
+              if (multiEdition && ref.watch(authProvider).user?.isAdmin == true) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: '仅删除此格式版本',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(Icons.delete_outline_rounded,
+                      size: 18, color: cs.error),
+                  onPressed: () => _deleteSingleEdition(comic, ed),
+                ),
+              ],
             ],
           ),
           if (loc != null) ...[

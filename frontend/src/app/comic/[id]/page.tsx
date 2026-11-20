@@ -161,6 +161,12 @@ export default function ComicDetailPage() {
   const [newTag, setNewTag] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteFilesOption, setDeleteFilesOption] = useState(false);
+  const [deleteAllEditions, setDeleteAllEditions] = useState(true);
+  const [pendingEditionDelete, setPendingEditionDelete] = useState<{
+    comicId: string;
+    format: string;
+    filename: string;
+  } | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showCoverMenu, setShowCoverMenu] = useState(false);
   const [coverUrlInput, setCoverUrlInput] = useState("");
@@ -828,14 +834,53 @@ export default function ComicDetailPage() {
   }, []);
 
   const handleDelete = useCallback(async () => {
-    const result = await deleteComicById(comicId, deleteFilesOption);
+    const editions = comic?.editions || [];
+    if (pendingEditionDelete) {
+      const result = await deleteComicById(pendingEditionDelete.comicId, deleteFilesOption, false);
+      if (result.success) {
+        setShowDeleteConfirm(false);
+        setDeleteFilesOption(false);
+        const deletedTarget = pendingEditionDelete;
+        setPendingEditionDelete(null);
+        invalidateComicsCache();
+        toast.success(
+          locale === "en"
+            ? `Deleted ${deletedTarget.format} edition`
+            : `已删除 ${deletedTarget.format} 格式版本`,
+        );
+        if (deletedTarget.comicId === comicId) {
+          const remaining = editions.find((e) => e.comicId !== deletedTarget.comicId);
+          router.push(remaining ? `/comic/${remaining.comicId}` : "/books");
+        } else {
+          await refetch();
+        }
+      } else {
+        const msg = t.comicDetail?.deleteError || "删除失败：";
+        alert(msg.replace("{{error}}", result.error || "Unknown error"));
+      }
+      return;
+    }
+
+    const includeAllEditions = editions.length > 1 ? deleteAllEditions : false;
+    const result = await deleteComicById(comicId, deleteFilesOption, includeAllEditions);
     if (result.success) {
-      router.push("/");
+      setShowDeleteConfirm(false);
+      setDeleteFilesOption(false);
+      invalidateComicsCache();
+      if (!includeAllEditions && editions.length > 1) {
+        const remaining = editions.find((e) => e.comicId !== comicId);
+        if (remaining) {
+          toast.success(locale === "en" ? "Edition deleted" : "已删除当前格式版本");
+          router.push(`/comic/${remaining.comicId}`);
+          return;
+        }
+      }
+      router.push("/books");
     } else {
       const msg = t.comicDetail?.deleteError || "删除失败：";
       alert(msg.replace("{{error}}", result.error || "Unknown error"));
     }
-  }, [comicId, router, t, deleteFilesOption]);
+  }, [comic?.editions, pendingEditionDelete, comicId, router, t, deleteFilesOption, deleteAllEditions, refetch, toast, locale]);
 
   if (loading) {
     return (
@@ -1080,7 +1125,12 @@ export default function ComicDetailPage() {
             {/* Delete */}
             {user?.role === "admin" && (
             <button
-              onClick={() => setShowDeleteConfirm(true)}
+              onClick={() => {
+                setPendingEditionDelete(null);
+                setDeleteFilesOption(false);
+                setDeleteAllEditions(true);
+                setShowDeleteConfirm(true);
+              }}
               className="motion-button flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2.5 text-sm text-red-400 transition-all hover:bg-red-500/10 btn-press"
             >
               <Trash2 className="h-4 w-4" />
@@ -1475,6 +1525,25 @@ export default function ComicDetailPage() {
                                 <Download className="h-3 w-3" />
                                 {locale === "en" ? "Download" : "下载原文件"}
                               </a>
+                            )}
+                            {user?.role === "admin" && (comic.editions?.length ?? 0) > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPendingEditionDelete({
+                                    comicId: ed.comicId,
+                                    format: ed.format || "FORMAT",
+                                    filename: loc?.baseName || ed.title || ed.comicId,
+                                  });
+                                  setDeleteFilesOption(false);
+                                  setShowDeleteConfirm(true);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/10"
+                                title={locale === "en" ? "Delete this format only" : "仅删除此格式版本"}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                {locale === "en" ? "Delete format" : "删除此格式"}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -2241,11 +2310,25 @@ export default function ComicDetailPage() {
       {/* Delete Confirm Modal */}
       {showDeleteConfirm && (
         <>
-          <div className="fixed inset-0 z-50 bg-black/60 animate-backdrop-in" onClick={() => setShowDeleteConfirm(false)} />
-          <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-96 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-zinc-900 p-5 sm:p-6 shadow-2xl animate-modal-in">
-            <h3 className="text-lg font-semibold text-foreground">{t.comicDetail.confirmDelete}</h3>
+          <div
+            className="fixed inset-0 z-50 bg-black/60 animate-backdrop-in"
+            onClick={() => {
+              setShowDeleteConfirm(false);
+              setPendingEditionDelete(null);
+            }}
+          />
+          <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-zinc-900 p-5 sm:p-6 shadow-2xl animate-modal-in">
+            <h3 className="text-lg font-semibold text-foreground">
+              {pendingEditionDelete
+                ? (locale === "en" ? "Delete Format Edition" : "删除单个格式版本")
+                : t.comicDetail.confirmDelete}
+            </h3>
             <p className="mt-2 text-sm text-muted">
-              {t.comicDetail.confirmDeleteMsg.replace("{title}", comic.title)}
+              {pendingEditionDelete
+                ? (locale === "en"
+                    ? `Delete only ${pendingEditionDelete.format} (${pendingEditionDelete.filename}) and keep other formats?`
+                    : `仅删除 ${pendingEditionDelete.format} 格式版本（${pendingEditionDelete.filename}），保留该作品的其他格式版本。`)
+                : t.comicDetail.confirmDeleteMsg.replace("{title}", comic.title)}
             </p>
             {/* Delete mode options */}
             <div className="mt-4 space-y-2">
@@ -2264,13 +2347,32 @@ export default function ComicDetailPage() {
                 </div>
                 <div>
                   <div className="text-sm font-medium text-red-400">{t.comicDetail?.deleteWithFiles || "同时删除文件"}</div>
-                  <div className="text-xs text-muted">{t.comicDetail?.deleteWithFilesDesc || "从书库移除并删除磁盘上的文件，不可恢复"}</div>
+                  <div className="text-xs text-muted">{t.comicDetail?.deleteWithFilesDesc || "从书库移除并删除磁盘上的文件（自动清理空子目录），不可恢复"}</div>
                 </div>
               </label>
             </div>
+            {!pendingEditionDelete && (comic.editions?.length ?? 0) > 1 && (
+              <label className="mt-3 flex cursor-pointer items-center gap-2.5 rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  checked={deleteAllEditions}
+                  onChange={(e) => setDeleteAllEditions(e.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-accent"
+                />
+                <span>
+                  {locale === "en"
+                    ? `Also delete all ${comic.editions!.length} linked format editions (uncheck to delete only ${comic.format || "current"})`
+                    : `同时删除关联的全部 ${comic.editions!.length} 个格式版本（取消勾选则仅删除当前 ${comic.format || ""} 版本）`}
+                </span>
+              </label>
+            )}
             <div className="mt-5 flex justify-end gap-3">
               <button
-                onClick={() => { setShowDeleteConfirm(false); setDeleteFilesOption(false); }}
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteFilesOption(false);
+                  setPendingEditionDelete(null);
+                }}
                 className="rounded-lg bg-card px-4 py-2 text-sm text-foreground"
               >
                 {t.common.cancel}

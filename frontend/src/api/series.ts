@@ -54,3 +54,25 @@ export async function redetectSeries(id: string): Promise<void> {
 export async function removeSeriesRelationship(id: string): Promise<void> {
   await apiClient.delete(`/api/series/${encodeURIComponent(id)}`);
 }
+
+export async function deleteSeriesContent(
+  id: string,
+  options?: { deleteContent?: boolean; deleteFiles?: boolean; deleteEditions?: boolean },
+): Promise<{ success: boolean; deletedCount?: number; error?: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.deleteContent !== false) params.set("deleteContent", "true");
+    if (options?.deleteFiles) params.set("deleteFiles", "true");
+    if (options?.deleteEditions !== undefined) {
+      params.set("deleteEditions", options.deleteEditions ? "true" : "false");
+    }
+    const qs = params.toString();
+    const res = await apiClient.delete<{ deletedCount?: number }>(
+      `/api/series/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`,
+    );
+    return { success: true, deletedCount: res?.deletedCount };
+  } catch (e: unknown) {
+    const err = e as { status?: number; message?: string };
+    return { success: false, error: err?.message || `HTTP ${err?.status ?? "unknown"}` };
+  }
+}

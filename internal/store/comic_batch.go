@@ -414,10 +414,17 @@ func deleteComicsByIDBatches(tx *sql.Tx, ids []string) (int64, error) {
 		"ComicGroupItem",
 		"UserComicState",
 		"MetadataSyncLog",
+		"BookEditionItem",
+		"ComicSeriesItem",
 	})
 	if err != nil {
 		return 0, err
 	}
+
+	hasEditionTables, _ := existingTables(tx, []string{"BookEditionGroup", "BookEditionItem"})
+	hasSeriesTables, _ := existingTables(tx, []string{"ComicSeries", "ComicSeriesItem"})
+	affectedGroups := make(map[string]struct{})
+	affectedSeries := make(map[string]struct{})
 
 	var rowsAffected int64
 	for i := 0; i < len(ids); i += batchSize {
@@ -434,6 +441,29 @@ func deleteComicsByIDBatches(tx *sql.Tx, ids []string) (int64, error) {
 		}
 		in := strings.Join(placeholders, ",")
 
+		if len(hasEditionTables) == 2 {
+			if rows, qErr := tx.Query(fmt.Sprintf(`SELECT DISTINCT "groupId" FROM "BookEditionItem" WHERE "comicId" IN (%s)`, in), args...); qErr == nil {
+				for rows.Next() {
+					var gid string
+					if rows.Scan(&gid) == nil && gid != "" {
+						affectedGroups[gid] = struct{}{}
+					}
+				}
+				rows.Close()
+			}
+		}
+		if len(hasSeriesTables) == 2 {
+			if rows, qErr := tx.Query(fmt.Sprintf(`SELECT DISTINCT "seriesId" FROM "ComicSeriesItem" WHERE "comicId" IN (%s)`, in), args...); qErr == nil {
+				for rows.Next() {
+					var sid string
+					if rows.Scan(&sid) == nil && sid != "" {
+						affectedSeries[sid] = struct{}{}
+					}
+				}
+				rows.Close()
+			}
+		}
+
 		for _, table := range relatedTables {
 			if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM "%s" WHERE "comicId" IN (%s)`, table, in), args...); err != nil {
 				return rowsAffected, fmt.Errorf("delete %s records: %w", table, err)
@@ -449,6 +479,31 @@ func deleteComicsByIDBatches(tx *sql.Tx, ids []string) (int64, error) {
 			return rowsAffected, err
 		}
 		rowsAffected += n
+	}
+
+	if len(hasEditionTables) == 2 {
+		for gid := range affectedGroups {
+			if err := refreshEditionGroupMetadataTx(tx, gid); err != nil {
+				return rowsAffected, fmt.Errorf("reconcile edition group %s: %w", gid, err)
+			}
+		}
+	}
+	if len(hasSeriesTables) == 2 {
+		for sid := range affectedSeries {
+			if _, err := tx.Exec(`
+				DELETE FROM "ComicSeries"
+				WHERE "id" = ? AND NOT EXISTS (
+					SELECT 1 FROM "ComicSeriesItem" si WHERE si."seriesId" = "ComicSeries"."id"
+				)
+			`, sid); err != nil {
+				return rowsAffected, fmt.Errorf("cleanup empty series %s: %w", sid, err)
+			}
+		}
+	}
+	if rowsAffected > 0 {
+		if revTables, _ := existingTables(tx, []string{"ComicSeriesSourceRevision"}); len(revTables) == 1 {
+			_, _ = tx.Exec(`UPDATE "ComicSeriesSourceRevision" SET "revision" = "revision" + 1 WHERE "id" = 1`)
+		}
 	}
 	return rowsAffected, nil
 }
