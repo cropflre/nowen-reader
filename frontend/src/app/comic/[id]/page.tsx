@@ -55,6 +55,10 @@ import {
   Loader2,
   Eye,
   ChevronDown,
+  Copy,
+  FolderOpen,
+  Unlink,
+  Link2,
 } from "lucide-react";
 import { useTranslation, useLocale } from "@/lib/i18n";
 import ForbiddenPage from "@/components/ForbiddenPage";
@@ -63,7 +67,7 @@ import { MetadataSearch } from "@/components/MetadataSearch";
 import { SimilarComics } from "@/components/Recommendations";
 import { useAIStatus } from "@/hooks/useAIStatus";
 import { fetchGroupedComicMap, fetchGroupDetail } from "@/api/groups";
-import { getComicTagsWithSource } from "@/api/comics";
+import { getComicTagsWithSource, bindComicEditions, splitComicEditions } from "@/api/comics";
 import type { ComicTagWithSource } from "@/api/comics";
 import type { ComicGroupDetail, GroupComicItem } from "@/hooks/useComicTypes";
 import { invalidateSwCache } from "@/lib/pwa";
@@ -202,6 +206,52 @@ export default function ComicDetailPage() {
   const [editingMetadata, setEditingMetadata] = useState(false);
   const [metaForm, setMetaForm] = useState<ComicMetadataUpdate>({});
   const [metaSaving, setMetaSaving] = useState(false);
+
+  // 多格式版本管理 state
+  const [showBindInput, setShowBindInput] = useState(false);
+  const [bindComicIdInput, setBindComicIdInput] = useState("");
+  const [editionActionBusy, setEditionActionBusy] = useState(false);
+
+  const handleCopyText = useCallback(async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(locale === "en" ? `Copied ${label}` : `已复制${label}`);
+    } catch {
+      toast.error(locale === "en" ? "Copy failed" : "复制失败");
+    }
+  }, [locale, toast]);
+
+  const handleBindEdition = useCallback(async () => {
+    const trimmed = bindComicIdInput.trim().replace(/^.*\/comic\//, "").split(/[/?#]/)[0];
+    if (!trimmed) return;
+    setEditionActionBusy(true);
+    try {
+      await bindComicEditions(comicId, [trimmed]);
+      setBindComicIdInput("");
+      setShowBindInput(false);
+      invalidateComicsCache();
+      await refetch();
+      toast.success(locale === "en" ? "Bound to edition group" : "已关联为同一本书的版本");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (locale === "en" ? "Bind failed" : "关联失败"));
+    } finally {
+      setEditionActionBusy(false);
+    }
+  }, [bindComicIdInput, comicId, locale, refetch, toast]);
+
+  const handleSplitEdition = useCallback(async () => {
+    setEditionActionBusy(true);
+    try {
+      await splitComicEditions(comicId, [comicId]);
+      invalidateComicsCache();
+      await refetch();
+      toast.success(locale === "en" ? "Split from edition group" : "已从当前版本组拆分");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (locale === "en" ? "Split failed" : "拆分失败"));
+    } finally {
+      setEditionActionBusy(false);
+    }
+  }, [comicId, locale, refetch, toast]);
 
   // Auto-init categories on first load
   useEffect(() => {
@@ -1264,6 +1314,231 @@ export default function ComicDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Formats, Editions & File Locations (多格式版本与文件目录) */}
+            {(comic.editions?.length || comic.fileLocation) && (
+              <div className="surface-card rounded-xl p-4 space-y-3 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Layers className="h-4 w-4 text-accent shrink-0" />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {locale === "en" ? "Formats, Editions & File Location" : "格式版本与文件目录"}
+                    </h3>
+                    {(comic.editionCount ?? 0) > 1 && (
+                      <span className="rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent">
+                        {comic.editionCount} {locale === "en" ? "editions" : "个版本"}
+                      </span>
+                    )}
+                  </div>
+                  {canManage && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(comic.editions?.length ?? 0) > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleSplitEdition}
+                          disabled={editionActionBusy}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted transition-colors hover:border-amber-500/40 hover:text-amber-400 disabled:opacity-50"
+                        >
+                          <Unlink className="h-3.5 w-3.5" />
+                          {locale === "en" ? "Split edition" : "拆分为独立书籍"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowBindInput((v) => !v)}
+                        disabled={editionActionBusy}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted transition-colors hover:border-accent/40 hover:text-foreground disabled:opacity-50"
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                        {locale === "en" ? "Bind edition" : "关联其他版本"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {showBindInput && canManage && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-background/60 p-2.5">
+                    <input
+                      type="text"
+                      value={bindComicIdInput}
+                      onChange={(e) => setBindComicIdInput(e.target.value)}
+                      placeholder={locale === "en" ? "Enter comic ID or /comic/<id> URL to bind..." : "输入目标书籍 ID 或 /comic/<id> 链接..."}
+                      className="min-w-0 flex-1 rounded-lg border border-border/60 bg-card px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleBindEdition}
+                      disabled={editionActionBusy || !bindComicIdInput.trim()}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {locale === "en" ? "Bind" : "确认关联"}
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-2.5">
+                  {(comic.editions && comic.editions.length > 0
+                    ? comic.editions
+                    : [
+                        {
+                          comicId: comic.id,
+                          title: comic.title,
+                          format: (comic.format || comic.filename?.split(".").pop() || "BOOK").toUpperCase(),
+                          editionLabel: comic.editionLabel,
+                          isCurrent: true,
+                          isFormatPrimary: true,
+                          isPreferred: true,
+                          fileSize: comic.fileSize,
+                          pageCount: comic.pageCount,
+                          lastReadPage: comic.lastReadPage,
+                          lastReadAt: comic.lastReadAt,
+                          readingStatus: comic.readingStatus || "",
+                          totalReadTime: comic.totalReadTime,
+                          readerUrl: getReaderUrl(comic),
+                          downloadUrl: comic.canDownload && comic.format !== "FOLDER" ? `/api/comics/${comic.id}/download` : undefined,
+                          fileLocation: comic.fileLocation,
+                        },
+                      ]
+                  ).map((ed) => {
+                    const edProgress =
+                      ed.pageCount > 0
+                        ? calculateStoredReadingProgress(ed.lastReadPage, ed.pageCount, ed.lastReadAt, ed.readingStatus)
+                        : 0;
+                    const loc = ed.fileLocation;
+                    const shelfDirHref = loc?.libraryId
+                      ? loc.relativeDir
+                        ? `/books?lib=${encodeURIComponent(loc.libraryId)}&dir=${encodeURIComponent(loc.relativeDir)}`
+                        : `/books?lib=${encodeURIComponent(loc.libraryId)}`
+                      : "";
+                    const edReaderUrl =
+                      comic.type === "novel" || isNovelFile(loc?.filename || ed.title)
+                        ? `/novel/${ed.comicId}`
+                        : `/reader/${ed.comicId}`;
+                    return (
+                      <div
+                        key={ed.comicId}
+                        className={`rounded-xl border p-3 transition-colors ${
+                          ed.isCurrent
+                            ? "border-accent/40 bg-accent/5"
+                            : "border-border/50 bg-background/40 hover:bg-background/60"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                            <span className="rounded-md bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
+                              {ed.format}
+                            </span>
+                            {ed.editionLabel && (
+                              <span className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-foreground/85">
+                                {ed.editionLabel}
+                              </span>
+                            )}
+                            {ed.isPreferred && (comic.editions?.length ?? 0) > 1 && (
+                              <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-500">
+                                {ed.lastReadAt ? (locale === "en" ? "Last Read" : "最近阅读") : (locale === "en" ? "Primary" : "首选版本")}
+                              </span>
+                            )}
+                            {ed.isCurrent && (comic.editions?.length ?? 0) > 1 && (
+                              <span className="rounded-md bg-muted/20 px-2 py-0.5 text-[11px] text-muted">
+                                {locale === "en" ? "Current" : "当前"}
+                              </span>
+                            )}
+                            <span className="text-xs text-muted">
+                              {formatFileSize(ed.fileSize)}
+                              {ed.pageCount > 0 ? ` · ${ed.pageCount}${locale === "en" ? (comic.type === "novel" ? " ch" : "p") : (comic.type === "novel" ? "章" : "页")}` : ""}
+                              {edProgress > 0 ? ` · ${edProgress}%` : ""}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {!ed.isCurrent && (
+                              <Link
+                                href={`/comic/${ed.comicId}`}
+                                className="rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted transition-colors hover:text-foreground"
+                              >
+                                {locale === "en" ? "Details" : "切换详情"}
+                              </Link>
+                            )}
+                            <Link
+                              href={edReaderUrl}
+                              className="inline-flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
+                            >
+                              <BookOpen className="h-3 w-3" />
+                              {locale === "en" ? "Read" : "阅读"}
+                            </Link>
+                            {ed.downloadUrl && (
+                              <a
+                                href={apiPath(ed.downloadUrl)}
+                                download
+                                className="inline-flex items-center gap-1 rounded-lg border border-border/60 px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-card"
+                              >
+                                <Download className="h-3 w-3" />
+                                {locale === "en" ? "Download" : "下载原文件"}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {loc && (
+                          <div className="mt-2 space-y-1 border-t border-border/40 pt-2 text-xs text-muted">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <FolderOpen className="h-3.5 w-3.5 shrink-0 text-accent/80" />
+                                <span className="truncate font-mono text-[11px] text-foreground/80" title={loc.relativePath}>
+                                  {loc.libraryName || loc.libraryId}
+                                  {loc.relativeDir ? ` / ${loc.relativeDir}` : " / "}
+                                  {loc.baseName ? ` · ${loc.baseName}` : ""}
+                                </span>
+                              </div>
+                              {shelfDirHref && (
+                                <Link
+                                  href={shelfDirHref}
+                                  className="shrink-0 text-[11px] font-medium text-accent hover:underline"
+                                >
+                                  {locale === "en" ? "Browse directory →" : "跳转所在目录 →"}
+                                </Link>
+                              )}
+                            </div>
+
+                            {loc.realDirPath && (
+                              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                <span className="truncate font-mono text-muted" title={loc.absolutePath || loc.realDirPath}>
+                                  {locale === "en" ? "Path: " : "物理目录: "}
+                                  {loc.realDirPath}
+                                </span>
+                                {loc.existsOnDisk === false && (
+                                  <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] text-rose-400">
+                                    {locale === "en" ? "Missing on disk" : "磁盘文件不存在"}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(loc.realDirPath!, locale === "en" ? "directory path" : "目录路径")}
+                                  className="inline-flex items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted hover:text-foreground"
+                                >
+                                  <Copy className="h-2.5 w-2.5" />
+                                  {locale === "en" ? "Copy Dir" : "复制目录"}
+                                </button>
+                                {loc.absolutePath && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(loc.absolutePath!, locale === "en" ? "file path" : "文件路径")}
+                                    className="inline-flex items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted hover:text-foreground"
+                                  >
+                                    <Copy className="h-2.5 w-2.5" />
+                                    {locale === "en" ? "Copy File" : "复制路径"}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Collection / 合集信息 */}
             {comicGroups.length > 0 && comicGroups.map((group) => {

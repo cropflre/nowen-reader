@@ -64,6 +64,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	comicByID.Use(middleware.AuthRequired())
 	{
 		comicByID.GET("", comic.GetComic)
+		comicByID.GET("/download", comic.DownloadComic)
 		comicByID.GET("/chapter-rule", chapterRules.GetComicRule)
 	}
 
@@ -85,6 +86,10 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		// Metadata editing
 		comicByIDWrite.PUT("/metadata", comic.UpdateMetadata)
 		comicByIDWrite.PUT("/chapter-rule", chapterRules.SetComicRule)
+
+		// Edition group binding & splitting
+		comicByIDWrite.POST("/editions/bind", comic.BindEditions)
+		comicByIDWrite.POST("/editions/split", comic.SplitEditions)
 
 		// Delete comic
 		comicByIDWrite.DELETE("", recordOnlySingleDeleteGuard(), comic.DeleteComic)

@@ -621,6 +621,18 @@ func getAccessibleOPDSCollection(c *gin.Context, collectionID int) (*store.OPDSC
 func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 	comics := make([]service.OPDSComic, 0, len(rows))
 	for _, row := range rows {
+		var editions []service.OPDSEditionLink
+		if len(row.Editions) > 0 {
+			editions = make([]service.OPDSEditionLink, 0, len(row.Editions))
+			for _, ed := range row.Editions {
+				editions = append(editions, service.OPDSEditionLink{
+					ComicID:  ed.ComicID,
+					Filename: ed.Filename,
+					Format:   ed.Format,
+					FileSize: ed.FileSize,
+				})
+			}
+		}
 		comics = append(comics, service.OPDSComic{
 			ID:           row.ID,
 			Title:        row.Title,
@@ -638,6 +650,7 @@ func toOPDSComics(rows []store.OPDSComicRow) []service.OPDSComic {
 			Filename:     row.Filename,
 			ComicType:    row.ComicType,
 			Collections:  toOPDSCollectionLinks(row),
+			Editions:     editions,
 			LastReadPage: row.LastReadPage,
 			LastReadAt:   row.LastReadAt,
 		})

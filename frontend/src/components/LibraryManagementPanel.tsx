@@ -37,6 +37,7 @@ import {
   previewLibrarySeriesLayout,
   scanLibrary,
   LibraryApiError,
+  type EditionMergeScope,
   type Library as LibraryType,
   type LibraryOwnershipPreview,
   type SeriesLayoutPreview,
@@ -225,6 +226,59 @@ function SeriesDepthSelector({
   );
 }
 
+const EDITION_MERGE_SCOPE_OPTIONS: Array<{
+  value: EditionMergeScope;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "directory",
+    label: "仅同目录合并（推荐 · 默认）",
+    hint: "仅合并同一目录下同书名的多种格式文件（如 三体.epub + 三体.mobi）；零误合并，性能最佳。",
+  },
+  {
+    value: "library",
+    label: "同书库跨目录合并",
+    hint: "合并同一书库（含多根目录）下不同子目录中同书名且作者不冲突的多格式文件（仍保留卷号 1/2/3 区分）。",
+  },
+  {
+    value: "global",
+    label: "全局跨书库合并（同内容类型）",
+    hint: "与同样开启全局合并的同类型书库（小说与漫画互不混合）在书架合并展示，并严格遵循当前用户的书库访问权限隔离。",
+  },
+];
+
+function EditionMergeScopeSelector({
+  value,
+  onChange,
+}: {
+  value: EditionMergeScope;
+  onChange: (next: EditionMergeScope) => void;
+}) {
+  const active = EDITION_MERGE_SCOPE_OPTIONS.find((opt) => opt.value === value) || EDITION_MERGE_SCOPE_OPTIONS[0];
+  return (
+    <div className="md:col-span-2 space-y-2">
+      <label className="block text-sm font-medium text-muted">
+        多格式版本合并策略（editionMergeScope）
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as EditionMergeScope)}
+        className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground shadow-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+      >
+        {EDITION_MERGE_SCOPE_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <div className="rounded-xl border border-border/60 bg-background/60 px-3.5 py-2 text-xs text-muted">
+        {active.hint}
+      </div>
+    </div>
+  );
+}
+
 function SeriesLayoutPreviewCard({
   preview,
   loading,
@@ -402,6 +456,7 @@ export function LibraryManagementPanel() {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<"comic" | "novel" | "mixed">("comic");
   const [newSeriesDepth, setNewSeriesDepth] = useState<number>(1);
+  const [newEditionMergeScope, setNewEditionMergeScope] = useState<EditionMergeScope>("directory");
   const [newRootPaths, setNewRootPaths] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -409,6 +464,7 @@ export function LibraryManagementPanel() {
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<"comic" | "novel" | "mixed">("comic");
   const [editSeriesDepth, setEditSeriesDepth] = useState<number>(1);
+  const [editEditionMergeScope, setEditEditionMergeScope] = useState<EditionMergeScope>("directory");
   const [editRootPaths, setEditRootPaths] = useState<string[]>([]);
   const [editScanEnabled, setEditScanEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -578,6 +634,7 @@ export function LibraryManagementPanel() {
         name: newName.trim(),
         type: newType,
         seriesDepth: newType === "comic" ? newSeriesDepth : 1,
+        editionMergeScope: newEditionMergeScope,
         rootPaths: validPaths,
         defaultAccess: newDefaultAccess,
         scanEnabled: newScanEnabled,
@@ -586,6 +643,7 @@ export function LibraryManagementPanel() {
       setShowCreateForm(false);
       setNewName("");
       setNewSeriesDepth(1);
+      setNewEditionMergeScope("directory");
       setNewRootPaths([]);
       fetchLibraryList();
       fetchOwnershipPreview();
@@ -615,6 +673,7 @@ export function LibraryManagementPanel() {
     setEditName(lib.name);
     setEditType(lib.type);
     setEditSeriesDepth(lib.type === "comic" ? (lib.seriesDepth ?? 1) : 1);
+    setEditEditionMergeScope(lib.editionMergeScope || "directory");
     // 优先使用 rootPaths，如果没有则使用 [rootPath]
     setEditRootPaths(lib.rootPaths && lib.rootPaths.length > 0 ? lib.rootPaths : [lib.rootPath]);
     setEditScanEnabled(lib.scanEnabled);
@@ -656,6 +715,7 @@ export function LibraryManagementPanel() {
         name: editName.trim(),
         type: editType,
         seriesDepth: targetDepth,
+        editionMergeScope: editEditionMergeScope,
         expectedSourceRevision: isComicDepthChange ? layoutPreview?.sourceRevision : undefined,
         rootPaths: validPaths,
         scanEnabled: editScanEnabled,
@@ -965,6 +1025,10 @@ export function LibraryManagementPanel() {
                 value={newSeriesDepth}
                 onChange={setNewSeriesDepth}
               />
+              <EditionMergeScopeSelector
+                value={newEditionMergeScope}
+                onChange={setNewEditionMergeScope}
+              />
               <div>
                 <label className="block text-sm font-medium text-muted">默认可见性</label>
                 <select
@@ -1182,6 +1246,10 @@ export function LibraryManagementPanel() {
                         value={editSeriesDepth}
                         onChange={setEditSeriesDepth}
                       />
+                      <EditionMergeScopeSelector
+                        value={editEditionMergeScope}
+                        onChange={setEditEditionMergeScope}
+                      />
                       <div>
                         <label className="block text-sm font-medium text-muted">默认可见性</label>
                         <select
@@ -1291,6 +1359,11 @@ export function LibraryManagementPanel() {
                             <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2.5 py-0.5 text-xs font-medium text-muted">
                               <Layers className="h-3 w-3 text-accent" />
                               作品深度 {lib.seriesDepth ?? 1}
+                            </span>
+                          )}
+                          {lib.editionMergeScope && lib.editionMergeScope !== "directory" && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2.5 py-0.5 text-xs font-medium text-muted">
+                              多格式：{lib.editionMergeScope === "library" ? "同库合并" : "全局合并"}
                             </span>
                           )}
                         </div>

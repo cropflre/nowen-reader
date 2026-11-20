@@ -23,6 +23,93 @@ func shelfKeysSQL(opts ComicListOptions) (string, []interface{}) {
 		}
 		vsWhere = fmt.Sprintf(` AND s."libraryId" IN (%s)`, strings.Join(placeholders, ","))
 	}
+
+	var esArgs []interface{}
+	edUserJoin := ""
+	edLastRead := `ec."lastReadAt"`
+	edLastPage := `ec."lastReadPage"`
+	edStatus := `ec."readingStatus"`
+	if opts.UserID != "" {
+		edUserJoin = `LEFT JOIN "UserComicState" eucs ON eucs."comicId" = ec."id" AND eucs."userId" = ?`
+		edLastRead = `eucs."lastReadAt"`
+		edLastPage = `COALESCE(eucs."lastReadPage", 0)`
+		edStatus = `COALESCE(eucs."readingStatus", '')`
+		esArgs = append(esArgs, opts.UserID)
+	}
+	var edConds []string
+	edConds = append(edConds, `evs."id" IS NULL`)
+	if opts.FilterLibraryIDs {
+		if len(opts.LibraryIDs) == 0 {
+			edConds = append(edConds, `1=0`)
+		} else if len(opts.LibraryIDs) <= seriesMembershipBatchSize {
+			ph := make([]string, len(opts.LibraryIDs))
+			for i, id := range opts.LibraryIDs {
+				ph[i] = "?"
+				esArgs = append(esArgs, id)
+			}
+			edConds = append(edConds, `ec."libraryId" IN (`+strings.Join(ph, ",")+`)`)
+		}
+	} else if len(opts.LibraryIDs) > 0 && len(opts.LibraryIDs) <= seriesMembershipBatchSize {
+		ph := make([]string, len(opts.LibraryIDs))
+		for i, id := range opts.LibraryIDs {
+			ph[i] = "?"
+			esArgs = append(esArgs, id)
+		}
+		edConds = append(edConds, `ec."libraryId" IN (`+strings.Join(ph, ",")+`)`)
+	}
+	if opts.DirectoryPath != "" {
+		if cleanDir, err := ValidateDirectoryRelativePath(opts.DirectoryPath); err != nil {
+			edConds = append(edConds, `1=0`)
+		} else if cleanDir != "" {
+			lower, upper := DirectoryPrefixRange(cleanDir)
+			edConds = append(edConds, `ec."libraryId" != '' AND ec."relativePath" != '' AND ec."relativePath" > ? AND ec."relativePath" < ?`)
+			esArgs = append(esArgs, lower, upper)
+		}
+	}
+	if opts.ContentType == "novel" || opts.ContentType == "comic" {
+		edConds = append(edConds, `ec."type" = ?`)
+		esArgs = append(esArgs, opts.ContentType)
+	}
+
+	editionCTE := fmt.Sprintf(`, edition_scoped AS (
+        SELECT bei."comicId" AS "id", bei."groupId",
+            ROW_NUMBER() OVER (
+                PARTITION BY bei."groupId"
+                ORDER BY
+                    CASE
+                        WHEN %[1]s IS NOT NULL AND %[1]s != '' THEN 0
+                        WHEN %[2]s > 0 OR %[3]s IN ('reading', 'finished') THEN 1
+                        ELSE 2
+                    END ASC,
+                    COALESCE(%[1]s, '') DESC,
+                    bei."formatPriority" ASC,
+                    bei."sortIndex" ASC,
+                    bei."comicId" ASC
+            ) AS "rn",
+            COUNT(*) OVER (PARTITION BY bei."groupId") AS "memberCount"
+        FROM "BookEditionItem" bei
+        JOIN "Comic" ec ON ec."id" = bei."comicId"
+        JOIN "Library" el ON el."id" = ec."libraryId" AND el."enabled" = 1
+        %[4]s
+        LEFT JOIN "ComicSeriesItem" esi ON esi."comicId" = ec."id" AND ec."type" = 'comic'
+        LEFT JOIN valid_series evs ON evs."id" = esi."seriesId" AND evs."libraryId" = ec."libraryId"
+        WHERE %[5]s
+    ), edition_winners AS (
+        SELECT "groupId", "id" AS "repComicId"
+        FROM edition_scoped
+        WHERE "memberCount" >= 2 AND "rn" = 1
+    ), valid_editions AS (
+        SELECT es."id", ew."repComicId"
+        FROM edition_scoped es
+        JOIN edition_winners ew ON ew."groupId" = es."groupId"
+    )`, edLastRead, edLastPage, edStatus, edUserJoin, strings.Join(edConds, " AND "))
+
+	allArgs := make([]interface{}, 0, len(vsArgs)+len(esArgs)+len(joinArgs)+len(args))
+	allArgs = append(allArgs, vsArgs...)
+	allArgs = append(allArgs, esArgs...)
+	allArgs = append(allArgs, joinArgs...)
+	allArgs = append(allArgs, args...)
+
 	return `WITH valid_series AS (
         SELECT s."id", s."libraryId"
         FROM "ComicSeries" s
@@ -31,16 +118,18 @@ func shelfKeysSQL(opts ComicListOptions) (string, []interface{}) {
         CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
         WHERE c."type" = 'comic'` + vsWhere + `
         GROUP BY s."id" HAVING COUNT(*) >= ` + effectiveSeriesMinMembersSQL("l") + `
-    ), matched AS (
-        SELECT c."id", vs."id" AS "seriesId"
+    )` + editionCTE + `, matched AS (
+        SELECT CASE WHEN vs."id" IS NULL AND ve."repComicId" IS NOT NULL THEN ve."repComicId" ELSE c."id" END AS "id",
+               vs."id" AS "seriesId"
         FROM "Comic" c ` + join + `
         LEFT JOIN "ComicSeriesItem" si ON si."comicId" = c."id" AND c."type" = 'comic'
         LEFT JOIN valid_series vs ON vs."id" = si."seriesId" AND vs."libraryId" = c."libraryId"
+        LEFT JOIN valid_editions ve ON ve."id" = c."id"
         ` + where + `
     ), shelf_keys AS (
         SELECT DISTINCT CASE WHEN "seriesId" IS NULL THEN "id" ELSE 'series-' || "seriesId" END AS "id", "seriesId"
         FROM matched
-    )`, append(append(vsArgs, joinArgs...), args...)
+    )`, allArgs
 }
 
 // getAllComicsSeriesPage queries only lightweight sort keys before LIMIT/OFFSET.
@@ -194,6 +283,12 @@ func getAllComicsSeriesPage(opts ComicListOptions) (*ComicListResult, error) {
 	for _, key := range keys {
 		if item, ok := items[key]; ok {
 			result.Comics = append(result.Comics, item)
+		}
+	}
+	_ = hydrateComicEditionSummaries(result.Comics, opts)
+	for i := range result.Comics {
+		if !strings.HasPrefix(result.Comics[i].ID, SeriesShelfIDPrefix) && result.Comics[i].EditionCount >= 2 && result.Comics[i].PreferredComicID == "" {
+			result.Comics[i].PreferredComicID = result.Comics[i].ID
 		}
 	}
 	return result, nil

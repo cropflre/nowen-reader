@@ -102,15 +102,16 @@ func (h *LibraryHandler) ListLibraries(c *gin.Context) {
 
 func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	var req struct {
-		Name          string              `json:"name" binding:"required"`
-		Type          string              `json:"type" binding:"required"`
-		SeriesDepth   optionalSeriesDepth `json:"seriesDepth"`
-		RootPath      string              `json:"rootPath"`
-		RootPaths     []string            `json:"rootPaths"`
-		Enabled       *bool               `json:"enabled"`
-		SortOrder     *int                `json:"sortOrder"`
-		DefaultAccess *string             `json:"defaultAccess"`
-		ScanEnabled   *bool               `json:"scanEnabled"`
+		Name              string              `json:"name" binding:"required"`
+		Type              string              `json:"type" binding:"required"`
+		SeriesDepth       optionalSeriesDepth `json:"seriesDepth"`
+		EditionMergeScope *string             `json:"editionMergeScope"`
+		RootPath          string              `json:"rootPath"`
+		RootPaths         []string            `json:"rootPaths"`
+		Enabled           *bool               `json:"enabled"`
+		SortOrder         *int                `json:"sortOrder"`
+		DefaultAccess     *string             `json:"defaultAccess"`
+		ScanEnabled       *bool               `json:"scanEnabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -135,6 +136,15 @@ func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	if req.Type == "novel" && seriesDepth != store.DefaultLibrarySeriesDepth {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Novel libraries only support seriesDepth = 1"})
 		return
+	}
+
+	editionMergeScope := store.EditionMergeScopeDirectory
+	if req.EditionMergeScope != nil {
+		if !store.IsValidEditionMergeScope(*req.EditionMergeScope) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "editionMergeScope must be directory, library, or global"})
+			return
+		}
+		editionMergeScope = strings.TrimSpace(*req.EditionMergeScope)
 	}
 
 	// 处理 rootPaths：优先使用 rootPaths，如果都没有则报错
@@ -204,15 +214,16 @@ func (h *LibraryHandler) CreateLibrary(c *gin.Context) {
 	}
 
 	lib := &model.Library{
-		Name:          req.Name,
-		Type:          req.Type,
-		SeriesDepth:   seriesDepth,
-		RootPath:      rootPath,
-		RootPaths:     allPaths,
-		Enabled:       enabled,
-		SortOrder:     sortOrder,
-		DefaultAccess: defaultAccess,
-		ScanEnabled:   scanEnabled,
+		Name:              req.Name,
+		Type:              req.Type,
+		SeriesDepth:       seriesDepth,
+		EditionMergeScope: editionMergeScope,
+		RootPath:          rootPath,
+		RootPaths:         allPaths,
+		Enabled:           enabled,
+		SortOrder:         sortOrder,
+		DefaultAccess:     defaultAccess,
+		ScanEnabled:       scanEnabled,
 	}
 
 	if err := store.CreateLibrary(lib); err != nil {
@@ -244,6 +255,7 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 		Name                   *string             `json:"name"`
 		Type                   *string             `json:"type"`
 		SeriesDepth            optionalSeriesDepth `json:"seriesDepth"`
+		EditionMergeScope      *string             `json:"editionMergeScope"`
 		ExpectedSourceRevision *string             `json:"expectedSourceRevision"`
 		RootPath               *string             `json:"rootPath"`
 		RootPaths              []string            `json:"rootPaths"`
@@ -262,6 +274,10 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": req.SeriesDepth.Err})
 		return
 	}
+	if req.EditionMergeScope != nil && !store.IsValidEditionMergeScope(*req.EditionMergeScope) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "editionMergeScope must be directory, library, or global"})
+		return
+	}
 
 	previousDepth := store.NormalizeSeriesDepth(existing.SeriesDepth)
 	previousType := existing.Type
@@ -278,6 +294,9 @@ func (h *LibraryHandler) UpdateLibrary(c *gin.Context) {
 	}
 	if req.SeriesDepth.Set {
 		existing.SeriesDepth = req.SeriesDepth.Value
+	}
+	if req.EditionMergeScope != nil {
+		existing.EditionMergeScope = strings.TrimSpace(*req.EditionMergeScope)
 	}
 	if existing.Type == "novel" && existing.SeriesDepth != store.DefaultLibrarySeriesDepth {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Novel libraries only support seriesDepth = 1"})

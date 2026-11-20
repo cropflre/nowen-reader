@@ -142,6 +142,14 @@ func (h *SeriesHandler) Get(c *gin.Context) {
 		return
 	}
 	detail.Series.CanManage, _ = store.UserCanManageLibrary(getUserID(c), detail.Series.LibraryID)
+	for i := range detail.Sections {
+		for j := range detail.Sections[i].Items {
+			enrichEditionLocations(c, detail.Sections[i].Items[j].Editions)
+		}
+	}
+	for i := range detail.Unsectioned {
+		enrichEditionLocations(c, detail.Unsectioned[i].Editions)
+	}
 	store.SortSeriesDetail(detail)
 	c.JSON(http.StatusOK, detail)
 }

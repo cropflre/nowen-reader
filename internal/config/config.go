@@ -168,7 +168,16 @@ type ScannerConfig struct {
 	//   "off"       完全关闭，文件类型严格按所在目录决定（漫画目录=comic，小说目录=novel）
 	//   "comics"    仅对位于"漫画目录"中的电子书做 image-heavy 检测；放在小说目录的文件锁定为 novel（默认，避免图文教材被误识别为漫画）
 	//   "all"       对所有电子书都做 image-heavy 检测（旧版行为，可能把图文混排教材误识别为漫画）
-	EbookTypeAutoDetect string `json:"ebookTypeAutoDetect,omitempty"`
+	EbookTypeAutoDetect  string `json:"ebookTypeAutoDetect,omitempty"`
+	AutoGroupNovelsByDir *bool  `json:"autoGroupNovelsByDir,omitempty"` // 是否按目录自动将小说归为合集（几十万册分仓建议关闭）
+}
+
+// ShouldAutoGroupNovelsByDir 返回扫描后是否自动按目录归并小说合集（默认 true）。
+func (c *ScannerConfig) ShouldAutoGroupNovelsByDir() bool {
+	if c == nil || c.AutoGroupNovelsByDir == nil {
+		return true
+	}
+	return *c.AutoGroupNovelsByDir
 }
 
 // EbookAutoDetectMode 返回电子书内容类型自动识别策略，缺省返回 "comics"。

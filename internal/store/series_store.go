@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/nowen-reader/nowen-reader/internal/model"
 )
 
 const (
@@ -113,10 +115,14 @@ type SeriesSummary struct {
 }
 
 type SeriesItemDetail struct {
-	Comic        ComicListItem `json:"comic"`
-	SectionID    string        `json:"sectionId,omitempty"`
-	SortIndex    int           `json:"sortIndex"`
-	DisplayLabel string        `json:"displayLabel"`
+	Comic        ComicListItem            `json:"comic"`
+	SectionID    string                   `json:"sectionId,omitempty"`
+	SortIndex    int                      `json:"sortIndex"`
+	DisplayLabel string                   `json:"displayLabel"`
+	Format       string                   `json:"format,omitempty"`
+	Formats      []string                 `json:"formats,omitempty"`
+	EditionCount int                      `json:"editionCount,omitempty"`
+	Editions     []model.ComicEditionInfo `json:"editions,omitempty"`
 }
 
 type SeriesSectionDetail struct {
@@ -897,6 +903,7 @@ func GetSeriesDetail(id, userID string) (*SeriesDetail, error) {
 		return nil, err
 	}
 	var unsectioned []SeriesItemDetail
+	var allComicIDs []string
 	for itemRows.Next() {
 		var comicID, sectionID, label string
 		var sortIndex int
@@ -908,7 +915,17 @@ func GetSeriesDetail(id, userID string) (*SeriesDetail, error) {
 		if err != nil || comic == nil {
 			continue
 		}
-		item := SeriesItemDetail{Comic: *comic, SectionID: sectionID, SortIndex: sortIndex, DisplayLabel: label}
+		allComicIDs = append(allComicIDs, comicID)
+		item := SeriesItemDetail{
+			Comic:        *comic,
+			SectionID:    sectionID,
+			SortIndex:    sortIndex,
+			DisplayLabel: label,
+			Format:       strings.ToUpper(comic.Format),
+		}
+		if item.Format == "" {
+			item.Format = strings.ToUpper(ExtractFileFormat(comic.Filename))
+		}
 		if idx, ok := sectionIndex[sectionID]; ok {
 			sections[idx].Items = append(sections[idx].Items, item)
 		} else {
@@ -916,6 +933,124 @@ func GetSeriesDetail(id, userID string) (*SeriesDetail, error) {
 		}
 	}
 	itemRows.Close()
+
+	if len(allComicIDs) > 0 {
+		var accessibleLibs []string
+		filterLibs := false
+		if userID != "" {
+			if libs, lErr := GetUserAccessibleLibraryIDs(userID); lErr == nil {
+				accessibleLibs = libs
+			} else {
+				accessibleLibs = []string{summary.LibraryID}
+			}
+			filterLibs = true
+		}
+		editionSummaries, eErr := GetEditionGroupsForComicIDs(allComicIDs, userID, accessibleLibs, filterLibs)
+		if eErr == nil && len(editionSummaries) > 0 {
+			collapseItems := func(items []SeriesItemDetail) []SeriesItemDetail {
+				if len(items) == 0 {
+					return items
+				}
+				groupFirstIdx := make(map[string]int)
+				groupedItems := make(map[string][]SeriesItemDetail)
+				out := make([]SeriesItemDetail, 0, len(items))
+
+				for _, item := range items {
+					es, ok := editionSummaries[item.Comic.ID]
+					if !ok || es.GroupID == "" {
+						out = append(out, item)
+						continue
+					}
+					if _, seen := groupFirstIdx[es.GroupID]; seen {
+						groupedItems[es.GroupID] = append(groupedItems[es.GroupID], item)
+						continue
+					}
+					groupFirstIdx[es.GroupID] = len(out)
+					groupedItems[es.GroupID] = []SeriesItemDetail{item}
+					out = append(out, item)
+				}
+
+				for gid, members := range groupedItems {
+					idx := groupFirstIdx[gid]
+					es := editionSummaries[members[0].Comic.ID]
+					rep := members[0]
+					for _, m := range members {
+						if m.Comic.ID == es.PreferredComicID {
+							rep = m
+							break
+						}
+					}
+					rep.SortIndex = members[0].SortIndex
+					editions := make([]model.ComicEditionInfo, 0, len(es.Members))
+					for _, row := range es.Members {
+						fmtUpper := strings.ToUpper(row.Format)
+						editions = append(editions, model.ComicEditionInfo{
+							ComicID:         row.ComicID,
+							Title:           row.Title,
+							Format:          fmtUpper,
+							EditionLabel:    row.EditionLabel,
+							IsCurrent:       row.ComicID == rep.Comic.ID,
+							IsFormatPrimary: row.IsFormatPrimary,
+							IsPreferred:     row.IsPreferred,
+							DetectionSource: row.DetectionSource,
+							FileSize:        row.FileSize,
+							PageCount:       row.PageCount,
+							LastReadPage:    row.LastReadPage,
+							LastReadAt:      row.LastReadAt,
+							ReadingStatus:   row.ReadingStatus,
+							TotalReadTime:   row.TotalReadTime,
+							ReaderURL:       "/reader/" + row.ComicID,
+							FileLocation: &model.ComicFileLocation{
+								LibraryID:    row.LibraryID,
+								LibraryName:  row.LibraryName,
+								Filename:     row.Filename,
+								RelativePath: row.RelativePath,
+								Format:       fmtUpper,
+								EditionLabel: row.EditionLabel,
+							},
+						})
+					}
+					rep.Formats = es.Formats
+					rep.EditionCount = es.EditionCount
+					rep.Editions = editions
+					rep.Comic.EditionGroupID = es.GroupID
+					rep.Comic.Formats = es.Formats
+					rep.Comic.EditionCount = es.EditionCount
+					rep.Comic.PreferredComicID = es.PreferredComicID
+					out[idx] = rep
+				}
+				return out
+			}
+
+			for i := range sections {
+				sections[i].Items = collapseItems(sections[i].Items)
+			}
+			unsectioned = collapseItems(unsectioned)
+
+			logicalTotal := len(unsectioned)
+			completed := 0
+			countCompleted := func(item SeriesItemDetail) bool {
+				c := item.Comic
+				return c.ReadingStatus == "finished" || (c.PageCount > 0 && c.LastReadAt != nil && c.LastReadPage >= c.PageCount-1)
+			}
+			for _, it := range unsectioned {
+				if countCompleted(it) {
+					completed++
+				}
+			}
+			for _, sec := range sections {
+				logicalTotal += len(sec.Items)
+				for _, it := range sec.Items {
+					if countCompleted(it) {
+						completed++
+					}
+				}
+			}
+			summary.ItemCount = logicalTotal
+			summary.CompletedItemCount = completed
+		}
+	}
+
 	return &SeriesDetail{Series: *summary, Sections: sections, Unsectioned: unsectioned}, nil
 }
 

@@ -34,11 +34,16 @@ import { calculateStoredReadingProgress, isStoredReadingFinished } from "@/lib/p
 import { formatDuration, formatFileSize, isNovelFile } from "@/lib/comic-utils";
 import { getTagColorStyle } from "@/lib/tag-color";
 
-function readerURL(item: SeriesItem): string {
-  if (item.comic.type === "novel" || isNovelFile(item.comic.filename || "")) {
-    return `/novel/${item.comic.id}`;
+function readerURLFor(comicId: string, filename?: string, type?: string): string {
+  if (type === "comic") return `/reader/${comicId}`;
+  if (type === "novel" || isNovelFile(filename || "")) {
+    return `/novel/${comicId}`;
   }
-  return `/reader/${item.comic.id}`;
+  return `/reader/${comicId}`;
+}
+
+function readerURL(item: SeriesItem): string {
+  return readerURLFor(item.comic.id, item.comic.filename, item.comic.type);
 }
 
 function itemProgress(item: SeriesItem): number {
@@ -362,6 +367,10 @@ export default function SeriesDetailPage() {
               const progress = itemProgress(item);
               const finished = isFinished(item);
               const draft = draftItems[item.comic.id] || { sectionId: item.sectionId || "", sortIndex: item.sortIndex };
+              const editions = item.editions && item.editions.length > 1 ? item.editions : [];
+              const formatSummary = item.formats && item.formats.length > 1
+                ? `${item.formats[0]} +${item.formats.length - 1}`
+                : (item.format || "");
               if (viewMode === "grid") {
                 return (
                   <div key={item.comic.id} className="overflow-hidden rounded-2xl border border-border/50 bg-card/65">
@@ -369,10 +378,33 @@ export default function SeriesDetailPage() {
                       <div className="relative aspect-[5/7] overflow-hidden bg-background">
                         <img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                         <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-[10px] text-white">{finished ? "已读" : progress > 0 ? `${Math.round(progress)}%` : "未读"}</span>
+                        {formatSummary && (
+                          <span className="absolute right-2 top-2 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                            {formatSummary}
+                          </span>
+                        )}
                         <div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div>
                       </div>
                       <div className="p-3"><p className="line-clamp-2 text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p><p className="mt-1 text-[11px] text-muted">{item.comic.pageCount || 0} 页</p></div>
                     </Link>
+                    {editions.length > 1 && (
+                      <div className="flex flex-wrap gap-1 border-t border-border/40 px-2.5 py-2">
+                        {editions.map((ed) => (
+                          <Link
+                            key={ed.comicId}
+                            href={readerURLFor(ed.comicId, ed.fileLocation?.filename, item.comic.type)}
+                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                              ed.isPreferred || ed.isCurrent
+                                ? "bg-accent/15 text-accent ring-1 ring-accent/30"
+                                : "bg-background/80 text-muted hover:text-foreground"
+                            }`}
+                            title={ed.editionLabel ? `${ed.format} (${ed.editionLabel})` : ed.format}
+                          >
+                            {ed.format}{ed.editionLabel ? ` · ${ed.editionLabel}` : ""}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
                     {manageStructure && <div className="border-t border-border/50 p-2"><select value={draft.sectionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDraftItems((previous) => ({ ...previous, [item.comic.id]: { ...draft, sectionId: event.target.value } }))} className="h-8 w-full rounded-lg bg-background px-2 text-xs"><option value="">未分季</option>{detail.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select></div>}
                   </div>
                 );
@@ -380,8 +412,31 @@ export default function SeriesDetailPage() {
               return (
                 <div key={item.comic.id} className="flex items-center gap-3 rounded-2xl border border-border/50 bg-card/60 p-2.5 sm:p-3">
                   <Link href={readerURL(item)} className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-background"><img src={item.comic.coverUrl} alt={item.comic.title} className="h-full w-full object-cover" /><div className="absolute inset-x-0 bottom-0 h-1 bg-black/35"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></Link>
-                  <Link href={readerURL(item)} className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p><p className="mt-1 text-xs text-muted">{item.comic.pageCount || 0} 页 · {formatFileSize(item.comic.fileSize || 0)} · {finished ? "已读" : progress > 0 ? `阅读至 ${Math.round(progress)}%` : "未读"}</p></Link>
-                  {manageStructure ? <div className="flex items-center gap-1"><select value={draft.sectionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDraftItems((previous) => ({ ...previous, [item.comic.id]: { ...draft, sectionId: event.target.value } }))} className="h-8 max-w-32 rounded-lg bg-background px-2 text-xs"><option value="">未分季</option>{detail.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><button onClick={() => moveDraft(item.comic.id, -1)} disabled={index === 0} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button><button onClick={() => moveDraft(item.comic.id, 1)} disabled={index === visibleItems.length - 1} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button></div> : <Link href={readerURL(item)} className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">阅读</Link>}
+                  <div className="min-w-0 flex-1">
+                    <Link href={readerURL(item)} className="block">
+                      <p className="truncate text-sm font-medium text-foreground">{item.displayLabel || item.comic.title}</p>
+                      <p className="mt-1 text-xs text-muted">{item.comic.pageCount || 0} 页 · {formatFileSize(item.comic.fileSize || 0)} · {finished ? "已读" : progress > 0 ? `阅读至 ${Math.round(progress)}%` : "未读"}</p>
+                    </Link>
+                    {editions.length > 1 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {editions.map((ed) => (
+                          <Link
+                            key={ed.comicId}
+                            href={readerURLFor(ed.comicId, ed.fileLocation?.filename, item.comic.type)}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                              ed.isPreferred || ed.isCurrent
+                                ? "bg-accent/15 text-accent ring-1 ring-accent/30"
+                                : "bg-background/80 text-muted hover:bg-card hover:text-foreground"
+                            }`}
+                          >
+                            <span>{ed.format}</span>
+                            {ed.editionLabel && <span className="opacity-75">· {ed.editionLabel}</span>}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {manageStructure ? <div className="flex items-center gap-1"><select value={draft.sectionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDraftItems((previous) => ({ ...previous, [item.comic.id]: { ...draft, sectionId: event.target.value } }))} className="h-8 max-w-32 rounded-lg bg-background px-2 text-xs"><option value="">未分季</option>{detail.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><button onClick={() => moveDraft(item.comic.id, -1)} disabled={index === 0} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button><button onClick={() => moveDraft(item.comic.id, 1)} disabled={index === visibleItems.length - 1} className="rounded-md p-1.5 text-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button></div> : <div className="flex items-center gap-1.5"><Link href={`/comic/${item.comic.id}`} className="rounded-xl border border-border/50 px-2.5 py-2 text-xs text-muted hover:text-foreground">详情</Link><Link href={readerURL(item)} className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">阅读</Link></div>}
                 </div>
               );
             })}

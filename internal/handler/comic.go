@@ -3,8 +3,10 @@ package handler
 import (
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -106,6 +108,7 @@ func (h *ComicHandler) GetComic(c *gin.Context) {
 	if err := checkComicAccess(c, id); err != nil {
 		return
 	}
+	_ = service.EnsureComicSeriesFresh()
 	uid := getUserID(c)
 	var comic *store.ComicListItem
 	var err error
@@ -123,9 +126,23 @@ func (h *ComicHandler) GetComic(c *gin.Context) {
 		return
 	}
 
-	if uid != "" {
-		canManage, _ := store.UserCanManageLibrary(uid, comic.LibraryID)
-		comic.CanManage = canManage
+	canManage := canManageComicLibrary(c, comic.LibraryID)
+	canDownload := canDownloadFromLibrary(c, comic.LibraryID)
+	comic.CanManage = canManage
+	comic.CanDownload = canDownload
+	comic.FileLocation = service.BuildComicFileLocation(
+		comic.ID, comic.LibraryID, "", comic.Filename, comic.RelativePath, comic.EditionLabel,
+		canDownload, canManage,
+	)
+
+	accessibleIDs, filterLibs := resolveUserLibraryScope(c)
+	if groupID, formats, preferredID, rows, edErr := store.GetComicEditionsForUser(id, uid, accessibleIDs, filterLibs); edErr == nil && len(rows) > 0 {
+		editions := buildComicEditionInfos(c, comic.ID, rows)
+		comic.EditionGroupID = groupID
+		comic.Formats = formats
+		comic.PreferredComicID = preferredID
+		comic.EditionCount = len(editions)
+		comic.Editions = editions
 	}
 
 	c.JSON(http.StatusOK, comic)
@@ -834,4 +851,164 @@ func (h *ComicHandler) SetReadingStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "readingStatus": body.Status})
+}
+
+// ============================================================
+// GET /api/comics/:id/download — Download original comic/ebook file
+// ============================================================
+
+func (h *ComicHandler) DownloadComic(c *gin.Context) {
+	id := c.Param("id")
+	if err := checkComicAccess(c, id); err != nil {
+		return
+	}
+	if err := checkComicDownloadAccess(c, id); err != nil {
+		return
+	}
+
+	resolved, err := service.GlobalFileResolver.ResolveContentPath(id)
+	if err != nil || resolved.AbsolutePath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+	if resolved.IsFolder {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Image folder comics cannot be downloaded as a single file"})
+		return
+	}
+
+	file, err := os.Open(resolved.AbsolutePath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	contentType, ok := service.OPDSAcquisitionMIMEForFilename(resolved.RelativePath)
+	if !ok || contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	baseName := filepath.Base(resolved.AbsolutePath)
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": baseName})
+	if disposition == "" {
+		disposition = fmt.Sprintf(`attachment; filename="%s"`, baseName)
+	}
+	c.Header("Content-Disposition", disposition)
+	c.Header("Content-Type", contentType)
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("X-Content-Type-Options", "nosniff")
+	http.ServeContent(c.Writer, c.Request, baseName, info.ModTime(), file)
+}
+
+// ============================================================
+// POST /api/comics/:id/editions/bind — Manually bind multiple comics into one edition group
+// ============================================================
+
+func (h *ComicHandler) BindEditions(c *gin.Context) {
+	id := c.Param("id")
+	var body struct {
+		ComicIDs []string `json:"comicIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	raw := append([]string{id}, body.ComicIDs...)
+	seen := make(map[string]struct{}, len(raw))
+	ids := make([]string, 0, len(raw))
+	for _, cid := range raw {
+		cid = strings.TrimSpace(cid)
+		if cid == "" {
+			continue
+		}
+		if _, ok := seen[cid]; ok {
+			continue
+		}
+		seen[cid] = struct{}{}
+		ids = append(ids, cid)
+	}
+	if len(ids) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "At least two comicIds are required to bind editions"})
+		return
+	}
+
+	for _, cid := range ids {
+		target, err := store.GetComicByID(cid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify comic"})
+			return
+		}
+		if target == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found: " + cid})
+			return
+		}
+		if !canManageComicLibrary(c, target.LibraryID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You do not have manage access to one of the selected comics"})
+			return
+		}
+	}
+
+	groupID, err := store.BindBookEditions(ids)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "editionGroupId": groupID})
+}
+
+// ============================================================
+// POST /api/comics/:id/editions/split — Detach comic(s) from edition group
+// ============================================================
+
+func (h *ComicHandler) SplitEditions(c *gin.Context) {
+	id := c.Param("id")
+	var body struct {
+		ComicIDs []string `json:"comicIds"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	raw := body.ComicIDs
+	if len(raw) == 0 {
+		raw = []string{id}
+	}
+	seen := make(map[string]struct{}, len(raw))
+	ids := make([]string, 0, len(raw))
+	for _, cid := range raw {
+		cid = strings.TrimSpace(cid)
+		if cid == "" {
+			continue
+		}
+		if _, ok := seen[cid]; ok {
+			continue
+		}
+		seen[cid] = struct{}{}
+		ids = append(ids, cid)
+	}
+	for _, cid := range ids {
+		target, err := store.GetComicByID(cid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify comic"})
+			return
+		}
+		if target == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comic not found: " + cid})
+			return
+		}
+		if !canManageComicLibrary(c, target.LibraryID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You do not have manage access to one of the selected comics"})
+			return
+		}
+	}
+
+	if err := store.SplitBookEdition(ids); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

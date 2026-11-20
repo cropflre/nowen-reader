@@ -1172,16 +1172,18 @@ func SyncComicsToDatabase() {
 	}
 	updateDirMtimes()
 
-	// P3: 扫描新增文件后，自动按文件夹分组（仅在有新增时执行）
+	// P3: 扫描新增文件后，自动按文件夹分组（仅在有新增且未关闭时执行）
 	if added > 0 {
-		go func() {
-			created, err := store.AutoGroupByDirectory()
-			if err != nil {
-				log.Printf("[auto-group] 自动分组失败: %v", err)
-			} else if created > 0 {
-				log.Printf("[auto-group] 自动创建了 %d 个系列", created)
-			}
-		}()
+		if config.GetSiteConfig().ScannerConfig.ShouldAutoGroupNovelsByDir() {
+			go func() {
+				created, err := store.AutoGroupByDirectory()
+				if err != nil {
+					log.Printf("[auto-group] 自动分组失败: %v", err)
+				} else if created > 0 {
+					log.Printf("[auto-group] 自动创建了 %d 个系列", created)
+				}
+			}()
+		}
 
 		// 扫描期统一规则：当用户在 site-config.scanRules 启用了规则引擎，
 		// 在新增文件后自动执行（AI 智能识别 + 虚拟归类）。默认关闭，故零侵入。
@@ -1234,14 +1236,16 @@ func ForceSyncComicsToDatabase() SyncResult {
 
 	// P3: 扫描新增文件后，自动按文件夹分组
 	if added > 0 {
-		go func() {
-			created, err := store.AutoGroupByDirectory()
-			if err != nil {
-				log.Printf("[auto-group] 自动分组失败: %v", err)
-			} else if created > 0 {
-				log.Printf("[auto-group] 自动创建了 %d 个系列", created)
-			}
-		}()
+		if config.GetSiteConfig().ScannerConfig.ShouldAutoGroupNovelsByDir() {
+			go func() {
+				created, err := store.AutoGroupByDirectory()
+				if err != nil {
+					log.Printf("[auto-group] 自动分组失败: %v", err)
+				} else if created > 0 {
+					log.Printf("[auto-group] 自动创建了 %d 个系列", created)
+				}
+			}()
+		}
 		RunScanRulesForNewlyAdded()
 	}
 

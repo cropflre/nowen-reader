@@ -126,8 +126,11 @@ location /reader/ {
 |:---|:---|
 | `rootPath` / `rootPaths` | 书库根目录（支持多根目录与目录浏览选择） |
 | `seriesDepth` | 漫画书库的作品目录层级（`1..8`，默认 `1`；小说书库固定为 `1`） |
+| `editionMergeScope` | 多格式自动关联范围：`directory`（默认，仅同目录）/ `library`（同库跨目录）/ `global`（跨库同类型合并） |
 | `defaultAccess` | 访问控制：`public`（所有登录用户可访问）/ `private`（仅授权用户可访问） |
 | `scanEnabled` | 是否参与自动扫描 |
+
+> 说明：站点配置 `scannerConfig.autoGroupNovelsByDir`（默认 `false`）已取消对新建按目录散乱建合集的行为，改为通过 `BookEditionGroup` 与 `editionMergeScope` 聚合多格式电子书；若需兼容旧行为，可在站点设置中手动开启 `autoGroupNovelsByDir`。
 
 管理员还可以为每个用户或用户组分配书库访问权限，实现**多用户资源隔离**。
 

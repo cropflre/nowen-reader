@@ -10,11 +10,14 @@ const { notifyLibraryAccessChanged } = comicListHook;
 // 类型定义
 // ============================================================
 
+export type EditionMergeScope = "directory" | "library" | "global";
+
 export interface Library {
   id: string;
   name: string;
   type: "comic" | "novel" | "mixed";
   seriesDepth?: number;
+  editionMergeScope?: EditionMergeScope;
   rootPath: string;
   rootPaths?: string[]; // 多目录支持，包含主路径和额外路径
   enabled: boolean;
@@ -239,6 +242,7 @@ export async function createLibrary(library: {
   name: string;
   type: "comic" | "novel" | "mixed";
   seriesDepth?: number;
+  editionMergeScope?: EditionMergeScope;
   rootPath?: string;
   rootPaths?: string[];
   enabled?: boolean;
@@ -263,6 +267,7 @@ export async function updateLibrary(
     name: string;
     type: "comic" | "novel" | "mixed";
     seriesDepth: number;
+    editionMergeScope: EditionMergeScope;
     expectedSourceRevision: string;
     rootPath: string;
     rootPaths?: string[];

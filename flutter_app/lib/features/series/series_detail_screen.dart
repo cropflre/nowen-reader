@@ -115,9 +115,23 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
       if (comicRaw is! Map) continue;
       final comic = Comic.fromJson(Map<String, dynamic>.from(comicRaw));
       if (comic.id.isEmpty) continue;
+      final formats = (map['formats'] as List?)
+              ?.map((e) => e.toString().toUpperCase())
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [];
+      final editions = (map['editions'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  ComicEditionInfo.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [];
       result.add(_SeriesItemView(
         comic: comic,
         displayLabel: map['displayLabel']?.toString() ?? '',
+        formats: formats,
+        editions: editions,
+      ));
       ));
     }
     return result;
@@ -511,6 +525,27 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                     fit: BoxFit.cover,
                     errorWidget: _placeholder(cs),
                   ),
+                  if (item.formats.length > 1)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.68),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${item.formats.first} +${item.formats.length - 1}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   if (comic.progress > 0)
                     Positioned(
                       left: 0,
@@ -596,6 +631,27 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                         color: cs.onSurfaceVariant,
                       ),
                     ),
+                    if (item.editions.length > 1) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: item.editions.map((ed) {
+                          return ActionChip(
+                            label: Text(
+                              ed.editionLabel.isNotEmpty
+                                  ? '${ed.format} · ${ed.editionLabel}'
+                                  : ed.format,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            onPressed: () =>
+                                context.push(ed.readerRoute(comic.comicType)),
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -702,10 +758,14 @@ class _SeriesSectionView {
 class _SeriesItemView {
   final Comic comic;
   final String displayLabel;
+  final List<String> formats;
+  final List<ComicEditionInfo> editions;
 
   const _SeriesItemView({
     required this.comic,
     required this.displayLabel,
+    this.formats = const [],
+    this.editions = const [],
   });
 
   String get title =>

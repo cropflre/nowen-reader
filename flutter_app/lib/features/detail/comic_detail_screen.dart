@@ -425,6 +425,15 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 ),
                 const SizedBox(height: 12),
 
+                // ─── 格式版本与文件目录 ───
+                if (comic.editions.isNotEmpty || comic.fileLocation != null) ...[
+                  SlideAndFade(
+                    delay: const Duration(milliseconds: 480),
+                    child: _buildEditionsAndLocationCard(context, comic, cs),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
                 // ─── 元数据刮削入口 ───
                 SlideAndFade(
                   delay: const Duration(milliseconds: 500),
@@ -557,6 +566,203 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               ]),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// 格式版本与文件目录信息卡片
+  Widget _buildEditionsAndLocationCard(
+      BuildContext context, Comic comic, ColorScheme cs) {
+    final editions = comic.editions.isNotEmpty
+        ? comic.editions
+        : [
+            ComicEditionInfo(
+              comicId: comic.id,
+              title: comic.title,
+              format: comic.formatBadge,
+              editionLabel: comic.editionLabel,
+              isCurrent: true,
+              isPreferred: true,
+              fileSize: comic.fileSize,
+              pageCount: comic.pageCount,
+              lastReadPage: comic.lastReadPage,
+              lastReadAt: comic.lastReadAt,
+              readingStatus: comic.readingStatus,
+              totalReadTime: comic.totalReadTime,
+              fileLocation: comic.fileLocation,
+            ),
+          ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.layers_outlined, size: 17, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                editions.length > 1 ? '格式版本与文件目录 (${editions.length})' : '文件目录位置',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant.withOpacity(0.85),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < editions.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _buildEditionTile(context, comic, editions[i], editions.length > 1, cs),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditionTile(
+    BuildContext context,
+    Comic comic,
+    ComicEditionInfo ed,
+    bool multiEdition,
+    ColorScheme cs,
+  ) {
+    final loc = ed.fileLocation;
+    final sizeMB = ed.fileSize > 0
+        ? '${(ed.fileSize / 1024 / 1024).toStringAsFixed(1)} MB'
+        : '';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: ed.isCurrent && multiEdition
+            ? cs.primaryContainer.withOpacity(0.22)
+            : cs.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: ed.isCurrent && multiEdition
+              ? cs.primary.withOpacity(0.4)
+              : cs.outlineVariant.withOpacity(0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  ed.format.isNotEmpty ? ed.format : 'BOOK',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: cs.primary,
+                  ),
+                ),
+              ),
+              if (ed.editionLabel.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  ed.editionLabel,
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ],
+              if (multiEdition && ed.isPreferred) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    ed.lastReadAt != null && ed.lastReadAt!.isNotEmpty
+                        ? '最近阅读'
+                        : '推荐',
+                    style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.teal),
+                  ),
+                ),
+              ],
+              const Spacer(),
+              if (sizeMB.isNotEmpty)
+                Text(
+                  sizeMB,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant.withOpacity(0.8)),
+                ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                style: FilledButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: const Size(0, 28),
+                ),
+                onPressed: () =>
+                    context.push(ed.readerRoute(comic.comicType)),
+                child: const Text('阅读', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+          if (loc != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${loc.libraryName.isNotEmpty ? loc.libraryName : loc.libraryId}'
+              '${loc.relativeDir.isNotEmpty ? ' / ${loc.relativeDir}' : ' / '}'
+              '${loc.baseName.isNotEmpty ? ' · ${loc.baseName}' : ''}',
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurfaceVariant.withOpacity(0.85),
+              ),
+            ),
+            if (loc.realDirPath.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '物理目录: ${loc.realDirPath}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: cs.onSurfaceVariant.withOpacity(0.75),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '复制物理目录',
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: loc.realDirPath));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('已复制物理目录路径'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ],
         ],
       ),
     );

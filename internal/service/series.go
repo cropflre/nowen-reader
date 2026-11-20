@@ -81,6 +81,9 @@ func rebuildAllComicSeriesLocked() error {
 			return fmt.Errorf("rebuild series for library %s: %w", library.ID, err)
 		}
 	}
+	if err := store.RebuildBookEditionGroups(); err != nil {
+		return fmt.Errorf("rebuild book edition groups: %w", err)
+	}
 	return nil
 }
 
@@ -89,6 +92,9 @@ func RebuildComicSeriesForLibrary(libraryID string) error {
 	defer seriesRefreshMu.Unlock()
 	if err := rebuildComicSeriesForLibraryLocked(libraryID); err != nil {
 		return err
+	}
+	if err := store.RebuildBookEditionGroups(); err != nil {
+		return fmt.Errorf("rebuild book edition groups: %w", err)
 	}
 	return nil
 }
@@ -165,6 +171,28 @@ func DetectComicSeriesWithDepth(libraryID string, seriesDepth int, items []store
 		members := groups[root]
 		if len(members) < minMembers {
 			continue
+		}
+		if minMembers > 1 {
+			// Single-book multi-format folders (e.g. "铳梦/铳梦.cbz" + "铳梦/铳梦.pdf")
+			// represent 1 logical book across formats rather than a multi-chapter series.
+			distinctLogicalItems := make(map[string]struct{}, len(members))
+			for _, member := range members {
+				cleanInner := strings.TrimSuffix(member.innerPath, "/")
+				var stem string
+				if strings.HasSuffix(member.innerPath, "/") {
+					stem = strings.ToLower(path.Base(cleanInner))
+				} else {
+					stem = store.ExtractCleanEditionStem(cleanInner)
+				}
+				if stem == "" {
+					stem = strings.ToLower(cleanInner)
+				}
+				parentDir := strings.ToLower(path.Dir(cleanInner))
+				distinctLogicalItems[parentDir+"\x00"+stem] = struct{}{}
+			}
+			if len(distinctLogicalItems) < minMembers {
+				continue
+			}
 		}
 
 		sort.SliceStable(members, func(i, j int) bool { return naturalLess(members[i].innerPath, members[j].innerPath) })

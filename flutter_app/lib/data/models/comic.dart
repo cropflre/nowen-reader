@@ -11,6 +11,144 @@ double? _asDouble(dynamic value) {
 
 const String seriesShelfIdPrefix = 'series-';
 
+String _extractFormatFromFilename(String filename) {
+  final cleaned = filename.replaceAll('\\', '/').trim();
+  if (cleaned.isEmpty) return '';
+  if (cleaned.endsWith('/')) return 'FOLDER';
+  final dot = cleaned.lastIndexOf('.');
+  if (dot < 0 || dot == cleaned.length - 1) return '';
+  return cleaned.substring(dot + 1).toUpperCase();
+}
+
+/// 单个格式版本对应的书库相对目录与（管理员可见的）物理路径
+class ComicFileLocation {
+  final String libraryId;
+  final String libraryName;
+  final String filename;
+  final String relativePath;
+  final String relativeDir;
+  final String baseName;
+  final String format;
+  final String editionLabel;
+  final bool canDownload;
+  final bool canManage;
+  final String rootPath;
+  final String realDirPath;
+  final String absolutePath;
+  final bool? existsOnDisk;
+
+  const ComicFileLocation({
+    this.libraryId = '',
+    this.libraryName = '',
+    this.filename = '',
+    this.relativePath = '',
+    this.relativeDir = '',
+    this.baseName = '',
+    this.format = '',
+    this.editionLabel = '',
+    this.canDownload = false,
+    this.canManage = false,
+    this.rootPath = '',
+    this.realDirPath = '',
+    this.absolutePath = '',
+    this.existsOnDisk,
+  });
+
+  factory ComicFileLocation.fromJson(Map<String, dynamic> json) {
+    return ComicFileLocation(
+      libraryId: json['libraryId']?.toString() ?? '',
+      libraryName: json['libraryName']?.toString() ?? '',
+      filename: json['filename']?.toString() ?? '',
+      relativePath: json['relativePath']?.toString() ?? '',
+      relativeDir: json['relativeDir']?.toString() ?? '',
+      baseName: json['baseName']?.toString() ?? '',
+      format: (json['format']?.toString() ?? '').toUpperCase(),
+      editionLabel: json['editionLabel']?.toString() ?? '',
+      canDownload: json['canDownload'] == true,
+      canManage: json['canManage'] == true,
+      rootPath: json['rootPath']?.toString() ?? '',
+      realDirPath: json['realDirPath']?.toString() ?? '',
+      absolutePath: json['absolutePath']?.toString() ?? '',
+      existsOnDisk:
+          json['existsOnDisk'] is bool ? json['existsOnDisk'] as bool : null,
+    );
+  }
+}
+
+/// 同一本书下的单个格式/版本条目
+class ComicEditionInfo {
+  final String comicId;
+  final String title;
+  final String format;
+  final String editionLabel;
+  final bool isCurrent;
+  final bool isFormatPrimary;
+  final bool isPreferred;
+  final String detectionSource;
+  final int fileSize;
+  final int pageCount;
+  final int lastReadPage;
+  final String? lastReadAt;
+  final String readingStatus;
+  final int totalReadTime;
+  final String readerUrl;
+  final String downloadUrl;
+  final ComicFileLocation? fileLocation;
+
+  const ComicEditionInfo({
+    required this.comicId,
+    this.title = '',
+    this.format = '',
+    this.editionLabel = '',
+    this.isCurrent = false,
+    this.isFormatPrimary = false,
+    this.isPreferred = false,
+    this.detectionSource = '',
+    this.fileSize = 0,
+    this.pageCount = 0,
+    this.lastReadPage = 0,
+    this.lastReadAt,
+    this.readingStatus = '',
+    this.totalReadTime = 0,
+    this.readerUrl = '',
+    this.downloadUrl = '',
+    this.fileLocation,
+  });
+
+  factory ComicEditionInfo.fromJson(Map<String, dynamic> json) {
+    final locRaw = json['fileLocation'];
+    return ComicEditionInfo(
+      comicId: json['comicId']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      format: (json['format']?.toString() ?? '').toUpperCase(),
+      editionLabel: json['editionLabel']?.toString() ?? '',
+      isCurrent: json['isCurrent'] == true,
+      isFormatPrimary: json['isFormatPrimary'] == true,
+      isPreferred: json['isPreferred'] == true,
+      detectionSource: json['detectionSource']?.toString() ?? '',
+      fileSize: _asInt(json['fileSize']),
+      pageCount: _asInt(json['pageCount']),
+      lastReadPage: _asInt(json['lastReadPage']),
+      lastReadAt: json['lastReadAt']?.toString(),
+      readingStatus: json['readingStatus']?.toString() ?? '',
+      totalReadTime: _asInt(json['totalReadTime']),
+      readerUrl: json['readerUrl']?.toString() ?? '',
+      downloadUrl: json['downloadUrl']?.toString() ?? '',
+      fileLocation: locRaw is Map
+          ? ComicFileLocation.fromJson(Map<String, dynamic>.from(locRaw))
+          : null,
+    );
+  }
+
+  String readerRoute(String comicType) {
+    final lowerName = (fileLocation?.filename ?? '').toLowerCase();
+    final isPdf = format == 'PDF' || lowerName.endsWith('.pdf');
+    if (isPdf) return '/pdf/$comicId?page=$lastReadPage';
+    if (comicType == 'novel') return '/novel/$comicId';
+    return '/reader/$comicId?page=$lastReadPage';
+  }
+}
+
 /// 漫画/小说数据模型
 class Comic {
   final String id;
@@ -44,9 +182,35 @@ class Comic {
   final String externalRatingSource;
   final String externalRatingUpdatedAt;
   final bool canManage;
+  final bool canDownload;
   final int comicCount;
+  final String relativePath;
+  final String format;
+  final String editionLabel;
+  final String editionGroupId;
+  final List<String> formats;
+  final int editionCount;
+  final String preferredComicId;
+  final ComicFileLocation? fileLocation;
+  final List<ComicEditionInfo> editions;
   final List<Tag> tags;
   final List<Category> categories;
+
+  /// 用于卡片角标展示的格式文案（多格式时展示如 EPUB +2）
+  String get formatBadge {
+    if (isSeriesShelfItem) return '';
+    final primary = format.isNotEmpty
+        ? format.toUpperCase()
+        : _extractFormatFromFilename(filename);
+    if (formats.length > 1) {
+      return '${formats.first} +${formats.length - 1}';
+    }
+    if (editionCount > 1) {
+      final lead = formats.isNotEmpty ? formats.first : primary;
+      return '$lead · $editionCount版';
+    }
+    return primary;
+  }
 
   /// 服务端 seriesView=true 返回的目录作品是虚拟书架项，不是真实漫画。
   bool get isSeriesShelfItem =>
@@ -141,13 +305,24 @@ class Comic {
     this.externalRatingSource = '',
     this.externalRatingUpdatedAt = '',
     this.canManage = false,
+    this.canDownload = false,
     this.comicCount = 0,
+    this.relativePath = '',
+    this.format = '',
+    this.editionLabel = '',
+    this.editionGroupId = '',
+    this.formats = const [],
+    this.editionCount = 0,
+    this.preferredComicId = '',
+    this.fileLocation,
+    this.editions = const [],
     this.tags = const [],
     this.categories = const [],
   });
 
   factory Comic.fromJson(Map<String, dynamic> json) {
     final rawPageCount = _asInt(json['pageCount']);
+    final locRaw = json['fileLocation'];
     return Comic(
       id: json['id']?.toString() ?? '',
       filename: json['filename']?.toString() ?? '',
@@ -184,7 +359,28 @@ class Comic {
       externalRatingUpdatedAt:
           json['externalRatingUpdatedAt']?.toString() ?? '',
       canManage: json['canManage'] == true,
+      canDownload: json['canDownload'] == true,
       comicCount: _asInt(json['comicCount']),
+      relativePath: json['relativePath']?.toString() ?? '',
+      format: (json['format']?.toString() ?? '').toUpperCase(),
+      editionLabel: json['editionLabel']?.toString() ?? '',
+      editionGroupId: json['editionGroupId']?.toString() ?? '',
+      formats: (json['formats'] as List?)
+              ?.map((e) => e.toString().toUpperCase())
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [],
+      editionCount: _asInt(json['editionCount']),
+      preferredComicId: json['preferredComicId']?.toString() ?? '',
+      fileLocation: locRaw is Map
+          ? ComicFileLocation.fromJson(Map<String, dynamic>.from(locRaw))
+          : null,
+      editions: (json['editions'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  ComicEditionInfo.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const [],
       tags: (json['tags'] as List?)
               ?.whereType<Map>()
               .map((item) => Tag.fromJson(Map<String, dynamic>.from(item)))
@@ -255,7 +451,17 @@ class Comic {
     String? externalRatingSource,
     String? externalRatingUpdatedAt,
     bool? canManage,
+    bool? canDownload,
     int? comicCount,
+    String? relativePath,
+    String? format,
+    String? editionLabel,
+    String? editionGroupId,
+    List<String>? formats,
+    int? editionCount,
+    String? preferredComicId,
+    ComicFileLocation? fileLocation,
+    List<ComicEditionInfo>? editions,
     List<Tag>? tags,
     List<Category>? categories,
   }) {
@@ -293,7 +499,17 @@ class Comic {
       externalRatingUpdatedAt:
           externalRatingUpdatedAt ?? this.externalRatingUpdatedAt,
       canManage: canManage ?? this.canManage,
+      canDownload: canDownload ?? this.canDownload,
       comicCount: comicCount ?? this.comicCount,
+      relativePath: relativePath ?? this.relativePath,
+      format: format ?? this.format,
+      editionLabel: editionLabel ?? this.editionLabel,
+      editionGroupId: editionGroupId ?? this.editionGroupId,
+      formats: formats ?? this.formats,
+      editionCount: editionCount ?? this.editionCount,
+      preferredComicId: preferredComicId ?? this.preferredComicId,
+      fileLocation: fileLocation ?? this.fileLocation,
+      editions: editions ?? this.editions,
       tags: tags ?? this.tags,
       categories: categories ?? this.categories,
     );

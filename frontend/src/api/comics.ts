@@ -387,3 +387,15 @@ export async function setReadingStatus(
     return false;
   }
 }
+
+export async function bindComicEditions(comicId: string, comicIds: string[]): Promise<string | null> {
+  const data = await apiClient.post<{ success?: boolean; editionGroupId?: string }>(
+    `/api/comics/${comicId}/editions/bind`,
+    { comicIds }
+  );
+  return data.editionGroupId ?? null;
+}
+
+export async function splitComicEditions(comicId: string, comicIds?: string[]): Promise<void> {
+  await apiClient.post(`/api/comics/${comicId}/editions/split`, comicIds ? { comicIds } : {});
+}

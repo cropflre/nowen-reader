@@ -62,4 +62,14 @@ assert.equal(libraryCardState({ ...series, readingStatus: "finished" }).progress
 const cardStyles = fs.readFileSync(new URL("../src/components/library-book-card.css", import.meta.url), "utf8");
 assert.ok(cardStyles.includes("var(--book-card-width)"), "Library columns share the continuing-reading card width");
 assert.ok(cardStyles.includes("aspect-ratio: 5 / 7"), "Fluid library covers keep their proportions as their columns resize");
+
+const multiFmt = libraryCardState({ ...book, filename: "Book.epub", formats: ["EPUB", "MOBI", "AZW3"], editionCount: 3 });
+assert.equal(multiFmt.formatBadge, "EPUB +2");
+assert.equal(multiFmt.editionCount, 3);
+assert.deepEqual([...multiFmt.formats], ["EPUB", "MOBI", "AZW3"]);
+const multiSameFmt = libraryCardState({ ...book, filename: "Book.epub", formats: ["EPUB"], editionCount: 2 });
+assert.equal(multiSameFmt.formatBadge, "EPUB · 2版");
+assert.equal(libraryCardState(series).formatBadge, "");
+assert.equal(libraryCardState(series).editionCount, 0);
+
 console.log("Library card tests passed.");

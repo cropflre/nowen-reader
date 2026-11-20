@@ -1,4 +1,4 @@
-import type { Comic } from "@/types/comic";
+import type { Comic, ComicEditionInfo } from "@/types/comic";
 
 export interface SeriesSummary {
   id: string;
@@ -45,6 +45,10 @@ export interface SeriesItem {
   sectionId?: string;
   sortIndex: number;
   displayLabel: string;
+  format?: string;
+  formats?: string[];
+  editionCount?: number;
+  editions?: ComicEditionInfo[];
 }
 
 export interface SeriesSection {

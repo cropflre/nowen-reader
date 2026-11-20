@@ -3,6 +3,8 @@
  * 被所有 useComic*.ts hooks 和 api/comics.ts 共用
  */
 
+import type { ComicEditionInfo, ComicFileLocation } from "@/types/comic";
+
 export interface ApiComicTag {
   name: string;
   color: string;
@@ -42,6 +44,20 @@ export interface ApiComic {
   externalRatingMax?: number; // 满分值（如 10, 100）
   externalRatingSource?: string; // 评分来源（"anilist", "bangumi"）
   externalRatingUpdatedAt?: string; // 评分更新时间
+
+  // Library & Multi-format Editions
+  libraryId?: string;
+  canManage?: boolean;
+  canDownload?: boolean;
+  relativePath?: string;
+  format?: string;
+  editionLabel?: string;
+  editionGroupId?: string;
+  formats?: string[];
+  editionCount?: number;
+  preferredComicId?: string;
+  fileLocation?: ComicFileLocation;
+  editions?: ComicEditionInfo[];
 }
 
 export interface ComicsResponse {

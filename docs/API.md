@@ -256,6 +256,15 @@ GET /api/comics?readingStatus=finished
 - 与 search、tags、category、contentType、favorites 等条件可自由组合
 - 不传该参数时不按阅读状态过滤
 
+### 多格式版本、文件目录与原文件下载
+
+- `GET /api/comics/:id` 返回当前书籍的 `format`、`editionLabel`、`editionGroupId`、`formats`、`editionCount`、`preferredComicId`、`fileLocation` 以及同书多格式 `editions` 列表。
+  - `fileLocation`：对有权限查看（`canView`）的用户始终返回 `libraryId`、`libraryName`、`relativePath`、`relativeDir`、`baseName`、`format`、`canDownload`；仅当用户具备目标书库 `canManage`（或为管理员）时返回 `rootPath`、`realDirPath`、`absolutePath`、`existsOnDisk`。
+  - `editions`：严格按当前用户可访问书库实时过滤，包含各版本独立的 `fileSize`、`pageCount`、`lastReadPage`、`lastReadAt`、`isPreferred`（最近阅读或首选主格式）、`readerUrl` 与 `downloadUrl`。
+- `GET /api/comics/:id/download`（需要 `canDownload` 权限）：支持 Range 断点续传下载原始电子书/漫画归档文件；图片文件夹返回 `400`。
+- `POST /api/comics/:id/editions/bind`（需要所有涉及书籍所在书库的 `canManage` 权限）：请求体 `{"comicIds": ["..."]}`，手动将指定书籍绑定为同一版本组（锁定 `manualLocked = 1`）。
+- `POST /api/comics/:id/editions/split`（需要 `canManage` 权限）：将当前书籍或 `comicIds` 从多格式版本组中拆出，并标记 `editionSplitLocked = 1`，防止自动扫描重建再次合并。
+
 ## 📂 目录作品
 
 目录作品由漫画书库中的目录结构自动识别，用于把同一根目录下的多个阅读单元组织为一个作品。以下接口全部需要认证；读取接口按 `canView` 过滤，修改接口要求目标书库的 `canManage` 权限。
@@ -1122,6 +1131,7 @@ Content-Type: application/json
   "name": "string",
   "type": "comic|novel",
   "seriesDepth": 1,
+  "editionMergeScope": "directory|library|global",
   "rootPath": "string",
   "rootPaths": ["string"],
   "enabled": true,
@@ -1138,7 +1148,8 @@ Content-Type: application/json
 
 - `rootPath` 是主目录；`rootPaths` 包含主目录和额外目录。
 - `seriesDepth`：漫画书库的作品目录层级，整数范围 `1..8`，缺省为 `1`（兼容旧结构：`书名/章节`）。`seriesDepth=2` 对应 `分类/书名/章节`，`seriesDepth=3` 对应 `一级分类/二级分类/书名/章节`，以此类推；小说书库固定为 `1`（传其他值返回 `400`）。
-- `comicCount` 为书库内物理文件/阅读单元总数；`shelfCount` 为按当前 `seriesDepth` 折叠后的书架作品与浅层文件总数。
+- `editionMergeScope`：多格式自动关联策略，支持 `directory`（默认，仅同目录同名多格式合并）、`library`（同书库跨目录合并）与 `global`（跨所有启用了 `global` 的同类型书库合并），非法的取值返回 `400`。
+- `comicCount` 为书库内物理文件/阅读单元总数；`shelfCount` 为按当前 `seriesDepth` 与同库多格式合并折叠后的逻辑作品数。
 - 文件解析按漫画记录的 `libraryId + relativePath` 在该书库所有根目录内查找，不再按全局文件名唯一定位。
 - 书库内通过 `libraryId + relativePath` 去重，不同书库允许相同文件名。
 - 不同书库不能配置完全相同的物理根目录；创建或更新时返回 `409 Conflict` 和 `conflicts` 数组。

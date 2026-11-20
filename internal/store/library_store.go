@@ -17,7 +17,7 @@ import (
 
 // GetAllLibraries 获取所有书库
 func GetAllLibraries() ([]model.Library, error) {
-	rows, err := db.Query(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" ORDER BY "sortOrder", "name"`)
+	rows, err := db.Query(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), COALESCE("editionMergeScope", 'directory'), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" ORDER BY "sortOrder", "name"`)
 	if err != nil {
 		return nil, err
 	}
@@ -27,10 +27,11 @@ func GetAllLibraries() ([]model.Library, error) {
 	for rows.Next() {
 		var lib model.Library
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.EditionMergeScope, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt); err != nil {
 			continue
 		}
 		lib.SeriesDepth = NormalizeSeriesDepth(lib.SeriesDepth)
+		lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 		lib.CreatedAt = createdAt
 		lib.UpdatedAt = updatedAt
 		// 填充 rootPaths（主路径 + 额外路径）
@@ -46,7 +47,7 @@ func GetAllLibraries() ([]model.Library, error) {
 
 // GetScannableLibraries 获取所有启用且允许扫描的书库
 func GetScannableLibraries() ([]model.Library, error) {
-	rows, err := db.Query(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "enabled" = 1 AND "scanEnabled" = 1 ORDER BY "sortOrder", "name"`)
+	rows, err := db.Query(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), COALESCE("editionMergeScope", 'directory'), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "enabled" = 1 AND "scanEnabled" = 1 ORDER BY "sortOrder", "name"`)
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +57,11 @@ func GetScannableLibraries() ([]model.Library, error) {
 	for rows.Next() {
 		var lib model.Library
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.EditionMergeScope, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt); err != nil {
 			continue
 		}
 		lib.SeriesDepth = NormalizeSeriesDepth(lib.SeriesDepth)
+		lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 		lib.CreatedAt = createdAt
 		lib.UpdatedAt = updatedAt
 		// 填充 rootPaths（主路径 + 额外路径）
@@ -77,8 +79,8 @@ func GetScannableLibraries() ([]model.Library, error) {
 func GetLibraryByID(id string) (*model.Library, error) {
 	var lib model.Library
 	var createdAt, updatedAt time.Time
-	err := db.QueryRow(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "id" = ?`, id).Scan(
-		&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt,
+	err := db.QueryRow(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), COALESCE("editionMergeScope", 'directory'), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "id" = ?`, id).Scan(
+		&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.EditionMergeScope, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -87,6 +89,7 @@ func GetLibraryByID(id string) (*model.Library, error) {
 		return nil, err
 	}
 	lib.SeriesDepth = NormalizeSeriesDepth(lib.SeriesDepth)
+	lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 	lib.CreatedAt = createdAt
 	lib.UpdatedAt = updatedAt
 	// 填充 rootPaths（主路径 + 额外路径）
@@ -106,13 +109,14 @@ func CreateLibrary(lib *model.Library) error {
 	if lib.SeriesDepth == 0 {
 		lib.SeriesDepth = DefaultLibrarySeriesDepth
 	}
+	lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 	now := time.Now().UTC()
 	lib.CreatedAt = now
 	lib.UpdatedAt = now
 
-	_, err := db.Exec(`INSERT INTO "Library" ("id", "name", "type", "seriesDepth", "rootPath", "enabled", "sortOrder", "defaultAccess", "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt")
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		lib.ID, lib.Name, lib.Type, lib.SeriesDepth, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.CreatedAt, lib.UpdatedAt)
+	_, err := db.Exec(`INSERT INTO "Library" ("id", "name", "type", "seriesDepth", "editionMergeScope", "rootPath", "enabled", "sortOrder", "defaultAccess", "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt")
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		lib.ID, lib.Name, lib.Type, lib.SeriesDepth, lib.EditionMergeScope, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.CreatedAt, lib.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -129,10 +133,11 @@ func UpdateLibrary(lib *model.Library) error {
 	if lib.SeriesDepth == 0 {
 		lib.SeriesDepth = DefaultLibrarySeriesDepth
 	}
+	lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 	lib.UpdatedAt = time.Now().UTC()
-	_, err := db.Exec(`UPDATE "Library" SET "name" = ?, "type" = ?, "seriesDepth" = ?, "rootPath" = ?, "enabled" = ?, "sortOrder" = ?, "defaultAccess" = ?, "lastScanAt" = ?, "lastScanAdded" = ?, "lastScanTotal" = ?, "scanEnabled" = ?, "updatedAt" = ?
+	_, err := db.Exec(`UPDATE "Library" SET "name" = ?, "type" = ?, "seriesDepth" = ?, "editionMergeScope" = ?, "rootPath" = ?, "enabled" = ?, "sortOrder" = ?, "defaultAccess" = ?, "lastScanAt" = ?, "lastScanAdded" = ?, "lastScanTotal" = ?, "scanEnabled" = ?, "updatedAt" = ?
 		WHERE "id" = ?`,
-		lib.Name, lib.Type, lib.SeriesDepth, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.UpdatedAt, lib.ID)
+		lib.Name, lib.Type, lib.SeriesDepth, lib.EditionMergeScope, lib.RootPath, lib.Enabled, lib.SortOrder, lib.DefaultAccess, lib.LastScanAt, lib.LastScanAdded, lib.LastScanTotal, lib.ScanEnabled, lib.UpdatedAt, lib.ID)
 	if err != nil {
 		return err
 	}
@@ -230,10 +235,11 @@ func DeleteLibrary(id string) error {
 func FindOrCreateLibrary(rootPath string, libType string) (*model.Library, error) {
 	// 先按主路径 rootPath 查找
 	var lib model.Library
-	err := db.QueryRow(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "rootPath" = ?`, rootPath).Scan(
-		&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &lib.CreatedAt, &lib.UpdatedAt)
+	err := db.QueryRow(`SELECT "id", "name", "type", COALESCE("seriesDepth", 1), COALESCE("editionMergeScope", 'directory'), "rootPath", "enabled", "sortOrder", COALESCE("defaultAccess", "private"), "lastScanAt", "lastScanAdded", "lastScanTotal", "scanEnabled", "createdAt", "updatedAt" FROM "Library" WHERE "rootPath" = ?`, rootPath).Scan(
+		&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.EditionMergeScope, &lib.RootPath, &lib.Enabled, &lib.SortOrder, &lib.DefaultAccess, &lib.LastScanAt, &lib.LastScanAdded, &lib.LastScanTotal, &lib.ScanEnabled, &lib.CreatedAt, &lib.UpdatedAt)
 	if err == nil {
 		lib.SeriesDepth = NormalizeSeriesDepth(lib.SeriesDepth)
+		lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 		extraPaths, pathErr := GetLibraryRootPaths(lib.ID)
 		if pathErr != nil {
 			return nil, fmt.Errorf("failed to get root paths for library %s: %w", lib.ID, pathErr)
@@ -262,14 +268,15 @@ func FindOrCreateLibrary(rootPath string, libType string) (*model.Library, error
 		name = rootPath
 	}
 	lib = model.Library{
-		ID:            fmt.Sprintf("lib_%d", time.Now().UnixNano()),
-		Name:          name,
-		Type:          libType,
-		SeriesDepth:   DefaultLibrarySeriesDepth,
-		RootPath:      rootPath,
-		Enabled:       true,
-		DefaultAccess: "private",
-		ScanEnabled:   true,
+		ID:                fmt.Sprintf("lib_%d", time.Now().UnixNano()),
+		Name:              name,
+		Type:              libType,
+		SeriesDepth:       DefaultLibrarySeriesDepth,
+		EditionMergeScope: EditionMergeScopeDirectory,
+		RootPath:          rootPath,
+		Enabled:           true,
+		DefaultAccess:     "private",
+		ScanEnabled:       true,
 	}
 	if err := CreateLibrary(&lib); err != nil {
 		return nil, err
@@ -701,15 +708,16 @@ func GetLibraryContentCounts(libraryID string) (comicCount int, novelCount int, 
 
 // AccessibleLibrary is a lightweight library representation for the accessible-libraries API.
 type AccessibleLibrary struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	SeriesDepth   int    `json:"seriesDepth"`
-	Enabled       bool   `json:"enabled"`
-	DefaultAccess string `json:"defaultAccess"`
-	ComicCount    int    `json:"comicCount"`
-	ShelfCount    int    `json:"shelfCount"`
-	CanManage     bool   `json:"canManage"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Type              string `json:"type"`
+	SeriesDepth       int    `json:"seriesDepth"`
+	EditionMergeScope string `json:"editionMergeScope"`
+	Enabled           bool   `json:"enabled"`
+	DefaultAccess     string `json:"defaultAccess"`
+	ComicCount        int    `json:"comicCount"`
+	ShelfCount        int    `json:"shelfCount"`
+	CanManage         bool   `json:"canManage"`
 }
 
 // LibraryCountStats holds physical item count and logical shelf count for a library.
@@ -718,21 +726,38 @@ type LibraryCountStats struct {
 	ShelfCount int
 }
 
-// GetAllLibraryCounts computes physical and logical shelf counts for all libraries in one query.
-func GetAllLibraryCounts() (map[string]LibraryCountStats, error) {
-	rows, err := db.Query(`WITH counts AS (
+func libraryCountsCTESQL() string {
+	return `WITH counts AS (
         SELECT "libraryId", COUNT(*) AS n FROM "Comic" GROUP BY "libraryId"
-    ), grouped AS (
-        SELECT s."libraryId", COUNT(*) - 1 AS saving
+    ), valid_series AS (
+        SELECT s."id", s."libraryId", COUNT(*) - 1 AS saving
         FROM "ComicSeries" s
         JOIN "Library" l ON l."id" = s."libraryId"
         JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
         CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
         WHERE c."type" = 'comic'
         GROUP BY s."id" HAVING COUNT(*) >= ` + effectiveSeriesMinMembersSQL("l") + `
+    ), edition_grouped AS (
+        SELECT c."libraryId", COUNT(DISTINCT bei."comicId") - 1 AS saving
+        FROM "BookEditionItem" bei
+        JOIN "Comic" c ON c."id" = bei."comicId"
+        LEFT JOIN "ComicSeriesItem" si ON si."comicId" = c."id" AND c."type" = 'comic'
+        LEFT JOIN valid_series vs ON vs."id" = si."seriesId" AND vs."libraryId" = c."libraryId"
+        WHERE vs."id" IS NULL
+        GROUP BY c."libraryId", bei."groupId"
+        HAVING COUNT(DISTINCT bei."comicId") >= 2
+    ), combined_savings AS (
+        SELECT "libraryId", saving FROM valid_series
+        UNION ALL
+        SELECT "libraryId", saving FROM edition_grouped
     ), savings AS (
-        SELECT "libraryId", SUM(saving) AS n FROM grouped GROUP BY "libraryId"
-    ) SELECT l."id", COALESCE(c.n, 0), COALESCE(c.n, 0) - COALESCE(s.n, 0)
+        SELECT "libraryId", SUM(saving) AS n FROM combined_savings GROUP BY "libraryId"
+    )`
+}
+
+// GetAllLibraryCounts computes physical and logical shelf counts for all libraries in one query.
+func GetAllLibraryCounts() (map[string]LibraryCountStats, error) {
+	rows, err := db.Query(libraryCountsCTESQL() + ` SELECT l."id", COALESCE(c.n, 0), COALESCE(c.n, 0) - COALESCE(s.n, 0)
         FROM "Library" l LEFT JOIN counts c ON c."libraryId" = l."id"
         LEFT JOIN savings s ON s."libraryId" = l."id"`)
 	if err != nil {
@@ -776,19 +801,7 @@ func GetAccessibleLibrariesWithCount(userID string) ([]AccessibleLibrary, error)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Query(`WITH counts AS (
-        SELECT "libraryId", COUNT(*) AS n FROM "Comic" GROUP BY "libraryId"
-    ), grouped AS (
-        SELECT s."libraryId", COUNT(*) - 1 AS saving
-        FROM "ComicSeries" s
-        JOIN "Library" l ON l."id" = s."libraryId"
-        JOIN "ComicSeriesItem" si ON si."seriesId" = s."id"
-        CROSS JOIN "Comic" c ON c."id" = si."comicId" AND c."libraryId" = s."libraryId"
-        WHERE c."type" = 'comic'
-        GROUP BY s."id" HAVING COUNT(*) >= `+effectiveSeriesMinMembersSQL("l")+`
-    ), savings AS (
-        SELECT "libraryId", SUM(saving) AS n FROM grouped GROUP BY "libraryId"
-    ) SELECT l."id", l."name", l."type", COALESCE(l."seriesDepth", 1), l."enabled", COALESCE(l."defaultAccess", 'private'),
+	rows, err := db.Query(libraryCountsCTESQL()+` SELECT l."id", l."name", l."type", COALESCE(l."seriesDepth", 1), COALESCE(l."editionMergeScope", 'directory'), l."enabled", COALESCE(l."defaultAccess", 'private'),
         COALESCE(c.n, 0), COALESCE(c.n, 0) - COALESCE(s.n, 0)
         FROM "Library" l LEFT JOIN counts c ON c."libraryId" = l."id"
         LEFT JOIN savings s ON s."libraryId" = l."id"
@@ -801,10 +814,11 @@ func GetAccessibleLibrariesWithCount(userID string) ([]AccessibleLibrary, error)
 	var result []AccessibleLibrary
 	for rows.Next() {
 		var lib AccessibleLibrary
-		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.Enabled, &lib.DefaultAccess, &lib.ComicCount, &lib.ShelfCount); err != nil {
+		if err := rows.Scan(&lib.ID, &lib.Name, &lib.Type, &lib.SeriesDepth, &lib.EditionMergeScope, &lib.Enabled, &lib.DefaultAccess, &lib.ComicCount, &lib.ShelfCount); err != nil {
 			return nil, err
 		}
 		lib.SeriesDepth = NormalizeSeriesDepth(lib.SeriesDepth)
+		lib.EditionMergeScope = NormalizeEditionMergeScope(lib.EditionMergeScope)
 		lib.CanManage = manageable[lib.ID]
 		result = append(result, lib)
 	}

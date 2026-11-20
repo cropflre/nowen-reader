@@ -41,8 +41,16 @@ type OPDSComic struct {
 	Filename     string
 	ComicType    string
 	Collections  []OPDSCollectionLink
+	Editions     []OPDSEditionLink
 	LastReadPage int
 	LastReadAt   string
+}
+
+type OPDSEditionLink struct {
+	ComicID  string
+	Filename string
+	Format   string
+	FileSize int64
 }
 
 type OPDSCollectionLink struct {
@@ -359,21 +367,42 @@ func GenerateAcquisitionFeed(opts OPDSAcquisitionFeedOptions) string {
 			title = strings.TrimSuffix(filepath.Base(comic.Filename), filepath.Ext(comic.Filename))
 		}
 
+		links := []atomLink{
+			{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
+			{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
+		}
+		var acqLinks []atomLink
+		if len(comic.Editions) > 1 {
+			for _, ed := range comic.Editions {
+				edMime, edOK := OPDSAcquisitionMIMEForFilename(ed.Filename)
+				if !edOK {
+					continue
+				}
+				acqLinks = append(acqLinks, atomLink{
+					Rel:    "http://opds-spec.org/acquisition",
+					Href:   absoluteOPDSURL(opts.BaseURL, opdsDownloadPath(ed.ComicID, ed.Filename)),
+					Type:   edMime,
+					Title:  strings.ToUpper(strings.TrimSpace(ed.Format)),
+					Length: opdsFileLength(ed.FileSize),
+				})
+			}
+		}
+		if len(acqLinks) < 2 {
+			acqLinks = []atomLink{{
+				Rel:    "http://opds-spec.org/acquisition",
+				Href:   absoluteOPDSURL(opts.BaseURL, opdsDownloadPath(comic.ID, comic.Filename)),
+				Type:   mimeType,
+				Length: opdsFileLength(comic.FileSize),
+			}}
+		}
+		links = append(links, acqLinks...)
+
 		entry := atomEntry{
 			Title:     title,
 			ID:        "urn:nowen:comic:" + comic.ID,
 			Updated:   validAtomDate(comic.UpdatedAt, now),
 			Published: validAtomDate(comic.AddedAt, ""),
-			Links: []atomLink{
-				{Rel: "http://opds-spec.org/image", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
-				{Rel: "http://opds-spec.org/image/thumbnail", Href: absoluteOPDSURL(opts.BaseURL, "/api/opds/cover/"+comic.ID)},
-				{
-					Rel:    "http://opds-spec.org/acquisition",
-					Href:   absoluteOPDSURL(opts.BaseURL, opdsDownloadPath(comic.ID, comic.Filename)),
-					Type:   mimeType,
-					Length: opdsFileLength(comic.FileSize),
-				},
-			},
+			Links:     links,
 			Language:  strings.TrimSpace(comic.Language),
 			Publisher: strings.TrimSpace(comic.Publisher),
 		}

@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/nowen-reader/nowen-reader/internal/model"
 )
 
 // ============================================================
@@ -101,10 +103,20 @@ type ComicListItem struct {
 	ExternalRatingMax       float64             `json:"externalRatingMax"`
 	ExternalRatingSource    string              `json:"externalRatingSource"`
 	ExternalRatingUpdatedAt string              `json:"externalRatingUpdatedAt"`
-	Tags                    []ComicTagInfo      `json:"tags"`
-	Categories              []ComicCategoryInfo `json:"categories"`
-	CanManage               bool                `json:"canManage,omitempty"`
-	ComicCount              int                 `json:"comicCount,omitempty"`
+	Tags                    []ComicTagInfo           `json:"tags"`
+	Categories              []ComicCategoryInfo      `json:"categories"`
+	CanManage               bool                     `json:"canManage,omitempty"`
+	CanDownload             bool                     `json:"canDownload,omitempty"`
+	ComicCount              int                      `json:"comicCount,omitempty"`
+	RelativePath            string                   `json:"relativePath,omitempty"`
+	Format                  string                   `json:"format,omitempty"`
+	EditionLabel            string                   `json:"editionLabel,omitempty"`
+	EditionGroupID          string                   `json:"editionGroupId,omitempty"`
+	Formats                 []string                 `json:"formats,omitempty"`
+	EditionCount            int                      `json:"editionCount,omitempty"`
+	PreferredComicID        string                   `json:"preferredComicId,omitempty"`
+	FileLocation            *model.ComicFileLocation `json:"fileLocation,omitempty"`
+	Editions                []model.ComicEditionInfo `json:"editions,omitempty"`
 }
 
 type ComicTagInfo struct {
@@ -509,6 +521,8 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 			}
 		}
 		c.CoverURL = BuildComicCoverURL(c.ID)
+		c.Format = strings.ToUpper(ExtractFileFormat(c.Filename))
+		c.EditionLabel = ExtractEditionLabel(c.Filename)
 
 		// Initialize empty slices (not null in JSON)
 		c.Tags = []ComicTagInfo{}
@@ -538,6 +552,11 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		// Load categories
 		if err := loadComicCategories(comics, comicIDs, comicIdx); err != nil {
 			log.Printf("[Store] Warning: failed to load categories: %v", err)
+		}
+
+		// Hydrate multi-format edition badges when querying flat shelves with accessible scope
+		if len(opts.comicIDs) == 0 {
+			_ = hydrateComicEditionSummaries(comics, opts)
 		}
 	}
 
@@ -641,13 +660,14 @@ func loadComicCategories(comics []ComicListItem, ids []string, idx map[string]in
 // GetComicByID 根据ID获取单个漫画（含标签和分类）。
 func GetComicByID(id string) (*ComicListItem, error) {
 	query := `
-		SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
+		SELECT c."id", c."filename", COALESCE(NULLIF(c."relativePath", ''), c."filename"), c."title", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt", c."lastReadPage", c."lastReadAt",
 		       c."isFavorite", c."rating", c."sortOrder", c."totalReadTime",
 		       c."author", c."publisher", c."year", c."description",
 		       c."language", c."genre", c."metadataSource",
 		       c."readingStatus", c."type", COALESCE(c."libraryId", ''), c."coverImageUrl", c."coverAspectRatio",
-		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
+		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt",
+		       COALESCE(c."format", ''), COALESCE(c."editionLabel", '')
 		FROM "Comic" c WHERE c."id" = ?
 	`
 	var c ComicListItem
@@ -662,19 +682,27 @@ func GetComicByID(id string) (*ComicListItem, error) {
 	var extRatingUpdatedAtStr sql.NullString
 
 	err := db.QueryRow(query, id).Scan(
-		&c.ID, &c.Filename, &c.Title, &c.PageCount, &c.FileSize,
+		&c.ID, &c.Filename, &c.RelativePath, &c.Title, &c.PageCount, &c.FileSize,
 		&addedAt, &updatedAt, &c.LastReadPage, &lastReadAt,
 		&isFav, &rating, &c.SortOrder, &c.TotalReadTime,
 		&c.Author, &c.Publisher, &year, &c.Description,
 		&c.Language, &c.Genre, &c.MetadataSource,
 		&c.ReadingStatus, &c.ComicType, &c.LibraryID, &c.CoverImageURL, &c.CoverAspectRatio,
 		&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
+		&c.Format, &c.EditionLabel,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if c.Format == "" {
+		c.Format = ExtractFileFormat(c.RelativePath)
+	}
+	c.Format = strings.ToUpper(c.Format)
+	if c.EditionLabel == "" {
+		c.EditionLabel = ExtractEditionLabel(c.RelativePath)
 	}
 
 	c.AddedAt = addedAt.UTC().Format(time.RFC3339Nano)
@@ -753,7 +781,7 @@ func GetComicByID(id string) (*ComicListItem, error) {
 // GetComicByIDForUser 根据ID获取单个漫画及当前用户的独立状态。
 func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) {
 	query := `
-		SELECT c."id", c."filename", c."title", c."pageCount", c."fileSize",
+		SELECT c."id", c."filename", COALESCE(NULLIF(c."relativePath", ''), c."filename"), c."title", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt",
 		       COALESCE(ucs."lastReadPage", 0) AS lrp,
 		       ucs."lastReadAt" AS lra,
@@ -765,7 +793,8 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 		       c."language", c."genre", c."metadataSource",
 		       COALESCE(ucs."readingStatus", '') AS readingStatus,
 		       c."type", COALESCE(c."libraryId", ''), c."coverAspectRatio",
-		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt"
+		       c."externalRating", c."externalRatingMax", c."externalRatingSource", c."externalRatingUpdatedAt",
+		       COALESCE(c."format", ''), COALESCE(c."editionLabel", '')
 		FROM "Comic" c
 		LEFT JOIN "UserComicState" ucs ON ucs."comicId" = c."id" AND ucs."userId" = ?
 		WHERE c."id" = ?
@@ -784,19 +813,27 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 	var extRatingUpdatedAtStr sql.NullString
 
 	err := db.QueryRow(query, userID, comicID).Scan(
-		&ci.ID, &ci.Filename, &ci.Title, &ci.PageCount, &ci.FileSize,
+		&ci.ID, &ci.Filename, &ci.RelativePath, &ci.Title, &ci.PageCount, &ci.FileSize,
 		&addedAt, &updatedAt, &lastReadPage, &lastReadAtStr,
 		&isFavRaw, &rating, &ci.SortOrder, &totalReadTime,
 		&ci.Author, &ci.Publisher, &year, &ci.Description,
 		&ci.Language, &ci.Genre, &ci.MetadataSource,
 		&ci.ReadingStatus, &ci.ComicType, &ci.LibraryID, &ci.CoverAspectRatio,
 		&extRating, &extRatingMax, &extRatingSource, &extRatingUpdatedAtStr,
+		&ci.Format, &ci.EditionLabel,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if ci.Format == "" {
+		ci.Format = ExtractFileFormat(ci.RelativePath)
+	}
+	ci.Format = strings.ToUpper(ci.Format)
+	if ci.EditionLabel == "" {
+		ci.EditionLabel = ExtractEditionLabel(ci.RelativePath)
 	}
 
 	ci.AddedAt = addedAt.UTC().Format(time.RFC3339Nano)
@@ -1063,8 +1100,17 @@ type OPDSComicRow struct {
 	DisplayLabel          string
 	CollectionSeriesTitle string
 	CollectionRefs        []OPDSCollectionRef
+	Editions              []OPDSEditionRow
 	LastReadPage          int
 	LastReadAt            string
+}
+
+// OPDSEditionRow identifies one downloadable edition variant for an OPDS entry.
+type OPDSEditionRow struct {
+	ComicID  string
+	Filename string
+	Format   string
+	FileSize int64
 }
 
 // OPDSCollectionRef identifies a curated collection containing a publication.
@@ -1350,6 +1396,30 @@ func GetOPDSComics(opts OPDSQueryOptions) ([]OPDSComicRow, int, error) {
 	}
 	if err := loadOPDSCollectionRefs(comics); err != nil {
 		return nil, 0, err
+	}
+	if len(comics) > 0 {
+		ids := make([]string, len(comics))
+		for i := range comics {
+			ids[i] = comics[i].ID
+		}
+		if summaries, edErr := GetEditionGroupsForComicIDs(ids, opts.UserID, opts.LibraryIDs, true); edErr == nil && len(summaries) > 0 {
+			for i := range comics {
+				summary, ok := summaries[comics[i].ID]
+				if !ok || len(summary.Members) < 2 {
+					continue
+				}
+				edRows := make([]OPDSEditionRow, 0, len(summary.Members))
+				for _, m := range summary.Members {
+					edRows = append(edRows, OPDSEditionRow{
+						ComicID:  m.ComicID,
+						Filename: m.Filename,
+						Format:   m.Format,
+						FileSize: m.FileSize,
+					})
+				}
+				comics[i].Editions = edRows
+			}
+		}
 	}
 
 	return comics, total, nil

@@ -53,21 +53,22 @@ type APIKey struct {
 
 // Library 代表一个可扫描的书库/目录
 type Library struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name"`
-	Type          string     `json:"type"` // "comic" | "novel" | "mixed"
-	SeriesDepth   int        `json:"seriesDepth"`
-	RootPath      string     `json:"rootPath"`
-	RootPaths     []string   `json:"rootPaths,omitempty"` // 多目录支持，包含主路径和额外路径
-	Enabled       bool       `json:"enabled"`
-	SortOrder     int        `json:"sortOrder"`
-	DefaultAccess string     `json:"defaultAccess"` // "public" | "private"
-	LastScanAt    *time.Time `json:"lastScanAt"`    // 上次扫描时间
-	LastScanAdded int        `json:"lastScanAdded"` // 上次扫描新增数
-	LastScanTotal int        `json:"lastScanTotal"` // 上次扫描文件总数
-	ScanEnabled   bool       `json:"scanEnabled"`   // 是否参与自动扫描
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	ID                string     `json:"id"`
+	Name              string     `json:"name"`
+	Type              string     `json:"type"` // "comic" | "novel" | "mixed"
+	SeriesDepth       int        `json:"seriesDepth"`
+	EditionMergeScope string     `json:"editionMergeScope"` // "directory" | "library" | "global"
+	RootPath          string     `json:"rootPath"`
+	RootPaths         []string   `json:"rootPaths,omitempty"` // 多目录支持，包含主路径和额外路径
+	Enabled           bool       `json:"enabled"`
+	SortOrder         int        `json:"sortOrder"`
+	DefaultAccess     string     `json:"defaultAccess"` // "public" | "private"
+	LastScanAt        *time.Time `json:"lastScanAt"`    // 上次扫描时间
+	LastScanAdded     int        `json:"lastScanAdded"` // 上次扫描新增数
+	LastScanTotal     int        `json:"lastScanTotal"` // 上次扫描文件总数
+	ScanEnabled       bool       `json:"scanEnabled"`   // 是否参与自动扫描
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
 }
 
 // UserLibraryAccess 保存用户对特定书库的访问权限
@@ -254,4 +255,47 @@ type ComicGroupSeriesItem struct {
 	GroupID   int    `json:"groupId"`
 	SeriesID  string `json:"seriesId"`
 	SortIndex int    `json:"sortIndex"`
+}
+
+// ============================================================
+// Multi-Format Editions & Physical Directory Location
+// ============================================================
+
+// ComicFileLocation 描述单个格式版本对应的书库相对目录及（管理员可见的）真实物理路径。
+type ComicFileLocation struct {
+	LibraryID    string `json:"libraryId"`
+	LibraryName  string `json:"libraryName"`
+	Filename     string `json:"filename"`
+	RelativePath string `json:"relativePath"`
+	RelativeDir  string `json:"relativeDir"`
+	BaseName     string `json:"baseName"`
+	Format       string `json:"format"`
+	EditionLabel string `json:"editionLabel,omitempty"`
+	CanDownload  bool   `json:"canDownload"`
+	CanManage    bool   `json:"canManage,omitempty"`
+	RootPath     string `json:"rootPath,omitempty"`
+	RealDirPath  string `json:"realDirPath,omitempty"`
+	AbsolutePath string `json:"absolutePath,omitempty"`
+	ExistsOnDisk *bool  `json:"existsOnDisk,omitempty"`
+}
+
+// ComicEditionInfo 描述同一本书下的单个格式/版本条目。
+type ComicEditionInfo struct {
+	ComicID         string             `json:"comicId"`
+	Title           string             `json:"title"`
+	Format          string             `json:"format"`
+	EditionLabel    string             `json:"editionLabel,omitempty"`
+	IsCurrent       bool               `json:"isCurrent"`
+	IsFormatPrimary bool               `json:"isFormatPrimary"`
+	IsPreferred     bool               `json:"isPreferred"`
+	DetectionSource string             `json:"detectionSource,omitempty"`
+	FileSize        int64              `json:"fileSize"`
+	PageCount       int                `json:"pageCount"`
+	LastReadPage    int                `json:"lastReadPage"`
+	LastReadAt      *string            `json:"lastReadAt"`
+	ReadingStatus   string             `json:"readingStatus"`
+	TotalReadTime   int                `json:"totalReadTime"`
+	ReaderURL       string             `json:"readerUrl"`
+	DownloadURL     string             `json:"downloadUrl,omitempty"`
+	FileLocation    *ComicFileLocation `json:"fileLocation,omitempty"`
 }

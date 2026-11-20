@@ -5,6 +5,43 @@ export interface ComicCategory {
   icon: string;
 }
 
+export interface ComicFileLocation {
+  libraryId: string;
+  libraryName: string;
+  filename: string;
+  relativePath: string;
+  relativeDir: string;
+  baseName: string;
+  format: string;
+  editionLabel?: string;
+  canDownload: boolean;
+  canManage?: boolean;
+  rootPath?: string;
+  realDirPath?: string;
+  absolutePath?: string;
+  existsOnDisk?: boolean;
+}
+
+export interface ComicEditionInfo {
+  comicId: string;
+  title: string;
+  format: string;
+  editionLabel?: string;
+  isCurrent: boolean;
+  isFormatPrimary: boolean;
+  isPreferred: boolean;
+  detectionSource?: string;
+  fileSize: number;
+  pageCount: number;
+  lastReadPage: number;
+  lastReadAt: string | null;
+  readingStatus: string;
+  totalReadTime: number;
+  readerUrl: string;
+  downloadUrl?: string;
+  fileLocation?: ComicFileLocation;
+}
+
 export interface Comic {
   id: string;
   title: string;
@@ -43,6 +80,20 @@ export interface Comic {
   externalRatingMax?: number; // 满分值（如 10, 100）
   externalRatingSource?: string; // 评分来源（"anilist", "bangumi"）
   externalRatingUpdatedAt?: string; // 评分更新时间
+
+  // Library & Multi-format Editions
+  libraryId?: string;
+  canManage?: boolean;
+  canDownload?: boolean;
+  relativePath?: string;
+  format?: string;
+  editionLabel?: string;
+  editionGroupId?: string;
+  formats?: string[];
+  editionCount?: number;
+  preferredComicId?: string;
+  fileLocation?: ComicFileLocation;
+  editions?: ComicEditionInfo[];
 }
 
 export interface ReadingSessionData {

@@ -103,6 +103,18 @@ function apiToComic(api: ApiComic): Comic {
     externalRating: api.externalRating,
     externalRatingMax: api.externalRatingMax,
     externalRatingSource: api.externalRatingSource,
+    libraryId: api.libraryId,
+    canManage: api.canManage,
+    canDownload: api.canDownload,
+    relativePath: api.relativePath,
+    format: api.format,
+    editionLabel: api.editionLabel,
+    editionGroupId: api.editionGroupId,
+    formats: api.formats,
+    editionCount: api.editionCount,
+    preferredComicId: api.preferredComicId,
+    fileLocation: api.fileLocation,
+    editions: api.editions,
   };
 }
 
@@ -459,17 +471,19 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
     [accessibleLibraries]
   );
 
-  // 当可访问书库加载完成后，自动校验并裁剪失效或超出深度的 directoryPath
+  // 当可访问书库加载完成后，校验 directoryPath（深度导航仅在 comic depth>1 下裁剪深度，普通书库保留详情页跳入的 dir 筛选）
   useEffect(() => {
     if (!accessibleLibrariesLoaded || !directoryPath) return;
-    if (!activeSingleLibrary || activeSingleLibrary.type !== "comic" || (activeSingleLibrary.seriesDepth ?? 1) <= 1) {
+    if (!activeSingleLibrary) {
       setDirectoryPath("");
       return;
     }
-    const maxDirDepth = (activeSingleLibrary.seriesDepth ?? 1) - 1;
-    const segments = directoryPath.split("/").filter(Boolean);
-    if (segments.length > maxDirDepth) {
-      setDirectoryPath(segments.slice(0, maxDirDepth).join("/"));
+    if (activeSingleLibrary.type === "comic" && (activeSingleLibrary.seriesDepth ?? 1) > 1) {
+      const maxDirDepth = (activeSingleLibrary.seriesDepth ?? 1) - 1;
+      const segments = directoryPath.split("/").filter(Boolean);
+      if (segments.length > maxDirDepth) {
+        setDirectoryPath(segments.slice(0, maxDirDepth).join("/"));
+      }
     }
   }, [accessibleLibrariesLoaded, activeSingleLibrary, directoryPath]);
 
@@ -1475,7 +1489,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
               </section>
             )}
 
-            {supportsDirectoryNav && ((directoryListing?.directories.length ?? 0) > 0 || !!effectiveDirectoryPath || directoryLoading || directoryPage > 1) && (
+            {((supportsDirectoryNav && ((directoryListing?.directories.length ?? 0) > 0 || !!effectiveDirectoryPath || directoryLoading || directoryPage > 1)) || (!!activeSingleLibrary && !!effectiveDirectoryPath)) && (
               <section
                 aria-label={t.directoryNav?.label || "目录分类"}
                 className="rounded-xl dashboard-glass px-3.5 py-3 sm:px-4 sm:py-3.5 space-y-2.5"
@@ -1551,7 +1565,7 @@ export default function BooksPage({ favoritesView = false }: { favoritesView?: b
                   )}
                 </div>
 
-                {(directoryListing?.directories.length ?? 0) > 0 && (
+                {supportsDirectoryNav && (directoryListing?.directories.length ?? 0) > 0 && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
                     {directoryListing!.directories.map((node) => (
                       <button

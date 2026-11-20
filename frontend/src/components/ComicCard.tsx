@@ -188,7 +188,7 @@ const ComicCard = memo(function ComicCard({
     const listProgressPct = shelfState ? shelfState.progress : (comic.progress ?? 0);
     const shelfProgress = shelfState?.finished ? t.home.statusFinished : shelfState?.started ? `${shelfState.progress}%` : t.dashboard.unread;
     const shelfColumns = shelfState && <>
-      <span className="library-list-format">{shelfState.seriesId ? t.comicCard.series : shelfState.format}</span>
+      <span className="library-list-format" title={!shelfState.seriesId && shelfState.formats.length > 1 ? shelfState.formats.join(" / ") : undefined}>{shelfState.seriesId ? t.comicCard.series : (shelfState.formatBadge || shelfState.format)}</span>
       <span className="library-list-progress">{shelfProgress}</span>
     </>;
     return (
@@ -381,7 +381,7 @@ const ComicCard = memo(function ComicCard({
         style={{ "--library-progress": `${state.progress}%`, "--library-progress-color": state.progressColor } as CSSProperties}>
         <span>{state.finished ? <Check size={16} /> : progressLabel}</span>
       </span>}
-      <span className="library-book-format">{state.seriesId ? <><Layers size={11} />{t.comicCard.series}</> : state.format}</span>
+      <span className="library-book-format" title={!state.seriesId && state.formats.length > 1 ? state.formats.join(" / ") : undefined}>{state.seriesId ? <><Layers size={11} />{t.comicCard.series}</> : (state.formatBadge || state.format)}</span>
       {draggable && !batchMode && <span className="library-book-drag" aria-hidden="true"><GripVertical size={16} /></span>}
     </>;
     return <article

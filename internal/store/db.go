@@ -235,12 +235,20 @@ func createTables() error {
 			"externalRating"          REAL,
 			"externalRatingMax"       REAL NOT NULL DEFAULT 0,
 			"externalRatingSource"    TEXT NOT NULL DEFAULT '',
-			"externalRatingUpdatedAt" TEXT NOT NULL DEFAULT ''
+			"externalRatingUpdatedAt" TEXT NOT NULL DEFAULT '',
+			"format"                  TEXT NOT NULL DEFAULT '',
+			"editionStemKey"          TEXT NOT NULL DEFAULT '',
+			"editionMatchKey"         TEXT NOT NULL DEFAULT '',
+			"editionLabel"            TEXT NOT NULL DEFAULT '',
+			"editionSplitLocked"      BOOLEAN NOT NULL DEFAULT 0
 			)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS "Comic_library_path_key" ON "Comic"("libraryId", "relativePath") WHERE "libraryId" != '' AND "relativePath" != ''`,
 		`DROP INDEX IF EXISTS "Comic_filename_key"`,
 		`CREATE INDEX IF NOT EXISTS "Comic_title_idx" ON "Comic"("title")`,
 		`CREATE INDEX IF NOT EXISTS "Comic_titleSortKey_idx" ON "Comic"("titleSortKey", "title", "id")`,
+		`CREATE INDEX IF NOT EXISTS "Comic_library_editionStem_idx" ON "Comic"("libraryId", "editionStemKey")`,
+		`CREATE INDEX IF NOT EXISTS "Comic_type_editionMatch_idx" ON "Comic"("type", "editionMatchKey")`,
+		`CREATE INDEX IF NOT EXISTS "Comic_format_idx" ON "Comic"("format")`,
 		`CREATE TRIGGER IF NOT EXISTS "Comic_titleSortKey_ai" AFTER INSERT ON "Comic"
 		 WHEN new."titleSortKey" = ''
 		 BEGIN
@@ -471,20 +479,21 @@ func createTables() error {
 		// Library (书库)
 		// ============================================================
 		`CREATE TABLE IF NOT EXISTS "Library" (
-			"id"            TEXT NOT NULL PRIMARY KEY,
-			"name"          TEXT NOT NULL,
-			"type"          TEXT NOT NULL DEFAULT "comic",
-			"seriesDepth"   INTEGER NOT NULL DEFAULT 1,
-			"rootPath"      TEXT NOT NULL,
-			"enabled"       BOOLEAN NOT NULL DEFAULT 1,
-			"sortOrder"     INTEGER NOT NULL DEFAULT 0,
-			"defaultAccess" TEXT NOT NULL DEFAULT "private",
-			"lastScanAt"    DATETIME,
-			"lastScanAdded" INTEGER NOT NULL DEFAULT 0,
-			"lastScanTotal" INTEGER NOT NULL DEFAULT 0,
-			"scanEnabled"   BOOLEAN NOT NULL DEFAULT 1,
-			"createdAt"     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			"updatedAt"     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			"id"                TEXT NOT NULL PRIMARY KEY,
+			"name"              TEXT NOT NULL,
+			"type"              TEXT NOT NULL DEFAULT "comic",
+			"seriesDepth"       INTEGER NOT NULL DEFAULT 1,
+			"editionMergeScope" TEXT NOT NULL DEFAULT "directory",
+			"rootPath"          TEXT NOT NULL,
+			"enabled"           BOOLEAN NOT NULL DEFAULT 1,
+			"sortOrder"         INTEGER NOT NULL DEFAULT 0,
+			"defaultAccess"     TEXT NOT NULL DEFAULT "private",
+			"lastScanAt"        DATETIME,
+			"lastScanAdded"     INTEGER NOT NULL DEFAULT 0,
+			"lastScanTotal"     INTEGER NOT NULL DEFAULT 0,
+			"scanEnabled"       BOOLEAN NOT NULL DEFAULT 1,
+			"createdAt"         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updatedAt"         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS "Library_name_idx" ON "Library"("name")`,
 		`CREATE INDEX IF NOT EXISTS "Library_type_idx" ON "Library"("type")`,
@@ -567,6 +576,42 @@ func createTables() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS "GLA_groupId_idx" ON "GroupLibraryAccess"("groupId")`,
 		`CREATE INDEX IF NOT EXISTS "GLA_libraryId_idx" ON "GroupLibraryAccess"("libraryId")`,
+
+		// ============================================================
+		// BookEditionGroup & BookEditionItem (多格式合并版本)
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "BookEditionGroup" (
+			"id"             TEXT NOT NULL PRIMARY KEY,
+			"contentType"    TEXT NOT NULL,
+			"mergeScope"     TEXT NOT NULL,
+			"matchKey"       TEXT NOT NULL,
+			"title"          TEXT NOT NULL,
+			"sortTitle"      TEXT NOT NULL DEFAULT '',
+			"defaultComicId" TEXT NOT NULL DEFAULT '',
+			"formatsJson"    TEXT NOT NULL DEFAULT '[]',
+			"editionCount"   INTEGER NOT NULL DEFAULT 0,
+			"manualLocked"   BOOLEAN NOT NULL DEFAULT 0,
+			"createdAt"      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updatedAt"      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS "BookEditionGroup_type_sort_idx" ON "BookEditionGroup"("contentType", "sortTitle")`,
+		`CREATE TABLE IF NOT EXISTS "BookEditionItem" (
+			"groupId"         TEXT NOT NULL,
+			"comicId"         TEXT NOT NULL,
+			"libraryId"       TEXT NOT NULL,
+			"format"          TEXT NOT NULL,
+			"editionLabel"    TEXT NOT NULL DEFAULT '',
+			"formatPriority"  INTEGER NOT NULL DEFAULT 99,
+			"isFormatPrimary" BOOLEAN NOT NULL DEFAULT 0,
+			"sortIndex"       INTEGER NOT NULL DEFAULT 0,
+			"detectionSource" TEXT NOT NULL DEFAULT 'auto',
+			PRIMARY KEY ("groupId", "comicId"),
+			CONSTRAINT "BEI_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "BookEditionGroup" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "BEI_comicId_fkey" FOREIGN KEY ("comicId") REFERENCES "Comic" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "BookEditionItem_comicId_key" ON "BookEditionItem"("comicId")`,
+		`CREATE INDEX IF NOT EXISTS "BookEditionItem_group_priority_idx" ON "BookEditionItem"("groupId", "formatPriority", "sortIndex")`,
+		`CREATE INDEX IF NOT EXISTS "BookEditionItem_libraryId_idx" ON "BookEditionItem"("libraryId")`,
 	}
 
 	for _, stmt := range statements {
