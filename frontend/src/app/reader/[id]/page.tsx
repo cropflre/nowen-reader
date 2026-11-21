@@ -54,7 +54,21 @@ export default function ReaderPage() {
   const t = useTranslation();
   const { locale } = useLocale();
   const { aiConfigured } = useAIStatus();
-  const { options: readerOpts, updateOptions: updateReaderOpts, loaded: optsLoaded } = useReaderOptions();
+  const [seriesGroupId, setSeriesGroupId] = useState<number | null>(null);
+  const {
+    options: readerOpts,
+    updateOptions: updateReaderOpts,
+    loaded: optsLoaded,
+    remoteRevision,
+    activeScope,
+    setActiveScope,
+    hasSeriesOverride,
+    hasComicOverride,
+    resetOverride,
+  } = useReaderOptions({
+    comicId,
+    seriesId: seriesGroupId != null ? String(seriesGroupId) : null,
+  });
   const { bookmarks, isBookmarked, toggleBookmark, removeBookmark } = useComicBookmarks(comicId);
 
   // Try API first
@@ -152,7 +166,6 @@ export default function ReaderPage() {
   // 系列跨卷连续阅读
   const [seriesVolumes, setSeriesVolumes] = useState<SeriesVolumeInfo[]>([]);
   const [seriesName, setSeriesName] = useState<string>("");
-  const [seriesGroupId, setSeriesGroupId] = useState<number | null>(null);
   const [showChapterDrawer, setShowChapterDrawer] = useState(false);
   // 无感跳转过渡提示
   const [volumeTransitionHint, setVolumeTransitionHint] = useState<string | null>(null);
@@ -165,13 +178,20 @@ export default function ReaderPage() {
   // 从选项同步模式、方向
   useEffect(() => {
     if (!optsLoaded) return;
-    setMode(readerOpts.infiniteScroll || readerOpts.direction === "ttb" ? "webtoon" : readerOpts.mode);
+    const hasScopedLayoutOverride = hasComicOverride || hasSeriesOverride;
+    const resolvedMode =
+      readerOpts.direction === "ttb" || readerOpts.mode === "webtoon"
+        ? "webtoon"
+        : !hasScopedLayoutOverride && readerOpts.infiniteScroll
+          ? "webtoon"
+          : readerOpts.mode;
+    setMode(resolvedMode);
     setDirection(readerOpts.direction);
     // 默认显示档案覆盖层
     if (readerOpts.defaultOverlay) {
       setShowOverlay(true);
     }
-  }, [optsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [optsLoaded, remoteRevision]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync readerTheme with global theme
   useEffect(() => {
@@ -460,8 +480,12 @@ export default function ReaderPage() {
   // 工具栏 mode/direction 变更也同步到选项
   const handleModeChange = useCallback((m: ComicReadingMode) => {
     setMode(m);
-    updateReaderOpts({ mode: m, infiniteScroll: m === "webtoon", direction: m === "webtoon" ? "ttb" as ReadingDirection : (readerOpts.direction === "ttb" ? "ltr" : readerOpts.direction) });
-  }, [updateReaderOpts]);
+    updateReaderOpts({
+      mode: m,
+      ...(activeScope === "global" ? { infiniteScroll: m === "webtoon" } : {}),
+      direction: m === "webtoon" ? "ttb" as ReadingDirection : (readerOpts.direction === "ttb" ? "ltr" : readerOpts.direction),
+    });
+  }, [updateReaderOpts, activeScope, readerOpts.direction]);
 
   const handleDirectionChange = useCallback((d: ReadingDirection) => {
     setDirection(d);
@@ -900,6 +924,12 @@ export default function ReaderPage() {
           options={readerOpts}
           onChange={handleOptionsChange}
           onClose={() => setShowOptionsPanel(false)}
+          activeScope={activeScope}
+          onScopeChange={setActiveScope}
+          hasSeries={seriesGroupId != null}
+          hasSeriesOverride={hasSeriesOverride}
+          hasComicOverride={hasComicOverride}
+          onResetOverride={resetOverride}
         />
       )}
 

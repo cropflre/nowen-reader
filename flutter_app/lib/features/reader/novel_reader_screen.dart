@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../utils/tts_service.dart';
 
 import '../../data/api/comic_api.dart';
@@ -102,6 +103,8 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   NovelReadingPosition? _positionToRestore;
   NovelReadingPosition? _lastKnownPosition;
   Timer? _positionSaveTimer;
+  Timer? _prefsSaveTimer;
+  String _userId = '';
 
   // 搜索用：缓存章节内容
   final Map<int, String> _chapterCache = {};
@@ -111,11 +114,12 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     super.initState();
     _currentChapter = widget.initialChapter ?? 0;
     _api = ref.read(comicApiProvider);
+    _userId = ref.read(authProvider).user?.id ?? '';
     _positionStore = NovelReadingPositionStore(
       serverUrl: ref.read(apiClientProvider).libraryServerUrl.isNotEmpty
           ? ref.read(apiClientProvider).libraryServerUrl
           : ref.read(apiClientProvider).baseUrl,
-      userId: ref.read(authProvider).user?.id ?? '',
+      userId: _userId,
       comicId: widget.comicId,
     );
     _htmlPageAnimation = AnimationController(
@@ -140,6 +144,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _positionSaveTimer?.cancel();
+    _prefsSaveTimer?.cancel();
     unawaited(_savePosition());
     _htmlPageAnimation.dispose();
     ServicesBinding.instance.keyboard.removeHandler(_handleKeyEvent);
@@ -198,6 +203,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   Future<void> _savePosition() async {
     final position = _capturePosition();
     if (position == null) return;
+    _activity.updatePosition(
+      position.chapter,
+      _totalChapters,
+      positionRatio: position.ratio,
+    );
     try {
       await _positionStore.save(position);
     } catch (_) {
@@ -429,8 +439,49 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   // ============================================================
 
   Future<void> _loadBookmarks() async {
-    final bms = await BookmarkManager.load(widget.comicId);
-    if (mounted) setState(() => _bookmarks = bms);
+    final cached = await BookmarkManager.load(
+      widget.comicId,
+      userKey: _userId,
+    );
+    if (mounted && cached.isNotEmpty) {
+      setState(() => _bookmarks = cached);
+    }
+    if (_userId.isEmpty) {
+      if (cached.isEmpty) {
+        final legacy = await BookmarkManager.loadLegacy(widget.comicId);
+        if (mounted && legacy.isNotEmpty) {
+          setState(() => _bookmarks = legacy);
+        }
+      }
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final migKey = 'migrated_novel_bookmarks_${_userId}_${widget.comicId}';
+      final migrated = prefs.getBool(migKey) == true;
+      final legacy = migrated
+          ? const <NovelBookmark>[]
+          : await BookmarkManager.loadLegacy(widget.comicId);
+
+      final List<Map<String, dynamic>> remote;
+      if (!migrated && legacy.isNotEmpty) {
+        remote = await _api.importBookmarks(
+          widget.comicId,
+          legacy.map((b) => b.toServerJson()).toList(),
+        );
+        await BookmarkManager.clearLegacy(widget.comicId);
+      } else {
+        remote = await _api.getBookmarks(widget.comicId);
+      }
+      await prefs.setBool(migKey, true);
+
+      final synced = remote.map(NovelBookmark.fromJson).toList();
+      await BookmarkManager.save(widget.comicId, synced, userKey: _userId);
+      if (mounted) setState(() => _bookmarks = synced);
+    } catch (_) {
+      // 离线或服务端异常时保留本地缓存。
+    }
   }
 
   double _currentBookmarkPositionRatio() {
@@ -477,7 +528,14 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
     setState(() => _bookmarks.add(saved));
-    await BookmarkManager.save(widget.comicId, _bookmarks);
+    await BookmarkManager.save(widget.comicId, _bookmarks, userKey: _userId);
+    if (_userId.isNotEmpty) {
+      unawaited(
+        _api
+            .upsertBookmark(widget.comicId, saved.toServerJson())
+            .catchError((_) => null),
+      );
+    }
   }
 
   Future<void> _editBookmark(NovelBookmark bookmark) async {
@@ -493,7 +551,21 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
           .map((item) => item.id == updated.id ? updated : item)
           .toList();
     });
-    await BookmarkManager.save(widget.comicId, _bookmarks);
+    await BookmarkManager.save(widget.comicId, _bookmarks, userKey: _userId);
+    if (_userId.isNotEmpty) {
+      unawaited(
+        _api
+            .updateBookmark(
+              widget.comicId,
+              updated.id,
+              name: updated.name,
+              note: updated.note,
+            )
+            .catchError((_) =>
+                _api.upsertBookmark(widget.comicId, updated.toServerJson()))
+            .catchError((_) => null),
+      );
+    }
   }
 
   Future<({String name, String note})?> _showBookmarkEditor(
@@ -574,7 +646,12 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     setState(() {
       _bookmarks.removeWhere((b) => b.id == bookmarkID);
     });
-    BookmarkManager.save(widget.comicId, _bookmarks);
+    BookmarkManager.save(widget.comicId, _bookmarks, userKey: _userId);
+    if (_userId.isNotEmpty) {
+      unawaited(
+        _api.deleteBookmark(widget.comicId, bookmarkID).catchError((_) {}),
+      );
+    }
   }
 
   // ============================================================
@@ -582,8 +659,28 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   // ============================================================
 
   Future<void> _loadSettings() async {
-    final s = await NovelSettings.load();
-    if (mounted) setState(() => _settings = s);
+    final local = await NovelSettings.load();
+    if (mounted) setState(() => _settings = local);
+    if (_userId.isEmpty) return;
+
+    try {
+      final res = await _api.getReaderPreferences();
+      final rawNovel = res['globalNovel'];
+      if (rawNovel is Map && rawNovel.isNotEmpty) {
+        final merged = local.mergeCloudJson(Map<String, dynamic>.from(rawNovel));
+        if (mounted) setState(() => _settings = merged);
+        unawaited(merged.save());
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final migKey = 'migrated_novel_prefs_$_userId';
+      if (prefs.getBool(migKey) != true) {
+        await _api.saveReaderPreference('global_novel', local.toCloudJson());
+        await prefs.setBool(migKey, true);
+      }
+    } catch (_) {
+      // 离线或服务端异常时保留本机阅读设置。
+    }
   }
 
   Future<void> _loadPages() async {
@@ -601,21 +698,42 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
 
       // 如果没有通过路由指定初始章节，尝试从服务器恢复阅读进度
       int startChapter = _currentChapter;
+      double initialRatio = 0.0;
       if (widget.initialChapter == null) {
         final lastReadPage = comicData['lastReadPage'] as int? ?? 0;
-        if (lastReadPage > 0 && lastReadPage < pages.length) {
-          startChapter = lastReadPage;
-        }
-        if (savedPosition != null && savedPosition.chapter < pages.length) {
-          final serverReadAt =
-              DateTime.tryParse(comicData['lastReadAt']?.toString() ?? '');
-          // 同章使用本机页码；不同章则尊重其他设备更新的阅读记录。
-          if (savedPosition.chapter == startChapter ||
-              serverReadAt == null ||
-              !serverReadAt.isAfter(savedPosition.updatedAt)) {
-            startChapter = savedPosition.chapter;
-            _positionToRestore = savedPosition;
+        final rawServerRatio =
+            (comicData['lastReadPositionRatio'] as num?)?.toDouble() ?? 0.0;
+        final clampedServerRatio = rawServerRatio.isFinite
+            ? rawServerRatio.clamp(0.0, 1.0).toDouble()
+            : 0.0;
+        final serverReadAt =
+            DateTime.tryParse(comicData['lastReadAt']?.toString() ?? '');
+        final serverIsNewer = serverReadAt != null &&
+            (savedPosition == null ||
+                serverReadAt.isAfter(savedPosition.updatedAt));
+
+        if (serverIsNewer ||
+            (savedPosition == null &&
+                (lastReadPage > 0 || clampedServerRatio > 0))) {
+          if (lastReadPage > 0 && lastReadPage < pages.length) {
+            startChapter = lastReadPage;
           }
+          if (clampedServerRatio > 0) {
+            initialRatio = clampedServerRatio;
+            _positionToRestore = NovelReadingPosition(
+              chapter: startChapter,
+              page: 0,
+              totalPages: 0,
+              swipe: _settings.pageMode == NovelPageMode.swipe,
+              ratio: clampedServerRatio,
+              updatedAt: serverReadAt ?? DateTime.now().toUtc(),
+            );
+          }
+        } else if (savedPosition != null &&
+            savedPosition.chapter < pages.length) {
+          startChapter = savedPosition.chapter;
+          _positionToRestore = savedPosition;
+          initialRatio = savedPosition.ratio;
         }
       }
       if (pages.isNotEmpty) {
@@ -630,7 +748,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
         _loading = false;
         _loadError = null;
       });
-      _activity.start(_currentChapter, _totalChapters);
+      _activity.start(
+        _currentChapter,
+        _totalChapters,
+        positionRatio: initialRatio > 0 ? initialRatio : null,
+      );
       await _loadChapter(_currentChapter, position: _positionToRestore);
     } catch (e) {
       if (mounted) {
@@ -1011,6 +1133,16 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     final oldFont = _settings.font;
     setState(() => _settings = s);
     s.save();
+    if (_userId.isNotEmpty) {
+      _prefsSaveTimer?.cancel();
+      _prefsSaveTimer = Timer(const Duration(milliseconds: 500), () {
+        unawaited(
+          _api
+              .saveReaderPreference('global_novel', s.toCloudJson())
+              .catchError((_) {}),
+        );
+      });
+    }
     // 自动滚动速度变更时，动态更新定时器
     if (_autoScrolling && s.autoScrollSpeed != oldSpeed) {
       _startAutoScrollTimer();
@@ -1177,6 +1309,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
                   onGoToChapter: _goToChapter,
                   onClose: () => setState(() => _showSearch = false),
                   getChapterContent: _getChapterText,
+                  searchOnServer: (query, {limit = 100, cancelToken}) =>
+                      _api.searchNovel(
+                    widget.comicId,
+                    query,
+                    limit: limit,
+                    cancelToken: cancelToken,
+                  ),
                 ),
               ),
             ],

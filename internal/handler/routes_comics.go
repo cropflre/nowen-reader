@@ -66,6 +66,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicByID.GET("", comic.GetComic)
 		comicByID.GET("/download", comic.DownloadComic)
 		comicByID.GET("/chapter-rule", chapterRules.GetComicRule)
+		comicByID.GET("/search", comic.SearchNovel)
 	}
 
 	// Single comic write operations (require manage permission)
@@ -96,6 +97,7 @@ func registerComicRoutes(api *gin.RouterGroup) {
 	}
 
 	// 阅读进度和状态（所有登录用户可用）
+	readerAssets := NewReaderAssetsHandler()
 	comicByIDAuth := api.Group("/comics/:id")
 	comicByIDAuth.Use(middleware.AuthRequired())
 	{
@@ -103,6 +105,20 @@ func registerComicRoutes(api *gin.RouterGroup) {
 		comicByIDAuth.PUT("/reading-status", comic.SetReadingStatus)
 		comicByIDAuth.PUT("/favorite", comic.ToggleFavorite)
 		comicByIDAuth.PUT("/rating", comic.UpdateRating)
+
+		// 云端同步书签与划线批注（按用户 + 书库权限隔离）
+		comicByIDAuth.GET("/bookmarks", readerAssets.ListBookmarks)
+		comicByIDAuth.POST("/bookmarks", readerAssets.UpsertBookmark)
+		comicByIDAuth.PUT("/bookmarks/:bookmarkId", readerAssets.UpdateBookmark)
+		comicByIDAuth.DELETE("/bookmarks/:bookmarkId", readerAssets.DeleteBookmark)
+		comicByIDAuth.POST("/bookmarks/import", readerAssets.ImportBookmarks)
+
+		comicByIDAuth.GET("/highlights", readerAssets.ListHighlights)
+		comicByIDAuth.POST("/highlights", readerAssets.UpsertHighlight)
+		comicByIDAuth.PUT("/highlights/:highlightId", readerAssets.UpdateHighlight)
+		comicByIDAuth.DELETE("/highlights/:highlightId", readerAssets.DeleteHighlight)
+		comicByIDAuth.POST("/highlights/import", readerAssets.ImportHighlights)
+		comicByIDAuth.GET("/highlights/export", readerAssets.ExportHighlights)
 	}
 
 	// ============================================================

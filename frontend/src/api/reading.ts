@@ -5,6 +5,7 @@ export interface ReadingActivityPayload {
   clientSessionId: string;
   page: number;
   totalPages: number;
+  positionRatio?: number;
   activeSeconds: number;
   sequence: number;
   finalize: boolean;

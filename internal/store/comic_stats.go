@@ -25,6 +25,11 @@ func placeholders(n int) string {
 // RecordReadingActivity 幂等记录阅读活动，并可在同一事务内同步用户进度。
 // activeSeconds 是客户端本次会话累计的有效阅读秒数，只取最大值，不做重复累加。
 func RecordReadingActivity(comicID, userID, clientSessionID string, page, totalPages, activeSeconds, sequence int, finalize, trackProgress bool) error {
+	return RecordReadingActivityWithPosition(comicID, userID, clientSessionID, page, totalPages, nil, activeSeconds, sequence, finalize, trackProgress)
+}
+
+// RecordReadingActivityWithPosition 支持同时记录章内位置偏移（0.0 ~ 1.0）。
+func RecordReadingActivityWithPosition(comicID, userID, clientSessionID string, page, totalPages int, positionRatio *float64, activeSeconds, sequence int, finalize, trackProgress bool) error {
 	if comicID == "" || userID == "" || clientSessionID == "" {
 		return fmt.Errorf("comicId, userId and clientSessionId are required")
 	}
@@ -49,6 +54,7 @@ func RecordReadingActivity(comicID, userID, clientSessionID string, page, totalP
 		totalPages = pageCount
 	}
 	page = normalizePageIndex(page, totalPages)
+	clampedRatio := clampPositionRatio(positionRatio)
 	now := time.Now().UTC()
 
 	var sessionID int64
@@ -60,7 +66,7 @@ func RecordReadingActivity(comicID, userID, clientSessionID string, page, totalP
 	`, userID, clientSessionID).Scan(&sessionID, &storedComicID, &storedDuration, &storedSequence)
 	if err == sql.ErrNoRows {
 		if trackProgress {
-			if err := updateReadingProgressTx(tx, comicID, userID, page, totalPages, now); err != nil {
+			if err := updateReadingProgressTx(tx, comicID, userID, page, totalPages, clampedRatio, now); err != nil {
 				return err
 			}
 		}
@@ -91,7 +97,7 @@ func RecordReadingActivity(comicID, userID, clientSessionID string, page, totalP
 	}
 	isCurrent := sequence > storedSequence
 	if trackProgress && isCurrent {
-		if err := updateReadingProgressTx(tx, comicID, userID, page, totalPages, now); err != nil {
+		if err := updateReadingProgressTx(tx, comicID, userID, page, totalPages, clampedRatio, now); err != nil {
 			return err
 		}
 	}

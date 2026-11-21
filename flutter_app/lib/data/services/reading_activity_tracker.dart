@@ -22,6 +22,8 @@ class ReadingActivityTracker with WidgetsBindingObserver {
   Timer? _pageTimer;
   int _page = 0;
   int _totalPages = 0;
+  double? _positionRatio;
+  double? _lastFlushedRatio;
   int _activeSeconds = 0;
   int _sequence = 0;
   bool _trackProgress = true;
@@ -29,11 +31,19 @@ class ReadingActivityTracker with WidgetsBindingObserver {
   bool _finalized = false;
   bool _resumed = true;
 
-  void start(int page, int totalPages, {bool trackProgress = true}) {
+  void start(
+    int page,
+    int totalPages, {
+    bool trackProgress = true,
+    double? positionRatio,
+  }) {
     if (_started || totalPages <= 0) return;
     _started = true;
     _page = page;
     _totalPages = totalPages;
+    if (positionRatio != null && positionRatio.isFinite) {
+      _positionRatio = positionRatio.clamp(0.0, 1.0).toDouble();
+    }
     _trackProgress = trackProgress;
     _resumed = WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
@@ -48,29 +58,49 @@ class ReadingActivityTracker with WidgetsBindingObserver {
     _flushSilently();
   }
 
-  void updatePage(int page, int totalPages) {
+  void updatePosition(int page, int totalPages, {double? positionRatio}) {
     if (!_started || _finalized) return;
+    final normalizedRatio = (positionRatio != null && positionRatio.isFinite)
+        ? positionRatio.clamp(0.0, 1.0).toDouble()
+        : null;
+    final pageChanged = page != _page || totalPages != _totalPages;
+    final ratioChanged = normalizedRatio != null &&
+        (_lastFlushedRatio == null ||
+            (normalizedRatio - _lastFlushedRatio!).abs() >= 0.01);
+
     _page = page;
     _totalPages = totalPages;
+    if (normalizedRatio != null) {
+      _positionRatio = normalizedRatio;
+    }
+
+    if (!pageChanged && !ratioChanged) return;
     _pageTimer?.cancel();
     _pageTimer = Timer(const Duration(milliseconds: 600), () {
       _flushSilently();
     });
   }
 
+  void updatePage(int page, int totalPages) {
+    updatePosition(page, totalPages);
+  }
+
   Future<void> flush({bool finalize = false}) async {
     if (!_started || _finalized) return;
     final sequence = ++_sequence;
+    final ratioToSend = _positionRatio;
     await _api.recordReadingActivity(
       comicId: comicId,
       clientSessionId: _clientSessionId,
       page: _page,
       totalPages: _totalPages,
+      positionRatio: ratioToSend,
       activeSeconds: _activeSeconds,
       sequence: sequence,
       finalize: finalize,
       trackProgress: _trackProgress,
     );
+    _lastFlushedRatio = ratioToSend;
     if (finalize) _finalized = true;
   }
 

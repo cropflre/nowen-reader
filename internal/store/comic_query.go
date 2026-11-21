@@ -6,38 +6,51 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nowen-reader/nowen-reader/internal/model"
 )
 
 // ============================================================
-// FTS5 全文搜索辅助函数
+// FTS5 trigram + 短词 LIKE 混合全文搜索
 // ============================================================
 
-// ftsEscapeQuery 将用户输入转换为安全的 FTS5 查询字符串。
-// 对每个词加双引号转义，多个词用 OR 连接，支持中文、英文混合搜索。
-func ftsEscapeQuery(input string) string {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return `""`
-	}
-	// 将特殊字符替换为空格以拆分词
-	replacer := strings.NewReplacer(
-		`"`, " ", `*`, " ", `(`, " ", `)`, " ",
-		`{`, " ", `}`, " ", `:`, " ", `^`, " ",
-	)
-	input = replacer.Replace(input)
+func escapeLikePattern(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
 
-	words := strings.Fields(input)
-	if len(words) == 0 {
-		return `""`
+// buildComicSearchCondition 将用户输入拆分为多词 AND 条件：
+//   - 长度 >= 3 个字符的词走 FTS5 trigram MATCH（支持任意位置中文/英文子串）
+//   - 长度 1-2 个字符的短词（trigram 无法索引）回退到转义 LIKE
+func buildComicSearchCondition(search string) (string, []interface{}) {
+	tokens := strings.Fields(strings.TrimSpace(search))
+	if len(tokens) == 0 {
+		return "", nil
 	}
-	// 每个词用双引号包裹（防止 FTS5 语法错误），用 OR 连接实现模糊匹配
-	quoted := make([]string, len(words))
-	for i, w := range words {
-		quoted[i] = `"` + w + `"` + `*`
+
+	var ftsTerms []string
+	var clauses []string
+	var args []interface{}
+
+	for _, tok := range tokens {
+		if utf8.RuneCountInString(tok) >= 3 {
+			escaped := strings.ReplaceAll(tok, `"`, `""`)
+			ftsTerms = append(ftsTerms, `"`+escaped+`"`)
+			continue
+		}
+		likePattern := "%" + escapeLikePattern(tok) + "%"
+		clauses = append(clauses, `(c."title" LIKE ? ESCAPE '\' COLLATE NOCASE OR c."author" LIKE ? ESCAPE '\' COLLATE NOCASE OR c."filename" LIKE ? ESCAPE '\' COLLATE NOCASE OR c."description" LIKE ? ESCAPE '\' COLLATE NOCASE OR c."seriesName" LIKE ? ESCAPE '\' COLLATE NOCASE OR c."genre" LIKE ? ESCAPE '\' COLLATE NOCASE)`)
+		args = append(args, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern)
 	}
-	return strings.Join(quoted, " OR ")
+
+	if len(ftsTerms) > 0 {
+		ftsClause := `c.rowid IN (SELECT rowid FROM "ComicFTS" WHERE "ComicFTS" MATCH ?)`
+		ftsArg := strings.Join(ftsTerms, " AND ")
+		clauses = append([]string{ftsClause}, clauses...)
+		args = append([]interface{}{ftsArg}, args...)
+	}
+
+	return "(" + strings.Join(clauses, " AND ") + ")", args
 }
 
 // ============================================================
@@ -81,6 +94,7 @@ type ComicListItem struct {
 	AddedAt                 string              `json:"addedAt"`
 	UpdatedAt               string              `json:"updatedAt"`
 	LastReadPage            int                 `json:"lastReadPage"`
+	LastReadPositionRatio   float64             `json:"lastReadPositionRatio"`
 	LastReadAt              *string             `json:"lastReadAt"`
 	IsFavorite              bool                `json:"isFavorite"`
 	Rating                  *int                `json:"rating"`
@@ -150,12 +164,11 @@ func comicListFilter(opts ComicListOptions) (joinClause, whereClause string, joi
 	var conditions []string
 	args = []interface{}{}
 
-	if opts.Search != "" {
-		// 使用 FTS5 全文搜索（10000 条记录下比 LIKE 快 10-50 倍）
-		// 对搜索词进行转义，防止 FTS5 语法注入
-		ftsQuery := ftsEscapeQuery(opts.Search)
-		conditions = append(conditions, `c.rowid IN (SELECT rowid FROM "ComicFTS" WHERE "ComicFTS" MATCH ?)`)
-		args = append(args, ftsQuery)
+	if strings.TrimSpace(opts.Search) != "" {
+		if cond, searchArgs := buildComicSearchCondition(opts.Search); cond != "" {
+			conditions = append(conditions, cond)
+			args = append(args, searchArgs...)
+		}
 	}
 
 	if opts.FavoritesOnly {
@@ -784,6 +797,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 		SELECT c."id", c."filename", COALESCE(NULLIF(c."relativePath", ''), c."filename"), c."title", c."pageCount", c."fileSize",
 		       c."addedAt", c."updatedAt",
 		       COALESCE(ucs."lastReadPage", 0) AS lrp,
+		       COALESCE(ucs."lastReadPositionRatio", 0) AS lrr,
 		       ucs."lastReadAt" AS lra,
 		       COALESCE(ucs."isFavorite", 0) AS isfav,
 		       ucs."rating" AS rt,
@@ -803,6 +817,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 	var addedAt, updatedAt time.Time
 	var lastReadAtStr sql.NullString
 	var lastReadPage sql.NullInt64
+	var lastReadPositionRatio sql.NullFloat64
 	var isFavRaw sql.NullInt64
 	var rating sql.NullInt64
 	var totalReadTime sql.NullInt64
@@ -814,7 +829,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 
 	err := db.QueryRow(query, userID, comicID).Scan(
 		&ci.ID, &ci.Filename, &ci.RelativePath, &ci.Title, &ci.PageCount, &ci.FileSize,
-		&addedAt, &updatedAt, &lastReadPage, &lastReadAtStr,
+		&addedAt, &updatedAt, &lastReadPage, &lastReadPositionRatio, &lastReadAtStr,
 		&isFavRaw, &rating, &ci.SortOrder, &totalReadTime,
 		&ci.Author, &ci.Publisher, &year, &ci.Description,
 		&ci.Language, &ci.Genre, &ci.MetadataSource,
@@ -844,6 +859,15 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 	}
 	if lastReadPage.Valid {
 		ci.LastReadPage = int(lastReadPage.Int64)
+	}
+	if lastReadPositionRatio.Valid {
+		ratio := lastReadPositionRatio.Float64
+		if ratio < 0 {
+			ratio = 0
+		} else if ratio > 1 {
+			ratio = 1
+		}
+		ci.LastReadPositionRatio = ratio
 	}
 	if rating.Valid {
 		v := int(rating.Int64)

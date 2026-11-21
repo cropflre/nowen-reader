@@ -1,25 +1,38 @@
 "use client";
 
 import { useTranslation } from "@/lib/i18n";
-import { X, ChevronDown, Monitor, Wrench, Cog, SlidersHorizontal } from "lucide-react";
+import { X, ChevronDown, Monitor, Wrench, Cog, SlidersHorizontal, RotateCcw } from "lucide-react";
 import type {
   ReaderOptions,
   FitMode,
   ComicReadingMode,
   ReadingDirection,
 } from "@/types/reader";
+import type { ReaderOptionScope } from "@/hooks/useReaderOptions";
 import { useState, useEffect, useRef } from "react";
 
 interface ReaderOptionsPanelProps {
   options: ReaderOptions;
   onChange: (opts: Partial<ReaderOptions>) => void;
   onClose: () => void;
+  activeScope?: ReaderOptionScope;
+  onScopeChange?: (scope: ReaderOptionScope) => void;
+  hasSeries?: boolean;
+  hasSeriesOverride?: boolean;
+  hasComicOverride?: boolean;
+  onResetOverride?: (scope: "series" | "comic") => void;
 }
 
 export default function ReaderOptionsPanel({
   options,
   onChange,
   onClose,
+  activeScope = "global",
+  onScopeChange,
+  hasSeries = false,
+  hasSeriesOverride = false,
+  hasComicOverride = false,
+  onResetOverride,
 }: ReaderOptionsPanelProps) {
   const t = useTranslation();
   const ro = t.readerOptions;
@@ -349,6 +362,80 @@ export default function ReaderOptionsPanel({
               icon={<Monitor className="h-4 w-4" />}
               title={ro.groupDisplay}
             >
+              {onScopeChange && (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-white/60">
+                      {ro.scopeLabel}
+                    </span>
+                    {onResetOverride &&
+                      ((activeScope === "comic" && hasComicOverride) ||
+                        (activeScope === "series" && hasSeriesOverride)) && (
+                        <button
+                          type="button"
+                          onClick={() => onResetOverride(activeScope)}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-amber-300/90 hover:bg-amber-500/15 transition-colors"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          {ro.resetOverride}
+                        </button>
+                      )}
+                  </div>
+                  <div className="flex rounded-lg bg-white/5 p-1 gap-1">
+                    {(
+                      [
+                        { id: "global" as const, label: ro.scopeGlobal, active: false },
+                        ...(hasSeries
+                          ? [
+                              {
+                                id: "series" as const,
+                                label: ro.scopeSeries,
+                                active: hasSeriesOverride,
+                              },
+                            ]
+                          : []),
+                        {
+                          id: "comic" as const,
+                          label: ro.scopeComic,
+                          active: hasComicOverride,
+                        },
+                      ]
+                    ).map((item) => {
+                      const selected = activeScope === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => onScopeChange(item.id)}
+                          className={`flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all ${
+                            selected
+                              ? "bg-accent text-white shadow-sm"
+                              : "text-white/55 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          {item.active && (
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                selected ? "bg-white" : "bg-amber-400"
+                              }`}
+                              title={ro.overrideActive}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-white/40">
+                    {activeScope === "comic"
+                      ? ro.scopeHintComic
+                      : activeScope === "series"
+                        ? ro.scopeHintSeries
+                        : ro.scopeHintGlobal}
+                  </p>
+                </div>
+              )}
+
               {/* 适应显示 */}
               <div>
                 <Label>{ro.fitMode}</Label>

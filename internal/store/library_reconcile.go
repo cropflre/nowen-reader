@@ -149,11 +149,12 @@ func mergeComicRows(tx *sql.Tx, sourceID, targetID string) error {
 	}
 
 	if _, err := tx.Exec(`
-		INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "isFavorite", "rating", "totalReadTime", "readingStatus")
-		SELECT "userId", ?, "lastReadPage", "lastReadAt", "isFavorite", "rating", "totalReadTime", "readingStatus"
+		INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadPositionRatio", "lastReadAt", "isFavorite", "rating", "totalReadTime", "readingStatus")
+		SELECT "userId", ?, "lastReadPage", COALESCE("lastReadPositionRatio", 0), "lastReadAt", "isFavorite", "rating", "totalReadTime", "readingStatus"
 		FROM "UserComicState" WHERE "comicId" = ? AND 1
 		ON CONFLICT("userId", "comicId") DO UPDATE SET
 			"lastReadPage" = CASE WHEN COALESCE(excluded."lastReadAt", '') >= COALESCE("UserComicState"."lastReadAt", '') THEN excluded."lastReadPage" ELSE "UserComicState"."lastReadPage" END,
+			"lastReadPositionRatio" = CASE WHEN COALESCE(excluded."lastReadAt", '') >= COALESCE("UserComicState"."lastReadAt", '') THEN excluded."lastReadPositionRatio" ELSE "UserComicState"."lastReadPositionRatio" END,
 			"lastReadAt" = CASE
 				WHEN "UserComicState"."lastReadAt" IS NULL THEN excluded."lastReadAt"
 				WHEN excluded."lastReadAt" IS NULL THEN "UserComicState"."lastReadAt"
@@ -169,10 +170,20 @@ func mergeComicRows(tx *sql.Tx, sourceID, targetID string) error {
 		return err
 	}
 
-	for _, table := range []string{"ReadingSession", "MetadataSyncLog"} {
+	for _, table := range []string{"ReadingSession", "MetadataSyncLog", "UserBookmark", "UserHighlight"} {
 		if _, err := tx.Exec(fmt.Sprintf(`UPDATE "%s" SET "comicId" = ? WHERE "comicId" = ?`, table), targetID, sourceID); err != nil && !isMissingTableError(err) {
 			return err
 		}
+	}
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO "UserReaderPreference" ("userId", "scope", "prefsJson", "updatedAt")
+		SELECT "userId", ?, "prefsJson", "updatedAt"
+		FROM "UserReaderPreference" WHERE "scope" = ?
+	`, "comic:"+targetID, "comic:"+sourceID); err != nil && !isMissingTableError(err) {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM "UserReaderPreference" WHERE "scope" = ?`, "comic:"+sourceID); err != nil && !isMissingTableError(err) {
+		return err
 	}
 	if _, err := tx.Exec(`
 		UPDATE "UserComicState"

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -57,9 +58,16 @@ func (h *GoalHandler) SetGoal(c *gin.Context) {
 
 // DeleteGoal 删除阅读目标。
 func (h *GoalHandler) DeleteGoal(c *gin.Context) {
-	goalType := c.Query("goalType")
+	goalType := strings.TrimSpace(c.Param("goalType"))
+	if goalType == "" {
+		goalType = strings.TrimSpace(c.Query("goalType"))
+	}
 	if goalType == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "goalType is required"})
+		return
+	}
+	if goalType != "daily" && goalType != "weekly" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "goalType must be 'daily' or 'weekly'"})
 		return
 	}
 

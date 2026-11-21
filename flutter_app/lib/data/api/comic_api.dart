@@ -83,6 +83,24 @@ class ComicApi {
     return res.data;
   }
 
+  /// 全书关键词搜索（服务端单接口检索）
+  Future<Map<String, dynamic>> searchNovel(
+    String comicId,
+    String query, {
+    int limit = 100,
+    CancelToken? cancelToken,
+  }) async {
+    final res = await _dio.get(
+      '/comics/$comicId/search',
+      queryParameters: {
+        'q': query,
+        'limit': limit,
+      },
+      cancelToken: cancelToken,
+    );
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
   /// 切换收藏
   Future<Map<String, dynamic>> toggleFavorite(String comicId) async {
     final res = await _dio.put('/comics/$comicId/favorite');
@@ -95,8 +113,13 @@ class ComicApi {
   }
 
   /// 保存阅读进度
-  Future<void> updateProgress(String comicId, int page) async {
-    await _dio.put('/comics/$comicId/progress', data: {'page': page});
+  Future<void> updateProgress(String comicId, int page,
+      {double? positionRatio}) async {
+    await _dio.put('/comics/$comicId/progress', data: {
+      'page': page,
+      if (positionRatio != null)
+        'positionRatio': positionRatio.clamp(0.0, 1.0),
+    });
   }
 
   /// 设置阅读状态
@@ -220,6 +243,7 @@ class ComicApi {
     required String clientSessionId,
     required int page,
     required int totalPages,
+    double? positionRatio,
     required int activeSeconds,
     required int sequence,
     bool finalize = false,
@@ -229,6 +253,8 @@ class ComicApi {
       'clientSessionId': clientSessionId,
       'page': page,
       'totalPages': totalPages,
+      if (positionRatio != null)
+        'positionRatio': positionRatio.clamp(0.0, 1.0),
       'activeSeconds': activeSeconds,
       'sequence': sequence,
       'finalize': finalize,
@@ -522,6 +548,102 @@ class ComicApi {
   Future<Map<String, dynamic>> updateSiteSettings(Map<String, dynamic> settings) async {
     final res = await _dio.put('/site-settings', data: settings);
     return res.data;
+  }
+
+  // ============================================================
+  // 书签与阅读器云端偏好同步
+  // ============================================================
+
+  /// 获取书签列表
+  Future<List<Map<String, dynamic>>> getBookmarks(String comicId) async {
+    final res = await _dio.get('/comics/$comicId/bookmarks');
+    final list = (res.data?['bookmarks'] as List?) ?? const [];
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// 创建或更新书签
+  Future<Map<String, dynamic>?> upsertBookmark(
+    String comicId,
+    Map<String, dynamic> payload,
+  ) async {
+    final res = await _dio.post('/comics/$comicId/bookmarks', data: payload);
+    final raw = res.data?['bookmark'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  /// 更新书签名称与备注
+  Future<Map<String, dynamic>?> updateBookmark(
+    String comicId,
+    String bookmarkId, {
+    required String name,
+    required String note,
+  }) async {
+    final encoded = Uri.encodeComponent(bookmarkId);
+    final res = await _dio.put(
+      '/comics/$comicId/bookmarks/$encoded',
+      data: {'name': name, 'note': note},
+    );
+    final raw = res.data?['bookmark'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  /// 删除书签
+  Future<void> deleteBookmark(String comicId, String bookmarkId) async {
+    final encoded = Uri.encodeComponent(bookmarkId);
+    await _dio.delete('/comics/$comicId/bookmarks/$encoded');
+  }
+
+  /// 批量导入书签（旧版迁移）
+  Future<List<Map<String, dynamic>>> importBookmarks(
+    String comicId,
+    List<Map<String, dynamic>> bookmarks,
+  ) async {
+    final res = await _dio.post(
+      '/comics/$comicId/bookmarks/import',
+      data: {'bookmarks': bookmarks},
+    );
+    final list = (res.data?['bookmarks'] as List?) ?? const [];
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// 获取云端阅读偏好设置
+  Future<Map<String, dynamic>> getReaderPreferences({
+    String? comicId,
+    String? seriesId,
+  }) async {
+    final params = <String, dynamic>{};
+    if (comicId != null && comicId.isNotEmpty) params['comicId'] = comicId;
+    if (seriesId != null && seriesId.isNotEmpty) params['seriesId'] = seriesId;
+    final res =
+        await _dio.get('/user/reader-preferences', queryParameters: params);
+    return res.data is Map
+        ? Map<String, dynamic>.from(res.data as Map)
+        : <String, dynamic>{};
+  }
+
+  /// 保存指定作用域的云端阅读偏好
+  Future<void> saveReaderPreference(
+    String scope,
+    Map<String, dynamic> prefs,
+  ) async {
+    await _dio.put('/user/reader-preferences', data: {
+      'scope': scope,
+      'prefs': prefs,
+    });
+  }
+
+  /// 删除指定作用域的云端覆盖配置
+  Future<void> deleteReaderPreference(String scope) async {
+    await _dio.delete(
+      '/user/reader-preferences',
+      queryParameters: {'scope': scope},
+    );
   }
 }
 

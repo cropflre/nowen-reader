@@ -206,15 +206,16 @@ func (h *ComicHandler) UpdateProgress(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Page       int `json:"page"`
-		TotalPages int `json:"totalPages,omitempty"`
+		Page          int      `json:"page"`
+		TotalPages    int      `json:"totalPages,omitempty"`
+		PositionRatio *float64 `json:"positionRatio,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	if err := store.UpdateReadingProgress(id, body.Page, body.TotalPages, getUserID(c)); err != nil {
+	if err := store.UpdateReadingProgressWithPosition(id, body.Page, body.TotalPages, body.PositionRatio, getUserID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update progress"})
 		return
 	}

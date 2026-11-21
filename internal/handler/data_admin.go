@@ -539,6 +539,7 @@ var dbStatTables = []string{
 	"User", "UserSession", "Comic", "Tag", "ComicTag",
 	"Category", "ComicCategory", "ReadingSession", "ReadingGoal",
 	"ComicGroup", "ComicGroupItem", "GroupCategory", "UserComicState",
+	"UserBookmark", "UserHighlight", "UserReaderPreference",
 	"ComicFTS",
 }
 

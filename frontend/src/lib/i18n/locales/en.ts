@@ -370,10 +370,12 @@ const en: Translations = {
     searchChapterCount: "{n} chapters total, tap Cancel to abort",
     noSearchResults: "No results found",
     searchFoundMatches: "Found {count} matches in {chapters} chapters",
+    searchTruncated: "Showing first {limit} matching chapters only; refine your query for more",
     searchMatches: "{n} matches",
     searchHint: "Enter keywords to search the book",
     searchShortcut: "Shortcut: S",
     copied: "Copied",
+    exportHighlightsMarkdown: "Export Markdown",
   },
 
   // Reader Toolbar
@@ -467,6 +469,15 @@ const en: Translations = {
     presetMangaEnhance: "Manga Enhance",
     presetBWEnhance: "B&W Enhance",
     presetCustom: "Custom",
+    scopeLabel: "Settings Scope",
+    scopeGlobal: "Global Default",
+    scopeSeries: "This Series",
+    scopeComic: "This Book",
+    scopeHintGlobal: "Changes apply as default for all comics and sync to cloud",
+    scopeHintSeries: "Overrides layout (mode, direction, cover, spread gap, fit) for this series only",
+    scopeHintComic: "Overrides layout (mode, direction, cover, spread gap, fit) for this comic only",
+    resetOverride: "Reset to Global",
+    overrideActive: "Custom",
   },
 
   // Duration formatting

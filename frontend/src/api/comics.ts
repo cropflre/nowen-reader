@@ -80,9 +80,20 @@ export async function uploadComics(
 /**
  * 保存阅读进度
  */
-export async function saveReadingProgress(comicId: string, page: number, totalPages?: number) {
+export async function saveReadingProgress(
+  comicId: string,
+  page: number,
+  totalPages?: number,
+  positionRatio?: number
+) {
   try {
-    await apiClient.put(`/api/comics/${comicId}/progress`, { page, ...(totalPages ? { totalPages } : {}) });
+    await apiClient.put(`/api/comics/${comicId}/progress`, {
+      page,
+      ...(totalPages ? { totalPages } : {}),
+      ...(typeof positionRatio === "number" && Number.isFinite(positionRatio)
+        ? { positionRatio: Math.max(0, Math.min(1, positionRatio)) }
+        : {}),
+    });
   } catch {
     // 静默失败 — 进度保存不应阻塞阅读
   }

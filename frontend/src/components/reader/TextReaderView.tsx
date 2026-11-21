@@ -1,12 +1,27 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, BookOpenCheck, Bookmark, BookmarkPlus, Trash2, Search, X, Copy, MessageSquare, Highlighter, Volume2, Pause, Play, Timer, Square, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Minus, Plus, Type, Brain, Loader2, BookOpenCheck, Bookmark, BookmarkPlus, Trash2, Search, X, Copy, MessageSquare, Highlighter, Volume2, Pause, Play, Timer, Square, Pencil, Download } from "lucide-react";
 import type { ReaderTheme } from "@/components/reader/ReaderToolbar";
 import { useLocale, useTranslation } from "@/lib/i18n";
 import { useAIStatus } from "@/hooks/useAIStatus";
+import { useAuth } from "@/lib/auth-context";
 import { apiPath } from "@/lib/base-path";
 import { idbSave, idbLoad } from "@/lib/idb-backup";
+import {
+  listBookmarks,
+  upsertBookmark,
+  updateBookmark,
+  deleteBookmark,
+  importBookmarks,
+  listHighlights,
+  upsertHighlight,
+  deleteHighlight,
+  importHighlights,
+  getHighlightsExportUrl,
+  getReaderPreferences,
+  saveReaderPreference,
+} from "@/api/readerAssets";
 import { calculateReadingProgress } from "@/lib/progress";
 import { themeColorMap, themePreviewColorKeys, paddingOptions, pageModeOptions } from "./text-reader-themes";
 import type { ThemeColors, PageMode } from "./text-reader-themes";
@@ -25,10 +40,15 @@ export default function TextReaderView({
   externalShowTOC,
   externalShowSettings,
   comicId,
+  initialPositionRatio,
+  onPositionRatioChange,
+  onReaderThemeChange,
 }: TextReaderViewProps) {
   const { locale } = useLocale();
   const t = useTranslation();
   const { aiConfigured } = useAIStatus();
+  const { user } = useAuth();
+  const uid = user?.id ?? "anon";
   const [content, setContent] = useState("");
   const [chapterTitle, setChapterTitle] = useState("");
   const [isHTML, setIsHTML] = useState(false);
@@ -160,7 +180,7 @@ export default function TextReaderView({
   const [bookmarkEditor, setBookmarkEditor] = useState<{ bookmark: NovelBookmark; isNew: boolean } | null>(null);
   const [pendingBookmark, setPendingBookmark] = useState<NovelBookmark | null>(null);
 
-  // 优先从 localStorage 恢复，缺失时读取 IndexedDB 备份。
+  // 优先从用户维度缓存恢复，缺失时一次性迁移旧版 localStorage / IndexedDB 并从云端同步。
   useEffect(() => {
     let cancelled = false;
     setBookmarksHydratedFor(null);
@@ -171,26 +191,114 @@ export default function TextReaderView({
       return;
     }
 
-    try {
-      const stored = localStorage.getItem(`novel-bookmarks-${comicId}`);
-      if (stored !== null) {
-        setBookmarks(normalizeNovelBookmarks(JSON.parse(stored)));
-        setBookmarksHydratedFor(comicId);
-        return;
-      }
-    } catch {
-      // Fall through to the IndexedDB backup.
-    }
+    const scopeKey = `${uid}:${comicId}`;
+    const userKey = `novel-bookmarks-${uid}-${comicId}`;
+    const legacyKey = `novel-bookmarks-${comicId}`;
+    const migratedKey = `nowen-reader:migrated:novel-bookmarks:${uid}:${comicId}`;
 
-    idbLoad<unknown>(`novel-bookmarks-${comicId}`, []).then((data) => {
+    const isMigrated = (() => {
+      try {
+        return localStorage.getItem(migratedKey) === "1";
+      } catch {
+        return false;
+      }
+    })();
+
+    const hydrate = async () => {
+      let localList: NovelBookmark[] = [];
+      let legacyList: NovelBookmark[] = [];
+
+      try {
+        const storedUser = localStorage.getItem(userKey);
+        if (storedUser !== null) {
+          localList = normalizeNovelBookmarks(JSON.parse(storedUser));
+        } else {
+          const idbUser = await idbLoad<unknown>(userKey, null);
+          if (idbUser !== null) {
+            localList = normalizeNovelBookmarks(idbUser);
+          }
+        }
+      } catch {
+        // ignore local read errors
+      }
+
+      if (!isMigrated) {
+        try {
+          const storedLegacy = localStorage.getItem(legacyKey);
+          if (storedLegacy !== null) {
+            legacyList = normalizeNovelBookmarks(JSON.parse(storedLegacy));
+          } else {
+            const idbLegacy = await idbLoad<unknown>(legacyKey, null);
+            if (idbLegacy !== null) {
+              legacyList = normalizeNovelBookmarks(idbLegacy);
+            }
+          }
+        } catch {
+          // ignore legacy read errors
+        }
+      }
+
       if (cancelled) return;
-      setBookmarks(normalizeNovelBookmarks(data));
-      setBookmarksHydratedFor(comicId);
-    });
+      const initialList = localList.length > 0 ? localList : legacyList;
+      setBookmarks(initialList);
+      setBookmarksHydratedFor(scopeKey);
+
+      if (!user?.id) return;
+
+      try {
+        const remote =
+          !isMigrated && legacyList.length > 0
+            ? await importBookmarks(
+                comicId,
+                legacyList.map((b) => ({
+                  id: b.id,
+                  pageIndex: b.chapterIndex,
+                  positionRatio: b.positionRatio,
+                  chapterTitle: b.chapterTitle,
+                  name: b.name,
+                  note: b.note,
+                  createdAt: b.timestamp,
+                  updatedAt: b.updatedAt,
+                }))
+              )
+            : await listBookmarks(comicId);
+        if (cancelled) return;
+
+        if (!isMigrated) {
+          try {
+            localStorage.setItem(migratedKey, "1");
+            if (legacyList.length > 0) {
+              localStorage.removeItem(legacyKey);
+            }
+          } catch {
+            // ignore storage errors
+          }
+        }
+
+        const mapped = normalizeNovelBookmarks(
+          remote.map((b) => ({
+            id: b.id,
+            chapterIndex: b.pageIndex,
+            chapterTitle: b.chapterTitle,
+            name: b.name,
+            note: b.note,
+            positionRatio: b.positionRatio,
+            timestamp: b.createdAt,
+            updatedAt: b.updatedAt,
+          }))
+        );
+        setBookmarks(mapped);
+        setBookmarksHydratedFor(scopeKey);
+      } catch {
+        // Offline / server error: retain local cache
+      }
+    };
+
+    void hydrate();
     return () => {
       cancelled = true;
     };
-  }, [comicId]);
+  }, [comicId, uid, user?.id]);
   // 目录面板的当前Tab: 'toc' | 'bookmark'
   const [tocTab, setTocTab] = useState<'toc' | 'bookmark'>('toc');
   // 当前时间（用于底部状态条）
@@ -202,24 +310,122 @@ export default function TextReaderView({
     }
     return "scroll";
   });
-  // 划线标注
-  const [highlights, setHighlights] = useState<TextHighlight[]>(() => {
-    if (typeof window !== "undefined" && comicId) {
-      try {
-        const stored = localStorage.getItem(`novel-highlights-${comicId}`);
-        if (stored) return JSON.parse(stored);
-      } catch { /* fallback below */ }
-    }
-    return [];
-  });
+  // 划线标注（用户隔离缓存 + 云端同步 + 旧版一次性迁移）
+  const [highlights, setHighlights] = useState<TextHighlight[]>([]);
+  const [highlightsHydratedFor, setHighlightsHydratedFor] = useState<string | null>(null);
 
-  // 从 IndexedDB 恢复划线（localStorage 为空时的降级方案）
   useEffect(() => {
-    if (!comicId || highlights.length > 0) return;
-    idbLoad<TextHighlight[]>(`novel-highlights-${comicId}`, []).then((data) => {
-      if (data.length > 0) setHighlights(data);
-    });
-  }, [comicId]); // eslint-disable-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    setHighlightsHydratedFor(null);
+    setHighlights([]);
+    if (!comicId) return;
+
+    const scopeKey = `${uid}:${comicId}`;
+    const userKey = `novel-highlights-${uid}-${comicId}`;
+    const legacyKey = `novel-highlights-${comicId}`;
+    const migratedKey = `nowen-reader:migrated:novel-highlights:${uid}:${comicId}`;
+
+    const isMigrated = (() => {
+      try {
+        return localStorage.getItem(migratedKey) === "1";
+      } catch {
+        return false;
+      }
+    })();
+
+    const hydrate = async () => {
+      let localList: TextHighlight[] = [];
+      let legacyList: TextHighlight[] = [];
+
+      try {
+        const storedUser = localStorage.getItem(userKey);
+        if (storedUser !== null) {
+          const parsed = JSON.parse(storedUser);
+          if (Array.isArray(parsed)) localList = parsed as TextHighlight[];
+        } else {
+          const idbUser = await idbLoad<TextHighlight[]>(userKey, []);
+          if (Array.isArray(idbUser) && idbUser.length > 0) {
+            localList = idbUser;
+          }
+        }
+      } catch {
+        // ignore local read errors
+      }
+
+      if (!isMigrated) {
+        try {
+          const storedLegacy = localStorage.getItem(legacyKey);
+          if (storedLegacy !== null) {
+            const parsed = JSON.parse(storedLegacy);
+            if (Array.isArray(parsed)) legacyList = parsed as TextHighlight[];
+          } else {
+            const idbLegacy = await idbLoad<TextHighlight[]>(legacyKey, []);
+            if (Array.isArray(idbLegacy) && idbLegacy.length > 0) {
+              legacyList = idbLegacy;
+            }
+          }
+        } catch {
+          // ignore legacy read errors
+        }
+      }
+
+      if (cancelled) return;
+      const initialList = localList.length > 0 ? localList : legacyList;
+      setHighlights(initialList);
+      setHighlightsHydratedFor(scopeKey);
+
+      if (!user?.id) return;
+
+      try {
+        const remote =
+          !isMigrated && legacyList.length > 0
+            ? await importHighlights(
+                comicId,
+                legacyList.map((h) => ({
+                  id: h.id,
+                  chapterIndex: h.chapterIndex,
+                  chapterTitle: h.chapterTitle || chapters[h.chapterIndex]?.title || chapters[h.chapterIndex]?.name || "",
+                  text: h.text,
+                  note: h.note,
+                  color: h.color || "#fbbf24",
+                  createdAt: h.timestamp,
+                }))
+              )
+            : await listHighlights(comicId);
+        if (cancelled) return;
+
+        if (!isMigrated) {
+          try {
+            localStorage.setItem(migratedKey, "1");
+            if (legacyList.length > 0) {
+              localStorage.removeItem(legacyKey);
+            }
+          } catch {
+            // ignore storage errors
+          }
+        }
+
+        const mapped: TextHighlight[] = remote.map((h) => ({
+          id: h.id,
+          chapterIndex: h.chapterIndex,
+          chapterTitle: h.chapterTitle,
+          text: h.text,
+          note: h.note || undefined,
+          color: h.color || "#fbbf24",
+          timestamp: h.createdAt,
+        }));
+        setHighlights(mapped);
+        setHighlightsHydratedFor(scopeKey);
+      } catch {
+        // Offline / server error: retain local cache
+      }
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [comicId, uid, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // 选词弹出菜单
   const [selectionMenu, setSelectionMenu] = useState<{
     x: number; y: number; text: string;
@@ -231,6 +437,7 @@ export default function TextReaderView({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchTruncated, setSearchTruncated] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // 左右滑动翻页触摸状态
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -302,9 +509,8 @@ export default function TextReaderView({
   const [swipePage, setSwipePage] = useState(0);
   const [swipeTotalPages, setSwipeTotalPages] = useState(1);
   const swipeInnerRef = useRef<HTMLDivElement>(null);
-  // 搜索取消/进度
+  // 搜索取消句柄
   const searchAbortRef = useRef<AbortController | null>(null);
-  const [searchProgress, setSearchProgress] = useState(0);
 
   // Load chapter content
   useEffect(() => {
@@ -422,26 +628,264 @@ export default function TextReaderView({
     localStorage.setItem("textReaderPadding", paddingLevel);
   }, [paddingLevel]);
 
-  // 保存书签（localStorage + IndexedDB 双写）
+  // 初始云端章节内阅读位置恢复与上报节流
+  const appliedInitialRatioForRef = useRef<string | null>(null);
+  const restoringPositionRef = useRef(false);
+  const lastEmittedRatioRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (comicId && bookmarksHydratedFor === comicId) {
-      localStorage.setItem(`novel-bookmarks-${comicId}`, JSON.stringify(bookmarks));
-      idbSave(`novel-bookmarks-${comicId}`, bookmarks);
+    appliedInitialRatioForRef.current = null;
+    lastEmittedRatioRef.current = null;
+  }, [comicId]);
+
+  const emitPositionRatio = useCallback(
+    (ratio: number) => {
+      if (!onPositionRatioChange) return;
+      const clamped = Math.round(Math.max(0, Math.min(1, ratio)) * 1000) / 1000;
+      if (
+        lastEmittedRatioRef.current !== null &&
+        Math.abs(clamped - lastEmittedRatioRef.current) < 0.01
+      ) {
+        return;
+      }
+      lastEmittedRatioRef.current = clamped;
+      onPositionRatioChange(clamped);
+    },
+    [onPositionRatioChange]
+  );
+
+  // 小说全局阅读偏好（global_novel）云端同步
+  const novelPrefsHydratedForRef = useRef<string | null>(null);
+  const suppressNextNovelPrefSaveRef = useRef(false);
+  const novelPrefSaveTimerRef = useRef<number | null>(null);
+  const latestNovelPrefsRef = useRef({
+    fontSize,
+    lineHeight,
+    letterSpacing,
+    fontFamily,
+    paddingLevel,
+    pageMode,
+    theme: readerTheme,
+  });
+  latestNovelPrefsRef.current = {
+    fontSize,
+    lineHeight,
+    letterSpacing,
+    fontFamily,
+    paddingLevel,
+    pageMode,
+    theme: readerTheme,
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    novelPrefsHydratedForRef.current = null;
+
+    if (!user?.id) {
+      novelPrefsHydratedForRef.current = uid;
+      return;
     }
-  }, [bookmarks, comicId, bookmarksHydratedFor]);
+
+    const syncNovelPrefs = async () => {
+      try {
+        const res = await getReaderPreferences();
+        if (cancelled) return;
+        const remote = res.globalNovel;
+        const hasRemote =
+          remote && typeof remote === "object" && Object.keys(remote).length > 0;
+        const migratedKey = `nowen-reader:migrated:novel-prefs:${uid}`;
+
+        if (hasRemote) {
+          const cur = latestNovelPrefsRef.current;
+          let localStateChanged = false;
+          if (
+            typeof remote.fontSize === "number" &&
+            remote.fontSize >= 12 &&
+            remote.fontSize <= 32 &&
+            remote.fontSize !== cur.fontSize
+          ) {
+            localStateChanged = true;
+            setFontSize(remote.fontSize);
+          }
+          if (
+            typeof remote.lineHeight === "number" &&
+            remote.lineHeight >= 1.2 &&
+            remote.lineHeight <= 3.0 &&
+            remote.lineHeight !== cur.lineHeight
+          ) {
+            localStateChanged = true;
+            setLineHeight(remote.lineHeight);
+          }
+          if (
+            typeof remote.letterSpacing === "number" &&
+            remote.letterSpacing >= -2 &&
+            remote.letterSpacing <= 10 &&
+            remote.letterSpacing !== cur.letterSpacing
+          ) {
+            localStateChanged = true;
+            setLetterSpacing(remote.letterSpacing);
+          }
+          if (
+            typeof remote.fontFamily === "string" &&
+            remote.fontFamily &&
+            remote.fontFamily !== cur.fontFamily
+          ) {
+            localStateChanged = true;
+            setFontFamily(remote.fontFamily);
+          }
+          if (
+            (remote.paddingLevel === "compact" ||
+              remote.paddingLevel === "standard" ||
+              remote.paddingLevel === "wide") &&
+            remote.paddingLevel !== cur.paddingLevel
+          ) {
+            localStateChanged = true;
+            setPaddingLevel(remote.paddingLevel);
+          }
+          if (
+            (remote.pageMode === "scroll" || remote.pageMode === "swipe") &&
+            remote.pageMode !== cur.pageMode
+          ) {
+            localStateChanged = true;
+            setPageMode(remote.pageMode);
+          }
+          if (
+            typeof remote.theme === "string" &&
+            remote.theme in themeColorMap &&
+            remote.theme !== cur.theme &&
+            onReaderThemeChange
+          ) {
+            localStateChanged = true;
+            onReaderThemeChange(remote.theme as ReaderTheme);
+          }
+          if (localStateChanged) {
+            suppressNextNovelPrefSaveRef.current = true;
+          }
+        } else if (!localStorage.getItem(migratedKey)) {
+          await saveReaderPreference("global_novel", latestNovelPrefsRef.current);
+          try {
+            localStorage.setItem(migratedKey, "1");
+          } catch {
+            // ignore storage errors
+          }
+        }
+      } catch {
+        // Offline / server error: keep local preferences
+      } finally {
+        if (!cancelled) {
+          novelPrefsHydratedForRef.current = uid;
+        }
+      }
+    };
+
+    void syncNovelPrefs();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user?.id || novelPrefsHydratedForRef.current !== uid) return;
+    if (suppressNextNovelPrefSaveRef.current) {
+      suppressNextNovelPrefSaveRef.current = false;
+      return;
+    }
+    if (novelPrefSaveTimerRef.current !== null) {
+      window.clearTimeout(novelPrefSaveTimerRef.current);
+    }
+    const payload = {
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      fontFamily,
+      paddingLevel,
+      pageMode,
+      theme: readerTheme,
+    };
+    novelPrefSaveTimerRef.current = window.setTimeout(() => {
+      novelPrefSaveTimerRef.current = null;
+      void saveReaderPreference("global_novel", payload).catch(() => {});
+    }, 500);
+    return () => {
+      if (novelPrefSaveTimerRef.current !== null) {
+        window.clearTimeout(novelPrefSaveTimerRef.current);
+        novelPrefSaveTimerRef.current = null;
+      }
+    };
+  }, [fontSize, lineHeight, letterSpacing, fontFamily, paddingLevel, pageMode, readerTheme, uid, user?.id]);
+
+  // 恢复上次云端记录的章内阅读位置（仅在首次加载该书时执行一次）
+  useEffect(() => {
+    if (
+      !comicId ||
+      loading ||
+      !chapterLoadedRef.current ||
+      typeof initialPositionRatio !== "number" ||
+      initialPositionRatio <= 0 ||
+      appliedInitialRatioForRef.current === comicId
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const ratio = Math.min(1, Math.max(0, initialPositionRatio));
+      restoringPositionRef.current = true;
+      if (pageMode === "swipe") {
+        setSwipePage(Math.round(ratio * Math.max(0, swipeTotalPages - 1)));
+      } else if (contentRef.current) {
+        const maxScroll = Math.max(
+          0,
+          contentRef.current.scrollHeight - contentRef.current.clientHeight
+        );
+        contentRef.current.scrollTop = maxScroll * ratio;
+      }
+      appliedInitialRatioForRef.current = comicId;
+      lastEmittedRatioRef.current = ratio;
+      window.setTimeout(() => {
+        restoringPositionRef.current = false;
+      }, 100);
+    }, pageMode === "swipe" ? 180 : 60);
+    return () => window.clearTimeout(timer);
+  }, [comicId, initialPositionRatio, currentPage, loading, content, pageMode, swipeTotalPages]);
+
+  // swipe 翻页时上报章内阅读比例
+  useEffect(() => {
+    if (pageMode !== "swipe" || loading || swipeTotalPages <= 0) return;
+    if (
+      comicId &&
+      typeof initialPositionRatio === "number" &&
+      initialPositionRatio > 0 &&
+      appliedInitialRatioForRef.current !== comicId
+    ) {
+      return;
+    }
+    const ratio = swipeTotalPages > 1 ? swipePage / (swipeTotalPages - 1) : 0;
+    emitPositionRatio(ratio);
+  }, [pageMode, swipePage, swipeTotalPages, loading, comicId, initialPositionRatio, emitPositionRatio]);
+
+  // 保存书签（用户隔离缓存 localStorage + IndexedDB 双写）
+  useEffect(() => {
+    const scopeKey = `${uid}:${comicId}`;
+    if (comicId && bookmarksHydratedFor === scopeKey) {
+      const userKey = `novel-bookmarks-${uid}-${comicId}`;
+      localStorage.setItem(userKey, JSON.stringify(bookmarks));
+      idbSave(userKey, bookmarks);
+    }
+  }, [bookmarks, comicId, uid, bookmarksHydratedFor]);
 
   // 保存翻页模式
   useEffect(() => {
     localStorage.setItem("textReaderPageMode", pageMode);
   }, [pageMode]);
 
-  // 保存划线标注（localStorage + IndexedDB 双写）
+  // 保存划线标注（用户隔离缓存 localStorage + IndexedDB 双写）
   useEffect(() => {
-    if (comicId) {
-      localStorage.setItem(`novel-highlights-${comicId}`, JSON.stringify(highlights));
-      idbSave(`novel-highlights-${comicId}`, highlights);
+    const scopeKey = `${uid}:${comicId}`;
+    if (comicId && highlightsHydratedFor === scopeKey) {
+      const userKey = `novel-highlights-${uid}-${comicId}`;
+      localStorage.setItem(userKey, JSON.stringify(highlights));
+      idbSave(userKey, highlights);
     }
-  }, [highlights, comicId]);
+  }, [highlights, comicId, uid, highlightsHydratedFor]);
 
   // 选词事件监听（使用 pointerup 兼容鼠标和触摸）
   useEffect(() => {
@@ -472,9 +916,15 @@ export default function TextReaderView({
 
   // 添加划线标注
   const addHighlight = useCallback((text: string, note?: string) => {
+    const activeChapterTitle =
+      chapterTitle ||
+      chapters[currentPage]?.title ||
+      chapters[currentPage]?.name ||
+      "";
     const newHL: TextHighlight = {
       id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       chapterIndex: currentPage,
+      chapterTitle: activeChapterTitle,
       text,
       note,
       color: '#fbbf24', // amber-400
@@ -485,12 +935,26 @@ export default function TextReaderView({
     setHighlightNote('');
     setShowNoteInput(false);
     window.getSelection()?.removeAllRanges();
-  }, [currentPage]);
+    if (user?.id && comicId) {
+      void upsertHighlight(comicId, {
+        id: newHL.id,
+        chapterIndex: newHL.chapterIndex,
+        chapterTitle: activeChapterTitle,
+        text: newHL.text,
+        note: newHL.note,
+        color: newHL.color,
+        createdAt: newHL.timestamp,
+      }).catch(() => {});
+    }
+  }, [currentPage, chapterTitle, chapters, comicId, user?.id]);
 
   // 删除划线标注
   const removeHighlight = useCallback((id: string) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
-  }, []);
+    if (user?.id && comicId) {
+      void deleteHighlight(comicId, id).catch(() => {});
+    }
+  }, [comicId, user?.id]);
 
   // 复制文本
   const copyText = useCallback((text: string) => {
@@ -499,11 +963,11 @@ export default function TextReaderView({
     window.getSelection()?.removeAllRanges();
   }, []);
 
-  // 全书搜索（带防抖、进度、取消支持）
+  // 全书搜索（单次后端检索接口，支持取消与结果截断提示）
   const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim() || !comicId) return;
+    const trimmed = query.trim();
+    if (!trimmed || !comicId) return;
 
-    // 取消上次搜索
     if (searchAbortRef.current) {
       searchAbortRef.current.abort();
     }
@@ -512,69 +976,34 @@ export default function TextReaderView({
 
     setSearchLoading(true);
     setSearchResults([]);
-    setSearchProgress(0);
+    setSearchTruncated(false);
 
-    const results: SearchResult[] = [];
-    const lowerQuery = query.toLowerCase();
+    try {
+      const res = await fetch(
+        apiPath(`/api/comics/${encodeURIComponent(comicId)}/search?q=${encodeURIComponent(trimmed)}&limit=100`),
+        { signal: abortController.signal },
+      );
+      if (!res.ok) {
+        throw new Error(`Search failed: ${res.status}`);
+      }
+      const data = await res.json();
+      if (abortController.signal.aborted) return;
 
-    // 逐章获取内容并搜索
-    for (let i = 0; i < chapters.length; i++) {
-      // 检查是否已取消
-      if (abortController.signal.aborted) {
+      const list = Array.isArray(data.results) ? (data.results as SearchResult[]) : [];
+      setSearchResults(list);
+      setSearchTruncated(Boolean(data.truncated));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
-
-      setSearchProgress(Math.round(((i + 1) / chapters.length) * 100));
-
-      try {
-        const res = await fetch(apiPath(`/api/comics/${comicId}/chapter/${i}`), {
-          signal: abortController.signal,
-        });
-        if (!res.ok) continue;
-        const data = await res.json();
-        const text = (data.content || '').replace(/<[^>]*>/g, ' ');
-        const lowerText = text.toLowerCase();
-
-        let matchCount = 0;
-        let idx = lowerText.indexOf(lowerQuery);
-        let firstMatchText = '';
-
-        while (idx !== -1) {
-          matchCount++;
-          if (matchCount === 1) {
-            const start = Math.max(0, idx - 30);
-            const end = Math.min(text.length, idx + query.length + 30);
-            firstMatchText = (start > 0 ? '...' : '') +
-              text.slice(start, end).replace(/\s+/g, ' ') +
-              (end < text.length ? '...' : '');
-          }
-          idx = lowerText.indexOf(lowerQuery, idx + 1);
-        }
-
-        if (matchCount > 0) {
-          results.push({
-            chapterIndex: i,
-            chapterTitle: data.title || chapters[i]?.title || chapters[i]?.name || t.reader.chapterN.replace('{n}', String(i + 1)),
-            matchText: firstMatchText,
-            matchCount,
-          });
-          // 实时更新结果，让用户边搜边看
-          setSearchResults([...results]);
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return; // 被取消，静默退出
-        }
-        // skip failed chapters
+      setSearchResults([]);
+      setSearchTruncated(false);
+    } finally {
+      if (!abortController.signal.aborted) {
+        setSearchLoading(false);
       }
     }
-
-    if (!abortController.signal.aborted) {
-      setSearchResults(results);
-      setSearchLoading(false);
-      setSearchProgress(0);
-    }
-  }, [comicId, chapters]);
+  }, [comicId]);
 
   // 更新时间
   useEffect(() => {
@@ -620,23 +1049,58 @@ export default function TextReaderView({
 
   const saveBookmark = useCallback((name: string, note: string) => {
     if (!bookmarkEditor) return;
+    const isNew = bookmarkEditor.isNew;
     const updated = {
       ...bookmarkEditor.bookmark,
       name,
       note,
       updatedAt: Date.now(),
     };
-    setBookmarks((previous) => bookmarkEditor.isNew
+    setBookmarks((previous) => isNew
       ? [...previous, updated]
       : previous.map((bookmark) => bookmark.id === updated.id ? updated : bookmark));
     setBookmarkEditor(null);
-  }, [bookmarkEditor]);
+
+    if (user?.id && comicId) {
+      if (isNew) {
+        void upsertBookmark(comicId, {
+          id: updated.id,
+          pageIndex: updated.chapterIndex,
+          positionRatio: updated.positionRatio,
+          chapterTitle: updated.chapterTitle,
+          name: updated.name,
+          note: updated.note,
+          createdAt: updated.timestamp,
+          updatedAt: updated.updatedAt,
+        }).catch(() => {});
+      } else {
+        void updateBookmark(comicId, updated.id, {
+          name: updated.name,
+          note: updated.note,
+        }).catch(() => {
+          void upsertBookmark(comicId, {
+            id: updated.id,
+            pageIndex: updated.chapterIndex,
+            positionRatio: updated.positionRatio,
+            chapterTitle: updated.chapterTitle,
+            name: updated.name,
+            note: updated.note,
+            createdAt: updated.timestamp,
+            updatedAt: updated.updatedAt,
+          }).catch(() => {});
+        });
+      }
+    }
+  }, [bookmarkEditor, comicId, user?.id]);
 
   // 删除书签
   const removeBookmark = useCallback((bookmarkID: string) => {
     setBookmarks(prev => prev.filter(b => b.id !== bookmarkID));
     setBookmarkEditor((current) => current?.bookmark.id === bookmarkID ? null : current);
-  }, []);
+    if (user?.id && comicId) {
+      void deleteBookmark(comicId, bookmarkID).catch(() => {});
+    }
+  }, [comicId, user?.id]);
 
   const goToBookmark = useCallback((bookmark: NovelBookmark) => {
     setPendingBookmark(bookmark);
@@ -1435,6 +1899,23 @@ export default function TextReaderView({
         className={`flex-1 pb-8 pt-6 ${currentPadding.class} ${
           pageMode === "swipe" ? "overflow-hidden" : "overflow-y-auto"
         }`}
+        onScroll={(e) => {
+          if (
+            pageMode !== "scroll" ||
+            loading ||
+            restoringPositionRef.current ||
+            (comicId &&
+              typeof initialPositionRatio === "number" &&
+              initialPositionRatio > 0 &&
+              appliedInitialRatioForRef.current !== comicId)
+          ) {
+            return;
+          }
+          const el = e.currentTarget;
+          const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+          const ratio = maxScroll > 0 ? el.scrollTop / maxScroll : 0;
+          emitPositionRatio(ratio);
+        }}
         onClick={(e) => {
           // 如果有选中文本，不处理点击
           const selection = window.getSelection();
@@ -1679,10 +2160,22 @@ export default function TextReaderView({
               {/* 当前章节的划线标注 */}
               {highlights.filter(h => h.chapterIndex === currentPage).length > 0 && (
                 <div className={`mt-8 border-t pt-4 ${isDark ? "border-zinc-700" : "border-current/10"}`}>
-                  <h4 className={`mb-3 flex items-center gap-1.5 text-xs font-medium ${theme.statusBarText}`}>
-                    <Highlighter className="h-3 w-3" />
-                    本章划线 ({highlights.filter(h => h.chapterIndex === currentPage).length})
-                  </h4>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h4 className={`flex items-center gap-1.5 text-xs font-medium ${theme.statusBarText}`}>
+                      <Highlighter className="h-3 w-3" />
+                      本章划线 ({highlights.filter(h => h.chapterIndex === currentPage).length})
+                    </h4>
+                    {comicId && (
+                      <a
+                        href={getHighlightsExportUrl(comicId)}
+                        download
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${theme.navBtnBg} ${theme.navBtnText} ${theme.navBtnHoverBg}`}
+                      >
+                        <Download className="h-3 w-3" />
+                        {t.reader.exportHighlightsMarkdown}
+                      </a>
+                    )}
+                  </div>
                   <div className="space-y-2">
                     {highlights
                       .filter(h => h.chapterIndex === currentPage)
@@ -2214,6 +2707,18 @@ export default function TextReaderView({
             {/* 书签内容 */}
             {tocTab === 'bookmark' && (
               <div className="px-2 pb-4">
+                {comicId && highlights.length > 0 && (
+                  <div className="mb-2 flex justify-end px-1">
+                    <a
+                      href={getHighlightsExportUrl(comicId)}
+                      download
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${theme.tocText} ${theme.tocHoverBg}`}
+                    >
+                      <Download className="h-3 w-3" />
+                      {t.reader.exportHighlightsMarkdown} ({highlights.length})
+                    </a>
+                  </div>
+                )}
                 {bookmarks.length === 0 ? (
                   <div className={`flex flex-col items-center justify-center py-12 ${theme.tocText}`}>
                     <Bookmark className="h-8 w-8 opacity-30 mb-2" />
@@ -2742,7 +3247,6 @@ export default function TextReaderView({
                         searchAbortRef.current = null;
                       }
                       setSearchLoading(false);
-                      setSearchProgress(0);
                     } else {
                       handleSearch(searchQuery);
                     }
@@ -2768,13 +3272,7 @@ export default function TextReaderView({
               {searchLoading && (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className={`h-6 w-6 animate-spin ${isDark ? "text-accent" : "text-accent"}`} />
-                  <p className={`text-xs ${theme.statusBarText}`}>{t.reader.searchingAll} {searchProgress}%</p>
-                  <div className="w-48 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-accent transition-all duration-300"
-                      style={{ width: `${searchProgress}%` }}
-                    />
-                  </div>
+                  <p className={`text-xs ${theme.statusBarText}`}>{t.reader.searchingAll}</p>
                   <p className={`text-[10px] ${theme.statusBarText}`}>{t.reader.searchChapterCount.replace('{n}', String(chapters.length))}</p>
                 </div>
               )}
@@ -2791,6 +3289,11 @@ export default function TextReaderView({
                   <div className={`px-2 py-1.5 text-[10px] ${theme.statusBarText}`}>
                     {t.reader.searchFoundMatches.replace('{count}', String(searchResults.reduce((sum, r) => sum + r.matchCount, 0))).replace('{chapters}', String(searchResults.length))}
                   </div>
+                  {searchTruncated && (
+                    <div className={`mx-2 mb-1.5 rounded-lg px-2.5 py-1.5 text-[10px] ${isDark ? "bg-amber-500/10 text-amber-300" : "bg-amber-500/10 text-amber-700"}`}>
+                      {t.reader.searchTruncated.replace('{limit}', '100')}
+                    </div>
+                  )}
                   {searchResults.map((result) => (
                     <button
                       key={result.chapterIndex}

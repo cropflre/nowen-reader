@@ -167,6 +167,7 @@ class Comic {
   final String updatedAt;
   final int sortOrder;
   final int lastReadPage;
+  final double lastReadPositionRatio;
   final int totalReadTime;
   final String readingStatus; // '' | want | reading | finished | shelved
   final String? lastReadAt;
@@ -290,6 +291,7 @@ class Comic {
     this.updatedAt = '',
     this.sortOrder = 0,
     this.lastReadPage = 0,
+    this.lastReadPositionRatio = 0.0,
     this.totalReadTime = 0,
     this.readingStatus = '',
     this.lastReadAt,
@@ -340,6 +342,8 @@ class Comic {
       updatedAt: json['updatedAt']?.toString() ?? '',
       sortOrder: _asInt(json['sortOrder']),
       lastReadPage: _asInt(json['lastReadPage']),
+      lastReadPositionRatio:
+          (_asDouble(json['lastReadPositionRatio']) ?? 0.0).clamp(0.0, 1.0),
       totalReadTime: _asInt(json['totalReadTime']),
       readingStatus: json['readingStatus']?.toString() ?? '',
       lastReadAt: json['lastReadAt']?.toString(),
@@ -436,6 +440,7 @@ class Comic {
     String? updatedAt,
     int? sortOrder,
     int? lastReadPage,
+    double? lastReadPositionRatio,
     int? totalReadTime,
     String? readingStatus,
     String? lastReadAt,
@@ -482,6 +487,8 @@ class Comic {
       updatedAt: updatedAt ?? this.updatedAt,
       sortOrder: sortOrder ?? this.sortOrder,
       lastReadPage: lastReadPage ?? this.lastReadPage,
+      lastReadPositionRatio:
+          lastReadPositionRatio ?? this.lastReadPositionRatio,
       totalReadTime: totalReadTime ?? this.totalReadTime,
       readingStatus: readingStatus ?? this.readingStatus,
       lastReadAt: lastReadAt ?? this.lastReadAt,

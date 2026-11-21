@@ -858,6 +858,21 @@ func InheritGroupMetadataFromFirstComic(groupID int) error {
 	return UpdateGroupMetadata(groupID, update)
 }
 
+func deleteSeriesReaderPreferenceByGroupID(groupID int) error {
+	if _, err := db.Exec(`DELETE FROM "UserReaderPreference" WHERE "scope" = ?`, fmt.Sprintf("series:%d", groupID)); err != nil && !isMissingTableError(err) {
+		return err
+	}
+	return nil
+}
+
+func deleteGroupRowAndSeriesPreferences(groupID int) error {
+	if err := deleteSeriesReaderPreferenceByGroupID(groupID); err != nil {
+		return err
+	}
+	_, err := db.Exec(`DELETE FROM "ComicGroup" WHERE "id" = ?`, groupID)
+	return err
+}
+
 // DeleteGroup 删除分组（不删除漫画本身）。
 // 显式删除关联记录，避免外键 CASCADE 在某些连接上未启用的情况。
 func DeleteGroup(groupID int) error {
@@ -865,9 +880,8 @@ func DeleteGroup(groupID int) error {
 	if _, err := db.Exec(`DELETE FROM "ComicGroupItem" WHERE "groupId" = ?`, groupID); err != nil {
 		return err
 	}
-	// 再删除分组本身
-	_, err := db.Exec(`DELETE FROM "ComicGroup" WHERE "id" = ?`, groupID)
-	return err
+	// 再删除分组本身及对应的系列级阅读偏好覆盖
+	return deleteGroupRowAndSeriesPreferences(groupID)
 }
 
 // naturalSortKey 生成自然排序键，将数字部分补零对齐，实现数字感知排序。
@@ -950,7 +964,7 @@ func RemoveComicFromGroup(groupID int, comicID string) error {
 	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupItem" WHERE "groupId" = ?`, groupID).Scan(&countItems)
 	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID).Scan(&countSeries)
 	if countItems == 0 && countSeries == 0 {
-		db.Exec(`DELETE FROM "ComicGroup" WHERE "id" = ?`, groupID)
+		_ = deleteGroupRowAndSeriesPreferences(groupID)
 	}
 
 	return nil
@@ -994,7 +1008,7 @@ func RemoveSeriesFromGroup(groupID int, seriesID string) error {
 	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupItem" WHERE "groupId" = ?`, groupID).Scan(&countItems)
 	_ = db.QueryRow(`SELECT COUNT(*) FROM "ComicGroupSeries" WHERE "groupId" = ?`, groupID).Scan(&countSeries)
 	if countItems == 0 && countSeries == 0 {
-		db.Exec(`DELETE FROM "ComicGroup" WHERE "id" = ?`, groupID)
+		_ = deleteGroupRowAndSeriesPreferences(groupID)
 	}
 
 	return nil

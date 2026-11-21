@@ -428,14 +428,15 @@ func createTables() error {
 		// UserComicState (用户个人漫画状态)
 		// ============================================================
 		`CREATE TABLE IF NOT EXISTS "UserComicState" (
-			"userId"        TEXT NOT NULL,
-			"comicId"       TEXT NOT NULL,
-			"lastReadPage"  INTEGER NOT NULL DEFAULT 0,
-			"lastReadAt"    DATETIME,
-			"isFavorite"    BOOLEAN NOT NULL DEFAULT 0,
-			"rating"        INTEGER,
-			"totalReadTime" INTEGER NOT NULL DEFAULT 0,
-			"readingStatus" TEXT NOT NULL DEFAULT '',
+			"userId"                TEXT NOT NULL,
+			"comicId"               TEXT NOT NULL,
+			"lastReadPage"          INTEGER NOT NULL DEFAULT 0,
+			"lastReadPositionRatio" REAL NOT NULL DEFAULT 0,
+			"lastReadAt"            DATETIME,
+			"isFavorite"            BOOLEAN NOT NULL DEFAULT 0,
+			"rating"                INTEGER,
+			"totalReadTime"         INTEGER NOT NULL DEFAULT 0,
+			"readingStatus"         TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY ("userId", "comicId"),
 			CONSTRAINT "UCS_userId_fkey" FOREIGN KEY ("userId")
 				REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -448,31 +449,86 @@ func createTables() error {
 		`CREATE INDEX IF NOT EXISTS "UCS_userId_lastReadAt_idx" ON "UserComicState"("userId", "lastReadAt" DESC)`,
 
 		// ============================================================
+		// UserBookmark / UserHighlight / UserReaderPreference
+		// ============================================================
+		`CREATE TABLE IF NOT EXISTS "UserBookmark" (
+			"id"            TEXT NOT NULL,
+			"userId"        TEXT NOT NULL,
+			"comicId"       TEXT NOT NULL,
+			"pageIndex"     INTEGER NOT NULL DEFAULT 0,
+			"positionRatio" REAL NOT NULL DEFAULT 0,
+			"chapterTitle"  TEXT NOT NULL DEFAULT '',
+			"name"          TEXT NOT NULL DEFAULT '',
+			"note"          TEXT NOT NULL DEFAULT '',
+			"createdAt"     INTEGER NOT NULL,
+			"updatedAt"     INTEGER NOT NULL,
+			PRIMARY KEY ("userId", "id"),
+			CONSTRAINT "UB_userId_fkey" FOREIGN KEY ("userId")
+				REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "UB_comicId_fkey" FOREIGN KEY ("comicId")
+				REFERENCES "Comic" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS "UserBookmark_user_comic_idx" ON "UserBookmark"("userId", "comicId", "pageIndex", "positionRatio")`,
+		`CREATE INDEX IF NOT EXISTS "UserBookmark_user_updated_idx" ON "UserBookmark"("userId", "updatedAt" DESC)`,
+
+		`CREATE TABLE IF NOT EXISTS "UserHighlight" (
+			"id"           TEXT NOT NULL,
+			"userId"       TEXT NOT NULL,
+			"comicId"      TEXT NOT NULL,
+			"chapterIndex" INTEGER NOT NULL DEFAULT 0,
+			"chapterTitle" TEXT NOT NULL DEFAULT '',
+			"text"         TEXT NOT NULL,
+			"note"         TEXT NOT NULL DEFAULT '',
+			"color"        TEXT NOT NULL DEFAULT 'amber',
+			"startOffset"  INTEGER NOT NULL DEFAULT -1,
+			"createdAt"    INTEGER NOT NULL,
+			"updatedAt"    INTEGER NOT NULL,
+			PRIMARY KEY ("userId", "id"),
+			CONSTRAINT "UH_userId_fkey" FOREIGN KEY ("userId")
+				REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+			CONSTRAINT "UH_comicId_fkey" FOREIGN KEY ("comicId")
+				REFERENCES "Comic" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS "UserHighlight_user_comic_idx" ON "UserHighlight"("userId", "comicId", "chapterIndex")`,
+		`CREATE INDEX IF NOT EXISTS "UserHighlight_user_updated_idx" ON "UserHighlight"("userId", "updatedAt" DESC)`,
+
+		`CREATE TABLE IF NOT EXISTS "UserReaderPreference" (
+			"userId"    TEXT NOT NULL,
+			"scope"     TEXT NOT NULL,
+			"prefsJson" TEXT NOT NULL DEFAULT '{}',
+			"updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY ("userId", "scope"),
+			CONSTRAINT "URP_userId_fkey" FOREIGN KEY ("userId")
+				REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+		)`,
+
+		// ============================================================
 		// FTS5 全文搜索虚拟表
 		// ============================================================
 		`CREATE VIRTUAL TABLE IF NOT EXISTS "ComicFTS" USING fts5(
-			title, author, filename, description, genre,
-			content="Comic", content_rowid="rowid"
+			title, author, filename, description, seriesName, genre,
+			content="Comic", content_rowid="rowid",
+			tokenize='trigram'
 		)`,
 
 		// 触发器：插入时同步到 FTS
 		`CREATE TRIGGER IF NOT EXISTS "Comic_ai_fts" AFTER INSERT ON "Comic" BEGIN
-			INSERT INTO "ComicFTS"(rowid, title, author, filename, description, genre)
-			VALUES (new.rowid, new.title, new.author, new.filename, new.description, new.genre);
+			INSERT INTO "ComicFTS"(rowid, title, author, filename, description, seriesName, genre)
+			VALUES (new.rowid, new.title, new.author, new.filename, new.description, new.seriesName, new.genre);
 		END`,
 
 		// 触发器：删除时同步到 FTS
 		`CREATE TRIGGER IF NOT EXISTS "Comic_ad_fts" AFTER DELETE ON "Comic" BEGIN
-			INSERT INTO "ComicFTS"("ComicFTS", rowid, title, author, filename, description, genre)
-			VALUES ('delete', old.rowid, old.title, old.author, old.filename, old.description, old.genre);
+			INSERT INTO "ComicFTS"("ComicFTS", rowid, title, author, filename, description, seriesName, genre)
+			VALUES ('delete', old.rowid, old.title, old.author, old.filename, old.description, old.seriesName, old.genre);
 		END`,
 
-		// 触发器：更新时同步到 FTS
-		`CREATE TRIGGER IF NOT EXISTS "Comic_au_fts" AFTER UPDATE ON "Comic" BEGIN
-			INSERT INTO "ComicFTS"("ComicFTS", rowid, title, author, filename, description, genre)
-			VALUES ('delete', old.rowid, old.title, old.author, old.filename, old.description, old.genre);
-			INSERT INTO "ComicFTS"(rowid, title, author, filename, description, genre)
-			VALUES (new.rowid, new.title, new.author, new.filename, new.description, new.genre);
+		// 触发器：仅在被索引元数据列变更时同步到 FTS，避免翻页更新 lastReadPage 触发写放大
+		`CREATE TRIGGER IF NOT EXISTS "Comic_au_fts" AFTER UPDATE OF "title", "author", "filename", "description", "seriesName", "genre" ON "Comic" BEGIN
+			INSERT INTO "ComicFTS"("ComicFTS", rowid, title, author, filename, description, seriesName, genre)
+			VALUES ('delete', old.rowid, old.title, old.author, old.filename, old.description, old.seriesName, old.genre);
+			INSERT INTO "ComicFTS"(rowid, title, author, filename, description, seriesName, genre)
+			VALUES (new.rowid, new.title, new.author, new.filename, new.description, new.seriesName, new.genre);
 		END`,
 
 		// ============================================================

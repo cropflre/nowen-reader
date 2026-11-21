@@ -19,6 +19,7 @@ export interface ApiComic {
   fileSize: number;
   addedAt: string;
   lastReadPage: number;
+  lastReadPositionRatio?: number;
   lastReadAt: string | null;
   isFavorite: boolean;
   rating: number | null;

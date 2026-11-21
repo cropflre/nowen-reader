@@ -115,26 +115,140 @@ class ReaderSettings {
     await prefs.setBool('reader_doubleCoverAlone', doubleCoverAlone);
     await prefs.setBool('reader_doublePageNoGap', doublePageNoGap);
   }
+
+  static String cloudModeString(ComicReadingMode mode) {
+    switch (mode) {
+      case ComicReadingMode.doublePage:
+        return 'double';
+      case ComicReadingMode.webtoon:
+        return 'webtoon';
+      case ComicReadingMode.single:
+        return 'single';
+    }
+  }
+
+  static String cloudFitModeString(FitMode fitMode) {
+    switch (fitMode) {
+      case FitMode.contain:
+        return 'container';
+      case FitMode.width:
+        return 'width';
+      case FitMode.height:
+        return 'height';
+    }
+  }
+
+  Map<String, dynamic> toLayoutOverrideJson() => {
+        'mode': cloudModeString(mode),
+        'direction': direction.name,
+        'doubleCoverAlone': doubleCoverAlone,
+        'doublePageNoGap': doublePageNoGap,
+        'fitMode': cloudFitModeString(fitMode),
+      };
+
+  Map<String, dynamic> toGlobalCloudJson() => {
+        ...toLayoutOverrideJson(),
+        'showPageNumber': showPageNumber,
+        'autoPageInterval': autoPageInterval,
+      };
+
+  ReaderSettings mergeCloudJson(Map<String, dynamic> raw) {
+    var nextMode = mode;
+    final rawMode = raw['mode']?.toString();
+    if (rawMode == 'single') {
+      nextMode = ComicReadingMode.single;
+    } else if (rawMode == 'double' || rawMode == 'doublePage') {
+      nextMode = ComicReadingMode.doublePage;
+    } else if (rawMode == 'webtoon') {
+      nextMode = ComicReadingMode.webtoon;
+    }
+
+    var nextDirection = direction;
+    final rawDirection = raw['direction']?.toString();
+    if (rawDirection != null) {
+      for (final candidate in ReadingDirection.values) {
+        if (candidate.name == rawDirection) {
+          nextDirection = candidate;
+          break;
+        }
+      }
+    }
+
+    var nextFit = fitMode;
+    final rawFit = raw['fitMode']?.toString();
+    if (rawFit == 'container' || rawFit == 'contain') {
+      nextFit = FitMode.contain;
+    } else if (rawFit == 'width') {
+      nextFit = FitMode.width;
+    } else if (rawFit == 'height') {
+      nextFit = FitMode.height;
+    }
+
+    final rawCoverAlone = raw['doubleCoverAlone'];
+    final nextCoverAlone =
+        rawCoverAlone is bool ? rawCoverAlone : doubleCoverAlone;
+
+    final rawNoGap = raw['doublePageNoGap'];
+    final nextNoGap = rawNoGap is bool ? rawNoGap : doublePageNoGap;
+
+    final rawShowPage = raw['showPageNumber'];
+    final nextShowPage = rawShowPage is bool ? rawShowPage : showPageNumber;
+
+    final rawInterval = raw['autoPageInterval'];
+    final nextInterval = rawInterval is num
+        ? rawInterval.toInt().clamp(0, 30)
+        : autoPageInterval;
+
+    return copyWith(
+      mode: nextMode,
+      direction: nextDirection,
+      fitMode: nextFit,
+      doubleCoverAlone: nextCoverAlone,
+      doublePageNoGap: nextNoGap,
+      showPageNumber: nextShowPage,
+      autoPageInterval: nextInterval,
+    );
+  }
 }
 
 /// 阅读器设置面板（底部弹出）
 class ReaderSettingsPanel extends StatefulWidget {
   final ReaderSettings settings;
   final ValueChanged<ReaderSettings> onChanged;
+  final String scope;
+  final bool hasComicOverride;
+  final ReaderSettings? globalSettings;
+  final ValueChanged<String>? onScopeChanged;
+  final VoidCallback? onResetOverride;
+  final bool autoSaveLocal;
 
   const ReaderSettingsPanel({
     super.key,
     required this.settings,
     required this.onChanged,
+    this.scope = 'global',
+    this.hasComicOverride = false,
+    this.globalSettings,
+    this.onScopeChanged,
+    this.onResetOverride,
+    this.autoSaveLocal = true,
   });
 
   @override
   State<ReaderSettingsPanel> createState() => _ReaderSettingsPanelState();
 
   /// 从底部弹出显示
-  static void show(BuildContext context,
-      {required ReaderSettings settings,
-      required ValueChanged<ReaderSettings> onChanged}) {
+  static void show(
+    BuildContext context, {
+    required ReaderSettings settings,
+    required ValueChanged<ReaderSettings> onChanged,
+    String scope = 'global',
+    bool hasComicOverride = false,
+    ReaderSettings? globalSettings,
+    ValueChanged<String>? onScopeChanged,
+    VoidCallback? onResetOverride,
+    bool autoSaveLocal = true,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -142,6 +256,12 @@ class ReaderSettingsPanel extends StatefulWidget {
       builder: (_) => ReaderSettingsPanel(
         settings: settings,
         onChanged: onChanged,
+        scope: scope,
+        hasComicOverride: hasComicOverride,
+        globalSettings: globalSettings,
+        onScopeChanged: onScopeChanged,
+        onResetOverride: onResetOverride,
+        autoSaveLocal: autoSaveLocal,
       ),
     );
   }
@@ -149,17 +269,33 @@ class ReaderSettingsPanel extends StatefulWidget {
 
 class _ReaderSettingsPanelState extends State<ReaderSettingsPanel> {
   late ReaderSettings _settings;
+  late String _scope;
+  late bool _hasComicOverride;
 
   @override
   void initState() {
     super.initState();
     _settings = widget.settings;
+    _scope = widget.scope;
+    _hasComicOverride = widget.hasComicOverride;
   }
 
   void _update(ReaderSettings newSettings) {
-    setState(() => _settings = newSettings);
+    final layoutChanged = newSettings.mode != _settings.mode ||
+        newSettings.direction != _settings.direction ||
+        newSettings.fitMode != _settings.fitMode ||
+        newSettings.doubleCoverAlone != _settings.doubleCoverAlone ||
+        newSettings.doublePageNoGap != _settings.doublePageNoGap;
+    setState(() {
+      _settings = newSettings;
+      if (_scope == 'comic' && layoutChanged) {
+        _hasComicOverride = true;
+      }
+    });
     widget.onChanged(newSettings);
-    newSettings.save(); // 自动持久化
+    if (widget.autoSaveLocal) {
+      newSettings.save(); // 自动持久化
+    }
   }
 
   @override
@@ -225,6 +361,85 @@ class _ReaderSettingsPanelState extends State<ReaderSettingsPanel> {
                     // ── 显示设置 ──
                     _SectionTitle(icon: Icons.monitor, title: '显示'),
                     const SizedBox(height: 8),
+
+                    if (widget.onScopeChanged != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(10),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _SettingLabel('配置作用域'),
+                                if (_scope == 'comic' &&
+                                    _hasComicOverride &&
+                                    widget.onResetOverride != null)
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      widget.onResetOverride?.call();
+                                      setState(() {
+                                        _scope = 'global';
+                                        _hasComicOverride = false;
+                                        if (widget.globalSettings != null) {
+                                          _settings = widget.globalSettings!;
+                                        }
+                                      });
+                                    },
+                                    icon: const Icon(Icons.restart_alt,
+                                        size: 14, color: Colors.amberAccent),
+                                    label: const Text(
+                                      '恢复全局默认',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.amberAccent,
+                                      ),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            _ToggleGroup<String>(
+                              value: _scope,
+                              items: [
+                                const _ToggleItem('global', '全局默认'),
+                                _ToggleItem(
+                                  'comic',
+                                  _hasComicOverride ? '仅本作 · 已覆盖' : '仅本作',
+                                ),
+                              ],
+                              onChanged: (v) {
+                                setState(() => _scope = v);
+                                widget.onScopeChanged!(v);
+                              },
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _scope == 'comic'
+                                  ? '仅覆盖本作的布局设置（单双页、方向、封面、无缝、适配），其余仍使用全局默认'
+                                  : '修改将作为所有漫画的默认设置同步到云端',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white.withAlpha(100),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
 
                     // 适应显示
                     _SettingLabel('适应显示'),

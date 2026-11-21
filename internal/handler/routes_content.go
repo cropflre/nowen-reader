@@ -171,20 +171,28 @@ func registerContentRoutes(api *gin.RouterGroup) {
 	}
 
 	// ============================================================
-	// Reading Goals
+	// Reading Goals (per-user)
 	// ============================================================
 	goal := NewGoalHandler()
-	goalsRead := api.Group("/goals")
-	goalsRead.Use(middleware.AuthRequired())
+	goalsGroup := api.Group("/goals")
+	goalsGroup.Use(middleware.AuthRequired())
 	{
-		goalsRead.GET("", goal.GetGoalProgress)
+		goalsGroup.GET("", goal.GetGoalProgress)
+		goalsGroup.POST("", goal.SetGoal)
+		goalsGroup.DELETE("", goal.DeleteGoal)
+		goalsGroup.DELETE("/:goalType", goal.DeleteGoal)
 	}
 
-	goalWrite := api.Group("")
-	goalWrite.Use(middleware.AdminRequired())
+	// ============================================================
+	// User Reader Preferences (per-user global / series / comic overrides)
+	// ============================================================
+	readerAssets := NewReaderAssetsHandler()
+	userPrefsGroup := api.Group("/user/reader-preferences")
+	userPrefsGroup.Use(middleware.AuthRequired())
 	{
-		goalWrite.POST("/goals", goal.SetGoal)
-		goalWrite.DELETE("/goals", goal.DeleteGoal)
+		userPrefsGroup.GET("", readerAssets.GetReaderPreferences)
+		userPrefsGroup.PUT("", readerAssets.PutReaderPreferences)
+		userPrefsGroup.DELETE("", readerAssets.DeleteReaderPreferences)
 	}
 
 	// ============================================================

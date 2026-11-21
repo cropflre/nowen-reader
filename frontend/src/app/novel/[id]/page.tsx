@@ -58,6 +58,9 @@ export default function NovelReaderPage() {
 
   // State
   const [currentPage, setCurrentPage] = useState(0);
+  const [positionRatio, setPositionRatio] = useState<number | undefined>(undefined);
+  const [initialPositionRatio, setInitialPositionRatio] = useState<number | undefined>(undefined);
+  const initialProgressAppliedForRef = useRef<string | null>(null);
   const [toolbarVisible, setToolbarVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -110,6 +113,7 @@ export default function NovelReaderPage() {
     enabled: activityReadyComicID === comicId && totalChapters > 0,
     page: currentPage,
     totalPages: totalChapters,
+    positionRatio,
   });
   const handleBack = useCallback(async () => {
     await finishReadingActivity();
@@ -119,8 +123,19 @@ export default function NovelReaderPage() {
   // Restore reading progress when comic detail loads
   useEffect(() => {
     if (comicDetail && totalChapters > 0) {
-      if (comicDetail.lastReadPage > 0 && comicDetail.lastReadPage < totalChapters) {
-        setCurrentPage(comicDetail.lastReadPage);
+      if (initialProgressAppliedForRef.current !== comicId) {
+        initialProgressAppliedForRef.current = comicId;
+        if (comicDetail.lastReadPage > 0 && comicDetail.lastReadPage < totalChapters) {
+          setCurrentPage(comicDetail.lastReadPage);
+        }
+        if (
+          typeof comicDetail.lastReadPositionRatio === "number" &&
+          comicDetail.lastReadPositionRatio > 0
+        ) {
+          const clampedRatio = Math.max(0, Math.min(1, comicDetail.lastReadPositionRatio));
+          setInitialPositionRatio(clampedRatio);
+          setPositionRatio(clampedRatio);
+        }
       }
       setIsFavorite(comicDetail.isFavorite);
       setRating(comicDetail.rating || 0);
@@ -247,6 +262,8 @@ export default function NovelReaderPage() {
   const handlePageChange = useCallback(
     (page: number) => {
       const clamped = Math.max(0, Math.min(totalChapters - 1, page));
+      setInitialPositionRatio(undefined);
+      setPositionRatio(0);
       setCurrentPage(clamped);
     },
     [totalChapters]
@@ -366,6 +383,9 @@ export default function NovelReaderPage() {
         onShowTOCChange={setShowTOC}
         onShowSettingsChange={setShowSettingsPanel}
         comicId={comicId}
+        initialPositionRatio={initialPositionRatio}
+        onPositionRatioChange={setPositionRatio}
+        onReaderThemeChange={setReaderTheme}
       />
 
       {/* Novel Toolbar */}

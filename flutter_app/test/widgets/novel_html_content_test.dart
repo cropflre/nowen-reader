@@ -57,6 +57,7 @@ class _ReaderApi extends ComicApi {
     required String clientSessionId,
     required int page,
     required int totalPages,
+    double? positionRatio,
     required int activeSeconds,
     required int sequence,
     bool finalize = false,

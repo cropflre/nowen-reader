@@ -61,6 +61,7 @@ export interface Comic {
   isFavorite?: boolean;
   rating?: number; // 1-5
   lastReadPage?: number;
+  lastReadPositionRatio?: number;
   sortOrder?: number;
   filename?: string;
 

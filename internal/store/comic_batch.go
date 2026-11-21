@@ -413,6 +413,8 @@ func deleteComicsByIDBatches(tx *sql.Tx, ids []string) (int64, error) {
 		"ReadingSession",
 		"ComicGroupItem",
 		"UserComicState",
+		"UserBookmark",
+		"UserHighlight",
 		"MetadataSyncLog",
 		"BookEditionItem",
 		"ComicSeriesItem",
@@ -423,6 +425,7 @@ func deleteComicsByIDBatches(tx *sql.Tx, ids []string) (int64, error) {
 
 	hasEditionTables, _ := existingTables(tx, []string{"BookEditionGroup", "BookEditionItem"})
 	hasSeriesTables, _ := existingTables(tx, []string{"ComicSeries", "ComicSeriesItem"})
+	hasPrefTables, _ := existingTables(tx, []string{"UserReaderPreference"})
 	affectedGroups := make(map[string]struct{})
 	affectedSeries := make(map[string]struct{})
 
@@ -467,6 +470,18 @@ func deleteComicsByIDBatches(tx *sql.Tx, ids []string) (int64, error) {
 		for _, table := range relatedTables {
 			if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM "%s" WHERE "comicId" IN (%s)`, table, in), args...); err != nil {
 				return rowsAffected, fmt.Errorf("delete %s records: %w", table, err)
+			}
+		}
+
+		if len(hasPrefTables) == 1 {
+			scopePlaceholders := make([]string, len(batch))
+			scopeArgs := make([]interface{}, len(batch))
+			for j, id := range batch {
+				scopePlaceholders[j] = "?"
+				scopeArgs[j] = "comic:" + id
+			}
+			if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM "UserReaderPreference" WHERE "scope" IN (%s)`, strings.Join(scopePlaceholders, ",")), scopeArgs...); err != nil {
+				return rowsAffected, fmt.Errorf("delete UserReaderPreference records: %w", err)
 			}
 		}
 

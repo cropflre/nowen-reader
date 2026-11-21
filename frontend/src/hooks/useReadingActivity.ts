@@ -8,6 +8,7 @@ interface ReadingActivityOptions {
   enabled: boolean;
   page: number;
   totalPages: number;
+  positionRatio?: number;
   trackProgress?: boolean;
 }
 
@@ -16,10 +17,16 @@ interface ActiveReadingSession {
   clientSessionId: string;
   page: number;
   totalPages: number;
+  positionRatio?: number;
   activeSeconds: number;
   sequence: number;
   trackProgress: boolean;
   finalized: boolean;
+}
+
+function normalizePositionRatio(ratio?: number): number | undefined {
+  if (typeof ratio !== "number" || !Number.isFinite(ratio)) return undefined;
+  return Math.max(0, Math.min(1, ratio));
 }
 
 function createClientSessionId(): string {
@@ -35,6 +42,9 @@ function buildPayload(session: ActiveReadingSession, finalize: boolean): Reading
     clientSessionId: session.clientSessionId,
     page: session.page,
     totalPages: session.totalPages,
+    ...(typeof session.positionRatio === "number"
+      ? { positionRatio: session.positionRatio }
+      : {}),
     activeSeconds: session.activeSeconds,
     sequence: session.sequence,
     finalize,
@@ -47,14 +57,22 @@ export function useReadingActivity({
   enabled,
   page,
   totalPages,
+  positionRatio,
   trackProgress = true,
 }: ReadingActivityOptions) {
   const hasPages = totalPages > 0;
+  const normalizedRatio = normalizePositionRatio(positionRatio);
   const sessionRef = useRef<ActiveReadingSession | null>(null);
+  const lastFlushedPageRef = useRef<number>(-1);
+  const lastFlushedTotalPagesRef = useRef<number>(-1);
+  const lastFlushedTrackProgressRef = useRef<boolean>(trackProgress);
+  const lastFlushedRatioRef = useRef<number | null>(null);
+
   const session = sessionRef.current;
   if (session?.comicId === comicId) {
     session.page = page;
     session.totalPages = totalPages;
+    session.positionRatio = normalizedRatio;
     session.trackProgress = trackProgress;
   }
 
@@ -63,6 +81,10 @@ export function useReadingActivity({
     if (!current || current.finalized) return;
     try {
       await recordReadingActivity(current.comicId, buildPayload(current, finalize));
+      lastFlushedPageRef.current = current.page;
+      lastFlushedTotalPagesRef.current = current.totalPages;
+      lastFlushedTrackProgressRef.current = current.trackProgress;
+      lastFlushedRatioRef.current = current.positionRatio ?? null;
       if (finalize) current.finalized = true;
     } catch {
       // A later heartbeat or the unload beacon will retry the cumulative state.
@@ -77,12 +99,17 @@ export function useReadingActivity({
       clientSessionId: createClientSessionId(),
       page,
       totalPages,
+      positionRatio: normalizedRatio,
       activeSeconds: 0,
       sequence: 0,
       trackProgress,
       finalized: false,
     };
     sessionRef.current = current;
+    lastFlushedPageRef.current = current.page;
+    lastFlushedTotalPagesRef.current = current.totalPages;
+    lastFlushedTrackProgressRef.current = current.trackProgress;
+    lastFlushedRatioRef.current = current.positionRatio ?? null;
 
     void flush();
     const activeTimer = window.setInterval(() => {
@@ -115,10 +142,20 @@ export function useReadingActivity({
   }, [comicId, enabled, flush, hasPages]);
 
   useEffect(() => {
-    if (!enabled || !sessionRef.current || sessionRef.current.finalized) return;
+    const current = sessionRef.current;
+    if (!enabled || !current || current.finalized) return;
+    const ratioChanged =
+      typeof normalizedRatio === "number" &&
+      (lastFlushedRatioRef.current === null ||
+        Math.abs(normalizedRatio - lastFlushedRatioRef.current) >= 0.01);
+    const pageChanged =
+      page !== lastFlushedPageRef.current ||
+      totalPages !== lastFlushedTotalPagesRef.current ||
+      trackProgress !== lastFlushedTrackProgressRef.current;
+    if (!ratioChanged && !pageChanged) return;
     const timer = window.setTimeout(() => { void flush(); }, 600);
     return () => window.clearTimeout(timer);
-  }, [enabled, flush, page, totalPages, trackProgress]);
+  }, [enabled, flush, page, totalPages, trackProgress, normalizedRatio]);
 
   const finish = useCallback(() => flush(true), [flush]);
   const flushNow = useCallback(() => flush(false), [flush]);

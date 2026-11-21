@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"fmt"
-
+	"math"
 	"path/filepath"
 	"strings"
 	"time"
@@ -197,6 +197,11 @@ func normalizeWhitespace(s string) string {
 // UpdateReadingProgress 更新最后阅读页码和时间戳，并联动更新阅读状态。
 // 如果 userID 不为空，同时更新 UserComicState。
 func UpdateReadingProgress(comicID string, page int, totalPages int, userID ...string) error {
+	return UpdateReadingProgressWithPosition(comicID, page, totalPages, nil, userID...)
+}
+
+// UpdateReadingProgressWithPosition 在更新页码/章节的同时可选同步章内偏移比例（0.0 ~ 1.0）。
+func UpdateReadingProgressWithPosition(comicID string, page int, totalPages int, positionRatio *float64, userID ...string) error {
 	now := time.Now().UTC()
 	uid := ""
 	if len(userID) > 0 {
@@ -208,6 +213,7 @@ func UpdateReadingProgress(comicID string, page int, totalPages int, userID ...s
 		_ = db.QueryRow(`SELECT "pageCount" FROM "Comic" WHERE "id" = ?`, comicID).Scan(&actualTotalPages)
 	}
 	page = normalizePageIndex(page, actualTotalPages)
+	clampedRatio := clampPositionRatio(positionRatio)
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -215,13 +221,26 @@ func UpdateReadingProgress(comicID string, page int, totalPages int, userID ...s
 	}
 	defer tx.Rollback()
 
-	if err := updateReadingProgressTx(tx, comicID, uid, page, actualTotalPages, now); err != nil {
+	if err := updateReadingProgressTx(tx, comicID, uid, page, actualTotalPages, clampedRatio, now); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func updateReadingProgressTx(tx *sql.Tx, comicID, userID string, page, totalPages int, now time.Time) error {
+func clampPositionRatio(v *float64) *float64 {
+	if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) {
+		return nil
+	}
+	clamped := *v
+	if clamped < 0 {
+		clamped = 0
+	} else if clamped > 1 {
+		clamped = 1
+	}
+	return &clamped
+}
+
+func updateReadingProgressTx(tx *sql.Tx, comicID, userID string, page, totalPages int, positionRatio *float64, now time.Time) error {
 	status := "reading"
 	if totalPages > 0 && page >= totalPages-1 {
 		status = "finished"
@@ -237,12 +256,31 @@ func updateReadingProgressTx(tx *sql.Tx, comicID, userID string, page, totalPage
 
 	// 更新 UserComicState
 	if userID != "" {
-		if _, err := tx.Exec(`
-			INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadAt", "readingStatus")
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadPage" = ?, "lastReadAt" = ?, "readingStatus" = ?
-		`, userID, comicID, page, now, status, page, now, status); err != nil {
-			return err
+		if positionRatio != nil {
+			if _, err := tx.Exec(`
+				INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadPositionRatio", "lastReadAt", "readingStatus")
+				VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT("userId", "comicId") DO UPDATE SET
+					"lastReadPage" = ?,
+					"lastReadPositionRatio" = ?,
+					"lastReadAt" = ?,
+					"readingStatus" = ?
+			`, userID, comicID, page, *positionRatio, now, status, page, *positionRatio, now, status); err != nil {
+				return err
+			}
+		} else {
+			// 旧客户端不传 positionRatio：同一章保持原有章内偏移，切章则归零
+			if _, err := tx.Exec(`
+				INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadPositionRatio", "lastReadAt", "readingStatus")
+				VALUES (?, ?, ?, 0, ?, ?)
+				ON CONFLICT("userId", "comicId") DO UPDATE SET
+					"lastReadPositionRatio" = CASE WHEN "UserComicState"."lastReadPage" = excluded."lastReadPage" THEN "UserComicState"."lastReadPositionRatio" ELSE 0 END,
+					"lastReadPage" = excluded."lastReadPage",
+					"lastReadAt" = excluded."lastReadAt",
+					"readingStatus" = excluded."readingStatus"
+			`, userID, comicID, page, now, status); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -13,13 +13,14 @@ import (
 type StatsHandler struct{}
 
 type readingActivityRequest struct {
-	ClientSessionID string `json:"clientSessionId"`
-	Page            int    `json:"page"`
-	TotalPages      int    `json:"totalPages"`
-	ActiveSeconds   int    `json:"activeSeconds"`
-	Sequence        int    `json:"sequence"`
-	Finalize        bool   `json:"finalize"`
-	TrackProgress   *bool  `json:"trackProgress"`
+	ClientSessionID string   `json:"clientSessionId"`
+	Page            int      `json:"page"`
+	TotalPages      int      `json:"totalPages"`
+	PositionRatio   *float64 `json:"positionRatio,omitempty"`
+	ActiveSeconds   int      `json:"activeSeconds"`
+	Sequence        int      `json:"sequence"`
+	Finalize        bool     `json:"finalize"`
+	TrackProgress   *bool    `json:"trackProgress"`
 }
 
 // NewStatsHandler creates a new StatsHandler.
@@ -42,9 +43,9 @@ func (h *StatsHandler) RecordActivity(c *gin.Context) {
 	if body.TrackProgress != nil {
 		trackProgress = *body.TrackProgress
 	}
-	if err := store.RecordReadingActivity(
+	if err := store.RecordReadingActivityWithPosition(
 		comicID, getUserID(c), body.ClientSessionID, body.Page, body.TotalPages,
-		body.ActiveSeconds, body.Sequence, body.Finalize, trackProgress,
+		body.PositionRatio, body.ActiveSeconds, body.Sequence, body.Finalize, trackProgress,
 	); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record reading activity"})
 		return

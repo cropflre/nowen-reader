@@ -225,6 +225,28 @@ func CleanupEmptyGroups() (int, error) {
 		return 0, fmt.Errorf("清理孤立关联失败: %w", err)
 	}
 
+	// 先记录将被清理的空系列 ID，以便同步清理其系列级阅读偏好
+	var emptyGroupIDs []int
+	if idRows, qErr := db.Query(`
+		SELECT g."id" FROM "ComicGroup" AS g
+		WHERE NOT EXISTS (
+			SELECT 1 FROM "ComicGroupItem" gi
+			WHERE gi."groupId" = g."id"
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM "ComicGroupSeries" cgs
+			WHERE cgs."groupId" = g."id"
+		)
+	`); qErr == nil {
+		for idRows.Next() {
+			var gid int
+			if scanErr := idRows.Scan(&gid); scanErr == nil {
+				emptyGroupIDs = append(emptyGroupIDs, gid)
+			}
+		}
+		_ = idRows.Close()
+	}
+
 	// 目录作品也是合集成员；只删除两种成员关系都不存在的合集。
 	result, err := db.Exec(`
 		DELETE FROM "ComicGroup" AS g
@@ -239,6 +261,9 @@ func CleanupEmptyGroups() (int, error) {
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("删除空系列失败: %w", err)
+	}
+	for _, gid := range emptyGroupIDs {
+		_ = deleteSeriesReaderPreferenceByGroupID(gid)
 	}
 	affected, _ := result.RowsAffected()
 	return int(affected), nil

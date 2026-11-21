@@ -415,3 +415,39 @@ func GetTxtChapterTitles(r Reader) []string {
 	}
 	return nil
 }
+
+// ExtractChapterByIndex returns chapter content in O(1) without scanning entries.
+func (r *txtReader) ExtractChapterByIndex(index int) ([]byte, error) {
+	if index < 0 || index >= len(r.chapters) {
+		return nil, fmt.Errorf("chapter index %d out of range", index)
+	}
+	meta := r.chapters[index]
+	content := r.text[meta.byteOffset : meta.byteOffset+meta.byteLength]
+	return []byte(strings.TrimSpace(content)), nil
+}
+
+// ChapterTitleByIndex returns the chapter title at index in O(1).
+func (r *txtReader) ChapterTitleByIndex(index int) string {
+	if index < 0 || index >= len(r.chapters) {
+		return ""
+	}
+	return r.chapters[index].title
+}
+
+// ChapterCount returns the total parsed chapter count.
+func (r *txtReader) ChapterCount() int {
+	return len(r.chapters)
+}
+
+// ExtractTxtChapterByIndex extracts a TXT chapter by index in O(1) when r is a txtReader.
+func ExtractTxtChapterByIndex(r Reader, index int) (content string, title string, ok bool) {
+	tr, isTxt := r.(*txtReader)
+	if !isTxt {
+		return "", "", false
+	}
+	data, err := tr.ExtractChapterByIndex(index)
+	if err != nil {
+		return "", "", false
+	}
+	return string(data), tr.ChapterTitleByIndex(index), true
+}

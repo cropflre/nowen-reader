@@ -87,10 +87,23 @@ class NovelBookmark {
         'updatedAt': updatedAt,
       };
 
+  Map<String, dynamic> toServerJson() => {
+        'id': id,
+        'pageIndex': chapterIndex,
+        'positionRatio': positionRatio,
+        'chapterTitle': chapterTitle,
+        'name': name,
+        'note': note,
+        'createdAt': timestamp,
+        'updatedAt': updatedAt,
+      };
+
   factory NovelBookmark.fromJson(Map<String, dynamic> json) {
-    final chapterIndex = (json['chapterIndex'] as num).toInt();
-    final timestamp = (json['timestamp'] as num?)?.toInt() ??
-        DateTime.now().millisecondsSinceEpoch;
+    final chapterIndex =
+        ((json['chapterIndex'] ?? json['pageIndex']) as num?)?.toInt() ?? 0;
+    final timestamp =
+        ((json['timestamp'] ?? json['createdAt']) as num?)?.toInt() ??
+            DateTime.now().millisecondsSinceEpoch;
     final rawPosition = (json['positionRatio'] as num?)?.toDouble() ?? 0;
     final legacyID = 'legacy-$chapterIndex-$timestamp';
     return NovelBookmark(
@@ -223,6 +236,97 @@ class NovelSettings {
     await prefs.setBool('novel_tapZonesInScrollMode', tapZonesInScrollMode);
   }
 
+  String get cloudFontFamily {
+    switch (font) {
+      case NovelFont.system:
+        return 'system';
+      case NovelFont.serif:
+        return 'serif';
+      case NovelFont.sans:
+        return 'sans';
+      case NovelFont.kai:
+        return 'kai';
+      case NovelFont.mono:
+        return 'mono';
+    }
+  }
+
+  Map<String, dynamic> toCloudJson() => {
+        'fontSize': fontSize,
+        'lineHeight': lineHeight,
+        'theme': theme.name,
+        'fontFamily': cloudFontFamily,
+        'paddingLevel': padding.name,
+        'pageMode': pageMode.name,
+      };
+
+  NovelSettings mergeCloudJson(Map<String, dynamic> raw) {
+    var nextFontSize = fontSize;
+    final rawFs = raw['fontSize'];
+    if (rawFs is num && rawFs.toDouble() >= 12 && rawFs.toDouble() <= 36) {
+      nextFontSize = rawFs.toDouble();
+    }
+
+    var nextLineHeight = lineHeight;
+    final rawLh = raw['lineHeight'];
+    if (rawLh is num && rawLh.toDouble() >= 1.0 && rawLh.toDouble() <= 3.5) {
+      nextLineHeight = rawLh.toDouble();
+    }
+
+    var nextTheme = theme;
+    final rawTheme = raw['theme']?.toString();
+    if (rawTheme != null) {
+      for (final candidate in NovelTheme.values) {
+        if (candidate.name == rawTheme) {
+          nextTheme = candidate;
+          break;
+        }
+      }
+    }
+
+    var nextFont = font;
+    final rawFont = raw['fontFamily']?.toString();
+    if (rawFont != null) {
+      for (final candidate in NovelFont.values) {
+        if (candidate.name == rawFont) {
+          nextFont = candidate;
+          break;
+        }
+      }
+    }
+
+    var nextPadding = padding;
+    final rawPadding = raw['paddingLevel']?.toString();
+    if (rawPadding != null) {
+      for (final candidate in NovelPadding.values) {
+        if (candidate.name == rawPadding) {
+          nextPadding = candidate;
+          break;
+        }
+      }
+    }
+
+    var nextPageMode = pageMode;
+    final rawMode = raw['pageMode']?.toString();
+    if (rawMode != null) {
+      for (final candidate in NovelPageMode.values) {
+        if (candidate.name == rawMode) {
+          nextPageMode = candidate;
+          break;
+        }
+      }
+    }
+
+    return copyWith(
+      fontSize: nextFontSize,
+      lineHeight: nextLineHeight,
+      theme: nextTheme,
+      font: nextFont,
+      padding: nextPadding,
+      pageMode: nextPageMode,
+    );
+  }
+
   /// 水平内边距
   double get horizontalPadding {
     switch (padding) {
@@ -325,9 +429,28 @@ class SearchResult {
 class BookmarkManager {
   static const _key = 'novel_bookmarks_';
 
-  static Future<List<NovelBookmark>> load(String comicId) async {
+  static String _storageKey(String comicId, {String? userKey}) {
+    final cleaned = userKey?.trim() ?? '';
+    if (cleaned.isEmpty) return '$_key$comicId';
+    return '$_key${cleaned}_$comicId';
+  }
+
+  static Future<List<NovelBookmark>> loadLegacy(String comicId) {
+    return load(comicId);
+  }
+
+  static Future<void> clearLegacy(String comicId) async {
     final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString('$_key$comicId');
+    await prefs.remove('$_key$comicId');
+  }
+
+  static Future<List<NovelBookmark>> load(
+    String comicId, {
+    String? userKey,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final storageKey = _storageKey(comicId, userKey: userKey);
+    final json = prefs.getString(storageKey);
     if (json == null) return [];
     try {
       final list = jsonDecode(json) as List;
@@ -342,7 +465,7 @@ class BookmarkManager {
               !e.containsKey('note') ||
               !e.containsKey('positionRatio') ||
               !e.containsKey('updatedAt')));
-      if (needsMigration) await save(comicId, bookmarks);
+      if (needsMigration) await save(comicId, bookmarks, userKey: userKey);
       return bookmarks;
     } catch (_) {
       return [];
@@ -350,10 +473,13 @@ class BookmarkManager {
   }
 
   static Future<void> save(
-      String comicId, List<NovelBookmark> bookmarks) async {
+    String comicId,
+    List<NovelBookmark> bookmarks, {
+    String? userKey,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      '$_key$comicId',
+      _storageKey(comicId, userKey: userKey),
       jsonEncode(bookmarks.map((b) => b.toJson()).toList()),
     );
   }

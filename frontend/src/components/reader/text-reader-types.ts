@@ -18,6 +18,7 @@ export interface NovelBookmark {
 export interface TextHighlight {
   id: string;
   chapterIndex: number;
+  chapterTitle?: string;
   text: string;
   note?: string;
   color: string;
@@ -53,4 +54,9 @@ export interface TextReaderViewProps {
   externalShowTOC?: boolean;
   externalShowSettings?: boolean;
   comicId?: string;
+  initialPositionRatio?: number;
+  onPositionRatioChange?: (ratio: number) => void;
+  onReaderThemeChange?: (
+    theme: import("@/components/reader/ReaderToolbar").ReaderTheme
+  ) => void;
 }

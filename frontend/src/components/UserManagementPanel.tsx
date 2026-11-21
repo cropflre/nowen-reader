@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Settings2,
   Pencil,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -135,6 +136,12 @@ export function UserManagementPanel() {
 
   // 确认删除
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 重置密码弹窗
+  const [resettingUser, setResettingUser] = useState<UserItem | null>(null);
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetSaving, setResetSaving] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   const showMessage = useCallback((msg: string, isError = false) => {
     if (isError) {
@@ -404,6 +411,38 @@ export function UserManagementPanel() {
       fetchUsers();
     } catch (err) {
       showMessage(err instanceof Error ? err.message : "删除用户失败", true);
+    }
+  };
+
+  // 管理员重置密码
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resettingUser) return;
+    if (resetNewPassword.length < 6) {
+      showMessage("新密码长度至少为 6 个字符", true);
+      return;
+    }
+    setResetSaving(true);
+    try {
+      const res = await fetch(apiPath("/api/auth/users"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "resetPassword",
+          userId: resettingUser.id,
+          newPassword: resetNewPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "重置密码失败");
+      showMessage(`已重置 ${resettingUser.nickname || resettingUser.username} 的密码，其旧登录会话已失效`);
+      setResettingUser(null);
+      setResetNewPassword("");
+      setShowResetPassword(false);
+    } catch (err) {
+      showMessage(err instanceof Error ? err.message : "重置密码失败", true);
+    } finally {
+      setResetSaving(false);
     }
   };
 
@@ -773,6 +812,20 @@ export function UserManagementPanel() {
                         <span className="hidden sm:inline">权限</span>
                       </button>
 
+                      {/* 重置密码 */}
+                      <button
+                        onClick={() => {
+                          setResettingUser(u);
+                          setResetNewPassword("");
+                          setShowResetPassword(false);
+                        }}
+                        className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted hover:bg-amber-500/10 hover:text-amber-500 transition-colors"
+                        title="重置密码"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">重置密码</span>
+                      </button>
+
                       {/* AI 权限开关 */}
                       {!isAdmin && (
                         <button
@@ -1012,6 +1065,75 @@ export function UserManagementPanel() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════ 重置密码弹窗 ══════ */}
+      {resettingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-xl">
+            <div className="border-b border-border/30 px-5 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-amber-500" />
+                  重置用户密码
+                </h3>
+                <p className="text-xs text-muted mt-0.5">
+                  {resettingUser.nickname || resettingUser.username} (@{resettingUser.username})
+                </p>
+              </div>
+              <button
+                onClick={() => setResettingUser(null)}
+                className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleResetPassword} className="p-5 space-y-4">
+              <div>
+                <label className="text-xs text-muted mb-1 block">新密码 *</label>
+                <div className="relative">
+                  <input
+                    type={showResetPassword ? "text" : "password"}
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="至少 6 个字符"
+                    required
+                    minLength={6}
+                    autoFocus
+                    className="w-full rounded-lg border border-border/50 bg-background px-3 py-2 pr-9 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                  >
+                    {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted">
+                  重置后将立即失效该用户所有已登录会话。
+                </p>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/30">
+                <button
+                  type="button"
+                  onClick={() => setResettingUser(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetSaving || resetNewPassword.length < 6}
+                  className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                >
+                  {resetSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  确认重置
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

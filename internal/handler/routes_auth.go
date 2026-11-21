@@ -26,8 +26,15 @@ func registerAuthRoutes(api *gin.RouterGroup) {
 	{
 		usersGroup.GET("", auth.ListUsers)
 		usersGroup.POST("", auth.CreateUserByAdmin)
-		usersGroup.PUT("", auth.UpdateUser)
 		usersGroup.DELETE("", auth.DeleteUserHandler)
+	}
+
+	// Self-service profile/password updates and admin-scoped user updates;
+	// UpdateUser enforces per-action authorization internally.
+	usersUpdateGroup := api.Group("/auth/users")
+	usersUpdateGroup.Use(middleware.AuthRequired())
+	{
+		usersUpdateGroup.PUT("", auth.UpdateUser)
 	}
 
 	apiKeyGroup := api.Group("/auth/api-keys")

@@ -3,6 +3,7 @@ package handler
 import (
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -290,6 +291,10 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is incorrect"})
 			return
 		}
+		if len(req.NewPassword) < 6 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters"})
+			return
+		}
 
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), 10)
 		if err != nil {
@@ -311,6 +316,39 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{"success": true})
 
+	case "resetPassword":
+		if currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+			return
+		}
+		if req.UserID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "userId is required"})
+			return
+		}
+		if len(req.NewPassword) < 6 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters"})
+			return
+		}
+		targetUser, err := store.GetUserByID(req.UserID)
+		if err != nil || targetUser == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"})
+			return
+		}
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), 10)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+		if err := store.UpdateUserPassword(req.UserID, string(hashedPassword)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset password"})
+			return
+		}
+		// Revoke all active sessions of the target user after admin password reset
+		if err := store.DeleteSessionsByUserID(req.UserID, ""); err != nil {
+			log.Printf("[auth] Warning: failed to cleanup sessions after password reset for user %s: %v", req.UserID, err)
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true})
+
 	case "updateProfile":
 		targetID := req.UserID
 		if targetID == "" {
@@ -321,7 +359,13 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 			return
 		}
 
-		if err := store.UpdateUserProfile(targetID, req.Nickname); err != nil {
+		nickname := strings.TrimSpace(req.Nickname)
+		if nickname == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Nickname is required"})
+			return
+		}
+
+		if err := store.UpdateUserProfile(targetID, nickname); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
 			return
 		}

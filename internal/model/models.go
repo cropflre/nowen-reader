@@ -204,14 +204,52 @@ type ComicCategory struct {
 // UserComicState 保存每个用户对每部漫画的个人状态。
 // Comic 表中仍保留 lastReadPage/isFavorite 等字段作为全局默认值（单用户兼容）。
 type UserComicState struct {
-	UserID        string     `json:"userId"`
-	ComicID       string     `json:"comicId"`
-	LastReadPage  int        `json:"lastReadPage"`
-	LastReadAt    *time.Time `json:"lastReadAt"`
-	IsFavorite    bool       `json:"isFavorite"`
-	Rating        *int       `json:"rating"`
-	TotalReadTime int        `json:"totalReadTime"`
-	ReadingStatus string     `json:"readingStatus"`
+	UserID                string     `json:"userId"`
+	ComicID               string     `json:"comicId"`
+	LastReadPage          int        `json:"lastReadPage"`
+	LastReadPositionRatio float64    `json:"lastReadPositionRatio"`
+	LastReadAt            *time.Time `json:"lastReadAt"`
+	IsFavorite            bool       `json:"isFavorite"`
+	Rating                *int       `json:"rating"`
+	TotalReadTime         int        `json:"totalReadTime"`
+	ReadingStatus         string     `json:"readingStatus"`
+}
+
+// UserBookmark 保存用户跨端同步的漫画页签或小说书签。
+type UserBookmark struct {
+	ID            string  `json:"id"`
+	UserID        string  `json:"userId,omitempty"`
+	ComicID       string  `json:"comicId"`
+	PageIndex     int     `json:"pageIndex"`
+	PositionRatio float64 `json:"positionRatio"`
+	ChapterTitle  string  `json:"chapterTitle"`
+	Name          string  `json:"name"`
+	Note          string  `json:"note"`
+	CreatedAt     int64   `json:"createdAt"`
+	UpdatedAt     int64   `json:"updatedAt"`
+}
+
+// UserHighlight 保存用户小说划线标注与读书笔记。
+type UserHighlight struct {
+	ID           string `json:"id"`
+	UserID       string `json:"userId,omitempty"`
+	ComicID      string `json:"comicId"`
+	ChapterIndex int    `json:"chapterIndex"`
+	ChapterTitle string `json:"chapterTitle"`
+	Text         string `json:"text"`
+	Note         string `json:"note"`
+	Color        string `json:"color"`
+	StartOffset  int    `json:"startOffset"`
+	CreatedAt    int64  `json:"createdAt"`
+	UpdatedAt    int64  `json:"updatedAt"`
+}
+
+// UserReaderPreference 保存用户级、系列级、单作级阅读器偏好。
+type UserReaderPreference struct {
+	UserID    string                 `json:"userId,omitempty"`
+	Scope     string                 `json:"scope"`
+	Prefs     map[string]interface{} `json:"prefs"`
+	UpdatedAt string                 `json:"updatedAt,omitempty"`
 }
 
 // ============================================================

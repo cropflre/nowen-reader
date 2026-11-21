@@ -366,10 +366,12 @@ const zhCN = {
     searchChapterCount: "共 {n} 章，点击「取消」可中断",
     noSearchResults: "未找到匹配结果",
     searchFoundMatches: "找到 {count} 处匹配，分布在 {chapters} 个章节",
+    searchTruncated: "仅展示前 {limit} 个匹配章节，请输入更精确的关键词",
     searchMatches: "{n} 处",
     searchHint: "输入关键词搜索全书内容",
     searchShortcut: "快捷键: S",
     copied: "已复制",
+    exportHighlightsMarkdown: "导出 Markdown",
   },
 
   // Reader Toolbar
@@ -464,6 +466,15 @@ const zhCN = {
     presetMangaEnhance: "老漫画增强",
     presetBWEnhance: "黑白增强",
     presetCustom: "自定义",
+    scopeLabel: "配置作用域",
+    scopeGlobal: "全局默认",
+    scopeSeries: "本系列",
+    scopeComic: "仅本作",
+    scopeHintGlobal: "修改将作为所有漫画的默认设置同步到云端",
+    scopeHintSeries: "仅覆盖本系列的布局（单双页、方向、封面、无缝、适配），其余仍使用全局设置",
+    scopeHintComic: "仅覆盖本作的布局（单双页、方向、封面、无缝、适配），其余仍使用全局设置",
+    resetOverride: "恢复全局默认",
+    overrideActive: "已覆盖",
   },
 
   // Duration formatting
@@ -1716,10 +1727,12 @@ export interface Translations {
     searchChapterCount: string;
     noSearchResults: string;
     searchFoundMatches: string;
+    searchTruncated: string;
     searchMatches: string;
     searchHint: string;
     searchShortcut: string;
     copied: string;
+    exportHighlightsMarkdown: string;
   };
   readerToolbar: {
     single: string;
@@ -1807,6 +1820,15 @@ export interface Translations {
     presetMangaEnhance: string;
     presetBWEnhance: string;
     presetCustom: string;
+    scopeLabel: string;
+    scopeGlobal: string;
+    scopeSeries: string;
+    scopeComic: string;
+    scopeHintGlobal: string;
+    scopeHintSeries: string;
+    scopeHintComic: string;
+    resetOverride: string;
+    overrideActive: string;
   };
   duration: {
     seconds: string;

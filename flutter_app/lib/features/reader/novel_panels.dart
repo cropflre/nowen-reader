@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'novel_settings.dart';
 import 'novel_content.dart';
@@ -689,6 +690,11 @@ class SearchPanel extends StatefulWidget {
   final ValueChanged<int> onGoToChapter;
   final VoidCallback onClose;
   final Future<String> Function(int chapterIndex) getChapterContent;
+  final Future<Map<String, dynamic>> Function(
+    String query, {
+    int limit,
+    CancelToken? cancelToken,
+  })? searchOnServer;
 
   const SearchPanel({
     super.key,
@@ -699,6 +705,7 @@ class SearchPanel extends StatefulWidget {
     required this.onGoToChapter,
     required this.onClose,
     required this.getChapterContent,
+    this.searchOnServer,
   });
 
   @override
@@ -712,6 +719,9 @@ class _SearchPanelState extends State<SearchPanel> {
   bool _loading = false;
   double _progress = 0;
   bool _cancelled = false;
+  bool _truncated = false;
+  bool _usingFallbackScan = false;
+  CancelToken? _cancelToken;
 
   @override
   void initState() {
@@ -723,6 +733,7 @@ class _SearchPanelState extends State<SearchPanel> {
 
   @override
   void dispose() {
+    _cancelToken?.cancel();
     _ctrl.dispose();
     _focusNode.dispose();
     _cancelled = true;
@@ -730,20 +741,65 @@ class _SearchPanelState extends State<SearchPanel> {
   }
 
   Future<void> _doSearch(String query) async {
-    if (query.trim().isEmpty) return;
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    _cancelToken?.cancel();
+    final cancelToken = CancelToken();
+    _cancelToken = cancelToken;
+
     setState(() {
       _loading = true;
       _progress = 0;
       _results = [];
       _cancelled = false;
+      _truncated = false;
+      _usingFallbackScan = false;
     });
 
-    final q = query.trim().toLowerCase();
+    if (widget.searchOnServer != null) {
+      try {
+        final data = await widget.searchOnServer!(
+          trimmed,
+          limit: 100,
+          cancelToken: cancelToken,
+        );
+        if (!mounted || _cancelled || cancelToken.isCancelled) return;
+        final rawList = (data['results'] as List?) ?? const [];
+        final parsed = rawList.whereType<Map>().map((raw) {
+          final item = Map<String, dynamic>.from(raw);
+          return SearchResult(
+            chapterIndex: (item['chapterIndex'] as num?)?.toInt() ?? 0,
+            chapterTitle: item['chapterTitle']?.toString() ?? '',
+            matchText: item['matchText']?.toString() ?? '',
+            matchCount: (item['matchCount'] as num?)?.toInt() ?? 0,
+          );
+        }).toList();
+        setState(() {
+          _results = parsed;
+          _truncated = data['truncated'] == true;
+          _loading = false;
+        });
+        return;
+      } on DioException catch (e) {
+        if (CancelToken.isCancel(e) || _cancelled) return;
+        // Fall through to local cached chapter scan when offline/unsupported.
+      } catch (_) {
+        if (_cancelled) return;
+      }
+    }
+
+    if (mounted) {
+      setState(() => _usingFallbackScan = true);
+    }
+
+    final q = trimmed.toLowerCase();
     final results = <SearchResult>[];
 
     for (int i = 0; i < widget.chapters.length; i++) {
       if (_cancelled) break;
-      setState(() => _progress = (i + 1) / widget.chapters.length);
+      if (mounted) {
+        setState(() => _progress = (i + 1) / widget.chapters.length);
+      }
 
       try {
         final content = await widget.getChapterContent(i);
@@ -753,7 +809,6 @@ class _SearchPanelState extends State<SearchPanel> {
         String? firstMatch;
         while ((pos = lower.indexOf(q, pos)) != -1) {
           if (firstMatch == null) {
-            // 取匹配上下文
             final start = (pos - 30).clamp(0, content.length);
             final end = (pos + q.length + 50).clamp(0, content.length);
             firstMatch = '...${content.substring(start, end)}...';
@@ -853,7 +908,11 @@ class _SearchPanelState extends State<SearchPanel> {
                     GestureDetector(
                       onTap: () {
                         if (_loading) {
-                          setState(() => _cancelled = true);
+                          _cancelToken?.cancel();
+                          setState(() {
+                            _cancelled = true;
+                            _loading = false;
+                          });
                         } else {
                           _doSearch(_ctrl.text);
                         }
@@ -881,8 +940,8 @@ class _SearchPanelState extends State<SearchPanel> {
                   ],
                 ),
               ),
-              // 进度条
-              if (_loading)
+              // 进度条（仅离线降级逐章扫描时显示百分比）
+              if (_loading && _usingFallbackScan)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(
@@ -966,6 +1025,21 @@ class _SearchPanelState extends State<SearchPanel> {
             style: TextStyle(fontSize: 10, color: s.secondaryTextColor),
           ),
         ),
+        if (_truncated)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.withAlpha(25),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                '仅展示前 100 个匹配章节，请输入更精确的关键词',
+                style: TextStyle(fontSize: 11, color: Colors.amber),
+              ),
+            ),
+          ),
         ..._results.map((r) {
           final isActive = r.chapterIndex == widget.currentChapter;
           return ListTile(
