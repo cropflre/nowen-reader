@@ -76,7 +76,7 @@ func normalizeBookmarkInput(userID, comicID string, bm model.UserBookmark) model
 	}
 	updatedAt := bm.UpdatedAt
 	if updatedAt <= 0 {
-		updatedAt = nowMs
+		updatedAt = createdAt
 	}
 	return model.UserBookmark{
 		ID:            id,
@@ -114,7 +114,7 @@ func normalizeHighlightInput(userID, comicID string, hl model.UserHighlight) mod
 	}
 	updatedAt := hl.UpdatedAt
 	if updatedAt <= 0 {
-		updatedAt = nowMs
+		updatedAt = createdAt
 	}
 	return model.UserHighlight{
 		ID:           id,
@@ -246,9 +246,13 @@ func ImportUserBookmarks(userID, comicID string, items []model.UserBookmark) ([]
 	}
 
 	for _, raw := range items {
+		incomingUpdatedAt := raw.UpdatedAt
+		if incomingUpdatedAt <= 0 {
+			incomingUpdatedAt = raw.CreatedAt
+		}
 		bm := normalizeBookmarkInput(userID, comicID, raw)
 		if prev, ok := byID[bm.ID]; ok {
-			if bm.UpdatedAt > prev.UpdatedAt {
+			if incomingUpdatedAt > prev.UpdatedAt {
 				if _, err := tx.Exec(`
 					UPDATE "UserBookmark"
 					SET "pageIndex" = ?, "positionRatio" = ?, "chapterTitle" = ?, "name" = ?, "note" = ?, "updatedAt" = ?
@@ -270,7 +274,7 @@ func ImportUserBookmarks(userID, comicID string, items []model.UserBookmark) ([]
 			}
 		}
 		if matchedExisting != nil {
-			if bm.UpdatedAt > matchedExisting.UpdatedAt && (bm.Name != "" || bm.Note != "") {
+			if incomingUpdatedAt > matchedExisting.UpdatedAt && (bm.Name != "" || bm.Note != "") {
 				if _, err := tx.Exec(`
 					UPDATE "UserBookmark"
 					SET "name" = ?, "note" = ?, "updatedAt" = ?
@@ -442,12 +446,16 @@ func ImportUserHighlights(userID, comicID string, items []model.UserHighlight) (
 	}
 
 	for _, raw := range items {
+		incomingUpdatedAt := raw.UpdatedAt
+		if incomingUpdatedAt <= 0 {
+			incomingUpdatedAt = raw.CreatedAt
+		}
 		hl := normalizeHighlightInput(userID, comicID, raw)
 		if hl.Text == "" {
 			continue
 		}
 		if prev, ok := byID[hl.ID]; ok {
-			if hl.UpdatedAt > prev.UpdatedAt {
+			if incomingUpdatedAt > prev.UpdatedAt {
 				if _, err := tx.Exec(`
 					UPDATE "UserHighlight"
 					SET "note" = ?, "color" = ?, "chapterTitle" = ?, "updatedAt" = ?
@@ -461,7 +469,7 @@ func ImportUserHighlights(userID, comicID string, items []model.UserHighlight) (
 		}
 		key := makeKey(hl.ChapterIndex, hl.Text)
 		if prev, ok := byKey[key]; ok {
-			if hl.UpdatedAt > prev.UpdatedAt && hl.Note != "" && prev.Note == "" {
+			if incomingUpdatedAt > prev.UpdatedAt && hl.Note != "" && prev.Note == "" {
 				if _, err := tx.Exec(`
 					UPDATE "UserHighlight"
 					SET "note" = ?, "updatedAt" = ?
