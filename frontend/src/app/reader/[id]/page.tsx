@@ -754,6 +754,7 @@ export default function ReaderPage() {
         />
       ) : (
         <WebtoonView
+          key={comicId}
           pages={pages}
           currentPage={currentPage}
           onPageChange={handlePageChange}
