@@ -5,7 +5,7 @@ const SW_SCOPE_PATH = self.registration
 const SCOPE_KEY = SW_SCOPE_PATH ? SW_SCOPE_PATH.replace(/[^a-zA-Z0-9_-]/g, "_") : "root";
 
 const CACHE_NAME = `nowen-reader-${SCOPE_KEY}-v4`;
-const STATIC_CACHE = `nowen-static-${SCOPE_KEY}-v4`;
+const STATIC_CACHE = `nowen-static-${SCOPE_KEY}-v5`;
 const IMAGE_CACHE = `nowen-images-${SCOPE_KEY}-v6`;
 const API_CACHE = `nowen-api-${SCOPE_KEY}-v3`;
 const CURRENT_CACHES = [CACHE_NAME, STATIC_CACHE, IMAGE_CACHE, API_CACHE];

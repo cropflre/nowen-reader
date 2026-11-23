@@ -10,6 +10,7 @@ const cacheNames = [
   "nowen-reader-_reader-v3",
   "nowen-reader-_reader-v4",
   "nowen-static-_reader-v4",
+  "nowen-static-_reader-v5",
   "nowen-images-_reader-v6",
   "nowen-api-_reader-v3",
   "nowen-reader-root-v4",
@@ -65,7 +66,7 @@ listeners.get("activate")({
 });
 await activation;
 
-assert.deepEqual(deletedCaches, ["nowen-reader-_reader-v3"]);
+assert.deepEqual(deletedCaches, ["nowen-reader-_reader-v3", "nowen-static-_reader-v4"]);
 
 deletedCaches.length = 0;
 let clearing;
@@ -83,7 +84,7 @@ assert.deepEqual(
     "nowen-api-_reader-v3",
     "nowen-images-_reader-v6",
     "nowen-reader-_reader-v4",
-    "nowen-static-_reader-v4",
+    "nowen-static-_reader-v5",
   ],
 );
 assert.ok(!deletedCaches.includes("nowen-reader-root-v4"));

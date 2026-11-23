@@ -1,6 +1,12 @@
 Tool: built-in image_gen.imagegen
-Use case: logo-brand.
-Asset type: final production app icon for Nowen Reader, a self-hosted comic and novel library for a NAS app store.
-Create ONE single square icon, 1024x1024, full bleed. An elegant and distinctive open book silhouette whose two ivory-white pages fold into a subtle capital N in negative space. The right page includes a single bold panel division suggesting comics; the left page remains calm and literary. Restrained contemporary editorial identity, warm paper against deep midnight indigo, with a small vivid amber bookmark integrated into the central fold. Smooth gently rounded book geometry, crisp edges, ample breathing space, strong silhouette instantly legible at 64 pixels. Rich dark indigo rounded-square app tile fills almost the whole canvas, tasteful subtle depth and very soft lighting, near-flat premium graphic design. Centered large mark occupies 66 percent of canvas. Do not render any words, lettering, labels, mockups, devices, extra icons, decorative stars, sparkles, tiny lines, watermarks, or presentation grids. Deliver only the app icon itself, straight-on.
+Input: user-supplied midnight navy and blue-white style reference.
 
-Mechanical exports: Lanczos downsampling using sharp 0.34.5; 64, 256, 512 and 1024 pixels. Original generated PNG preserved alongside the exports.
+Use case: logo-brand.
+Asset type: one shipping app launcher icon for Nowen Reader, a personal comic and novel library for NAS.
+Image 1 is a style reference. Draw a new, original reading brand mark in its dark navy, paper white, and saturated electric-blue palette, with equally crisp geometric cuts and restrained tonal depth.
+Design a compact centered geometric book monogram. A sturdy paper-white left book page has a tall vertical outer edge and sweeps diagonally down toward the central book fold. The electric-blue right page opens upward and is cut by one substantial navy gutter into two clean manga panels. Integrate the central white diagonal and strong outer uprights so the entire silhouette also reads as a stylized uppercase N. Let the page shapes do the work, with at most two blue tones on the right page. The icon should read as an open comic/book at 48 px.
+1024 square, front-facing, edge-to-edge very dark midnight navy canvas (~#0b192d). Render the navy backdrop as a full-bleed square with opaque navy outermost corner pixels, ready for operating-system corner masks. In the center, the mark occupies about 61 percent of the width and no more than 60 percent of the height, with balanced generous negative space. Background is quiet and nearly flat with an extremely subtle broad navy gradient. Hard precise edges on the artwork; premium near-flat graphic design. No outer rim, shadow, border, patterned texture, photography, 3D object, glow, floating accents, text labels, storage/server shapes, numbers, keyholes, watermarks, contact sheets or mockups. Output exactly one finished icon.
+
+Exports: Pillow Lanczos downsampling. The source PNG is the full-bleed master.
+fnOS, legacy Android, macOS, Windows and standard Flutter Web icons use
+transparent rounded corners. iOS and maskable web icons use the opaque master.
