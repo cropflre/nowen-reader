@@ -669,6 +669,7 @@ export function LibraryManagementPanel() {
   };
 
   const startEdit = (lib: LibraryType) => {
+    setOpenMenuId(null);
     setEditingId(lib.id);
     setEditName(lib.name);
     setEditType(lib.type);
@@ -1130,9 +1131,12 @@ export function LibraryManagementPanel() {
             const statuses = getStatuses(lib);
             return (
               <VaultCardShell key={lib.id} active={editingId === lib.id} disabled={!lib.enabled} className={useTypePalette(lib.type).glow}>
+                {editingId !== lib.id && (
                 <MoreMenu>
                   <button
                     type="button"
+                    aria-label="更多选项"
+                    title="更多选项"
                     className="flex h-9 w-9 items-center justify-center rounded-xl bg-card/90 text-muted shadow-sm ring-1 ring-border transition-colors hover:text-foreground"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1200,15 +1204,22 @@ export function LibraryManagementPanel() {
                     </div>
                   )}
                 </MoreMenu>
+                )}
 
                 {editingId === lib.id ? (
                   <div className="p-5 sm:p-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-semibold text-foreground">编辑书库</h3>
                         <p className="mt-1 text-sm text-muted">调整书库名称、目录或扫描设置。</p>
                       </div>
-                      <button onClick={cancelEdit} className="rounded-lg p-1.5 text-muted hover:text-foreground">
+                      <button
+                        type="button"
+                        aria-label="关闭"
+                        title="关闭"
+                        onClick={cancelEdit}
+                        className="shrink-0 rounded-lg p-1.5 text-muted hover:bg-card-hover hover:text-foreground transition-colors"
+                      >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
@@ -1345,7 +1356,7 @@ export function LibraryManagementPanel() {
                   </div>
                 ) : (
                   <div className="p-5 sm:p-6">
-                    <div className="flex flex-wrap items-start gap-4">
+                    <div className="flex flex-wrap items-start gap-4 pr-10">
                       <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${useTypePalette(lib.type).iconWrap}`}>
                         {getTypeIcon(lib.type)}
                       </div>
