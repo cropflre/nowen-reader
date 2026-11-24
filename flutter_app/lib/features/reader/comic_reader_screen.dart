@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,11 +23,13 @@ import 'webtoon_view.dart';
 class ComicReaderScreen extends ConsumerStatefulWidget {
   final String comicId;
   final int initialPage;
+  final Future<List<String>> Function()? loadNextChapterIds;
 
   const ComicReaderScreen({
     super.key,
     required this.comicId,
     this.initialPage = 0,
+    this.loadNextChapterIds,
   });
 
   @override
@@ -40,6 +43,10 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
   int _totalPages = 0;
   bool _showOverlay = false;
   bool _loading = true;
+  bool _openingNextChapter = false;
+  bool _noNextChapter = false;
+  bool _closing = false;
+  Future<void>? _finishReadingFuture;
 
   late final ComicApi _api;
   late final ReadingActivityTracker _activity;
@@ -95,12 +102,60 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
 
   /// 拦截返回操作，尽量在退出前完成最后一次活动同步
   Future<void> _onWillPop() async {
+    if (_closing) return;
+    _closing = true;
+    await (_finishReadingFuture ??= _finishReading());
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _finishReading() async {
     _warmup.dispose();
     await _activity.finish();
-    if (mounted) {
-      notifyReadingProgress(ref, widget.comicId);
-      Navigator.of(context).pop();
+    if (mounted) notifyReadingProgress(ref, widget.comicId);
+  }
+
+  Future<void> _openNextChapter() async {
+    final load = widget.loadNextChapterIds;
+    if (load == null || _openingNextChapter || _noNextChapter || _closing) {
+      return;
     }
+    setState(() => _openingNextChapter = true);
+    final List<String> nextChapterIds;
+    try {
+      nextChapterIds = await load();
+    } catch (_) {
+      if (!mounted || _closing) return;
+      setState(() => _openingNextChapter = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法加载下一章，请再试一次')),
+      );
+      return;
+    }
+    if (!mounted || _closing) return;
+
+    if (nextChapterIds.isEmpty) {
+      setState(() {
+        _noNextChapter = true;
+        _openingNextChapter = false;
+      });
+      return;
+    }
+    if (_settings.mode != ComicReadingMode.webtoon ||
+        !_scrollController.hasClients ||
+        _scrollController.position.extentAfter > 1) {
+      setState(() => _openingNextChapter = false);
+      return;
+    }
+
+    _autoPageTimer?.cancel();
+    // The top of the viewport may still show the preceding page at the tail.
+    _activity.updatePage(_totalPages - 1, _totalPages);
+    await (_finishReadingFuture ??= _finishReading());
+    if (!mounted || _closing) return;
+    context.replace(
+      '/reader/${Uri.encodeComponent(nextChapterIds.first)}?page=0',
+      extra: nextChapterIds.sublist(1),
+    );
   }
 
   Future<void> _loadSettings() async {
@@ -631,6 +686,21 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
               _buildTopOverlay(),
               _buildBottomOverlay(),
             ],
+            if (_openingNextChapter)
+              const Positioned.fill(
+                child: AbsorbPointer(
+                  child: SafeArea(
+                    minimum: EdgeInsets.only(bottom: 24),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SizedBox.square(
+                        dimension: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -812,6 +882,11 @@ class _ComicReaderScreenState extends ConsumerState<ComicReaderScreen> {
       onPageChanged: (page) {
         if (page != _currentPage) _onPageChanged(page);
       },
+      onNextChapter: widget.loadNextChapterIds != null &&
+              !_noNextChapter &&
+              !_openingNextChapter
+          ? _openNextChapter
+          : null,
     );
   }
 

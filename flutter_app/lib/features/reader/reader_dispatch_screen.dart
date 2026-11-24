@@ -14,11 +14,13 @@ import 'pdf_reader_screen.dart';
 class ReaderDispatchScreen extends ConsumerStatefulWidget {
   final String comicId;
   final int? initialPosition;
+  final List<String>? nextChapterIds;
 
   const ReaderDispatchScreen({
     super.key,
     required this.comicId,
     this.initialPosition,
+    this.nextChapterIds,
   });
 
   @override
@@ -117,6 +119,26 @@ class _ReaderDispatchScreenState extends ConsumerState<ReaderDispatchScreen> {
     return ComicReaderScreen(
       comicId: comic.id,
       initialPage: widget.initialPosition ?? 0,
+      loadNextChapterIds: comic.libraryId.isEmpty ||
+              widget.nextChapterIds?.isEmpty == true
+          ? null
+          : () async {
+              final known = widget.nextChapterIds;
+              if (known != null) return known;
+              final chapters =
+                  await ref.read(comicApiProvider).getComicSeriesReadingOrder(
+                        comicId: comic.id,
+                        libraryId: comic.libraryId,
+                        relativePath: comic.relativePath.isNotEmpty
+                            ? comic.relativePath
+                            : comic.filename,
+                      );
+              final current =
+                  chapters.indexWhere((c) => c.matchesComic(comic.id));
+              return current < 0
+                  ? const []
+                  : chapters.skip(current + 1).map((c) => c.comicId).toList();
+            },
     );
   }
 }

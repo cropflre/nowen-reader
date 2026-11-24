@@ -3,6 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api_client.dart';
 
+class ComicSeriesChapter {
+  final String comicId;
+  final Set<String> _editionIds;
+
+  const ComicSeriesChapter({
+    required this.comicId,
+    Set<String> editionIds = const {},
+  }) : _editionIds = editionIds;
+
+  bool matchesComic(String id) => comicId == id || _editionIds.contains(id);
+}
+
 /// 漫画 API
 class ComicApi {
   final Dio _dio;
@@ -276,6 +288,101 @@ class ComicApi {
   Future<Map<String, dynamic>> getSeriesDetail(String seriesId) async {
     final res = await _dio.get('/series/${Uri.encodeComponent(seriesId)}');
     return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  /// Resolve series membership using endpoints also available on server 1.2.4.
+  /// A matching directory only identifies candidates; the series must list the comic.
+  Future<List<ComicSeriesChapter>> getComicSeriesReadingOrder({
+    required String comicId,
+    required String libraryId,
+    required String relativePath,
+  }) async {
+    final path = _normalizeSeriesPath(relativePath);
+    if (libraryId.isEmpty || !path.contains('/')) return const [];
+
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/series',
+      queryParameters: {'libraryIds': libraryId},
+    );
+    final candidates = <({String id, String root})>[];
+    for (final series in _seriesMaps(response.data?['series'])) {
+      final id = series['id']?.toString() ?? '';
+      final root = _normalizeSeriesPath(
+        series['rootRelativePath']?.toString() ?? '',
+      );
+      if (id.isNotEmpty &&
+          series['libraryId'] == libraryId &&
+          root.isNotEmpty &&
+          path.startsWith('$root/')) {
+        candidates.add((id: id, root: root));
+      }
+    }
+    candidates.sort((a, b) => b.root.length.compareTo(a.root.length));
+
+    for (final candidate in candidates) {
+      final Map<String, dynamic> detail;
+      try {
+        detail = await getSeriesDetail(candidate.id);
+      } on DioException catch (error) {
+        if (error.response?.statusCode == 404) continue;
+        rethrow;
+      }
+      final ordered = _seriesReadingOrder(detail);
+      if (ordered.any((chapter) => chapter.matchesComic(comicId))) {
+        return ordered;
+      }
+    }
+    return const [];
+  }
+
+  static List<ComicSeriesChapter> _seriesReadingOrder(
+    Map<String, dynamic> detail,
+  ) {
+    final items = [
+      ..._seriesMaps(detail['unsectioned']),
+      for (final section in _seriesMaps(detail['sections']))
+        ..._seriesMaps(section['items']),
+    ];
+    final chapters = <({int sortIndex, ComicSeriesChapter chapter})>[];
+    for (final item in items) {
+      final comic = item['comic'];
+      if (comic is! Map) continue;
+      final id = comic['id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+      final editionIds = _seriesMaps(item['editions'])
+          .map((edition) => edition['comicId']?.toString() ?? '')
+          .where((editionId) => editionId.isNotEmpty)
+          .toSet();
+      chapters.add((
+        sortIndex: (item['sortIndex'] as num?)?.toInt() ?? 0,
+        chapter: ComicSeriesChapter(
+          comicId: id,
+          editionIds: editionIds,
+        ),
+      ));
+    }
+    chapters.sort((a, b) {
+      final order = a.sortIndex.compareTo(b.sortIndex);
+      return order != 0 ? order : a.chapter.comicId.compareTo(b.chapter.comicId);
+    });
+    return List.unmodifiable(chapters.map((item) => item.chapter));
+  }
+
+  static Iterable<Map> _seriesMaps(Object? value) =>
+      value is List ? value.whereType<Map>() : const [];
+
+  static String _normalizeSeriesPath(String path) {
+    final parts = <String>[];
+    for (final part in path.trim().replaceAll('\\', '/').split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (parts.isEmpty) return '';
+        parts.removeLast();
+      } else {
+        parts.add(part);
+      }
+    }
+    return parts.join('/');
   }
 
   /// 删除单本作品（仅全局管理员，支持删除源文件及关联多格式版本）

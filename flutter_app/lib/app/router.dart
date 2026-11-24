@@ -89,9 +89,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           final comicId = state.pathParameters['id']!;
           final pageStr = state.uri.queryParameters['page'];
           final initialPage = pageStr != null ? int.tryParse(pageStr) : null;
+          final extra = state.extra;
           return ReaderDispatchScreen(
+            key: ValueKey(comicId),
             comicId: comicId,
             initialPosition: initialPage,
+            nextChapterIds:
+                extra is List ? extra.whereType<String>().toList() : null,
           );
         },
       ),

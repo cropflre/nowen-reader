@@ -46,22 +46,29 @@ Future<void> _frames(WidgetTester tester) async {
 }
 
 Widget _view(WebtoonController controller, List<int> pages,
-        {int initialPage = 0, double width = 800, String server = _server}) =>
+        {int initialPage = 0,
+        double width = 800,
+        String server = _server,
+        int pageCount = 30,
+        TargetPlatform? platform,
+        VoidCallback? onNextChapter}) =>
     MaterialApp(
+        theme: ThemeData(platform: platform),
         home: Scaffold(
             body: Center(
                 child: SizedBox(
-      width: width,
-      height: 600,
-      child: WebtoonView(
-        controller: controller,
-        comicId: 'book',
-        serverUrl: server,
-        pageCount: 30,
-        initialPage: initialPage,
-        onPageChanged: pages.add,
-      ),
-    ))));
+          width: width,
+          height: 600,
+          child: WebtoonView(
+            controller: controller,
+            comicId: 'book',
+            serverUrl: server,
+            pageCount: pageCount,
+            initialPage: initialPage,
+            onPageChanged: pages.add,
+            onNextChapter: onNextChapter,
+          ),
+        ))));
 
 Future<void> _cleanup(WidgetTester tester, WebtoonController controller) async {
   await tester.pumpWidget(const SizedBox());
@@ -108,6 +115,95 @@ void main() {
   });
   tearDownAll(() => cookies.delete(recursive: true));
   setUp(() => readerImageLoader.clear());
+
+  testWidgets('chapter advance requires a fresh upward drag from the bottom',
+      (tester) async {
+    final controller = WebtoonController();
+    final bytes = await _png(tester, 150);
+    for (final gate in _pendingPages(3)) {
+      gate.complete(bytes);
+    }
+    var advances = 0;
+    await tester.pumpWidget(
+        _view(controller, [], pageCount: 3, onNextChapter: () => advances++));
+    await _frames(tester);
+    controller.jumpToPage(2);
+    await _frames(tester);
+    expect(controller.page, 2);
+    expect(controller.position.extentAfter, greaterThan(500));
+
+    final list = find.byType(ListView);
+    await tester.timedDrag(
+        list, const Offset(0, -850), const Duration(milliseconds: 1500));
+    await tester.pumpAndSettle();
+    expect(controller.position.extentAfter, 0);
+    expect(advances, 0);
+
+    controller.jumpTo(controller.position.maxScrollExtent - 240);
+    await tester.pump();
+    await tester.fling(list, const Offset(0, -110), 2800);
+    await tester.pumpAndSettle();
+    expect(controller.position.extentAfter, 0);
+    expect(advances, 0);
+
+    final canceled = await tester.startGesture(tester.getCenter(list));
+    await canceled.moveBy(const Offset(0, -40));
+    await canceled.moveBy(const Offset(0, -100));
+    await canceled.cancel();
+    await tester.pumpAndSettle();
+    expect(advances, 0);
+
+    await tester.timedDrag(
+        list, const Offset(0, -144), const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(advances, 1);
+
+    await tester.fling(list, const Offset(0, -140), 2400);
+    await tester.pumpAndSettle();
+    expect(advances, 2);
+    expect(tester.takeException(), isNull);
+    await _cleanup(tester, controller);
+  });
+
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets('chapter advance works when a single page fits on $platform',
+        (tester) async {
+      final controller = WebtoonController();
+      final bytes = await _png(tester, 25);
+      _pendingPages(1).single.complete(bytes);
+      var advances = 0;
+      await tester.pumpWidget(_view(controller, [],
+          pageCount: 1, platform: platform, onNextChapter: () => advances++));
+      await _frames(tester);
+      expect(tester.getSize(find.byKey(const ValueKey(0))).height, 200);
+      expect(controller.position.maxScrollExtent, 0);
+      expect(
+        controller.position.physics.applyBoundaryConditions(
+          controller.position,
+          100,
+        ),
+        platform == TargetPlatform.iOS ? 0 : 100,
+      );
+
+      final list = find.byType(ListView);
+      await tester.timedDrag(
+          list, const Offset(0, 144), const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(advances, 0);
+
+      await tester.timedDrag(
+          list, const Offset(0, -44), const Duration(milliseconds: 220));
+      await tester.pumpAndSettle();
+      expect(advances, 0);
+
+      await tester.timedDrag(
+          list, const Offset(0, -144), const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(advances, 1);
+      expect(tester.takeException(), isNull);
+      await _cleanup(tester, controller);
+    });
+  }
 
   testWidgets(
       'fast flings while images arrive never reset progress to page one',

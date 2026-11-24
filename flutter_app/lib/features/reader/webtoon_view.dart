@@ -150,6 +150,7 @@ class WebtoonView extends StatefulWidget {
     required this.pageCount,
     required this.onPageChanged,
     this.initialPage = 0,
+    this.onNextChapter,
   });
 
   final WebtoonController controller;
@@ -159,14 +160,21 @@ class WebtoonView extends StatefulWidget {
   final int initialPage;
   final ValueChanged<int> onPageChanged;
 
+  /// Opens the next chapter after a fresh upward swipe at the bottom.
+  final VoidCallback? onNextChapter;
+
   @override
   State<WebtoonView> createState() => _WebtoonViewState();
 }
 
 class _WebtoonViewState extends State<WebtoonView> {
+  static const _minimumChapterSwipe = 56.0;
+
   late List<double?> _ratios;
   int? _reportedPage;
   bool _reportScheduled = false;
+  int _pointersDown = 0;
+  PointerDownEvent? _chapterSwipeStart;
 
   @override
   void initState() {
@@ -182,6 +190,7 @@ class _WebtoonViewState extends State<WebtoonView> {
   void didUpdateWidget(WebtoonView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.comicId != widget.comicId) {
+      _chapterSwipeStart = null;
       _ratios = List.filled(widget.pageCount, null);
       widget.controller._geometry = null;
       widget.controller._requestedPage = widget.initialPage;
@@ -190,6 +199,43 @@ class _WebtoonViewState extends State<WebtoonView> {
       _ratios = List.generate(
           widget.pageCount, (i) => i < _ratios.length ? _ratios[i] : null);
     }
+  }
+
+  bool get _atChapterEnd {
+    final controller = widget.controller;
+    return widget.pageCount > 0 &&
+        controller.hasClients &&
+        controller.position.hasContentDimensions &&
+        controller.position.extentAfter <= precisionErrorTolerance;
+  }
+
+  void _startChapterSwipe(PointerDownEvent event) {
+    _pointersDown++;
+    // A gesture that only arrives at the tail must stay in this chapter.
+    _chapterSwipeStart =
+        _pointersDown == 1 && widget.onNextChapter != null && _atChapterEnd
+            ? event
+            : null;
+  }
+
+  void _finishChapterSwipe(PointerUpEvent event) {
+    final start = _chapterSwipeStart;
+    _pointersDown--;
+    _chapterSwipeStart = null;
+    if (start == null || start.pointer != event.pointer || !_atChapterEnd) {
+      return;
+    }
+    final delta = event.position - start.position;
+    if (-delta.dy >= _minimumChapterSwipe &&
+        -delta.dy > delta.dx.abs() &&
+        widget.controller.position.isScrollingNotifier.value) {
+      widget.onNextChapter?.call();
+    }
+  }
+
+  void _cancelChapterSwipe(PointerCancelEvent event) {
+    _pointersDown--;
+    _chapterSwipeStart = null;
   }
 
   void _schedulePageReport() {
@@ -227,28 +273,36 @@ class _WebtoonViewState extends State<WebtoonView> {
               constraints.maxWidth, constraints.maxHeight, _ratios);
           widget.controller._updateGeometry(geometry);
           _schedulePageReport();
-          return NotificationListener<ScrollNotification>(
-            onNotification: (_) {
-              _schedulePageReport();
-              return false;
-            },
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              controller: widget.controller,
-              itemCount: widget.pageCount,
-              itemExtentBuilder: (index, _) => geometry.extentOf(index),
-              itemBuilder: (context, index) => AuthenticatedImage(
-                key: ValueKey(index),
-                imageUrl:
-                    getImageUrl(widget.serverUrl, widget.comicId, page: index),
-                comicId: widget.comicId,
-                pageIndex: index,
-                fit: BoxFit.fitWidth,
-                onImageSize: (size) => _imageSize(index, size),
-                placeholder: const Center(child: CircularProgressIndicator()),
-                errorWidget: const Center(
-                  child:
-                      Icon(Icons.broken_image, color: Colors.white54, size: 48),
+          return Listener(
+            onPointerDown: _startChapterSwipe,
+            onPointerUp: _finishChapterSwipe,
+            onPointerCancel: _cancelChapterSwipe,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (_) {
+                _schedulePageReport();
+                return false;
+              },
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                controller: widget.controller,
+                physics: widget.onNextChapter == null
+                    ? null
+                    : const AlwaysScrollableScrollPhysics(),
+                itemCount: widget.pageCount,
+                itemExtentBuilder: (index, _) => geometry.extentOf(index),
+                itemBuilder: (context, index) => AuthenticatedImage(
+                  key: ValueKey(index),
+                  imageUrl: getImageUrl(widget.serverUrl, widget.comicId,
+                      page: index),
+                  comicId: widget.comicId,
+                  pageIndex: index,
+                  fit: BoxFit.fitWidth,
+                  onImageSize: (size) => _imageSize(index, size),
+                  placeholder: const Center(child: CircularProgressIndicator()),
+                  errorWidget: const Center(
+                    child: Icon(Icons.broken_image,
+                        color: Colors.white54, size: 48),
+                  ),
                 ),
               ),
             ),
