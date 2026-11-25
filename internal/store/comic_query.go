@@ -494,18 +494,7 @@ func GetAllComics(opts ComicListOptions) (*ComicListResult, error) {
 		c.LastReadPage = int(lastReadPage.Int64)
 		c.IsFavorite = isFavRaw.Valid && isFavRaw.Int64 != 0
 		c.TotalReadTime = int(totalReadTime.Int64)
-		if lastReadAtStr.Valid && lastReadAtStr.String != "" {
-			// SQLite 时间格式不固定（可能是 RFC3339、不带时区，或 'YYYY-MM-DD HH:MM:SS'）
-			s := strings.TrimSpace(lastReadAtStr.String)
-			parsed := parseSQLiteTime(s)
-			if !parsed.IsZero() {
-				v := parsed.UTC().Format(time.RFC3339Nano)
-				c.LastReadAt = &v
-			} else {
-				// 解析失败时退化为原字符串，避免丢失数据
-				c.LastReadAt = &s
-			}
-		}
+		c.LastReadAt = formatNullableSQLiteTime(lastReadAtStr)
 		if rating.Valid {
 			v := int(rating.Int64)
 			c.Rating = &v
@@ -854,9 +843,7 @@ func GetComicByIDForUser(comicID string, userID string) (*ComicListItem, error) 
 	ci.AddedAt = addedAt.UTC().Format(time.RFC3339Nano)
 	ci.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
 	ci.IsFavorite = isFavRaw.Int64 != 0
-	if lastReadAtStr.Valid {
-		ci.LastReadAt = &lastReadAtStr.String
-	}
+	ci.LastReadAt = formatNullableSQLiteTime(lastReadAtStr)
 	if lastReadPage.Valid {
 		ci.LastReadPage = int(lastReadPage.Int64)
 	}
@@ -1859,6 +1846,10 @@ func parseSQLiteTime(s string) time.Time {
 		time.RFC3339,
 		"2006-01-02 15:04:05.999999999-07:00",
 		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999 -07:00",
+		"2006-01-02 15:04:05.999999999-0700",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
 		"2006-01-02T15:04:05.999999999",
 		"2006-01-02 15:04:05.999999999",
 		"2006-01-02 15:04:05",
@@ -1875,4 +1866,20 @@ func parseSQLiteTime(s string) time.Time {
 		return t
 	}
 	return time.Time{}
+}
+
+// formatNullableSQLiteTime normalizes non-empty SQLite timestamp strings to UTC RFC3339Nano.
+func formatNullableSQLiteTime(raw sql.NullString) *string {
+	if !raw.Valid {
+		return nil
+	}
+	s := strings.TrimSpace(raw.String)
+	if s == "" {
+		return nil
+	}
+	if parsed := parseSQLiteTime(s); !parsed.IsZero() {
+		v := parsed.UTC().Format(time.RFC3339Nano)
+		return &v
+	}
+	return &s
 }

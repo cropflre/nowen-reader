@@ -145,7 +145,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     WidgetsBinding.instance.removeObserver(this);
     _positionSaveTimer?.cancel();
     _prefsSaveTimer?.cancel();
-    unawaited(_savePosition());
+    if (!_exiting) {
+      unawaited(_savePosition());
+    }
     _htmlPageAnimation.dispose();
     ServicesBinding.instance.keyboard.removeHandler(_handleKeyEvent);
     _autoScrollTimer?.cancel();
@@ -697,48 +699,22 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       final pages = (data['pages'] as List<dynamic>?) ?? [];
 
       // 如果没有通过路由指定初始章节，尝试从服务器恢复阅读进度
-      int startChapter = _currentChapter;
-      double initialRatio = 0.0;
-      if (widget.initialChapter == null) {
-        final lastReadPage = comicData['lastReadPage'] as int? ?? 0;
-        final rawServerRatio =
-            (comicData['lastReadPositionRatio'] as num?)?.toDouble() ?? 0.0;
-        final clampedServerRatio = rawServerRatio.isFinite
-            ? rawServerRatio.clamp(0.0, 1.0).toDouble()
-            : 0.0;
-        final serverReadAt =
-            DateTime.tryParse(comicData['lastReadAt']?.toString() ?? '');
-        final serverIsNewer = serverReadAt != null &&
-            (savedPosition == null ||
-                serverReadAt.isAfter(savedPosition.updatedAt));
-
-        if (serverIsNewer ||
-            (savedPosition == null &&
-                (lastReadPage > 0 || clampedServerRatio > 0))) {
-          if (lastReadPage > 0 && lastReadPage < pages.length) {
-            startChapter = lastReadPage;
-          }
-          if (clampedServerRatio > 0) {
-            initialRatio = clampedServerRatio;
-            _positionToRestore = NovelReadingPosition(
-              chapter: startChapter,
-              page: 0,
-              totalPages: 0,
-              swipe: _settings.pageMode == NovelPageMode.swipe,
-              ratio: clampedServerRatio,
-              updatedAt: serverReadAt ?? DateTime.now().toUtc(),
-            );
-          }
-        } else if (savedPosition != null &&
-            savedPosition.chapter < pages.length) {
-          startChapter = savedPosition.chapter;
-          _positionToRestore = savedPosition;
-          initialRatio = savedPosition.ratio;
-        }
-      }
-      if (pages.isNotEmpty) {
-        startChapter = startChapter.clamp(0, pages.length - 1);
-      }
+      final lastReadPage = (comicData['lastReadPage'] as num?)?.toInt() ?? 0;
+      final serverRatio =
+          (comicData['lastReadPositionRatio'] as num?)?.toDouble() ?? 0.0;
+      final decision = resolveInitialNovelPosition(
+        totalChapters: pages.length,
+        initialChapter: _currentChapter,
+        requestedChapter: widget.initialChapter,
+        savedPosition: savedPosition,
+        serverLastReadPage: lastReadPage,
+        serverPositionRatio: serverRatio,
+        serverReadAt: parseServerTimestamp(comicData['lastReadAt']),
+        defaultSwipe: _settings.pageMode == NovelPageMode.swipe,
+      );
+      final startChapter = decision.startChapter;
+      final initialRatio = decision.initialRatio;
+      _positionToRestore = decision.positionToRestore;
 
       setState(() {
         _title = data['title'] ?? '';
@@ -798,7 +774,11 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(0);
       }
-      _activity.updatePage(index, _totalChapters);
+      _activity.updatePosition(
+        index,
+        _totalChapters,
+        positionRatio: position?.ratio,
+      );
       if (_settings.pageMode == NovelPageMode.scroll) {
         _restoreScrollPosition();
       }
@@ -901,15 +881,30 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     _schedulePositionSave();
   }
 
-  void _restoreScrollPosition() {
+  void _restoreScrollPosition({int attempt = 0}) {
+    final generation = _chapterLoadGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _chapterLoading || !_scrollController.hasClients) return;
-      final position = _positionToRestore;
-      if (position != null) {
-        _scrollController.jumpTo(
-            position.ratio * _scrollController.position.maxScrollExtent);
-        _positionToRestore = null;
+      if (!mounted || _chapterLoading || generation != _chapterLoadGeneration) {
+        return;
       }
+      final position = _positionToRestore;
+      if (position == null) {
+        _schedulePositionSave();
+        return;
+      }
+      final hasDimensions = _scrollController.hasClients &&
+          _scrollController.position.hasContentDimensions;
+      final maxExtent =
+          hasDimensions ? _scrollController.position.maxScrollExtent : 0.0;
+      if ((!hasDimensions || (position.ratio > 0 && maxExtent <= 0)) &&
+          attempt < 5) {
+        _restoreScrollPosition(attempt: attempt + 1);
+        return;
+      }
+      if (hasDimensions && maxExtent > 0) {
+        _scrollController.jumpTo(position.ratio * maxExtent);
+      }
+      _positionToRestore = null;
       _schedulePositionSave();
     });
   }

@@ -64,15 +64,17 @@ class ReadingActivityTracker with WidgetsBindingObserver {
         ? positionRatio.clamp(0.0, 1.0).toDouble()
         : null;
     final pageChanged = page != _page || totalPages != _totalPages;
-    final ratioChanged = normalizedRatio != null &&
-        (_lastFlushedRatio == null ||
-            (normalizedRatio - _lastFlushedRatio!).abs() >= 0.01);
+    final chapterChanged = page != _page;
+    final nextRatio = normalizedRatio ??
+        (chapterChanged && _positionRatio != null ? 0.0 : _positionRatio);
+    final ratioChanged = nextRatio != null &&
+        (_lastFlushedRatio == null
+            ? nextRatio != _positionRatio
+            : (nextRatio - _lastFlushedRatio!).abs() >= 0.01);
 
     _page = page;
     _totalPages = totalPages;
-    if (normalizedRatio != null) {
-      _positionRatio = normalizedRatio;
-    }
+    _positionRatio = nextRatio;
 
     if (!pageChanged && !ratioChanged) return;
     _pageTimer?.cancel();

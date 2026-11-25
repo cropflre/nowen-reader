@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/nowen-reader/nowen-reader/internal/model"
 )
@@ -309,5 +310,72 @@ func TestDeleteGroupCleansSeriesReaderPreferences(t *testing.T) {
 	}
 	if afterAutoDelete.SeriesOverride != nil {
 		t.Fatalf("expected empty group's auto-deletion to clear series preference, got %+v", afterAutoDelete.SeriesOverride)
+	}
+}
+
+func TestGetComicByIDForUserNormalizesLastReadAt(t *testing.T) {
+	setupTestDB(t)
+	seedAssetUsersAndComics(t)
+
+	cases := []struct {
+		name     string
+		raw      string
+		wantNil  bool
+		wantTime string
+	}{
+		{
+			name:     "naive sqlite datetime assumes UTC",
+			raw:      "2026-11-25 07:38:00",
+			wantTime: "2026-11-25T07:38:00Z",
+		},
+		{
+			name:     "spaced sqlite offset converts to UTC",
+			raw:      "2026-11-25 15:38:00+08:00",
+			wantTime: "2026-11-25T07:38:00Z",
+		},
+		{
+			name:     "go time.String format converts to UTC",
+			raw:      "2026-11-25 07:38:00.125 +0000 UTC",
+			wantTime: "2026-11-25T07:38:00.125Z",
+		},
+		{
+			name:    "empty timestamp yields nil",
+			raw:     "   ",
+			wantNil: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := DB().Exec(`
+				INSERT INTO "UserComicState" ("userId", "comicId", "lastReadPage", "lastReadPositionRatio", "lastReadAt", "readingStatus")
+				VALUES ('u1', 'book-1', 4, 0.55, ?, 'reading')
+				ON CONFLICT("userId", "comicId") DO UPDATE SET "lastReadAt" = excluded."lastReadAt"
+			`, tc.raw); err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := GetComicByIDForUser("book-1", "u1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantNil {
+				if got.LastReadAt != nil {
+					t.Fatalf("expected nil LastReadAt, got %q", *got.LastReadAt)
+				}
+				return
+			}
+			if got.LastReadAt == nil {
+				t.Fatalf("expected non-nil LastReadAt for %q", tc.raw)
+			}
+			parsed, err := time.Parse(time.RFC3339Nano, *got.LastReadAt)
+			if err != nil {
+				t.Fatalf("expected RFC3339Nano LastReadAt, got %q: %v", *got.LastReadAt, err)
+			}
+			wantParsed, _ := time.Parse(time.RFC3339Nano, tc.wantTime)
+			if !parsed.Equal(wantParsed) || *got.LastReadAt != tc.wantTime {
+				t.Fatalf("LastReadAt = %q, want %q", *got.LastReadAt, tc.wantTime)
+			}
+		})
 	}
 }

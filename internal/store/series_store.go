@@ -518,10 +518,7 @@ func seriesSummariesByIDs(ids []string, userID string) (map[string]SeriesSummary
 			summary.SeriesDepth = NormalizeSeriesDepth(summary.SeriesDepth)
 			summary.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
 			summary.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-			if lastRead.Valid && lastRead.String != "" {
-				value := lastRead.String
-				summary.LastReadAt = &value
-			}
+			summary.LastReadAt = formatNullableSQLiteTime(lastRead)
 			summary.IsFavorite = favorite.Valid && favorite.Bool
 
 			summary.Tags = []Tag{}

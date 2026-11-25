@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nowen-reader/nowen-reader/internal/model"
 	"github.com/nowen-reader/nowen-reader/internal/store"
@@ -85,12 +86,19 @@ func TestReaderAssetsBookmarksHighlightsExportAndProgressRatio(t *testing.T) {
 	var aliceComic struct {
 		LastReadPage          int     `json:"lastReadPage"`
 		LastReadPositionRatio float64 `json:"lastReadPositionRatio"`
+		LastReadAt            *string `json:"lastReadAt"`
 	}
 	if err := json.Unmarshal(wAliceDetail.Body.Bytes(), &aliceComic); err != nil {
 		t.Fatal(err)
 	}
 	if aliceComic.LastReadPage != 4 || math.Abs(aliceComic.LastReadPositionRatio-0.78) > 1e-6 {
 		t.Fatalf("unexpected alice detail progress: %+v", aliceComic)
+	}
+	if aliceComic.LastReadAt == nil {
+		t.Fatalf("expected non-nil lastReadAt for alice")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, *aliceComic.LastReadAt); err != nil {
+		t.Fatalf("expected RFC3339Nano lastReadAt, got %q: %v", *aliceComic.LastReadAt, err)
 	}
 
 	wBobDetail := performAuthedRequest(r, http.MethodGet, "/api/comics/pub-novel", nil, bobCookie)
@@ -183,6 +191,52 @@ func TestReaderAssetsBookmarksHighlightsExportAndProgressRatio(t *testing.T) {
 	w = performAuthedRequest(r, http.MethodDelete, "/api/comics/pub-novel/bookmarks/bm-alice-1", nil, aliceCookie)
 	if w.Code != http.StatusOK {
 		t.Fatalf("DELETE bookmark failed: %d", w.Code)
+	}
+
+	// Simulate legacy naive SQLite timestamp on UserComicState and verify GET /api/comics/:id normalizes it to UTC RFC3339Nano.
+	aliceUser, err := store.GetUserByUsername("alice")
+	if err != nil || aliceUser == nil {
+		t.Fatalf("failed to load alice user: %v", err)
+	}
+	if _, err := store.DB().Exec(`
+		UPDATE "UserComicState" SET "lastReadAt" = '2026-11-25 07:38:00' WHERE "comicId" = 'pub-novel' AND "userId" = ?
+	`, aliceUser.ID); err != nil {
+		t.Fatal(err)
+	}
+	wNorm := performAuthedRequest(r, http.MethodGet, "/api/comics/pub-novel", nil, aliceCookie)
+	if wNorm.Code != http.StatusOK {
+		t.Fatalf("GET comic after naive timestamp failed: %d", wNorm.Code)
+	}
+	var normComic struct {
+		LastReadAt *string `json:"lastReadAt"`
+	}
+	if err := json.Unmarshal(wNorm.Body.Bytes(), &normComic); err != nil {
+		t.Fatal(err)
+	}
+	if normComic.LastReadAt == nil || *normComic.LastReadAt != "2026-11-25T07:38:00Z" {
+		t.Fatalf("expected normalized UTC RFC3339 lastReadAt, got %v", normComic.LastReadAt)
+	}
+
+	// PUT /progress without positionRatio preserves same-chapter ratio and updates lastReadAt as UTC RFC3339Nano.
+	wCompat := performAuthedRequest(r, http.MethodPut, "/api/comics/pub-novel/progress", map[string]any{
+		"page":       4,
+		"totalPages": 30,
+	}, aliceCookie)
+	if wCompat.Code != http.StatusOK {
+		t.Fatalf("PUT legacy progress failed: %d %s", wCompat.Code, wCompat.Body.String())
+	}
+	wAfterCompat := performAuthedRequest(r, http.MethodGet, "/api/comics/pub-novel", nil, aliceCookie)
+	if err := json.Unmarshal(wAfterCompat.Body.Bytes(), &aliceComic); err != nil {
+		t.Fatal(err)
+	}
+	if aliceComic.LastReadPage != 4 || math.Abs(aliceComic.LastReadPositionRatio-0.78) > 1e-6 {
+		t.Fatalf("expected ratio preserved after same-chapter PUT without positionRatio, got %+v", aliceComic)
+	}
+	if aliceComic.LastReadAt == nil {
+		t.Fatalf("expected non-nil lastReadAt after PUT progress")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, *aliceComic.LastReadAt); err != nil {
+		t.Fatalf("expected RFC3339Nano lastReadAt after PUT progress, got %q: %v", *aliceComic.LastReadAt, err)
 	}
 }
 

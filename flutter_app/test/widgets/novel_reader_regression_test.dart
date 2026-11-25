@@ -13,6 +13,7 @@ import 'package:nowen_reader/data/api/api_client.dart';
 import 'package:nowen_reader/data/api/comic_api.dart';
 import 'package:nowen_reader/data/providers/app_version_provider.dart';
 import 'package:nowen_reader/data/services/novel_reading_position.dart';
+import 'package:nowen_reader/data/services/reading_activity_tracker.dart';
 import 'package:nowen_reader/features/reader/novel_panels.dart';
 import 'package:nowen_reader/features/reader/novel_html_pages.dart';
 import 'package:nowen_reader/features/reader/novel_reader_screen.dart';
@@ -24,15 +25,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _server = 'https://reader.example/nowen';
 
 class _ReaderApi extends ComicApi {
-  _ReaderApi({this.html = false, this.lastChapter = 999, this.htmlContent})
-      : super(Dio());
+  _ReaderApi({
+    this.html = false,
+    this.lastChapter = 999,
+    this.lastReadPositionRatio = 0.0,
+    this.includePositionRatio = false,
+    this.recordServerReadAtOnActivity = false,
+    this.preserveRatioZeroOnActivity = false,
+    this.htmlContent,
+  }) : super(Dio());
 
   final bool html;
   final String? htmlContent;
   int lastChapter;
+  double lastReadPositionRatio;
+  final bool includePositionRatio;
+  final bool recordServerReadAtOnActivity;
+  final bool preserveRatioZeroOnActivity;
   String? lastReadAt;
   final requests = <int>[];
   final pendingChapters = <int, Completer<Map<String, dynamic>>>{};
+  final recordedActivities = <({int page, double? ratio, bool finalize})>[];
   int recentFetches = 0;
   Completer<void>? finalize;
 
@@ -45,6 +58,8 @@ class _ReaderApi extends ComicApi {
   @override
   Future<Map<String, dynamic>> getComic(String id) async => {
         'lastReadPage': lastChapter,
+        if (includePositionRatio)
+          'lastReadPositionRatio': lastReadPositionRatio,
         'lastReadAt': lastReadAt,
       };
 
@@ -110,6 +125,21 @@ class _ReaderApi extends ComicApi {
     bool trackProgress = true,
   }) async {
     if (finalize) await this.finalize?.future;
+    recordedActivities.add((page: page, ratio: positionRatio, finalize: finalize));
+    if (recordServerReadAtOnActivity) {
+      // 模拟真实后端写入时间戳略晚于客户端本机保存时间的时序。
+      lastReadAt = DateTime.now()
+          .toUtc()
+          .add(const Duration(milliseconds: 200))
+          .toIso8601String();
+    }
+    if (!preserveRatioZeroOnActivity) {
+      if (positionRatio != null) {
+        lastReadPositionRatio = positionRatio.clamp(0.0, 1.0).toDouble();
+      } else if (page != lastChapter) {
+        lastReadPositionRatio = 0.0;
+      }
+    }
     lastChapter = page;
   }
 }
@@ -594,5 +624,171 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     expect(await container.read(appVersionProvider.future), '2.3.4 (127)');
+  });
+
+  test(
+      'resolveInitialNovelPosition preserves same-chapter local position across new API edge cases',
+      () {
+    final savedAt = DateTime.utc(2026, 11, 25, 7, 30, 0);
+    final saved = NovelReadingPosition(
+      chapter: 5,
+      page: 4,
+      totalPages: 10,
+      swipe: true,
+      ratio: 4 / 9,
+      updatedAt: savedAt,
+    );
+
+    // 1. Same chapter with newer serverReadAt and zero server ratio (old server / anonymous GetComicByID / offline sync).
+    final zeroServerRatio = resolveInitialNovelPosition(
+      totalChapters: 20,
+      initialChapter: 0,
+      savedPosition: saved,
+      serverLastReadPage: 5,
+      serverPositionRatio: 0.0,
+      serverReadAt: savedAt.add(const Duration(milliseconds: 200)),
+      defaultSwipe: true,
+    );
+    expect(zeroServerRatio.startChapter, 5);
+    expect(zeroServerRatio.positionToRestore?.page, 4);
+    expect(zeroServerRatio.positionToRestore?.totalPages, 10);
+    expect(zeroServerRatio.initialRatio, closeTo(4 / 9, 1e-6));
+
+    // 2. Same chapter with newer serverReadAt and matching ratio keeps exact page & totalPages.
+    final matchingRatio = resolveInitialNovelPosition(
+      totalChapters: 20,
+      initialChapter: 0,
+      savedPosition: saved,
+      serverLastReadPage: 5,
+      serverPositionRatio: 4 / 9,
+      serverReadAt: savedAt.add(const Duration(milliseconds: 200)),
+      defaultSwipe: true,
+    );
+    expect(matchingRatio.positionToRestore?.page, 4);
+    expect(matchingRatio.positionToRestore?.totalPages, 10);
+
+    // 3. Same chapter with genuinely newer cross-device ratio overrides local position.
+    final remoteNewerRatio = resolveInitialNovelPosition(
+      totalChapters: 20,
+      initialChapter: 0,
+      savedPosition: saved,
+      serverLastReadPage: 5,
+      serverPositionRatio: 0.82,
+      serverReadAt: savedAt.add(const Duration(minutes: 5)),
+      defaultSwipe: true,
+    );
+    expect(remoteNewerRatio.startChapter, 5);
+    expect(remoteNewerRatio.initialRatio, closeTo(0.82, 1e-6));
+    expect(remoteNewerRatio.positionToRestore?.ratio, closeTo(0.82, 1e-6));
+
+    // 4. Different chapter on newer server switches chapter and restores server ratio.
+    final remoteChapter = resolveInitialNovelPosition(
+      totalChapters: 20,
+      initialChapter: 0,
+      savedPosition: saved,
+      serverLastReadPage: 8,
+      serverPositionRatio: 0.35,
+      serverReadAt: savedAt.add(const Duration(minutes: 5)),
+      defaultSwipe: true,
+    );
+    expect(remoteChapter.startChapter, 8);
+    expect(remoteChapter.initialRatio, closeTo(0.35, 1e-6));
+
+    // 5. Timestamp parser normalizes naive, offset, and Go time strings to UTC.
+    expect(parseServerTimestamp('2026-11-25 07:38:00'),
+        DateTime.utc(2026, 11, 25, 7, 38, 0));
+    expect(parseServerTimestamp('2026-11-25 15:38:00+08:00'),
+        DateTime.utc(2026, 11, 25, 7, 38, 0));
+    expect(parseServerTimestamp('2026-11-25 07:38:00.125 +0000 UTC'),
+        DateTime.utc(2026, 11, 25, 7, 38, 0, 125));
+    expect(parseServerTimestamp(''), isNull);
+  });
+
+  test('ReadingActivityTracker resets previous chapter ratio on chapter change',
+      () async {
+    final api = _ReaderApi();
+    final tracker = ReadingActivityTracker(api: api, comicId: 'book');
+    tracker.start(2, 10, positionRatio: 0.6);
+    tracker.updatePage(3, 10);
+    await tracker.finish();
+    expect(api.recordedActivities.last.page, 3);
+    expect(api.recordedActivities.last.ratio, 0.0);
+  });
+
+  testWidgets(
+      'half-read chapter keeps in-chapter page when server lastReadAt is newer with ratio 0',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ReaderApi(
+      html: true,
+      lastChapter: 999,
+      includePositionRatio: true,
+      lastReadPositionRatio: 0.0,
+      recordServerReadAtOnActivity: true,
+      preserveRatioZeroOnActivity: true,
+    );
+    await _mount(tester, api);
+    await _open(tester);
+    final view = find.byKey(const ValueKey('novel-html-pages'));
+    for (var i = 0; i < 4; i++) {
+      await tester.drag(view, const Offset(-300, 0));
+      await tester.pumpAndSettle();
+    }
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('首页'), findsOneWidget);
+
+    final saved = (await _store().load())!;
+    expect(saved.chapter, 999);
+    expect(saved.page, 4);
+    // Server now has lastReadAt newer than local savedAt while ratio remains 0.
+    expect(api.lastReadAt, isNotNull);
+    expect(api.lastReadPositionRatio, 0.0);
+
+    await _open(tester);
+    expect(find.text('第1000章'), findsWidgets);
+    expect(find.text('5 / ${saved.totalPages}'), findsOneWidget);
+    await _close(tester);
+    await _cleanup(tester);
+  });
+
+  testWidgets(
+      'scroll mode resumes half-read chapter when server lastReadAt is newer with ratio 0',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'novel_pageModeVersion': 1,
+      'novel_pageMode': NovelPageMode.scroll.index,
+    });
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ReaderApi(
+      html: false,
+      lastChapter: 999,
+      includePositionRatio: true,
+      lastReadPositionRatio: 0.0,
+      recordServerReadAtOnActivity: true,
+      preserveRatioZeroOnActivity: true,
+    );
+    await _mount(tester, api);
+    await _open(tester);
+
+    var controller = tester.widget<ListView>(find.byType(ListView)).controller!;
+    controller.jumpTo(controller.position.maxScrollExtent * 0.4);
+    await tester.pumpAndSettle();
+    final before = controller.offset / controller.position.maxScrollExtent;
+    expect(before, greaterThan(0.1));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect((await _store().load())!.ratio, closeTo(before, 0.01));
+    expect(api.lastReadAt, isNotNull);
+    expect(api.lastReadPositionRatio, 0.0);
+
+    await _open(tester);
+    controller = tester.widget<ListView>(find.byType(ListView)).controller!;
+    expect(controller.offset / controller.position.maxScrollExtent,
+        closeTo(before, 0.01));
+    await _close(tester);
+    await _cleanup(tester);
   });
 }

@@ -929,15 +929,7 @@ func GetComicEditionsForUser(comicID, userID string, accessibleLibraryIDs []stri
 			r.EditionLabel = ExtractEditionLabel(r.RelativePath)
 		}
 		r.FormatPriority = FormatPriority(r.ComicType, r.Format)
-		if lastReadAtStr.Valid && lastReadAtStr.String != "" {
-			s := strings.TrimSpace(lastReadAtStr.String)
-			if parsed := parseSQLiteTime(s); !parsed.IsZero() {
-				v := parsed.UTC().Format(time.RFC3339Nano)
-				r.LastReadAt = &v
-			} else {
-				r.LastReadAt = &s
-			}
-		}
+		r.LastReadAt = formatNullableSQLiteTime(lastReadAtStr)
 		rows = []BookEditionMemberRow{r}
 	}
 
@@ -1020,15 +1012,7 @@ func scanBookEditionMemberRows(dbRows *sql.Rows) ([]BookEditionMemberRow, error)
 		if r.Format == "" {
 			r.Format = strings.ToUpper(ExtractFileFormat(r.RelativePath))
 		}
-		if lastReadAtStr.Valid && lastReadAtStr.String != "" {
-			s := strings.TrimSpace(lastReadAtStr.String)
-			if parsed := parseSQLiteTime(s); !parsed.IsZero() {
-				v := parsed.UTC().Format(time.RFC3339Nano)
-				r.LastReadAt = &v
-			} else {
-				r.LastReadAt = &s
-			}
-		}
+		r.LastReadAt = formatNullableSQLiteTime(lastReadAtStr)
 		result = append(result, r)
 	}
 	return result, dbRows.Err()
