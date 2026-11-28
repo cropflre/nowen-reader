@@ -1,7 +1,13 @@
 #!/bin/bash
 
 case "${1:-}" in
-  start|stop)
+  start)
+    # Re-render docker-compose.yaml from template with current TRIM_DATA_ACCESSIBLE_PATHS.
+    bash "$(dirname "$0")/render_compose" || exit 1
+    # fnOS App Center owns the Docker project lifecycle.
+    exit 0
+    ;;
+  stop)
     # fnOS App Center owns the Docker project lifecycle.
     exit 0
     ;;

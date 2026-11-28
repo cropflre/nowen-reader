@@ -102,5 +102,131 @@ class PackageIdentityTests(unittest.TestCase):
         self.assertEqual(fields["appname"], "nowen-reader")
 
 
+@unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Requires POSIX and bash")
+class AccessiblePathsRenderTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="reader-fpk-render-")
+        self.root = Path(self.temporary.name)
+        self.hooks = self.root / "cmd"
+        shutil.copytree(HERE / "template/cmd", self.hooks)
+        self.pkgvar = self.root / "pkgvar"
+        self.pkgvar.mkdir()
+        self.appdest = self.root / "target"
+        (self.appdest / "docker").mkdir(parents=True)
+        tpl = (HERE / "template/app/docker/docker-compose.yaml.tpl").read_text(encoding="utf-8")
+        self.image = "cropflre/nowen-reader:v1.2.4@sha256:" + ("0" * 64)
+        self.tpl_content = tpl.replace("{{IMAGE}}", self.image)
+        (self.appdest / "docker/docker-compose.yaml.tpl").write_text(self.tpl_content, encoding="utf-8")
+        self.compose_path = self.appdest / "docker/docker-compose.yaml"
+        self.base_env = {
+            **os.environ,
+            "TRIM_PKGVAR": str(self.pkgvar),
+            "TRIM_APPDEST": str(self.appdest),
+            "TRIM_DATA_SHARE_PATHS": "/vol1/@appshare/nowen-reader",
+        }
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def run_hook(self, name, *args, env=None):
+        return subprocess.run(
+            ["bash", str(self.hooks / name), *args],
+            env=env if env is not None else self.base_env,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_config_callback_mounts_local_and_remote_paths_and_filters_share(self):
+        env = {
+            **self.base_env,
+            "TRIM_DATA_ACCESSIBLE_PATHS": (
+                "/vol1/@appshare/nowen-reader/:"
+                "/vol1/1000/我的漫画:"
+                "/vol02/1000-0-d0b6b52b/Aliyun Drive/小说合集:"
+                "/vol1/1000/我的漫画/"
+            ),
+        }
+        result = self.run_hook("config_callback", env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = self.compose_path.read_text(encoding="utf-8")
+        self.assertIn(f"image: {self.image}", rendered)
+        self.assertIn('      - "/vol1/1000/我的漫画:/vol1/1000/我的漫画"', rendered)
+        self.assertIn(
+            '      - "/vol02/1000-0-d0b6b52b/Aliyun Drive/小说合集:/vol02/1000-0-d0b6b52b/Aliyun Drive/小说合集"',
+            rendered,
+        )
+        # Share path is already mounted as /library and must not be duplicated.
+        self.assertNotIn('"/vol1/@appshare/nowen-reader:/vol1/@appshare/nowen-reader"', rendered)
+        # Duplicate entry with trailing slash must appear only once.
+        self.assertEqual(rendered.count('"/vol1/1000/我的漫画:/vol1/1000/我的漫画"'), 1)
+
+    def test_escapes_yaml_quotes_backslashes_and_compose_dollars(self):
+        special_path = r'/vol1/1000/comics "$100" \box'
+        env = {**self.base_env, "TRIM_DATA_ACCESSIBLE_PATHS": special_path}
+        result = self.run_hook("config_callback", env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = self.compose_path.read_text(encoding="utf-8")
+        expected_escaped = r'/vol1/1000/comics \"$$100\" \\box'
+        self.assertIn(f'      - "{expected_escaped}:{expected_escaped}"', rendered)
+
+    def test_rejects_unsafe_and_reserved_paths(self):
+        env = {
+            **self.base_env,
+            "TRIM_DATA_ACCESSIBLE_PATHS": (
+                "/:/data:/data/sub:/library:/app:/etc/passwd:"
+                "relative/path:/vol1/../etc:/vol1/bad\nline:/vol1/valid/books"
+            ),
+        }
+        result = self.run_hook("config_callback", env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = self.compose_path.read_text(encoding="utf-8")
+        self.assertIn('      - "/vol1/valid/books:/vol1/valid/books"', rendered)
+        for forbidden in ('"/:/"', '"/data:/data"', '"/data/sub:/data/sub"',
+                          '"/library:/library"', '"/app:/app"', '"/etc/passwd:/etc/passwd"',
+                          'relative/path', '/vol1/../etc', '/vol1/bad'):
+            self.assertNotIn(forbidden, rendered)
+
+    def test_revoking_all_extra_paths_removes_dynamic_mounts(self):
+        env_add = {**self.base_env, "TRIM_DATA_ACCESSIBLE_PATHS": "/vol1/1000/comics"}
+        self.assertEqual(self.run_hook("config_callback", env=env_add).returncode, 0)
+        self.assertIn('"/vol1/1000/comics:/vol1/1000/comics"', self.compose_path.read_text(encoding="utf-8"))
+
+        env_clear = {**self.base_env, "TRIM_DATA_ACCESSIBLE_PATHS": "/vol1/@appshare/nowen-reader"}
+        result = self.run_hook("config_callback", env=env_clear)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = self.compose_path.read_text(encoding="utf-8")
+        self.assertNotIn("/vol1/1000/comics", rendered)
+        self.assertNotIn("Dynamically mounted", rendered)
+
+    def test_upgrade_callback_restores_persisted_mounts_when_env_absent(self):
+        env_add = {**self.base_env, "TRIM_DATA_ACCESSIBLE_PATHS": "/vol1/1000/comics:/vol2/novels"}
+        self.assertEqual(self.run_hook("config_callback", env=env_add).returncode, 0)
+
+        # Simulate fnOS upgrade unpacking a fresh default docker-compose.yaml without extra mounts.
+        self.compose_path.write_text(
+            "\n".join(l for l in self.tpl_content.splitlines() if l != "      # __ACCESSIBLE_VOLUMES__") + "\n",
+            encoding="utf-8",
+        )
+        env_upgrade = {k: v for k, v in self.base_env.items() if k != "TRIM_DATA_ACCESSIBLE_PATHS"}
+        result = self.run_hook("upgrade_callback", env=env_upgrade)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = self.compose_path.read_text(encoding="utf-8")
+        self.assertIn('      - "/vol1/1000/comics:/vol1/1000/comics"', rendered)
+        self.assertIn('      - "/vol2/novels:/vol2/novels"', rendered)
+
+    def test_main_start_and_install_callback_render_accessible_paths(self):
+        env = {**self.base_env, "TRIM_DATA_ACCESSIBLE_PATHS": "/vol1/1000/manga"}
+        result = self.run_hook("install_callback", env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('      - "/vol1/1000/manga:/vol1/1000/manga"', self.compose_path.read_text(encoding="utf-8"))
+
+        env2 = {**self.base_env, "TRIM_DATA_ACCESSIBLE_PATHS": "/vol1/1000/novels"}
+        result = self.run_hook("main", "start", env=env2)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = self.compose_path.read_text(encoding="utf-8")
+        self.assertIn('      - "/vol1/1000/novels:/vol1/1000/novels"', rendered)
+        self.assertNotIn("/vol1/1000/manga", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()

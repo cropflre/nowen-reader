@@ -1,2 +1,4 @@
 #!/bin/bash
-exit 0
+set -eu
+# Re-apply authorized directory mounts after fnOS unpacks the upgraded template.
+bash "$(dirname "$0")/render_compose"

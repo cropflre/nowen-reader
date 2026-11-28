@@ -1,0 +1,172 @@
+#!/bin/bash
+set -eu
+
+# Render ${TRIM_APPDEST}/docker/docker-compose.yaml from docker-compose.yaml.tpl,
+# dynamically bind-mounting extra host directories authorized via fnOS
+# TRIM_DATA_ACCESSIBLE_PATHS (colon-separated) at their original paths.
+
+DOCKER_DIR="${TRIM_APPDEST:-}/docker"
+TEMPLATE_FILE="${DOCKER_DIR}/docker-compose.yaml.tpl"
+COMPOSE_FILE="${DOCKER_DIR}/docker-compose.yaml"
+STATE_FILE=""
+if [ -n "${TRIM_PKGVAR:-}" ]; then
+  STATE_FILE="${TRIM_PKGVAR}/accessible_paths"
+fi
+
+fail() {
+  printf '%s\n' "$1" >&2
+  if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE}" 2>/dev/null || true
+  fi
+  exit 1
+}
+
+# Skip gracefully when invoked outside a full fnOS target layout (e.g. minimal unit tests).
+if [ -z "${TRIM_APPDEST:-}" ] || [ ! -f "${TEMPLATE_FILE}" ]; then
+  exit 0
+fi
+
+normalize_path() {
+  local p="$1"
+  while [[ "$p" == *//* ]]; do
+    p="${p//\/\//\/}"
+  done
+  while [ "$p" != "/" ] && [[ "$p" == */ ]]; do
+    p="${p%/}"
+  done
+  printf '%s' "$p"
+}
+
+is_reserved_target() {
+  case "$1" in
+    /|/app|/app/*|/data|/data/*|/library|/library/*|\
+    /bin|/bin/*|/dev|/dev/*|/etc|/etc/*|/lib|/lib/*|/lib64|/lib64/*|\
+    /proc|/proc/*|/root|/root/*|/run|/run/*|/sbin|/sbin/*|/sys|/sys/*|\
+    /tmp|/tmp/*|/usr|/usr/*|/var|/var/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+escape_compose_yaml_dq() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//\$/\$\$}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+# Preserve the distinction between an explicitly set TRIM_DATA_ACCESSIBLE_PATHS
+# (including empty when the user revokes all extra directories) and an unset
+# variable during hooks such as upgrade_callback.
+raw_accessible=""
+if [ "${TRIM_DATA_ACCESSIBLE_PATHS+x}" = "x" ]; then
+  raw_accessible="${TRIM_DATA_ACCESSIBLE_PATHS}"
+  if [ -n "${STATE_FILE}" ] && [ -d "${TRIM_PKGVAR}" ] && [ -w "${TRIM_PKGVAR}" ]; then
+    state_tmp="$(mktemp "${TRIM_PKGVAR}/.accessible_paths.XXXXXX" 2>/dev/null || true)"
+    if [ -n "${state_tmp}" ]; then
+      printf '%s' "${raw_accessible}" > "${state_tmp}"
+      mv -f "${state_tmp}" "${STATE_FILE}"
+    fi
+  fi
+elif [ -n "${STATE_FILE}" ] && [ -r "${STATE_FILE}" ]; then
+  raw_accessible="$(cat "${STATE_FILE}")"
+fi
+
+# Collect normalized built-in share paths already mounted at /library.
+share_paths=()
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+  while IFS= read -r -d ':' raw_share; do
+    [ -n "${raw_share}" ] || continue
+    norm_share="$(normalize_path "${raw_share}")"
+    share_paths+=("${norm_share}")
+  done < <(printf '%s:' "${TRIM_DATA_SHARE_PATHS}")
+fi
+
+is_share_path() {
+  local candidate="$1" share
+  for share in "${share_paths[@]+"${share_paths[@]}"}"; do
+    if [ "${candidate}" = "${share}" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+seen_paths=()
+is_seen_path() {
+  local candidate="$1" seen
+  for seen in "${seen_paths[@]+"${seen_paths[@]}"}"; do
+    if [ "${candidate}" = "${seen}" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+extra_volumes=()
+if [ -n "${raw_accessible}" ]; then
+  while IFS= read -r -d ':' raw_path; do
+    [ -n "${raw_path}" ] || continue
+    # Reject control characters (CR/LF) to prevent YAML line injection.
+    case "${raw_path}" in
+      *$'\n'*|*$'\r'*) continue ;;
+    esac
+    # Must be an absolute path without parent traversal segments.
+    case "${raw_path}" in
+      /*) ;;
+      *) continue ;;
+    esac
+    case "/${raw_path}/" in
+      */../*) continue ;;
+    esac
+
+    norm_path="$(normalize_path "${raw_path}")"
+    [ -n "${norm_path}" ] || continue
+    if is_share_path "${norm_path}"; then
+      continue
+    fi
+    if is_reserved_target "${norm_path}"; then
+      continue
+    fi
+    if is_seen_path "${norm_path}"; then
+      continue
+    fi
+    seen_paths+=("${norm_path}")
+    extra_volumes+=("$(escape_compose_yaml_dq "${norm_path}")")
+  done < <(printf '%s:' "${raw_accessible}")
+fi
+
+TMP_FILE="$(mktemp "${DOCKER_DIR}/.docker-compose.yaml.XXXXXX")" || fail "无法在 ${DOCKER_DIR} 创建临时文件。"
+trap 'rm -f "${TMP_FILE}"' EXIT
+
+found_marker=0
+while IFS= read -r line || [ -n "${line}" ]; do
+  if [ "${line}" = "      # __ACCESSIBLE_VOLUMES__" ]; then
+    found_marker=1
+    if [ "${#extra_volumes[@]}" -gt 0 ]; then
+      printf '%s\n' "      # Dynamically mounted from fnOS TRIM_DATA_ACCESSIBLE_PATHS"
+      for entry in "${extra_volumes[@]}"; do
+        printf '      - "%s:%s"\n' "${entry}" "${entry}"
+      done
+    fi
+  else
+    printf '%s\n' "${line}"
+  fi
+done < "${TEMPLATE_FILE}" > "${TMP_FILE}"
+
+if [ "${found_marker}" -ne 1 ]; then
+  fail "docker-compose.yaml.tpl 缺少 # __ACCESSIBLE_VOLUMES__ 占位标记。"
+fi
+
+chmod 0644 "${TMP_FILE}"
+if [ -f "${COMPOSE_FILE}" ] && cmp -s "${TMP_FILE}" "${COMPOSE_FILE}" 2>/dev/null; then
+  rm -f "${TMP_FILE}"
+else
+  mv -f "${TMP_FILE}" "${COMPOSE_FILE}"
+fi
+trap - EXIT

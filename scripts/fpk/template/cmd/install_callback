@@ -4,3 +4,4 @@ set -eu
 # Prepare nested caches before Docker starts to avoid root-owned page caches.
 : "${TRIM_PKGVAR:?fnOS application data directory is required}"
 mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/cache/thumbnails" "${TRIM_PKGVAR}/cache/pages"
+bash "$(dirname "$0")/render_compose"

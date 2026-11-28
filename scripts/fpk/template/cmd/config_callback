@@ -1,2 +1,4 @@
 #!/bin/bash
-exit 0
+set -eu
+# Re-render docker-compose.yaml when fnOS updates TRIM_DATA_ACCESSIBLE_PATHS.
+bash "$(dirname "$0")/render_compose"

@@ -10,6 +10,7 @@ services:
       - "${TRIM_PKGVAR:?fnOS application data directory is required}/cache:/app/.cache"
       # Exactly one data-share is declared in config/resource.
       - "${TRIM_DATA_SHARE_PATHS:?fnOS shared book directory is required}:/library"
+      # __ACCESSIBLE_VOLUMES__
     environment:
       GIN_MODE: release
       PORT: "3000"

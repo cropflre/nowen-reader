@@ -55,12 +55,16 @@ def verify_package(package, version, image, description):
     # fnpack stores app/ as a nested archive; cmd/ and config/ are outer files.
     with tarfile.open(fileobj=io.BytesIO(files["app.tgz"][1]), mode="r:*") as app:
         app_files = archive_files(app)
+    compose_tpl = app_files["docker/docker-compose.yaml.tpl"][1].decode("utf-8")
     compose = app_files["docker/docker-compose.yaml"][1].decode("utf-8")
-    if f"image: {image}" not in compose or "{{IMAGE}}" in compose:
-        raise ValueError("Packaged Docker image does not match release.json")
-    for token in ("TRIM_PKGVAR", "TRIM_DATA_SHARE_PATHS", "TRIM_UID", "TRIM_GID"):
-        if token not in compose:
-            raise ValueError(f"Missing fnOS runtime variable: {token}")
+    if "# __ACCESSIBLE_VOLUMES__" not in compose_tpl:
+        raise ValueError("docker-compose.yaml.tpl must declare the # __ACCESSIBLE_VOLUMES__ marker")
+    for label, content in (("docker-compose.yaml.tpl", compose_tpl), ("docker-compose.yaml", compose)):
+        if f"image: {image}" not in content or "{{IMAGE}}" in content:
+            raise ValueError(f"Packaged Docker image in {label} does not match release.json")
+        for token in ("TRIM_PKGVAR", "TRIM_DATA_SHARE_PATHS", "TRIM_UID", "TRIM_GID"):
+            if token not in content:
+                raise ValueError(f"Missing fnOS runtime variable in {label}: {token}")
     ui = json.loads(app_files["ui/config"][1])[".url"]["nowen-reader.Application"]
     if ui["port"] != "6680" or ui["protocol"] != "http" or ui["title"] != "弄文阅读":
         raise ValueError("Desktop entry name, protocol, or service port disagrees")
@@ -71,10 +75,15 @@ def verify_package(package, version, image, description):
     resource = json.loads(files["config/resource"][1])
     if resource["data-share"]["shares"] != [{"name": "nowen-reader"}]:
         raise ValueError("Compose requires exactly one application book share")
-    for hook in ("main", "install_init", "install_callback", "upgrade_init", "upgrade_callback",
+    for hook in ("main", "render_compose", "install_init", "install_callback", "upgrade_init", "upgrade_callback",
                  "uninstall_init", "uninstall_callback", "config_init", "config_callback"):
         if f"cmd/{hook}" not in files:
             raise ValueError(f"Missing lifecycle hook: {hook}")
+    if b"TRIM_DATA_ACCESSIBLE_PATHS" not in files["cmd/render_compose"][1]:
+        raise ValueError("render_compose must handle TRIM_DATA_ACCESSIBLE_PATHS")
+    for hook in ("main", "install_callback", "config_callback", "upgrade_callback"):
+        if b"render_compose" not in files[f"cmd/{hook}"][1]:
+            raise ValueError(f"{hook} must invoke render_compose to synchronize accessible mounts")
     if b"TRIM_PKGVAR" in files["cmd/install_init"][1] or b"mkdir" in files["cmd/install_init"][1]:
         raise ValueError("install_init must not create runtime directories before fnOS prepares them")
     for hook in ("install_callback", "upgrade_init"):
@@ -111,7 +120,7 @@ def main():
         shutil.copytree(HERE / "template", source)
         for name, replacements in (
             ("manifest", {"VERSION": version, "DESCRIPTION": description}),
-            ("app/docker/docker-compose.yaml", {"IMAGE": image}),
+            ("app/docker/docker-compose.yaml.tpl", {"IMAGE": image}),
         ):
             path = source / name
             text = path.read_text(encoding="utf-8")
@@ -120,6 +129,10 @@ def main():
             if re.search(r"\{\{[A-Z_]+\}\}", text):
                 raise ValueError(f"Unresolved template variable: {name}")
             path.write_text(text, encoding="utf-8", newline="\n")
+        # Ship a valid default docker-compose.yaml alongside the template for initial install.
+        tpl_lines = (source / "app/docker/docker-compose.yaml.tpl").read_text(encoding="utf-8").splitlines()
+        default_compose = "\n".join(line for line in tpl_lines if line != "      # __ACCESSIBLE_VOLUMES__") + "\n"
+        (source / "app/docker/docker-compose.yaml").write_text(default_compose, encoding="utf-8", newline="\n")
         for path in (source / "cmd").iterdir():
             path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
             path.chmod(0o755)
