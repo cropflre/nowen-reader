@@ -148,6 +148,13 @@ class AppLocalizations {
   // 阅读器
   // ============================================================
   String get novel => translate('novel');
+  String get viewChapterRecap => translate('view_chapter_recap');
+  String get chapterRecapTitle => translate('chapter_recap_title');
+  String get generatingChapterRecap => translate('generating_chapter_recap');
+  String get noChapterRecap => translate('no_chapter_recap');
+  String get chapterRecapFailed => translate('chapter_recap_failed');
+  String get regenerate => translate('regenerate');
+  String get collapse => translate('collapse');
 }
 
 class _AppLocalizationsDelegate
@@ -268,6 +275,13 @@ const Map<String, String> _zhStrings = {
 
   // 阅读器
   'novel': '小说',
+  'view_chapter_recap': '查看前情提要',
+  'chapter_recap_title': '前情提要',
+  'generating_chapter_recap': '生成前情提要中...',
+  'no_chapter_recap': '暂无前情提要',
+  'chapter_recap_failed': '生成前情提要失败',
+  'regenerate': '重新生成',
+  'collapse': '收起',
 };
 
 // ============================================================
@@ -370,4 +384,11 @@ const Map<String, String> _enStrings = {
 
   // Reader
   'novel': 'Novel',
+  'view_chapter_recap': 'Previously On...',
+  'chapter_recap_title': 'Previously On...',
+  'generating_chapter_recap': 'Generating recap...',
+  'no_chapter_recap': 'No recap available',
+  'chapter_recap_failed': 'Failed to generate recap',
+  'regenerate': 'Regenerate',
+  'collapse': 'Collapse',
 };

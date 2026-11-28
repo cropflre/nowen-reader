@@ -66,7 +66,11 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
 
-  AuthNotifier(this._ref) : super(const AuthState()) {
+  AuthNotifier(
+    this._ref, {
+    AuthState initialState = const AuthState(),
+    bool autoInit = true,
+  }) : super(initialState) {
     _ref.listen<String>(serverUrlProvider, (_, url) {
       if (mounted && state.serverUrl != url) {
         state = state.copyWith(serverUrl: url);
@@ -89,7 +93,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         unawaited(checkAuth(selectRoute: false));
       }
     });
-    _init();
+    if (autoInit) {
+      _init();
+    }
   }
 
   Future<void> _init() async {

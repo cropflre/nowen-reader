@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,12 +10,15 @@ import '../../utils/tts_service.dart';
 
 import '../../data/api/comic_api.dart';
 import '../../data/api/api_client.dart';
+import '../../data/providers/ai_provider.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/comic_provider.dart';
 import '../../data/services/cache_service.dart';
 import '../../data/services/novel_reading_position.dart';
 import '../../data/services/reading_activity_tracker.dart';
 import '../../data/services/reader_chapter_loader.dart';
+import '../../l10n/app_localizations.dart';
+import 'novel_chapter_recap.dart';
 import 'novel_settings.dart';
 import 'novel_panels.dart';
 import 'novel_tap_zone_settings.dart';
@@ -109,6 +113,15 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   // 搜索用：缓存章节内容
   final Map<int, String> _chapterCache = {};
 
+  // AI 前情提要状态
+  bool _showRecap = false;
+  bool _recapLoading = false;
+  ChapterRecap? _recapData;
+  String? _recapError;
+  final Map<int, ChapterRecap> _recapCache = {};
+  CancelToken? _recapCancelToken;
+  int _recapRequestGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -150,6 +163,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
     }
     _htmlPageAnimation.dispose();
     ServicesBinding.instance.keyboard.removeHandler(_handleKeyEvent);
+    _recapCancelToken?.cancel();
     _autoScrollTimer?.cancel();
     _timeTimer?.cancel();
     _tts.stop();
@@ -743,6 +757,9 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   Future<void> _loadChapter(int index, {NovelReadingPosition? position}) async {
     if (index < 0 || index >= _totalChapters) return;
     _positionSaveTimer?.cancel();
+    _recapCancelToken?.cancel();
+    _recapCancelToken = null;
+    _recapRequestGeneration++;
     _htmlPageAnimation.stop();
     _htmlPageSlide = const AlwaysStoppedAnimation(Offset.zero);
     _positionToRestore = position;
@@ -754,6 +771,10 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
       _loadError = null;
       _swipePage = 0;
       _swipeTotalPages = 1;
+      _showRecap = false;
+      _recapLoading = false;
+      _recapError = null;
+      _recapData = _recapCache[index];
     });
     try {
       final data = await _chapterLoader.load(index);
@@ -1163,11 +1184,106 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   String _stripHtml(String content) => novelPlainText(content);
 
   // ============================================================
+  // AI 前情提要
+  // ============================================================
+
+  void _expandChapterRecap() {
+    if (_recapLoading) {
+      setState(() => _showRecap = true);
+      return;
+    }
+    if (_recapData != null) {
+      setState(() {
+        _showRecap = true;
+        _recapError = null;
+      });
+      return;
+    }
+    unawaited(_fetchChapterRecap());
+  }
+
+  void _collapseChapterRecap() {
+    setState(() => _showRecap = false);
+  }
+
+  Future<void> _fetchChapterRecap({bool forceRefresh = false}) async {
+    if (_currentChapter <= 0) return;
+    if (_recapLoading && !forceRefresh) return;
+
+    _recapCancelToken?.cancel();
+    final cancelToken = CancelToken();
+    _recapCancelToken = cancelToken;
+    final chapterIndex = _currentChapter;
+    final generation = ++_recapRequestGeneration;
+    final locale = AppLocalizations.of(context).locale;
+    final targetLang = locale.languageCode == 'en' ? 'en' : 'zh-CN';
+
+    setState(() {
+      _showRecap = true;
+      _recapLoading = true;
+      _recapError = null;
+    });
+
+    try {
+      final recap = await _api.getChapterRecap(
+        widget.comicId,
+        chapterIndex: chapterIndex,
+        targetLang: targetLang,
+        cancelToken: cancelToken,
+      );
+      if (!mounted ||
+          generation != _recapRequestGeneration ||
+          chapterIndex != _currentChapter) {
+        return;
+      }
+      if (recap != null) {
+        _recapCache[chapterIndex] = recap;
+      } else {
+        _recapCache.remove(chapterIndex);
+      }
+      setState(() {
+        _recapData = recap;
+        _recapLoading = false;
+        _recapError = null;
+      });
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) return;
+      if (!mounted ||
+          generation != _recapRequestGeneration ||
+          chapterIndex != _currentChapter) {
+        return;
+      }
+      String? errorMessage;
+      final responseData = e.response?.data;
+      if (responseData is Map && responseData['error'] != null) {
+        errorMessage = responseData['error'].toString().trim();
+      }
+      setState(() {
+        _recapLoading = false;
+        _recapError = errorMessage ?? '';
+      });
+    } catch (_) {
+      if (!mounted ||
+          generation != _recapRequestGeneration ||
+          chapterIndex != _currentChapter) {
+        return;
+      }
+      setState(() {
+        _recapLoading = false;
+        _recapError = '';
+      });
+    }
+  }
+
+  // ============================================================
   // UI 构建
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    // 尽早监听 AI 状态，与章节列表并行拉取，避免正文渲染后再插入按钮引起排版抖动。
+    final aiConfigured = ref.watch(aiConfiguredProvider).valueOrNull ?? false;
+
     if (_loading) {
       return Scaffold(
         backgroundColor: _settings.backgroundColor,
@@ -1244,7 +1360,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onTapUp: _handleContentTap,
-                    child: _buildContentView(),
+                    child: _buildContentView(aiConfigured: aiConfigured),
                   ),
                 ),
                 // 底部状态栏
@@ -1587,7 +1703,7 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
   }
 
   /// 文本内容区域
-  Widget _buildContentView() {
+  Widget _buildContentView({required bool aiConfigured}) {
     if (_chapterLoading) {
       return Center(
         child: CircularProgressIndicator(
@@ -1631,11 +1747,13 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
         .where((line) => line.trim().isNotEmpty)
         .toList();
 
+    final showChapterRecap = aiConfigured && _currentChapter > 0;
+
     List<Widget> contentWidgets({double? maxImageHeight}) => <Widget>[
           // 章节标题
           NovelPageAtomic(
               child: Padding(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: EdgeInsets.only(bottom: showChapterRecap ? 16 : 24),
             child: Text(
               _chapterTitle,
               style: TextStyle(
@@ -1648,6 +1766,18 @@ class _NovelReaderScreenState extends ConsumerState<NovelReaderScreen>
               textAlign: TextAlign.center,
             ),
           )),
+          // AI 前情提要（章节标题下方）
+          if (showChapterRecap)
+            NovelChapterRecapCard(
+              settings: _settings,
+              expanded: _showRecap,
+              loading: _recapLoading,
+              recap: _recapData,
+              error: _recapError,
+              onExpand: _expandChapterRecap,
+              onCollapse: _collapseChapterRecap,
+              onRefresh: () => unawaited(_fetchChapterRecap(forceRefresh: true)),
+            ),
           // 章节正文（段落）
           if (_isHtml)
             _buildHtmlContent(maxImageHeight: maxImageHeight)

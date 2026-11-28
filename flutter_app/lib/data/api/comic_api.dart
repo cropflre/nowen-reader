@@ -15,6 +15,30 @@ class ComicSeriesChapter {
   bool matchesComic(String id) => comicId == id || _editionIds.contains(id);
 }
 
+/// AI 生成的章节前情提要
+class ChapterRecap {
+  final String summary;
+  final String keyCharacters;
+  final String lastCliffhanger;
+
+  const ChapterRecap({
+    required this.summary,
+    this.keyCharacters = '',
+    this.lastCliffhanger = '',
+  });
+
+  bool get isEmpty =>
+      summary.isEmpty && keyCharacters.isEmpty && lastCliffhanger.isEmpty;
+
+  factory ChapterRecap.fromJson(Map<String, dynamic> json) {
+    return ChapterRecap(
+      summary: (json['summary']?.toString() ?? '').trim(),
+      keyCharacters: (json['keyCharacters']?.toString() ?? '').trim(),
+      lastCliffhanger: (json['lastCliffhanger']?.toString() ?? '').trim(),
+    );
+  }
+}
+
 /// 漫画 API
 class ComicApi {
   final Dio _dio;
@@ -580,8 +604,55 @@ class ComicApi {
   }
 
   // ============================================================
-  // AI 标题推断
+  // AI 功能
   // ============================================================
+
+  /// 获取服务端 AI 配置状态
+  Future<Map<String, dynamic>> getAIStatus() async {
+    final res = await _dio.get('/ai/status');
+    return res.data is Map
+        ? Map<String, dynamic>.from(res.data as Map)
+        : <String, dynamic>{};
+  }
+
+  /// 检查服务端是否已配置 AI（兼容云端 AI 与本地 AI，接口异常时回退为 false）
+  Future<bool> isAIConfigured() async {
+    try {
+      final data = await getAIStatus();
+      final cloud = data['cloudAI'];
+      final local = data['localAI'];
+      final cloudConfigured = cloud is Map && cloud['configured'] == true;
+      final localConfigured = local is Map && local['configured'] == true;
+      return cloudConfigured || localConfigured;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// AI 生成当前章节的前情提要
+  Future<ChapterRecap?> getChapterRecap(
+    String comicId, {
+    required int chapterIndex,
+    String targetLang = 'zh-CN',
+    CancelToken? cancelToken,
+  }) async {
+    final res = await _dio.post(
+      '/comics/$comicId/ai-chapter-recap',
+      data: {
+        'chapterIndex': chapterIndex,
+        'targetLang': targetLang,
+      },
+      options: Options(receiveTimeout: const Duration(minutes: 3)),
+      cancelToken: cancelToken,
+    );
+    final data = res.data;
+    if (data is Map && data['recap'] is Map) {
+      final recap =
+          ChapterRecap.fromJson(Map<String, dynamic>.from(data['recap'] as Map));
+      return recap.isEmpty ? null : recap;
+    }
+    return null;
+  }
 
   /// AI 推断标题（单本）
   Future<Map<String, dynamic>> aiInferTitle(String comicId) async {
